@@ -37,6 +37,8 @@ const EXPORTS = [
   'manageChurch', 'saveChurch', 'inChurch', 'conflictOn', 'dropChurchData', 'adoptChurch', 'healthHTML',
   'planFor', 'PRICE_DATE',
   'health', 'noteHealth', 'healthReset', 'healthTest', 'statusPanelHTML', 'homeHealthHTML', 'acctHealthHTML', 'qStateBar',
+  'SERVE_TABS', 'viewProfile', 'profGate', 'gateBack', 'profPassword', 'profDeleteAsk', 'profDeleteTyped', 'profDeleteGo',
+  'profileChanged', 'passwordCheck', 'savePassword',
 ];
 const code = body + '\n;globalThis.__X={' + EXPORTS.map(n => n + ':(typeof ' + n + '!=="undefined"?' + n + ':undefined)').join(',') + '};';
 
@@ -1383,6 +1385,150 @@ function makeServer() {
     sandbox.NEWSTART_NO_CLOUD = noCloudWas; g.resetDemo();
   }
 
+  /* ---- 18f. the Profile page (bottom tab) ---- */
+  console.log('\n18f. The Profile page');
+  {
+    const noCloudWas = sandbox.NEWSTART_NO_CLOUD;
+    const church = { id: 'ch-a', name: 'Grace Chapel', city: 'Durban', phone: '', email: '', status: 'active' };
+    const membership = over => Object.assign({ church_id: 'ch-a', role: 'staff', status: 'approved', full_name: 'Thandi Mabaso', phone: '082 000 0000', area: 'Umlazi', birth_date: null, attendee_id: null }, over);
+    const who = over => Object.assign({ user_id: 'user-1', email: 'staff@example.org', platform_admin: false, membership: membership(), church: { ...church } }, over);
+    let me = who(), deleteRefusal = null;
+    const rc = [], shots = [];                     /* calls the page made; every screen drawn (for the class check) */
+    const done = (data = null) => ({ data, error: null });
+    const install = () => {
+      srv.rpcs = {
+        my_account: () => done(JSON.parse(JSON.stringify(me))),
+        update_my_details: a => { rc.push('details:' + a.p_full_name + ':' + a.p_phone); Object.assign(me.membership, { full_name: a.p_full_name, phone: a.p_phone, area: a.p_area, birth_date: a.p_birth_date }); return done(); },
+        my_health: () => done(null),
+        delete_my_account: () => { rc.push('delete'); return deleteRefusal ? { data: null, error: deleteRefusal } : done(); },
+      };
+    };
+    const main = () => { const h = $main.innerHTML; shots.push(h); return h; };
+    const profile = () => { g.state.tab = 'me'; g.render(); return main(); };
+    const typed = (id, v) => { $el(id).value = v; };
+    const viaProfile = { preventDefault() {}, target: { dataset: { pre: 'pf' } } };
+    const gateBox = $el('authGate');
+    const gateUp = () => !gateBox.classList.contains('hidden') && gateBox.classList.contains('flex');
+    const gateBody = () => { const h = $el('authGateBody').innerHTML; shots.push(h); return h; };
+    const freshDevice = async () => {
+      device(); install(); rc.length = 0; store.delete('newstart.church.v1');
+      sandbox.NEWSTART_NO_CLOUD = false;
+      Object.assign(C, { ready: false, demo: false, pending: false, gateKey: '', acct: null, churchId: '', health: undefined, gateForce: false, delOpen: false, view: 'login', formErr: '', client: null, status: 'off' });
+      await g.cloudInit(); srv.authCb('INITIAL_SESSION', null); await sleep(30);
+    };
+
+    /* the tab */
+    ok('the bottom bar ends with a Profile tab', g.SERVE_TABS.length === 6 && g.SERVE_TABS[5][0] === 'me' && g.SERVE_TABS[5][1] === 'Profile', g.SERVE_TABS.map(t => t[0]).join());
+    sandbox.NEWSTART_NO_CLOUD = true;
+    let h = profile();
+    ok('with sign-in switched off the page says so instead of showing a form', /switched off/.test(h) && !h.includes('id="pfEmail"'));
+    ok('…and the Profile tab is the highlighted one while open', /switchTab\('me'\)" class="nav-item hue-lilac nav-item-active" aria-current="page"/.test($el('navItems').innerHTML) && $el('navItems').innerHTML.includes('Profile'));
+
+    /* signed out */
+    await freshDevice();
+    h = profile();
+    ok('signed out, Profile offers sign-in, Forgot password and Create an account, and no Sign out', h.includes('Your profile') && h.includes('id="pfEmail"') && h.includes('id="pfPass"')
+      && h.includes("profGate('forgot')") && h.includes("profGate('signup')") && !h.includes('cloudSignOut()'));
+    typed('pfEmail', 'staff@example.org'); typed('pfPass', 'nope');
+    await g.cloudSignIn(viaProfile);
+    ok('a wrong password is shown on the Profile page itself', C.formErr === 'Wrong email or password.' && $el('pfErr').textContent === 'Wrong email or password.', $el('pfErr').textContent);
+    typed('pfEmail', ''); await g.cloudSignIn(viaProfile);
+    ok('a blank email is caught there too', /Enter your staff email/.test($el('pfErr').textContent), $el('pfErr').textContent);
+
+    /* Create an account / Forgot password: the full-screen screens, even over a saved copy, with a way back */
+    C.gateKey = ''; g.renderGate();
+    ok('the normal sign-in screen has no "Back to the app" link', !gateBody().includes('gateBack()'));
+    C.ready = true; g.renderGate();
+    ok('a device holding saved data shows no gate by itself', g.gateState() === 'hidden' && !gateUp());
+    g.profGate('signup');
+    ok('Create an account from Profile opens the sign-up screen over that copy, with Back to the app', C.gateForce === true && g.gateState() === 'signup' && gateUp() && gateBody().includes('gateBack()'), g.gateState());
+    g.profGate('forgot');
+    ok('Forgot password opens the reset screen the same way', g.gateState() === 'forgot' && gateUp() && gateBody().includes('gateBack()') && gateBody().includes('Reset your password'), g.gateState());
+    g.gateBack();
+    ok('Back to the app hides it again', g.gateState() === 'hidden' && !gateUp() && C.gateForce === false && C.view === 'login');
+    C.ready = false; C.gateKey = '';
+
+    /* signing in from Profile */
+    typed('pfEmail', 'staff@example.org'); typed('pfPass', 'right');
+    await g.cloudSignIn(viaProfile); await sleep(450);
+    h = main();
+    ok('after signing in from Profile the page shows the person, not the form', !!C.user && h.includes('Thandi Mabaso') && h.includes('staff@example.org') && !h.includes('id="pfEmail"'), h.slice(0, 80));
+    ok('…with role and church as labels, and no admin buttons for plain staff', h.includes('>Staff<') && h.includes('Grace Chapel · Durban') && !h.includes('Platform admin')
+      && !h.includes("openAcct('church')") && !h.includes("openAcct('admin')"));
+    ok('…and the sync, details, password and account sections', h.includes('cloudSync(true)') && h.includes('id="pmName"') && h.includes('value="Thandi Mabaso"') && h.includes('id="pwNew"')
+      && h.includes('cloudSignOut()') && h.includes('profDeleteAsk()'));
+
+    /* admins get their shortcuts */
+    me = who({ platform_admin: true, membership: membership({ role: 'admin' }) });
+    await g.cloudSync(true); await sleep(400);
+    h = profile();
+    ok('a church admin who is also platform admin sees both labels and both shortcuts', h.includes('>Platform admin<') && h.includes('>Church admin<') && h.includes("openAcct('church')") && h.includes("openAcct('admin')"));
+    me = who();
+    await g.cloudSync(true); await sleep(400);
+
+    /* my details */
+    typed('pmName', 'Thandi M. Mabaso'); typed('pmPhone', '083 111 2222'); typed('pmArea', 'Umlazi'); typed('pmBirth', '');
+    await g.saveMyDetails({ preventDefault() {}, target: { dataset: { pre: 'pm' } } }); await sleep(450);
+    ok('saving details from Profile calls the database and the page then shows the new name', rc.includes('details:Thandi M. Mabaso:083 111 2222') && main().includes('Thandi M. Mabaso'), rc.join());
+
+    /* change password */
+    typed('pwNew', 'short1'); typed('pwNew2', 'short1'); await g.profPassword({ preventDefault() {} });
+    ok('a short new password is refused on the page and never sent', /8 characters/.test($el('pwErr').textContent) && !srv.calls.includes('updateUser'), $el('pwErr').textContent);
+    typed('pwNew', 'Goodpass2'); typed('pwNew2', 'Goodpass3'); await g.profPassword({ preventDefault() {} });
+    ok('…and so is a repeat that does not match', /do not match/.test($el('pwErr').textContent) && !srv.calls.includes('updateUser'), $el('pwErr').textContent);
+    typed('pwNew', 'SamePass1'); typed('pwNew2', 'SamePass1'); await g.profPassword({ preventDefault() {} });
+    ok('a password the account already has is explained', /not used before/.test($el('pwErr').textContent), $el('pwErr').textContent);
+    $el('toastMsg').textContent = '';
+    typed('pwNew', 'Goodpass2'); typed('pwNew2', 'Goodpass2'); await g.profPassword({ preventDefault() {} });
+    ok('a good new password is saved, the boxes are cleared and a toast says so', srv.calls.includes('updateUser') && srv.newPassword === 'Goodpass2'
+      && $el('pwNew').value === '' && $el('pwNew2').value === '' && $el('pwErr').textContent === '' && /Password updated/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+
+    /* delete my account */
+    g.profDeleteAsk(); h = main();
+    ok('Delete my account opens a warning that names what stays, and its button starts disabled', C.delOpen === true && h.includes('Type DELETE to confirm') && /id="pfDelGo"[^>]*disabled/.test(h) && h.includes('stay with your church'));
+    typed('pfDelType', 'nope'); g.profDeleteTyped($el('pfDelType'));
+    ok('typing something else keeps it disabled', $el('pfDelGo').disabled === true);
+    await g.profDeleteGo();
+    ok('…and pressing it anyway sends nothing', !rc.includes('delete'));
+    typed('pfDelType', 'delete'); g.profDeleteTyped($el('pfDelType'));
+    ok('typing DELETE, in any case, enables it', $el('pfDelGo').disabled === false);
+    deleteRefusal = { message: 'You are this church\'s only admin. Make someone else an admin first.' };
+    await g.profDeleteGo();
+    ok('the database\'s refusal is shown under the box and the person stays signed in', rc.includes('delete') && $el('pfDelErr').textContent.includes('only admin') && !!C.user, $el('pfDelErr').textContent);
+    deleteRefusal = { code: 'PGRST202', message: 'Could not find the function public.delete_my_account in the schema cache' };
+    await g.profDeleteGo();
+    ok('without the latest schema.sql it says what to do', /latest supabase\/schema\.sql/.test($el('pfDelErr').textContent) && !!C.user, $el('pfDelErr').textContent);
+    deleteRefusal = { message: 'TypeError: Failed to fetch' };
+    await g.profDeleteGo();
+    ok('offline it says there is no connection', /No connection/.test($el('pfDelErr').textContent), $el('pfDelErr').textContent);
+    deleteRefusal = null; $el('toastMsg').textContent = '';
+    await g.profDeleteGo(); await sleep(80);
+    ok('a successful delete signs this device out, says so, and leaves the Profile page open', rc.filter(x => x === 'delete').length === 4 && C.user === null && C.acct === null && C.delOpen === false
+      && /Your account has been deleted/.test($el('toastMsg').textContent) && g.state.tab === 'me', rc.join() + ' ' + $el('toastMsg').textContent);
+    ok('…and that page is the sign-in form again', main().includes('id="pfEmail"') && !main().includes('cloudSignOut()'));
+
+    /* a member has no expo access, so no app behind the sign-in screen: their account screen carries the same controls */
+    me = who({ membership: membership({ role: 'member' }) });
+    await freshDevice(); await signIn(); await sleep(150);
+    h = gateBody();
+    ok('a member\'s account screen offers Change password and Delete my account', g.gateState() === 'member' && h.includes('id="pwNew"') && h.includes('profDeleteAsk()') && h.includes('cloudSignOut()'), g.gateState());
+    g.profDeleteAsk(); h = gateBody();
+    ok('…and the delete confirmation opens inside that screen', h.includes('Type DELETE to confirm') && /id="pfDelGo"[^>]*disabled/.test(h));
+    g.profDeleteAsk();
+
+    /* every class these screens use exists in the stylesheet */
+    {
+      const css = (html.match(/<style[^>]*>[\s\S]*?<\/style>/g) || []).join('\n'), used = new Set();
+      shots.join('\n').replace(/class="([^"]*)"/g, (_, c) => { c.split(/\s+/).filter(Boolean).forEach(t => used.add(t)); return ''; });
+      const missing = [...used].filter(t => !css.includes('.' + t.replace(/[^a-zA-Z0-9_-]/g, m => '\\' + m)));
+      ok('every class the Profile screens use exists in the stylesheet', used.size > 40 && missing.length === 0, missing.join(' ') || used.size);
+    }
+
+    C.user = null; g.stopRealtime(); srv.reset(); store.delete('newstart.cloud.v1'); store.delete('newstart.church.v1');
+    Object.assign(C, { mode: false, ready: false, pending: false, acct: null, churchId: '', synced: { att: {}, vol: {} }, gateForce: false, delOpen: false });
+    g.state.tab = 'home'; sandbox.NEWSTART_NO_CLOUD = noCloudWas; g.resetDemo();
+  }
+
   /* ---- 18c. the churches part of supabase/schema.sql on a real Postgres ----------------------------
      PGlite (Postgres compiled to WebAssembly, in memory) is not part of this project. Install it in a folder outside it
      (npm i @electric-sql/pglite@0.5.11) and set NEWSTART_PGLITE to that folder; without it these checks are skipped. */
@@ -1758,6 +1904,51 @@ function makeServer() {
       if (!(m.error || !m.rows.length) || !(s.error || !s.rows.length) || (await sys(`select count(*)::int n from public.${t}`))[0].n !== before || before === 0) sealed = false;
     }
     ok('attack: the protected tables cannot be read or emptied from the app (each holds a row)', sealed);
+
+    /* delete_my_account(): the Profile page's "Delete my account". It takes no user id, so it can only ever delete the caller. */
+    const gone = async id => (await sys(`select 1 from auth.users where id = $1`, [id])).length === 0;
+    const count = async t => (await sys(`select count(*)::int n from ${t}`))[0].n;
+    const sig = await sys(`select pg_get_function_arguments(p.oid) a from pg_proc p join pg_namespace s on s.oid = p.pronamespace where s.nspname = 'public' and p.proname = 'delete_my_account'`);
+    ok('delete: the function takes no user id, so it can only ever delete the caller', sig.length === 1 && sig[0].a === '', JSON.stringify(sig));
+    ok('delete: signed-out callers cannot delete an account', await refused(null, `select public.delete_my_account()`) && !(await gone(U.adminA)));
+    let dr = await as(U.adminA, `select public.delete_my_account()`);
+    ok('delete: a church\'s only admin is refused, with the reason, and nothing is removed', !!dr.error && /only admin/.test(dr.error.message) && !(await gone(U.adminA)) && await count('public.memberships') === 5, dr.error && dr.error.message);
+    await sys(`update public.memberships set role = 'admin' where user_id = $1`, [U.pendA]);
+    dr = await as(U.adminA, `select public.delete_my_account()`);
+    ok('delete: a second admin who is still waiting for approval does not count as another admin', !!dr.error && /only admin/.test(dr.error.message) && !(await gone(U.adminA)), dr.error && dr.error.message);
+    await sys(`update public.memberships set role = 'member' where user_id = $1`, [U.pendA]);
+    dr = await as(U.loner, `select public.delete_my_account()`);
+    ok('delete: the only platform admin is refused, with the reason', !!dr.error && /only platform admin/.test(dr.error.message) && !(await gone(U.loner)), dr.error && dr.error.message);
+    const m0 = await count('public.memberships'), a0 = await count('public.attendees'), c0 = await count('public.churches'), u0 = await count('auth.users');
+    dr = await as(U.memA, `select public.delete_my_account()`);
+    ok('delete: a member deletes their own login; their membership goes with it and nothing else changes',
+      !dr.error && await gone(U.memA) && await count('public.memberships') === m0 - 1 && await count('public.attendees') === a0 && await count('public.churches') === c0 && await count('auth.users') === u0 - 1, dr.error && dr.error.message);
+    dr = await as(U.memA, `select public.my_account() a`);
+    const seen = await as(U.memA, `select count(*)::int n from public.attendees`);
+    ok('delete: the deleted account\'s old sign-in opens nothing', !dr.error && dr.rows[0].a === null && !seen.error && seen.rows[0].n === 0);
+    dr = await as(U.memA, `select public.delete_my_account()`);
+    ok('delete: asking again for an account that is already gone changes nothing', !dr.error && await count('auth.users') === u0 - 1, dr.error && dr.error.message);
+    dr = await as(U.pendA, `select public.delete_my_account()`);
+    ok('delete: a member still waiting for approval can delete their login too', !dr.error && await gone(U.pendA), dr.error && dr.error.message);
+    await sys(`update public.memberships set role = 'admin' where user_id = $1`, [U.staffA]);
+    dr = await as(U.adminA, `select public.delete_my_account()`);
+    ok('delete: with another admin in place, a church admin can delete their login; the church and its visitors stay',
+      !dr.error && await gone(U.adminA) && (await sys(`select 1 from public.churches where id = $1`, [CA])).length === 1 && (await sys(`select 1 from public.attendees where church_id = $1`, [CA])).length === 1, dr.error && dr.error.message);
+    const B2 = 'b0000000-0000-4000-8000-000000000002';
+    await sys(`insert into auth.users (id, email, email_confirmed_at) values ($1, 'adminB2@ex.org', now())`, [B2]);
+    await sys(`insert into public.memberships (user_id, church_id, role, status) values ($1, $2, 'admin', 'approved')`, [B2, CB]);
+    await sys(`update public.churches set created_by = $1 where id = $2`, [U.adminB, CB]);
+    dr = await as(U.adminB, `select public.delete_my_account()`);
+    const made = await sys(`select created_by from public.churches where id = $1`, [CB]);
+    ok('delete: the person who registered a church can delete their login; the church stays and forgets its creator',
+      !dr.error && await gone(U.adminB) && made.length === 1 && made[0].created_by === null, dr.error ? dr.error.message : JSON.stringify(made));
+    const P2 = 'c0000000-0000-4000-8000-000000000002';
+    await sys(`insert into auth.users (id, email, email_confirmed_at) values ($1, 'padmin2@ex.org', now())`, [P2]);
+    await sys(`insert into public.platform_admins (user_id) values ($1)`, [P2]);
+    dr = await as(U.loner, `select public.delete_my_account()`);
+    ok('delete: a platform admin can delete their login when another one remains; their admin and old staff rows go with it',
+      !dr.error && await gone(U.loner) && (await sys(`select user_id from public.platform_admins`)).map(x => x.user_id).join() === P2 && (await sys(`select 1 from public.staff where user_id = $1`, [U.loner])).length === 0, dr.error && dr.error.message);
+    ok('delete: …and then the last platform admin is refused', await refused(P2, `select public.delete_my_account()`) && !(await gone(P2)));
     const lax = await sys(`select c.relname from pg_class c join pg_namespace s on s.oid = c.relnamespace where s.nspname = 'public' and c.relkind = 'r'
       and not exists (select 1 from pg_policy p where p.polrelid = c.oid) and has_table_privilege('authenticated', c.oid, 'select')`);
     ok('audit: no table without policies is open to signed-in callers (the old staff list included)', lax.length === 0, lax.map(x => x.relname).join(', '));

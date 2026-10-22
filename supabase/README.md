@@ -65,6 +65,24 @@ Run the whole of `schema.sql` again (it is safe to re-run). It adds three levels
   the project (`npm i @electric-sql/pglite@0.5.11`) and set `NEWSTART_PGLITE` to that folder before running the harness;
   without it, section 18c says it was skipped.
 
+## The Profile page
+
+The **Profile** tab (last item in the bottom bar) is where a person manages their own account. Everything on it calls
+the same database functions as the sheets behind the logo; it only puts them where they can be found.
+
+- **Signed out:** sign in, **Forgot password?** and **Create an account** (these open the full-screen sign-in screens, with
+  *Back to the app* to return).
+- **Signed in:** name, email and role (member, staff, church admin, platform admin) with the church; **Sync now** and status;
+  *My details* and *My screening results*; **Change password**; the install-on-phone help; **Sign out**; and shortcuts to
+  *Manage church* and *Platform admin* for those who have them.
+- **Delete my account:** needs the latest `schema.sql` (it adds `delete_my_account()`), so run the whole file again. The
+  person opens the panel and types DELETE. The database then deletes their login, their church membership and any admin
+  rows; the church's visitors, volunteers and queue stay. It refuses a church's **only admin** (make someone else an admin
+  first) and the **only platform admin** (add another one in the SQL editor first). Until `schema.sql` has been run, the
+  button says so instead of failing silently.
+- Members (people with no expo access) never see the app behind the sign-in screen, so their *My account* screen has the
+  same **Change password** and **Delete my account** controls.
+
 ## How accounts work
 
 > This section describes the database **before** the churches part of `schema.sql`. Once that has run, accounts

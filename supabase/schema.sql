@@ -792,6 +792,31 @@ begin
 end;
 $$;
 
+-- delete the caller's own login. Their membership, platform-admin and old staff rows go with it (on delete cascade);
+-- the church's visitors, volunteers and queue stay with the church. Refused for a church's only admin and for the only
+-- platform admin, so a church or the platform is never left with nobody in charge.
+create or replace function public.delete_my_account()
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_uid uuid := (select auth.uid()); v_m public.memberships;
+begin
+  if v_uid is null then raise exception 'sign in first' using errcode = '42501'; end if;
+  if exists (select 1 from public.platform_admins p where p.user_id = v_uid)
+     and not exists (select 1 from public.platform_admins p where p.user_id <> v_uid) then
+    raise exception 'You are the only platform admin. Add another one in the database first.';
+  end if;
+  select * into v_m from public.memberships m where m.user_id = v_uid;
+  if found and v_m.role = 'admin' and v_m.status = 'approved' and not exists (select 1 from public.memberships o
+     where o.church_id = v_m.church_id and o.user_id <> v_m.user_id and o.role = 'admin' and o.status = 'approved') then
+    raise exception 'You are this church''s only admin. Make someone else an admin first.';
+  end if;
+  delete from auth.users u where u.id = v_uid;
+end;
+$$;
+
 -- the caller's own screening record: only once approved, only from their own church, only the visit that was linked
 create or replace function public.my_health()
 returns jsonb
@@ -976,7 +1001,7 @@ begin
   foreach f in array array['is_platform_admin()', 'staff_church()', 'is_staff()', 'is_admin()', 'church_admin_of(uuid)',
     'queue_call_next(text)', 'staff_pending()', 'staff_approve(uuid)', 'my_account()', 'church_directory(text)',
     'join_church(uuid, text, text)', 'register_church(text, text, text, text)', 'update_my_details(text, text, text, date)',
-    'leave_church()', 'my_health()', 'update_church(uuid, text, text, text, text)', 'church_members(uuid)',
+    'leave_church()', 'delete_my_account()', 'my_health()', 'update_church(uuid, text, text, text, text)', 'church_members(uuid)',
     'set_member(uuid, text, text)', 'link_member(uuid, text)', 'remove_member(uuid)', 'admin_churches()',
     'admin_set_church_status(uuid, text)', 'admin_audit(integer)'] loop
     execute format('revoke all on function public.%s from public, anon', f);
