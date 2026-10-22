@@ -1,7 +1,7 @@
 {
   "id": "./",
   "name": "Health Expo Passport",
-  "short_name": "Health Expo Passport",
+  "short_name": "Health Expo",
   "description": "Health expo passport: screen visitors, track volunteers, and sync every desk.",
   "start_url": "./",
   "scope": "./",
