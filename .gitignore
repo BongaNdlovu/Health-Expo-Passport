@@ -1,0 +1,12 @@
+# Never commit or share these: they sign the Android app
+android/signing/
+android/local.properties
+*.jks
+*.keystore
+android/.gradle/
+android/app/build/
+android/build/
+
+# Local tool caches
+node_modules/
+.wrangler/

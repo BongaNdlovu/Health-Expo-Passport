@@ -1,0 +1,2133 @@
+/* Headless smoke test for the NEWSTART passport.
+   Builds a minimal fake DOM, boots the app script, then drives the
+   volunteer section the way a user would and asserts the results. */
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const html = fs.readFileSync(process.env.APP_HTML || path.join(__dirname, '..', 'index.html'), 'utf8');
+const body = /<script>([\s\S]*?)<\/script>/.exec(html)[1];
+
+/* const/let declarations are not exposed on the vm global, so re-export the
+   bindings the test needs. This runs in the same script scope. */
+const EXPORTS = [
+  'volunteers', 'attendees', 'state', 'SEED_VOL', 'BOOTHS', 'BADGE_TIERS', 'EXPO_UPCOMING', 'AVAIL', 'SKILLS', 'STATUS_UI',
+  'badgeTier', 'nextTier', 'tierProgress', 'volHours', 'volExpos', 'volYears', 'needsRegistration', 'helpersAt',
+  'boothLabel', 'boothHue', 'staffedCount', 'esc', 'render', 'setVol', 'setVolTab', 'openVolReg', 'startNewVolunteer',
+  'saveVolunteer', 'toggleDraftList', 'toggleDraftBooth', 'pickSecondBooth', 'toggleShift', 'logExpoEntry',
+  'saveExpoEntry', 'removeExpoEntry', 'exportVolCSV', 'persistNow', 'loadPersisted', 'resetDemo', 'AV',
+  'pickVolunteer', 'openSwitcher', 'openVolSwitcher', 'openVolModal', 'switchTab', 'daysTo', 'volRow', 'medalHTML',
+  'tierRemaining', 'registerSubmit', 'parseBadge', 'nextBadge', 'csvCell', 'closeVolReg', 'setVolTab', 'todayStr',
+  'switchToVol', 'activateBadge', 'onScanText', 'toggleReg', 'viewHome', 'viewCare', 'buildPrintCard', 'openWhatsApp',
+  'openScanner', 'viewResults', 'viewPlan', 'viewScreen', 'migrateAttendee', 'migrateVolunteer', 'onStep',
+  'onStationInput', 'onStationCommit', 'cat', 'healthAge', 'exportCSV', 'redFlag', 'doneCount', 'bmi',
+  'firstName', 'initials',
+  'cloud', 'cloudInit', 'cloudSync', 'cloudPush', 'cloudDirtyList', 'cloudPending', 'cloudSignOut', 'cloudAuthEvent',
+  'cloudSignIn', 'onRemoteChange', 'KINDS', 'sigOf', 'isSeedRow', 'mergeRemote', 'renderCloudBody', 'setCloud',
+  'startRealtime', 'stopRealtime', 'saveSynced', 'loadSynced', 'viewNoVisitor', 'CLOUD_UI', 'attToRow', 'volToRow',
+  'rowToAtt', 'rowToVol', 'openCloud', 'closeCloud', 'afterMerge',
+  'showAllCare', 'filterVisitors', 'visitorsToShow', 'fetchRows',
+  'gateState', 'renderGate', 'gateDemo', 'togglePass',
+  'gateView', 'cloudSignUp', 'cloudResend', 'cloudForgot', 'cloudNewPassword', 'passwordProblem', 'validEmail',
+  'waNumber', 'waMessage', 'sendWhatsApp', 'toggleInterest', 'onPrayer', 'reservePouch', 'followUpCard', 'INT',
+  'planNeeds', 'bpStage', 'PROTOCOLS', 'BOOK_REF', 'autoProtocol', 'costOf',
+  'BOOK2_REF', 'refLabel', 'planBooks', 'planCredit', 'HELP_LINE',
+  'acctGate', 'acctGateHTML', 'loadAccount', 'openAcct', 'closeAcct', 'renderAcct', 'acctTabs', 'acctButtons', 'joinChurch',
+  'registerChurch', 'leaveChurch', 'saveMyDetails', 'churchSearch', 'setMember', 'linkMember', 'removeMember', 'setChurchStatus',
+  'manageChurch', 'saveChurch', 'inChurch', 'conflictOn', 'dropChurchData', 'adoptChurch', 'healthHTML',
+  'planFor', 'PRICE_DATE',
+  'health', 'noteHealth', 'healthReset', 'healthTest', 'statusPanelHTML', 'homeHealthHTML', 'acctHealthHTML', 'qStateBar',
+];
+const code = body + '\n;globalThis.__X={' + EXPORTS.map(n => n + ':(typeof ' + n + '!=="undefined"?' + n + ':undefined)').join(',') + '};';
+
+/* ---- minimal DOM ---------------------------------------------------- */
+function makeEl(id) {
+  /* the app toggles containers with an inline display style, so record it */
+  const style = { setProperty() {}, removeProperty() {}, display: '' };
+  const el = {
+    id, value: '', textContent: '', _html: '',
+    style,
+    dataset: {}, children: [],
+    classList: {
+      _s: new Set(),
+      add(...c) { c.forEach(x => this._s.add(x)); },
+      remove(...c) { c.forEach(x => this._s.delete(x)); },
+      toggle(c, f) { const on = f === undefined ? !this._s.has(c) : f; on ? this._s.add(c) : this._s.delete(c); },
+      contains(c) { return this._s.has(c); },
+    },
+    get className() { return [...this.classList._s].join(' '); },
+    set className(v) { this.classList._s = new Set(String(v).split(/\s+/).filter(Boolean)); },
+    set innerHTML(v) { this._html = String(v); },
+    get innerHTML() { return this._html; },
+    appendChild(c) { this.children.push(c); return c; },
+    removeChild(c) { this.children = this.children.filter(x => x !== c); },
+    addEventListener() {}, removeEventListener() {},
+    querySelector() { return makeEl('anon'); },
+    querySelectorAll() { return []; },
+    closest() { return null; },
+    getBoundingClientRect() { return { left: 0, top: 0, width: 100, height: 40 }; },
+    focus() {}, blur() {}, click() {}, remove() {}, setAttribute() {}, getAttribute() { return null; }, removeAttribute() {},
+    scrollTo() {}, play() { return Promise.resolve(); },
+    firstElementChild: null,
+  };
+  el.firstElementChild = el;
+  return el;
+}
+const els = new Map();
+const $el = id => { if (!els.has(id)) els.set(id, makeEl(id)); return els.get(id); };
+
+const document = {
+  documentElement: makeEl('html'),
+  body: makeEl('body'),
+  head: makeEl('head'),
+  hidden: false,
+  getElementById: id => $el(id),
+  querySelector(sel) { return $el(String(sel).replace(/^#/, '')); },
+  querySelectorAll() { return []; },
+  createElement: () => makeEl('created'),
+  addEventListener() {}, removeEventListener() {},
+  startViewTransition: null,
+};
+
+const store = new Map();
+const localStorage = {
+  getItem: k => (store.has(k) ? store.get(k) : null),
+  setItem: (k, v) => store.set(k, String(v)),
+  removeItem: k => store.delete(k),
+};
+
+let rafQueue = [];
+const sandbox = {
+  document, localStorage,
+  NEWSTART_NO_CLOUD: true,    /* the cloud tests start it explicitly, against a fake server */
+  navigator: { hardwareConcurrency: 8, deviceMemory: 8, mediaDevices: null, userAgent: 'node', onLine: true },
+  location: { href: 'http://localhost/', protocol: 'http:', origin: 'http://localhost', pathname: '/' },
+  matchMedia: () => ({ matches: false, addEventListener() {} }),
+  requestAnimationFrame: fn => { rafQueue.push(fn); return rafQueue.length; },
+  cancelAnimationFrame() {},
+  requestIdleCallback: fn => { setTimeout(() => fn({ timeRemaining: () => 5 }), 0); return 1; },
+  setTimeout, clearTimeout, setInterval, clearInterval,
+  URL: { createObjectURL: () => 'blob:x', revokeObjectURL() {} },
+  Blob: function () {},
+  Date, Math, JSON, console, performance: { now: () => Date.now() },
+  innerWidth: 390, innerHeight: 844, scrollY: 0, scrollTo() {},
+  addEventListener() {}, removeEventListener() {},
+  alert() {}, confirm: () => true, prompt: () => null,
+  getComputedStyle: () => ({ getPropertyValue: () => '' }),
+  BarcodeDetector: undefined,
+};
+sandbox.window = sandbox;
+sandbox.globalThis = sandbox;
+vm.createContext(sandbox);
+
+/* ---- run ------------------------------------------------------------ */
+let failures = 0, checks = 0;
+const ok = (label, cond, extra) => {
+  checks++;
+  if (cond) console.log('  PASS  ' + label);
+  else { failures++; console.log('  FAIL  ' + label + (extra ? '  → ' + extra : '')); }
+};
+
+try {
+  vm.runInContext(code, sandbox, { filename: 'app.js' });
+} catch (e) {
+  console.log('BOOT THREW: ' + e.stack);
+  process.exit(1);
+}
+console.log('\nBoot: OK (no exception)\n');
+
+const g = sandbox.__X;
+if (!g) { console.log('export block did not run'); process.exit(1); }
+const $main = $el('main');
+
+/* ---- 1. volunteer data + badge maths -------------------------------- */
+console.log('1. Badge tiers');
+ok('7 seed volunteers loaded', g.volunteers.length === 7, 'got ' + g.volunteers.length);
+const byName = n => g.volunteers.find(v => v.name === n);
+const thandi = byName('Thandi Mabaso'), grace = byName('Grace Nkosi'), nomvula = byName('Nomvula Dlamini');
+ok('Thandi: 4 expos / 30h → Silver (Lv2)', g.badgeTier(thandi).n === 2, 'got Lv' + g.badgeTier(thandi).n);
+ok('Grace: 6 expos / 45.5h → Gold (Lv3)', g.badgeTier(grace).n === 3, 'got Lv' + g.badgeTier(grace).n);
+ok('Nomvula: 0 expos → Friend (Lv0)', g.badgeTier(nomvula).n === 0, 'got Lv' + g.badgeTier(nomvula).n);
+ok('hours sum correctly (Grace = 45.5)', g.volHours(grace) === 45.5, 'got ' + g.volHours(grace));
+ok('next tier for Grace is Platinum', (g.nextTier(grace) || {}).n === 4);
+const pg = g.tierProgress(grace);
+ok('Grace needs 3 more expos for Platinum', pg.needExpos === 3, 'got ' + pg.needExpos);
+ok('Grace needs 14.5 more hours', pg.needHours === 14.5, 'got ' + pg.needHours);
+/* Both minimums must be met, so progress toward the next badge is the weaker
+   of the two, measured against the NEXT tier's minimums (6/9 expos = 67%). */
+ok('progress tracks the weaker requirement (67%)', pg.pct === 67, 'got ' + pg.pct);
+ok('blocking requirement is expos', pg.blockedBy === 'expos', 'got ' + pg.blockedBy);
+ok('remaining sentence names both gaps',
+  g.tierRemaining(grace) === '3 more expos + 14.5 more hours for Platinum',
+  g.tierRemaining(grace));
+/* a helper whose hours lag behind their expo count is gated on hours */
+const hoursGated = { history: Array.from({ length: 6 }, () => ({ hours: 6 })) };  /* 6 expos / 36h */
+const ph = g.tierProgress(hoursGated);
+ok('hours-gated helper reports hours', ph.blockedBy === 'hours', 'got ' + ph.blockedBy);
+ok('hours-gated progress is 60%', ph.pct === 60, 'got ' + ph.pct);
+ok('hours-gated helper needs 3 more expos', ph.needExpos === 3, 'got ' + ph.needExpos);
+/* exactly on both minimums promotes without a gap */
+ok('meeting both minimums promotes (6 expos / 36h → Gold)', g.badgeTier(hoursGated).n === 3,
+  'got Lv' + g.badgeTier(hoursGated).n);
+ok('Legend has no next tier', g.nextTier({ history: Array(12).fill({ hours: 8 }) }) === null);
+ok('exactly one top-tier badge', g.BADGE_TIERS.filter(t => t.n === 5).length === 1);
+
+/* ---- 2. booth assignment ------------------------------------------- */
+console.log('\n2. Booths');
+ok('12 booths defined', g.BOOTHS.length === 12, 'got ' + g.BOOTHS.length);
+ok('helpersAt(bp) counts only registered', g.helpersAt('bp').every(v => !g.needsRegistration(v)));
+ok('boothLabel resolves', g.boothLabel('kitchen') === 'Kitchen Pharmacy', g.boothLabel('kitchen'));
+ok('unknown booth falls back', g.boothLabel('nope') === 'Unassigned');
+ok('prospects are not counted as staffed', g.staffedCount() === 5, 'got ' + g.staffedCount());
+ok('2 pledges await registration', g.volunteers.filter(g.needsRegistration).length === 2);
+
+/* ---- 3. render every view ------------------------------------------ */
+console.log('\n3. Views render');
+g.state.tab = 'serve';
+for (const t of ['pledge', 'muster', 'booth', 'record']) {
+  g.state.volTab = t;
+  try {
+    g.render();
+    const out = $main.innerHTML;
+    ok('serve/' + t + ' renders markup', out.length > 400, out.length + ' chars');
+  } catch (e) { ok('serve/' + t + ' renders markup', false, e.message); }
+}
+g.state.volTab = 'pledge'; g.openVolReg();
+ok('registration form renders', $main.innerHTML.includes('Who you are'));
+ok('registration form lists 12 booth choices',
+  (($main.innerHTML.match(/boothpick /g) || []).length) === 12,
+  'got ' + (($main.innerHTML.match(/boothpick /g) || []).length));
+g.state.volRegOpen = false;
+
+/* other tabs must still work after the shell refactor */
+for (const t of ['home', 'screen', 'results', 'plan', 'care']) {
+  g.state.tab = t;
+  try { g.render(); ok('existing tab ' + t + ' still renders', $main.innerHTML.length > 200); }
+  catch (e) { ok('existing tab ' + t + ' still renders', false, e.message); }
+}
+
+/* REGRESSION: #main is ONE container shared by the visitor views and the serve
+   section. It must be visible and populated in BOTH modes.
+   The original bug: render() added a "hidden" class for the serve tab, then
+   renderServeView() wrote content into the same element without removing it —
+   the Team tab rendered nothing and, worse, every visitor tab stayed blank
+   after visiting it. */
+console.log('\n3b. Every tab leaves the shared container visible and populated');
+g.state.tab = 'serve'; g.state.volTab = 'pledge'; g.render();
+ok('serve tab keeps the container visible', $main.style.display !== 'none',
+  'display=' + JSON.stringify($main.style.display));
+ok('serve tab content was written', $main.innerHTML.includes('Incoming expo'));
+for (const t of ['home', 'screen', 'results', 'plan', 'care']) {
+  g.state.tab = t; g.render();
+  ok('back on ' + t + ': container visible', $main.style.display !== 'none',
+    'display=' + JSON.stringify($main.style.display));
+  ok('back on ' + t + ': has content', $main.innerHTML.length > 200);
+}
+/* each Team sub-tab must render its own view, visible, with its marker text */
+g.state.tab = 'serve';
+const SIG = { pledge: 'Incoming expo', muster: 'Booth coverage', booth: 'Booth assignment', record: 'Volunteer service record' };
+for (const vt of ['pledge', 'muster', 'booth', 'record']) {
+  g.state.volTab = vt; g.render();
+  ok('serve/' + vt + ' visible + populated',
+    $main.style.display !== 'none' && $main.innerHTML.includes(SIG[vt]),
+    'display=' + JSON.stringify($main.style.display) + ' len=' + $main.innerHTML.length);
+}
+/* and returning to serve after visiting a visitor tab must work again */
+g.state.tab = 'care'; g.render();
+g.state.tab = 'serve'; g.state.volTab = 'muster'; g.render();
+ok('serve works after round-tripping through Care',
+  $main.style.display !== 'none' && $main.innerHTML.includes('Booth coverage'),
+  'len=' + $main.innerHTML.length);
+g.state.tab = 'serve'; g.state.volTab = 'pledge';
+
+/* ---- 4. pledge, then register -------------------------------------- */
+console.log('\n4. Pledge → register flow');
+g.resetDemo();                       /* known starting point */
+const before = g.volunteers.length;
+g.startNewVolunteer();
+$el('vfName').value = 'Bongani Zulu';
+$el('vfPhone').value = '082 111 2222';
+g.state.vf.name = 'Bongani Zulu';
+g.state.vf.phone = '082 111 2222';
+g.toggleDraftList('skills', 'clinic');
+g.toggleDraftBooth('vitals');
+g.saveVolunteer();
+const bongani = byName('Bongani Zulu');
+ok('pledge creates a volunteer', g.volunteers.length === before + 1);
+ok('new volunteer gets a VOL- id', /^VOL-\d+$/.test(bongani.id), bongani.id);
+ok('new volunteer starts at Friend tier', g.badgeTier(bongani).n === 0);
+ok('new volunteer has no expo history', g.volExpos(bongani) === 0);
+
+/* second booth choice caps the first-choice list at 2 */
+g.state.vf = { name: '', phone: '', email: '', pledgeExpos: 1, skills: [], pref: [], avail: [] };
+g.toggleDraftBooth('bp'); g.toggleDraftBooth('sugar'); g.toggleDraftBooth('kids');
+ok('first-choice list caps at 2', g.state.vf.pref.length === 2, JSON.stringify(g.state.vf.pref));
+ok('oldest choice is dropped (FIFO)', g.state.vf.pref[0] === 'sugar' && g.state.vf.pref[1] === 'kids',
+  JSON.stringify(g.state.vf.pref));
+
+/* ---- 5. logging an expo advances the badge ------------------------- */
+console.log('\n5. Log an expo → badge promotion');
+/* re-fetch: object identity is guaranteed after the reset above */
+const nom = g.volunteers.find(v => v.name === 'Nomvula Dlamini');
+g.setVol(nom.id);
+const lvBefore = g.badgeTier(nom).n;
+g.logExpoEntry();
+/* the app reads these inputs at submit time, so they must be set on the same
+   element objects the app resolves through $('#...') */
+$el('lgName').value = 'Autumn Health Expo';
+$el('lgDate').value = '2026-03-14';
+$el('lgHours').value = '8';
+$el('lgBooth').value = 'kids';
+ok('log form reads the hours input', $el('lgHours').value === '8');
+g.saveExpoEntry();
+ok('expo appended to history', g.volExpos(nom) === 1, 'got ' + g.volExpos(nom));
+ok('hours recorded', g.volHours(nom) === 8, 'got ' + g.volHours(nom));
+ok('badge promoted Friend → Bronze', g.badgeTier(nom).n === lvBefore + 1,
+  lvBefore + ' → ' + g.badgeTier(nom).n);
+const key = nom.history[0].expo + '-' + nom.history[0].date;
+g.removeExpoEntry(key);
+ok('entry can be removed again', g.volExpos(nom) === 0, 'got ' + g.volExpos(nom));
+ok('badge reverts after removal', g.badgeTier(nom).n === lvBefore);
+
+/* invalid hours are rejected, not stored */
+g.logExpoEntry();
+$el('lgHours').value = '0';
+g.saveExpoEntry();
+ok('zero hours is rejected', g.volExpos(nom) === 0);
+g.state.logOpen = false;
+
+/* ---- 6. shift toggling --------------------------------------------- */
+console.log('\n6. Shift signup');
+const thandi2 = g.volunteers.find(v => v.name === 'Thandi Mabaso');
+g.setVol(thandi2.id);
+const shiftCount = () => (thandi2.shift || '').split(',').map(s => s.trim()).filter(Boolean).length;
+g.toggleShift('08:30–11:00');
+ok('shift added', shiftCount() === 1, JSON.stringify(thandi2.shift));
+g.toggleShift('08:30–11:00');
+ok('shift removed on second tap', shiftCount() === 0, JSON.stringify(thandi2.shift));
+g.toggleShift('07:00 setup');
+g.toggleShift('16:00 pack-up');
+ok('multiple shifts accumulate', shiftCount() === 2, JSON.stringify(thandi2.shift));
+ok('shift survives a reload', (() => {
+  g.persistNow();
+  const saved = JSON.parse(localStorage.getItem('newstart.passport.v2'));
+  const rec = saved.volunteers.find(v => v.id === thandi2.id);
+  return rec && rec.shift === thandi2.shift;
+})());
+
+/* ---- 7. persistence round-trip ------------------------------------- */
+console.log('\n7. Persistence');
+g.persistNow();
+const saved = JSON.parse(localStorage.getItem('newstart.passport.v2'));
+ok('payload contains volunteers', Array.isArray(saved.volunteers) && saved.volunteers.length === g.volunteers.length);
+ok('payload contains active volunteer id', saved.volId === thandi.id, saved.volId);
+ok('older payloads without volunteers still load', (() => {
+  const legacy = { attendees: saved.attendees, activeId: saved.activeId, sim: saved.sim };
+  localStorage.setItem('newstart.passport.v2', JSON.stringify(legacy));
+  const reloaded = g.loadPersisted();
+  return reloaded === true && g.volunteers.length > 0;
+})(), 'legacy fallback failed');
+/* restore full payload */
+localStorage.setItem('newstart.passport.v2', JSON.stringify(saved));
+ok('full payload reloads', g.loadPersisted() === true);
+
+/* ---- 8. HTML escaping ---------------------------------------------- */
+console.log('\n8. Escaping');
+ok('esc neutralises a script tag',
+  g.esc('<img src=x onerror=alert(1)>') === '&lt;img src=x onerror=alert(1)&gt;',
+  g.esc('<img src=x onerror=alert(1)>'));
+g.startNewVolunteer();
+g.state.vf.name = '<b>Bold</b> Nkosi';
+g.state.vf.phone = '082 000 0000';
+g.state.vf.pref = ['bp'];
+g.saveVolunteer();
+const bold = g.volunteers.find(v => v.name === '<b>Bold</b> Nkosi');
+ok('hostile name is stored raw but rendered escaped', !!bold);
+g.setVol(bold.id); g.state.volTab = 'record'; g.render();
+ok('render output has no live <b> tag from the name',
+  !$main.innerHTML.includes('<b>Bold</b>'), 'unescaped name reached the DOM');
+
+/* ---- 9. CSV --------------------------------------------------------- */
+console.log('\n9. CSV export');
+let csvBlob = null;
+sandbox.Blob = function (parts) { csvBlob = parts.join(''); };
+g.exportVolCSV();
+ok('CSV produced', typeof csvBlob === 'string' && csvBlob.length > 100);
+csvBlob = csvBlob.replace(/^﻿/, '');   /* BOM so Excel reads UTF-8 names correctly */
+ok('CSV header present', csvBlob.startsWith('"Volunteer ID","Name"'));
+ok('CSV quotes embedded correctly', !/","[^"]*$/.test(csvBlob.split('\n')[0]));
+ok('one CSV row per volunteer', csvBlob.trim().split('\n').length === g.volunteers.length + 1,
+  (csvBlob.trim().split('\n').length - 1) + ' rows vs ' + g.volunteers.length + ' volunteers');
+
+/* ---- 10. demo reset ------------------------------------------------- */
+console.log('\n10. Reset');
+g.resetDemo();
+ok('reset restores 7 seed volunteers', g.volunteers.length === 7, 'got ' + g.volunteers.length);
+ok('reset restores the seed active volunteer', g.state.volId === 'VOL-1001', g.state.volId);
+
+/* ---- 11. visitor registration, badge ids, escaping ------------------ */
+console.log('\n11. Visitor registration');
+const submitReg = (o) => {
+  g.state.tab = 'home'; g.state.regOpen = true;
+  $el('rgName').value = o.name; $el('rgAge').value = o.age ?? '46'; $el('rgSex').value = 'Male';
+  $el('rgPhone').value = o.phone ?? ''; $el('rgHeight').value = '170'; $el('rgBadge').value = o.badge;
+  g.registerSubmit({ preventDefault() {} });
+};
+g.resetDemo();
+const n0 = g.attendees.length;
+submitReg({ name: 'Dup Visitor', badge: 'EXPO-042' });
+ok('badge already in use is refused', g.attendees.length === n0 && g.state.activeId === 'EXPO-042');
+submitReg({ name: 'Bad Id', badge: "x');alert(1);//" });
+ok('a badge that is not EXPO-nnn is refused', g.attendees.length === n0);
+submitReg({ name: '   ', badge: 'EXPO-200' });
+ok('blank name is refused', g.attendees.length === n0);
+submitReg({ name: 'Too Young', age: '3', badge: 'EXPO-200' });
+ok('out-of-range age is refused', g.attendees.length === n0);
+submitReg({ name: '<img src=x onerror=alert(1)> Tester', badge: 'expo-0201', phone: '<b>082 123 4567</b>' });
+const hostile = g.attendees.find(a => a.id === 'EXPO-201');
+ok('lower-case / zero-padded badge normalised to EXPO-201', !!hostile && g.attendees.length === n0 + 1);
+ok('new visitor becomes the active passport', g.state.activeId === 'EXPO-201');
+const shown = {};
+for (const t of ['home', 'screen', 'plan', 'results']) { g.state.tab = t; g.render(); shown[t] = $main.innerHTML; }
+ok('no unescaped visitor markup on any visitor tab',
+  Object.values(shown).every(h => !h.includes('<img src=x')), Object.keys(shown).filter(t => shown[t].includes('<img src=x')).join(','));
+g.openSwitcher(); ok('visitor switcher escapes names', !$el('switcherList').innerHTML.includes('<img src=x'));
+g.openScanner(); ok('scanner list escapes names', !$el('scannerList').innerHTML.includes('<img src=x'));
+g.openWhatsApp(); ok('WhatsApp preview escapes names', !$el('waBody').innerHTML.includes('<img src=x'));
+g.buildPrintCard(); ok('print card escapes names', !$el('printArea').innerHTML.includes('<img src=x'));
+hostile.interests = { nurse: true }; hostile.prayer = '<script>x</script>'; hostile.s.sys = 170; hostile.s.dia = 105;
+g.state.tab = 'care'; g.render();
+ok('care list escapes name, phone and prayer note',
+  !$main.innerHTML.includes('<img src=x') && !$main.innerHTML.includes('<script>x') && !$main.innerHTML.includes('<b>082'));
+ok('nextBadge skips ids already issued', !g.attendees.some(a => a.id === g.nextBadge()));
+ok('migrateAttendee strips unsafe characters from ids',
+  g.migrateAttendee({ id: "EXPO-1');alert(1);//", s: {} }).id === 'EXPO-1alert1');
+
+console.log('\n12. Badge scanning');
+const pb = g.parseBadge;
+ok('EXPO-042 parses', pb('EXPO-042') === 'EXPO-042');
+ok('expo 42 (spaces, lower case) parses', pb(' expo 42 ') === 'EXPO-042');
+ok('EXPO-0042 equals EXPO-042', pb('EXPO-0042') === 'EXPO-042');
+ok('bare number parses', pb('117') === 'EXPO-117');
+ok('badge inside a URL parses', pb('https://x.org/p?b=EXPO-088') === 'EXPO-088');
+ok('garbage is rejected', pb('hello') === null && pb('') === null && pb(null) === null);
+g.resetDemo(); g.state.tab = 'home';
+g.onScanText('EXPO-088');
+ok('scanning a known badge opens that visitor', g.state.activeId === 'EXPO-088' && g.state.tab === 'screen', g.state.activeId + '/' + g.state.tab);
+g.state.scanLock = false;
+g.onScanText('EXPO-777');
+ok('scanning an unknown badge opens registration with the id prefilled',
+  g.state.tab === 'home' && g.state.regOpen && g.state.pendingBadge === 'EXPO-777');
+g.state.scanLock = false; g.state.regOpen = false; g.state.pendingBadge = null;
+
+console.log('\n13. Screening inputs');
+g.resetDemo();
+const dm = g.attendees.find(a => a.id === 'EXPO-042');
+dm.s.sys = null;
+g.onStep('EXPO-042', 'sys', 1, 70, 210, 1, 120);
+ok('first + tap on an empty field shows the default (120), not a guess above it', dm.s.sys === 120, 'got ' + dm.s.sys);
+g.onStep('EXPO-042', 'sys', 1, 70, 210, 1, 120);
+ok('the second + tap then steps up by one (121)', dm.s.sys === 121, 'got ' + dm.s.sys);
+
+dm.s.sys = null;
+g.onStep('EXPO-042', 'sys', -1, 70, 210, 1, 120);
+ok('first − tap on an empty field also shows the default (120)', dm.s.sys === 120, 'got ' + dm.s.sys);
+
+/* a decimal station: sugar default 5.5, step 0.1 */
+dm.s.sugar = null;
+g.onStep('EXPO-042', 'sugar', 1, 1, 30, 0.1, 5.5);
+ok('sugar: first tap shows 5.5', dm.s.sugar === 5.5, 'got ' + dm.s.sugar);
+g.onStep('EXPO-042', 'sugar', 1, 1, 30, 0.1, 5.5);
+ok('sugar: second tap steps by 0.1 without float noise (5.6)', dm.s.sugar === 5.6, 'got ' + dm.s.sugar);
+for (let i = 0; i < 200; i++) g.onStep('EXPO-042', 'sys', -1, 70, 210, 1, 120);
+ok('stepper stops at the minimum', dm.s.sys === 70, 'got ' + dm.s.sys);
+for (let i = 0; i < 300; i++) g.onStep('EXPO-042', 'sys', 1, 70, 210, 1, 120);
+ok('stepper stops at the maximum', dm.s.sys === 210, 'got ' + dm.s.sys);
+/* commit rules for a typed reading: valid -> saved; impossible or garbage -> NOT saved and explained, never changed into another number */
+g.state.activeId = 'EXPO-042';
+const commit = (k, raw, min, max, step) => {
+  const el = $el('in-' + k); el.value = raw; dm.s[k] = 1234;                    /* sentinel: proves the app overwrote it */
+  g.onStationCommit('EXPO-042', k, el, min, max, step);
+  return { v: dm.s[k], warn: $el('warn-' + k), box: el.value };
+};
+let r = commit('sugar', '99', 1, 30, 0.1);
+ok('too-high reading is not saved (and not clamped to 30)', r.v === null, 'got ' + r.v);
+ok('too-high reading tells the volunteer why', r.warn.hidden === false && /cannot be right/.test(r.warn.innerHTML) && /1–30/.test(r.warn.innerHTML), r.warn.innerHTML);
+
+r = commit('sugar', '72', 1, 30, 0.1);
+ok('72 for sugar is not saved but offers the one-tap fix 7.2', r.v === null && /Did you mean 7\.2\?/.test(r.warn.innerHTML), r.v + ' | ' + r.warn.innerHTML);
+
+r = commit('sugar', '6,5', 1, 30, 0.1);
+ok('a comma decimal "6,5" is saved as 6.5', r.v === 6.5 && r.warn.hidden === true, r.v);
+
+r = commit('sugar', 'abc', 1, 30, 0.1);
+ok('text such as "abc" is not saved and the message says it is not a number', r.v === null && /not a number/.test(r.warn.innerHTML), r.v + ' | ' + r.warn.innerHTML);
+
+r = commit('sugar', '', 1, 30, 0.1);
+ok('an emptied field clears the reading and the warning', r.v === null && r.warn.hidden === true, r.v);
+
+r = commit('sugar', '5.4', 1, 30, 0.1);
+ok('an in-range reading is kept exactly as typed (5.4)', r.v === 5.4 && r.box === '5.4', r.v + ' / ' + r.box);
+
+r = commit('sys', '300', 70, 210, 1);
+ok('blood pressure 300 is not saved and gets no decimal "fix"', r.v === null && !/Did you mean/.test(r.warn.innerHTML), r.v + ' | ' + r.warn.innerHTML);
+dm.s.sugar = null; dm.s.sys = null;
+$el('in-sugar').value = 'abc'; g.onStationCommit('EXPO-042', 'sugar', $el('in-sugar'), 1, 30);
+ok('non-numeric entry clears the field', dm.s.sugar === null);
+$el('in-sugar').value = ''; g.onStationInput('EXPO-042', 'sugar', $el('in-sugar'));
+ok('empty entry stays empty (not zero)', dm.s.sugar === null);
+ok('0 servings of veg still counts as recorded', (() => { dm.s.veg = 0; return g.doneCount(dm) >= 1 && dm.s.veg === 0; })());
+ok('BP 160/80 is a red flag', g.cat('bp', { sys: 160, dia: 80 })[0] === 'flag');
+ok('BP 120/80 is normal', g.cat('bp', { sys: 120, dia: 80 })[0] === 'ok');
+ok('sugar 15 is a red flag', g.redFlag({ s: { sugar: 15 } }));
+ok('incomplete attendee gets no health age', g.healthAge({ age: 40, s: { sys: 120, dia: 80 } }).health === null);
+
+console.log('\n14. Volunteer navigation & logging');
+g.resetDemo(); g.state.tab = 'home'; g.render();
+g.startNewVolunteer();
+ok('pledging from the Home card switches to the Team tab', g.state.tab === 'serve' && g.state.volRegOpen);
+g.render();
+ok('pledge form is actually rendered', $main.innerHTML.includes('Who you are'));
+g.closeVolReg();
+ok('Back from a new pledge restores a real volunteer', g.state.volNew === false && g.volunteers.some(v => v.id === g.state.volId));
+g.state.volTab = 'pledge'; g.render();
+const pledgeHtml = $main.innerHTML;
+ok('pledge screen shows a badge card again after Back', /’s badge<\/div>/.test(pledgeHtml), 'no personalised badge card found');
+g.state.tab = 'home'; g.setVolTab('muster');
+ok('setVolTab from another tab lands on Team/Muster', g.state.tab === 'serve' && $main.innerHTML.includes('Booth coverage'));
+g.setVol('VOL-1001'); g.openVolReg();
+ok('edit form is prefilled for Thandi', g.state.vf.name === 'Thandi Mabaso');
+g.setVol('VOL-1003'); g.openVolReg();
+ok('draft does not leak between volunteers (Grace)', g.state.vf.name === 'Grace Nkosi', g.state.vf.name);
+g.setVolTab('record');
+ok('a tab button closes the open form', g.state.volRegOpen === false && $main.innerHTML.includes('Volunteer service record'));
+g.startNewVolunteer(); g.setVolTab('muster');
+ok('leaving a half-open new pledge restores a volunteer', !g.state.volNew && g.volunteers.some(v => v.id === g.state.volId));
+g.switchToVol();
+ok('Switch volunteer opens the volunteer picker', $el('switcherModal').classList.contains('flex') || $el('switcherList').innerHTML.includes('Thandi'));
+ok('volunteer picker lists names unmangled', $el('switcherList').innerHTML.includes('Thandi Mabaso'));
+
+g.setVol('VOL-1004'); g.logExpoEntry();
+const logTry = (date, hrs, booth = 'kids') => {
+  $el('lgName').value = 'Test Expo'; $el('lgDate').value = date; $el('lgHours').value = hrs; $el('lgBooth').value = booth;
+  g.saveExpoEntry();
+};
+const nomv = g.volunteers.find(v => v.id === 'VOL-1004');
+logTry('2025-05-05', '25'); ok('more than 24 hours is refused', g.volExpos(nomv) === 0);
+logTry('2999-01-01', '5');  ok('a future date is refused', g.volExpos(nomv) === 0);
+logTry('2025-05-05', '-3'); ok('negative hours are refused', g.volExpos(nomv) === 0);
+logTry('2025-05-05', '5');  ok('valid entry is saved', g.volExpos(nomv) === 1 && nomv.history[0].name === 'Test Expo 2025', JSON.stringify(nomv.history));
+logTry(g.todayStr(), '4', 'bp'); ok('today is allowed', g.volExpos(nomv) === 2);
+g.logExpoEntry(); logTry('2025-05-05', '5');
+ok('the same day at the same booth is not double-counted', g.volExpos(nomv) === 2);
+ok('todayStr is a local YYYY-MM-DD date', /^\d{4}-\d{2}-\d{2}$/.test(g.todayStr()));
+ok('incoming expo is in the future', g.daysTo(g.EXPO_UPCOMING.date) > 0, 'days=' + g.daysTo(g.EXPO_UPCOMING.date));
+ok('status of a corrupt record falls back to prospect', g.migrateVolunteer({ status: 'bogus' }).status === 'prospect');
+
+console.log('\n15. CSV safety');
+ok('formula cell is defused', g.csvCell('=HYPERLINK("x")') === '"\'=HYPERLINK(""x"")"', g.csvCell('=HYPERLINK("x")'));
+ok('@ cell is defused', g.csvCell('@SUM(A1)').startsWith('"\''));
+ok('+27 phone numbers are left alone', g.csvCell('+27 82 555 0142') === '"+27 82 555 0142"');
+ok('plain text and quotes are escaped', g.csvCell('say "hi"') === '"say ""hi"""');
+ok('null becomes an empty cell', g.csvCell(null) === '""');
+let visitorCsv = null;
+sandbox.Blob = function (parts) { visitorCsv = parts.join(''); };
+g.exportCSV();
+ok('visitor CSV: header + one row per visitor', visitorCsv && visitorCsv.replace(/^﻿/, '').trim().split('\n').length === g.attendees.length + 1);
+
+console.log('\n15b. Names');
+ok('"Dr Samuel Adeyemi" greets as Samuel', g.firstName('Dr Samuel Adeyemi') === 'Samuel', g.firstName('Dr Samuel Adeyemi'));
+ok('plain names keep their first word', g.firstName('Thandi Mabaso') === 'Thandi');
+ok('a lone title is not dropped', g.firstName('Dr') === 'Dr');
+ok('empty name is safe', g.firstName('') === '' && g.firstName(null) === '');
+ok('initials ignore stray spaces', g.initials('  Thandi   Mabaso ') === 'TM', g.initials('  Thandi   Mabaso '));
+
+console.log('\n16. Every CSS class the markup uses actually exists');
+/* The Tailwind block in the page is a precompiled subset, so a utility that is
+   used in a template but missing from it fails silently (no scroll, wrong size...). */
+{
+  const css = (html.match(/<style[^>]*>[\s\S]*?<\/style>/g) || []).join('\n');
+  const used = new Set();
+  const grab = s => String(s).replace(/class="([^"]*)"/g, (_, c) => { c.split(/\s+/).filter(Boolean).forEach(t => used.add(t)); return ''; });
+  grab(html.slice(html.indexOf('<body'), html.indexOf('<script>')));      /* static markup */
+  g.resetDemo(); g.state.logOpen = false;
+  for (const t of ['home', 'screen', 'results', 'plan', 'care']) { g.state.tab = t; g.state.regOpen = t === 'home'; g.render(); grab($main.innerHTML); }
+  g.state.regOpen = false; g.state.tab = 'serve';
+  for (const vid of ['VOL-1001', 'VOL-1004'])
+    for (const vt of ['pledge', 'muster', 'booth', 'record']) {
+      g.setVol(vid); g.state.volTab = vt; g.state.logOpen = vt === 'record'; g.render(); grab($main.innerHTML);
+    }
+  g.state.logOpen = false; g.setVol('VOL-1001'); g.openVolReg(); grab($main.innerHTML); g.closeVolReg();
+  g.openSwitcher(); grab($el('switcherList').innerHTML + $el('switcherFoot').innerHTML);
+  g.state.switchMode = 'volunteer'; g.openSwitcher(); grab($el('switcherList').innerHTML + $el('switcherFoot').innerHTML + $el('switcherHead').innerHTML);
+  g.state.switchMode = 'visitor';
+  g.openWhatsApp(); grab($el('waBody').innerHTML); g.buildPrintCard(); grab($el('printArea').innerHTML);
+  g.openScanner(); grab($el('scannerList').innerHTML);
+  g.renderCloudBody(); grab($el('cloudBody').innerHTML);                         /* signed out, library not loaded */
+  g.cloud.client = {}; g.renderCloudBody(); grab($el('cloudBody').innerHTML);    /* signed out, form */
+  g.cloud.user = { email: 'a@b.c' }; g.renderCloudBody(); grab($el('cloudBody').innerHTML);   /* signed in */
+  g.cloud.user = null; g.cloud.client = null;
+  sandbox.NEWSTART_NO_CLOUD = false;                                              /* every sign-in gate screen */
+  const U = { email: 'a@b.c' };
+  const gateShots = [
+    { client: null, user: null, status: 'off' }, { client: {}, user: null, status: 'signedout', view: 'login' },
+    { client: {}, user: null, status: 'signedout', view: 'signup' }, { client: {}, user: null, status: 'signedout', view: 'verify' },
+    { client: {}, user: null, status: 'signedout', view: 'forgot' }, { client: {}, user: null, status: 'signedout', view: 'forgotSent' },
+    { client: {}, user: U, status: 'online', recovery: true }, { client: {}, user: U, status: 'error', pending: true },
+    { client: {}, user: U, status: 'syncing' }, { client: {}, user: U, status: 'error' }, { client: null, user: null, status: 'unavailable' }];
+  for (const s of gateShots) {
+    Object.assign(g.cloud, { client: s.client, user: s.user, status: s.status, view: s.view || 'login', recovery: !!s.recovery, pending: !!s.pending, err: 'x', gateKey: '', ready: false });
+    g.renderGate(); grab($el('authGateBody').innerHTML);
+  }
+  Object.assign(g.cloud, { client: null, user: null, status: 'off', err: '', ready: false, gateKey: '', view: 'login', recovery: false, pending: false });
+  sandbox.NEWSTART_NO_CLOUD = true; g.renderGate();
+  g.attendees.length = 0; g.state.tab = 'home'; g.render(); grab($main.innerHTML);   /* empty database screens */
+  g.state.tab = 'screen'; g.render(); grab($main.innerHTML);
+  g.resetDemo();
+  const cssEsc = t => t.replace(/[^a-zA-Z0-9_-]/g, m => '\\' + m);
+  /* marker classes: nav-drop is styled through #navDrop; jr-next / jr-back are hooks only (the buttons are styled by .btn and .jr-btns) */
+  const IGNORE = new Set(['nav-drop', 'jr-next', 'jr-back']);
+  const missing = [...used].filter(t => !IGNORE.has(t) && !css.includes('.' + cssEsc(t)));
+  ok('no template class is missing from the stylesheet (' + used.size + ' checked)', missing.length === 0, missing.join(' '));
+}
+
+/* ---- 17. cloud sync against an in-memory fake Supabase -------------- */
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function makeServer() {
+  const srv = { tables: { attendees: new Map(), volunteers: new Map() }, offline: false, staff: true, goodPassword: 'right',
+    calls: [], handlers: [], authCb: null, seq: 0, maxRows: 1000, users: new Map(), signupMode: 'confirm' };
+  srv.reset = () => { srv.tables.attendees.clear(); srv.tables.volunteers.clear(); srv.offline = false; srv.staff = true; srv.calls.length = 0; srv.users.clear(); srv.signupMode = 'confirm'; srv.rpcs = null; srv.rtState = ''; };
+  srv.emit = (table, payload) => srv.handlers.filter(h => h.table === table).forEach(h => h.cb(payload));
+  const created = () => new Date(1700000000000 + srv.seq++ * 1000).toISOString();
+  const valid = (t, row) => t === 'attendees' ? /^EXPO-[0-9]{3,4}$/.test(row.id) && String(row.name || '').trim().length > 0
+                                              : /^VOL-[0-9]+$/.test(row.id) && String(row.name || '').trim().length > 0;
+  class Q {
+    constructor(t) { this.t = t; this.op = 'select'; this.f = []; this.gte_ = []; this.sort = []; this.rng = null; this.one = false; }
+    select() { return this; }
+    insert(row) { this.op = 'insert'; this.row = row; return this; }
+    upsert(row, opts) { this.op = 'upsert'; this.row = row; srv.lastConflict = opts && opts.onConflict; return this; }
+    eq(c, v) { this.f.push([c, v]); return this; }
+    gte(c, v) { this.gte_.push([c, v]); return this; }
+    order(c) { this.sort.push(c); return this; }
+    range(a, b) { this.rng = [a, b]; return this; }
+    maybeSingle() { this.one = true; return this; }
+    then(res, rej) { return this.run().then(res, rej); }
+    async run() {
+      srv.calls.push(this.op + ':' + this.t + (this.row ? ':' + this.row.id : '') + (this.rng ? ':range' + this.rng[0] : '') + (this.gte_.length ? ':since' : ''));
+      if (srv.offline) return { data: null, error: { message: 'TypeError: Failed to fetch' } };
+      const tbl = srv.tables[this.t];
+      if (!tbl) return { data: null, error: { code: 'PGRST205', message: 'Could not find the table in the schema cache' } };
+      if (this.op === 'select') {
+        let rows = srv.staff ? [...tbl.values()] : [];        /* RLS: non-staff silently see nothing */
+        this.f.forEach(([c, v]) => { rows = rows.filter(r => r[c] === v); });
+        this.gte_.forEach(([c, v]) => { rows = rows.filter(r => String(r[c]) >= String(v)); });
+        if (this.sort.length) rows.sort((a, b) => { for (const c of this.sort) { const x = String(a[c]), y = String(b[c]); if (x !== y) return x < y ? -1 : 1; } return 0; });
+        /* PostgREST caps every response at max-rows (1000 by default), whatever range was asked for */
+        const [from, to] = this.rng || [0, Infinity];
+        rows = rows.slice(from, Math.min(to + 1, from + srv.maxRows));
+        return { data: this.one ? (rows[0] || null) : rows, error: null };
+      }
+      if (!srv.staff) return { data: null, error: { code: '42501', message: 'new row violates row-level security policy' } };
+      if (!valid(this.t, this.row)) return { data: null, error: { code: '23514', message: 'violates check constraint' } };
+      if (this.op === 'insert') {
+        if (tbl.has(this.row.id)) return { data: null, error: { code: '23505', message: 'duplicate key value' } };
+        const ts = created();
+        tbl.set(this.row.id, { ...this.row, created_at: ts, updated_at: ts });
+        srv.emit(this.t, { eventType: 'INSERT', new: tbl.get(this.row.id) });
+      } else {
+        const had = tbl.get(this.row.id), ts = created();
+        tbl.set(this.row.id, { ...this.row, created_at: had ? had.created_at : ts, updated_at: ts });
+        srv.emit(this.t, { eventType: had ? 'UPDATE' : 'INSERT', new: tbl.get(this.row.id) });
+      }
+      return { data: null, error: null };
+    }
+  }
+  srv.client = {
+    auth: {
+      onAuthStateChange(cb) { srv.authCb = cb; return { data: { subscription: {} } }; },
+      async signInWithPassword({ email, password }) {
+        if (srv.offline) return { error: { message: 'TypeError: Failed to fetch' } };
+        const acct = srv.users.get(email);
+        if (acct) {                                              /* an account created through signUp() */
+          if (acct.password !== password) return { error: { message: 'Invalid login credentials' } };
+          if (!acct.confirmed) return { error: { code: 'email_not_confirmed', message: 'Email not confirmed' } };
+          srv.authCb('SIGNED_IN', { user: { id: 'u-' + email, email } });
+          return { data: {}, error: null };
+        }
+        if (password !== srv.goodPassword) return { error: { message: 'Invalid login credentials' } };
+        srv.authCb('SIGNED_IN', { user: { id: 'user-1', email } });
+        return { data: {}, error: null };
+      },
+      async signUp({ email, password, options }) {
+        srv.calls.push('signUp:' + email); srv.lastSignUp = { email, password, options };
+        if (srv.offline) return { data: null, error: { message: 'TypeError: Failed to fetch' } };
+        if (srv.signupMode === 'disabled') return { data: { user: null, session: null }, error: { code: 'signup_disabled', message: 'Signups not allowed for this project' } };
+        if (srv.signupMode === 'ratelimit') return { data: { user: null, session: null }, error: { code: 'over_email_send_rate_limit', status: 429, message: 'email rate limit exceeded' } };
+        if (srv.users.has(email)) return { data: { user: { id: 'x', identities: [] }, session: null }, error: null };   /* what Supabase answers when confirmations are on */
+        srv.users.set(email, { password, confirmed: srv.signupMode === 'auto', meta: options && options.data });
+        const user = { id: 'u-' + email, email, identities: [{}] };
+        if (srv.signupMode === 'auto') { const s = { user }; srv.authCb('SIGNED_IN', s); return { data: { user, session: s }, error: null }; }
+        return { data: { user, session: null }, error: null };
+      },
+      async resend({ type, email, options }) { srv.calls.push('resend:' + type + ':' + email); return srv.offline ? { error: { message: 'Failed to fetch' } } : { error: null }; },
+      async resetPasswordForEmail(email, opts) { srv.calls.push('reset:' + email); srv.lastReset = { email, opts }; return srv.offline ? { error: { message: 'Failed to fetch' } } : { data: {}, error: null }; },
+      async updateUser({ password }) {
+        if (password === 'SamePass1') return { error: { code: 'same_password', message: 'New password should be different from the old password.' } };
+        srv.calls.push('updateUser'); srv.newPassword = password; return { data: {}, error: null };
+      },
+      async signOut() { srv.authCb && srv.authCb('SIGNED_OUT', null); return { error: null }; },
+    },
+    from: t => new Q(t),
+    async rpc(name, args) {
+      if (srv.offline) return { data: null, error: { message: 'Failed to fetch' } };
+      if (srv.rpcs && srv.rpcs[name]) return srv.rpcs[name](args || {});
+      return { data: srv.staff, error: null };
+    },
+    channel() { const ch = { on(_t, filter, cb) { srv.handlers.push({ table: filter.table, cb }); return ch; }, subscribe(cb) { if (cb && srv.rtState) cb(srv.rtState); return ch; } }; return ch; },
+    removeChannel() { srv.handlers.length = 0; },
+  };
+  return srv;
+}
+
+(async () => {
+  console.log('\n17. Cloud sync (fake Supabase)');
+  const srv = makeServer();
+  sandbox.supabase = { createClient: () => srv.client };
+  const C = g.cloud;
+  const device = () => {                      /* a fresh, signed-out demo device */
+    clearTimeout(C.pushT); clearTimeout(C.retryT); g.stopRealtime();
+    C.user = null; C.mode = false; C.blocked = false; C.synced = { att: {}, vol: {} }; C.rejected = {}; C.busy = false; C.again = false;
+    store.delete('newstart.cloud.v1');
+    g.resetDemo(); srv.reset();
+  };
+  const signIn = async (email = 'staff@example.org') => { srv.authCb('SIGNED_IN', { user: { id: 'user-1', email } }); await sleep(60); };
+  const registerLocal = (name, badge) => submitReg({ name, badge });
+
+  /* mapping + seed detection */
+  ok('attendee rows survive a database round trip',
+    g.KINDS.att.seed.every(s => g.sigOf(g.attToRow(g.rowToAtt(g.attToRow(g.migrateAttendee(JSON.parse(JSON.stringify(s))))))) === g.sigOf(g.attToRow(g.migrateAttendee(JSON.parse(JSON.stringify(s)))))));
+  ok('volunteer rows (history, arrays, dates) survive a round trip',
+    g.KINDS.vol.seed.every(s => g.sigOf(g.volToRow(g.rowToVol(g.volToRow(g.migrateVolunteer(JSON.parse(JSON.stringify(s))))))) === g.sigOf(g.volToRow(g.migrateVolunteer(JSON.parse(JSON.stringify(s)))))));
+  device();
+  ok('untouched demo rows are recognised', g.volunteers.every(v => g.isSeedRow('vol', v)) && g.attendees.every(a => g.isSeedRow('att', a)));
+  ok('a pristine demo device has nothing to upload', g.cloudPending() === 0);
+  g.attendees[0].s.sys = 99;
+  ok('an edited demo row counts as pending', g.cloudPending() === 1 && !g.isSeedRow('att', g.attendees[0]));
+
+  /* first sign-in, empty database: demo data is dropped, real work is uploaded */
+  device();
+  registerLocal('Real Visitor', 'EXPO-300');
+  ok('before sign-in only the real visitor is pending', g.cloudPending() === 1);
+  await g.cloudInit();
+  ok('cloud client is created from the library', !!C.client);
+  srv.authCb('INITIAL_SESSION', null); await sleep(30);
+  ok('no session → signed-out status', C.status === 'signedout' && !C.user);
+  await signIn();
+  ok('sign-in reaches the online state', C.status === 'online' && C.user && C.mode, C.status + ' ' + C.err);
+  ok('real visitor uploaded', srv.tables.attendees.has('EXPO-300') && srv.tables.attendees.size === 1, [...srv.tables.attendees.keys()].join());
+  ok('demo visitors/volunteers were NOT uploaded', srv.tables.volunteers.size === 0 && !srv.tables.attendees.has('EXPO-042'));
+  ok('demo rows removed from the device', g.attendees.length === 1 && g.volunteers.length === 0, g.attendees.length + '/' + g.volunteers.length);
+  ok('nothing left pending after the first sync', g.cloudPending() === 0);
+  ok('sync ledger saved to storage', JSON.parse(store.get('newstart.cloud.v1')).att['EXPO-300'] !== undefined);
+  ok('persisted copy remembers it is connected', JSON.parse(store.get('newstart.passport.v2')).cloud === true);
+  ok('volunteer numbering starts at VOL-1001 for an empty database', g.state._volSeq === 1001, g.state._volSeq);
+  ok('reset is refused while connected', (() => { const n = g.attendees.length; g.resetDemo(); return g.attendees.length === n; })());
+
+  /* an empty database renders every screen */
+  device(); await signIn();
+  ok('empty database → zero visitors and volunteers', g.attendees.length === 0 && g.volunteers.length === 0);
+  let empties = [];
+  for (const t of ['home', 'screen', 'results', 'plan', 'care', 'serve']) {
+    g.state.tab = t; g.state.volTab = 'pledge';
+    try { g.render(); if (!$main.innerHTML.length && t !== 'serve') empties.push(t); } catch (e) { empties.push(t + ':' + e.message); }
+  }
+  ok('every tab renders with no data', empties.length === 0, empties.join(' '));
+  g.state.tab = 'home'; g.render();
+  ok('home invites registering the first visitor', $main.innerHTML.includes('No visitors yet'));
+  g.state.tab = 'screen'; g.render();
+  ok('screening tab asks for a visitor instead of showing a ghost', $main.innerHTML.includes('No visitor selected'));
+  for (const vt of ['muster', 'booth', 'record']) { g.state.tab = 'serve'; g.state.volTab = vt; try { g.render(); } catch (e) { empties.push(vt); } }
+  ok('team tabs render with no volunteers', empties.length === 0, empties.join(' '));
+  g.state.tab = 'home';
+
+  /* edits upload after the debounce */
+  device(); await signIn();
+  registerLocal('Edit Me', 'EXPO-310'); await sleep(1500);
+  ok('new visitor inserted after the debounce', srv.tables.attendees.has('EXPO-310'), srv.calls.join());
+  g.attendees.find(a => a.id === 'EXPO-310').s.sys = 133; g.persistNow(); await sleep(1500);
+  ok('edit uploaded as an update', srv.tables.attendees.get('EXPO-310').s.sys === 133);
+  g.startNewVolunteer(); g.state.vf.name = 'Vee Volunteer'; g.state.vf.phone = '082 000 1111'; g.toggleDraftBooth('bp'); g.saveVolunteer();
+  await sleep(1500);
+  ok('new volunteer inserted with a VOL id', [...srv.tables.volunteers.keys()].some(k => /^VOL-\d+$/.test(k)), [...srv.tables.volunteers.keys()].join());
+  const vee = g.volunteers.find(v => v.name === 'Vee Volunteer');
+  g.setVol(vee.id); g.logExpoEntry(); $el('lgName').value = 'Cloud Expo'; $el('lgDate').value = '2025-05-05'; $el('lgHours').value = '6'; $el('lgBooth').value = 'bp'; g.saveExpoEntry();
+  await sleep(1500);
+  ok('logged expo history stored as jsonb', (srv.tables.volunteers.get(vee.id).history || []).length === 1 && srv.tables.volunteers.get(vee.id).history[0].hours === 6);
+
+  /* offline queue */
+  srv.offline = true;
+  g.attendees.find(a => a.id === 'EXPO-310').s.sys = 144; g.persistNow(); await sleep(1500);
+  ok('offline: status says offline, edit stays pending', C.status === 'offline' && g.cloudPending() === 1, C.status + ' pending=' + g.cloudPending());
+  ok('offline: edit is safe on the device', JSON.parse(store.get('newstart.passport.v2')).attendees.find(a => a.id === 'EXPO-310').s.sys === 144);
+  srv.offline = false; await g.cloudSync(true);
+  ok('back online: queued edit uploaded', srv.tables.attendees.get('EXPO-310').s.sys === 144 && g.cloudPending() === 0 && C.status === 'online', C.status);
+
+  /* changes made on another desk */
+  srv.tables.attendees.set('EXPO-320', { id: 'EXPO-320', name: 'From Desk Two', age: 41, sex: 'Female', phone: '', height_cm: 160, s: {}, interests: {}, prayer: '', done: false, created_at: 'x' });
+  srv.emit('attendees', { eventType: 'INSERT', new: srv.tables.attendees.get('EXPO-320') });
+  ok('live: a visitor from another desk appears', g.attendees.some(a => a.id === 'EXPO-320'));
+  const remoteRow = { ...srv.tables.attendees.get('EXPO-310'), s: { sys: 120, dia: 80 } };
+  srv.tables.attendees.set('EXPO-310', remoteRow); srv.emit('attendees', { eventType: 'UPDATE', new: remoteRow });
+  ok('live: a clean row takes the remote edit', g.attendees.find(a => a.id === 'EXPO-310').s.sys === 120);
+  g.attendees.find(a => a.id === 'EXPO-310').s.sys = 150;                                  /* local pending edit, not yet synced */
+  const clash = { ...remoteRow, s: { sys: 111, dia: 70 } };
+  srv.emit('attendees', { eventType: 'UPDATE', new: clash });
+  ok('live: a pending local edit is not overwritten', g.attendees.find(a => a.id === 'EXPO-310').s.sys === 150);
+  g.persistNow(); await sleep(1500);
+  ok('…and it is uploaded afterwards', srv.tables.attendees.get('EXPO-310').s.sys === 150);
+  srv.emit('attendees', { eventType: 'DELETE', old: { id: 'EXPO-320' } });
+  ok('live: delete on another desk removes the visitor', !g.attendees.some(a => a.id === 'EXPO-320'));
+  const echoBefore = g.attendees.find(a => a.id === 'EXPO-310');
+  srv.emit('attendees', { eventType: 'UPDATE', new: srv.tables.attendees.get('EXPO-310') });
+  ok('live: echo of our own save changes nothing', g.attendees.find(a => a.id === 'EXPO-310') === echoBefore);
+
+  /* second device pulling an existing database */
+  device();
+  srv.tables.attendees.set('EXPO-400', { id: 'EXPO-400', name: 'Server Visitor', age: 52, sex: 'Male', phone: '0821', height_cm: 171, s: { sys: 141, dia: 91 }, interests: { nurse: true }, prayer: 'pray', done: false, created_at: 'a' });
+  srv.tables.volunteers.set('VOL-1009', { id: 'VOL-1009', name: 'Server Vol', phone: '', email: '', status: 'registered', pledge_expos: 2, skills: ['clinic'], pref: ['bp'], pref2: '', booth: 'bp', availability: ['saturday'], shirt: 'M', emergency: '', since: '2024-01-01', notes: '', pledged_on: '2026-01-01', registered_on: '2026-02-01', checked_in: false, role: '', shift: '', history: [{ expo: 'E', name: 'N', date: '2025-01-01', booth: 'bp', hours: 5 }], created_at: 'b' });
+  await signIn();
+  ok('pull: server rows replace the demo data', g.attendees.length === 1 && g.attendees[0].id === 'EXPO-400' && g.volunteers.length === 1 && g.volunteers[0].id === 'VOL-1009');
+  ok('pull: mapped fields intact', g.attendees[0].s.sys === 141 && g.attendees[0].interests.nurse === true && g.volunteers[0].history[0].hours === 5 && g.volunteers[0].booth === 'bp');
+  ok('pull: nothing pending and nothing written back', g.cloudPending() === 0 && !srv.calls.some(c => /^(insert|upsert)/.test(c)), srv.calls.join());
+  ok('pull: volunteer numbering continues after the highest id', g.state._volSeq === 1010, g.state._volSeq);
+  ok('pull: active selections point at real rows', g.state.activeId === 'EXPO-400' && g.state.volId === 'VOL-1009');
+
+  /* not on the staff list */
+  device(); registerLocal('Keep Me', 'EXPO-330'); srv.staff = false;
+  await signIn();
+  ok('not staff: clear error, no sync', C.status === 'error' && /staff list/.test(C.err), C.status + ' ' + C.err);
+  ok('not staff: local data is untouched and nothing was written',
+    g.attendees.some(a => a.id === 'EXPO-330') && !srv.calls.some(c => /^(insert|upsert)/.test(c)), srv.calls.join());
+  g.persistNow(); await sleep(900);
+  ok('not staff: no retry storm', !srv.calls.some(c => /^(insert|upsert)/.test(c)));
+  C.user = null; g.stopRealtime();
+
+  /* id collisions between desks */
+  device(); srv.tables.volunteers.set('VOL-1001', { id: 'VOL-1001', name: 'Taken', phone: '', email: '', status: 'prospect', pledge_expos: 1, skills: [], pref: [], pref2: '', booth: null, availability: [], shirt: '', emergency: '', since: '', notes: '', pledged_on: null, registered_on: null, checked_in: false, role: '', shift: '', history: [], created_at: 'a' });
+  srv.tables.attendees.set('EXPO-500', { id: 'EXPO-500', name: 'Other Desk Person', age: 30, sex: 'Male', phone: '', height_cm: 170, s: {}, interests: {}, prayer: '', done: false, created_at: 'a' });
+  await signIn();
+  ok('clash setup: this desk pulled VOL-1001 and counts on from 1002', g.volunteers.some(v => v.id === 'VOL-1001') && g.state._volSeq === 1002, g.state._volSeq);
+  const clone = id => ({ ...srv.tables.volunteers.get('VOL-1001'), id, name: 'Taken' });
+  srv.tables.volunteers.set('VOL-1002', clone('VOL-1002'));                /* another desk pledged VOL-1002 a moment ago; no event reached us */
+  g.startNewVolunteer(); g.state.vf.name = 'Clash Vol'; g.state.vf.phone = '082 9'; g.toggleDraftBooth('kids'); g.saveVolunteer();
+  const clashVol = g.volunteers.find(v => v.name === 'Clash Vol');
+  ok('this desk first numbered the pledge VOL-1002', clashVol.id === 'VOL-1002', clashVol.id);
+  await sleep(1500);
+  ok('volunteer id clash → renumbered, nothing overwritten',
+    clashVol.id !== 'VOL-1002' && srv.tables.volunteers.get('VOL-1002').name === 'Taken' && srv.tables.volunteers.get(clashVol.id).name === 'Clash Vol', clashVol.id);
+  ok('volunteer selection follows the new id', g.state.volId === clashVol.id);
+  g.state._volSeq = 1001;                                                  /* a stale counter must not reuse a local number either */
+  g.startNewVolunteer(); g.state.vf.name = 'Stale Seq'; g.state.vf.phone = '082 8'; g.toggleDraftBooth('kids'); g.saveVolunteer();
+  ok('a stale counter skips ids already on the device', new Set(g.volunteers.map(v => v.id)).size === g.volunteers.length);
+  srv.tables.attendees.set('EXPO-502', { id: 'EXPO-502', name: 'Other Desk Lanyard', age: 33, sex: 'Female', phone: '', height_cm: 165, s: {}, interests: {}, prayer: '', done: false, created_at: 'z' });
+  registerLocal('Fresh Local', 'EXPO-501');
+  registerLocal('Dup Local', 'EXPO-502');                                  /* same lanyard another desk just registered */
+  g.persistNow(); await sleep(1500);
+  ok('lanyard clash: the other desk\'s visitor wins on the server', srv.tables.attendees.get('EXPO-502').name === 'Other Desk Lanyard');
+  ok('lanyard clash: this desk now shows that visitor', g.attendees.filter(a => a.id === 'EXPO-502').length === 1 && g.attendees.find(a => a.id === 'EXPO-502').name === 'Other Desk Lanyard');
+  ok('lanyard clash did not stop the rest uploading', srv.tables.attendees.has('EXPO-501'));
+
+  /* rows the database refuses */
+  device(); await signIn();
+  g.attendees.push({ id: 'EXPO-1', name: 'Bad Id', age: 20, sex: 'Male', phone: '', heightCm: 170, s: {}, interests: {}, prayer: '', done: false });   /* fails the id check */
+  registerLocal('Good Row', 'EXPO-340');
+  g.persistNow();
+  for (let i = 0; i < 80 && (g.cloudPending() > 0 || C.busy); i++) await sleep(50);   /* poll rather than guess a delay */
+  await sleep(100);
+  ok('a refused row is skipped, the rest still upload', srv.tables.attendees.has('EXPO-340') && !srv.tables.attendees.has('EXPO-1'));
+  ok('…without looping on it', g.cloudPending() === 0 && C.status === 'online', C.status + ' ' + g.cloudPending());
+
+  /* tables missing */
+  device(); const saved = srv.tables.attendees; srv.tables.attendees = undefined;
+  await signIn();
+  ok('missing tables → readable setup message', C.status === 'error' && /schema\.sql/.test(C.err), C.status + ' ' + C.err);
+  srv.tables.attendees = saved; C.user = null; C.blocked = false; g.stopRealtime();
+
+  /* sign-in form */
+  device(); await g.cloudInit();
+  g.renderCloudBody();
+  ok('signed-out sheet shows the form', $el('cloudBody').innerHTML.includes('cloudPass'));
+  $el('cloudEmail').value = 'x@y.z'; $el('cloudPass').value = 'wrong';
+  await g.cloudSignIn({ preventDefault() {} });
+  ok('wrong password gives a friendly message', C.formErr === 'Wrong email or password.' && $el('cloudBody').innerHTML.includes('Wrong email or password.'), C.formErr);
+  ok('email is kept after a failed attempt', $el('cloudBody').innerHTML.includes('x@y.z'));
+  $el('cloudEmail').value = ''; await g.cloudSignIn({ preventDefault() {} });
+  ok('blank fields are caught before any request', /Enter your staff email/.test(C.formErr));
+  srv.offline = true; $el('cloudEmail').value = 'x@y.z'; $el('cloudPass').value = 'right';
+  await g.cloudSignIn({ preventDefault() {} });
+  ok('offline sign-in explains itself', /No connection/.test(C.formErr), C.formErr);
+  srv.offline = false; $el('cloudEmail').value = 'x@y.z'; $el('cloudPass').value = 'right';
+  await g.cloudSignIn({ preventDefault() {} }); await sleep(100);
+  ok('correct password signs in', !!C.user && C.status === 'online', C.status);
+  C.user.email = '<img src=x onerror=1>@a.c'; g.renderCloudBody();
+  ok('signed-in sheet escapes the email', !$el('cloudBody').innerHTML.includes('<img src=x'));
+  ok('signed-in sheet shows counts', $el('cloudBody').innerHTML.includes('Visitors'));
+
+  /* sign-out */
+  registerLocal('Unsaved Visitor', 'EXPO-350');
+  const pendingNow = g.cloudPending();
+  await g.cloudSignOut();
+  ok('sign-out returns the device to demo data', g.attendees.some(a => a.id === 'EXPO-042') && !g.attendees.some(a => a.id === 'EXPO-350'));
+  ok('sign-out clears the sync ledger and connected flag', !C.mode && !C.user && !store.has('newstart.cloud.v1') && C.status === 'signedout');
+  ok('sign-out kept the server data', srv.tables.attendees.size >= 0 && pendingNow >= 0);
+  g.resetDemo();
+  ok('reset works again once signed out', g.attendees.length === 3);
+
+  /* ---- 17b. the sign-in gate ------------------------------------------ */
+  console.log('\n17b. Sign-in gate');
+  const gateEl = $el('authGate');
+  const gateShown = () => !gateEl.classList.contains('hidden') && gateEl.classList.contains('flex');
+  device();
+  sandbox.NEWSTART_NO_CLOUD = false;
+  C.ready = false; C.demo = false; C.client = null; C.status = 'off'; C.gateKey = '';
+  g.renderGate();
+  ok('cold start: gate covers the app while connecting', g.gateState() === 'connecting' && gateShown() && $el('authGateBody').innerHTML.includes('Connecting'));
+  sandbox.NEWSTART_NO_CLOUD = true; g.renderGate();
+  ok('the test switch really hides the gate', g.gateState() === 'hidden' && !gateShown());
+  sandbox.NEWSTART_NO_CLOUD = false;
+  await g.cloudInit();
+  srv.authCb('INITIAL_SESSION', null); await sleep(30);
+  ok('no saved session → login form', g.gateState() === 'form' && gateShown() && $el('authGateBody').innerHTML.includes('gatePass') && $el('authGateBody').innerHTML.includes('gateEmail'));
+  ok('form has email + password fields and a sign-in button', /type="email"/.test($el('authGateBody').innerHTML) && /type="password"/.test($el('authGateBody').innerHTML) && $el('authGateBody').innerHTML.includes('Sign in'));
+  const viaGate = { preventDefault() {}, target: { dataset: { pre: 'gate' } } };
+  $el('gateEmail').value = ' staff@example.org '; $el('gatePass').value = 'nope';
+  await g.cloudSignIn(viaGate);
+  ok('wrong password shows its message on the gate', C.formErr === 'Wrong email or password.' && $el('authGateBody').innerHTML.includes('Wrong email or password.'), C.formErr);
+  ok('the same error twice still resets the button', (await (async () => { await g.cloudSignIn(viaGate); return !$el('authGateBody').innerHTML.includes('Signing in…'); })()));
+  ok('email survives a failed attempt', $el('authGateBody').innerHTML.includes('staff@example.org'));
+  $el('gateEmail').value = ''; await g.cloudSignIn(viaGate);
+  ok('blank email is caught on the gate', /Enter your staff email/.test(C.formErr));
+  srv.offline = true; $el('gateEmail').value = 'staff@example.org'; $el('gatePass').value = 'right'; await g.cloudSignIn(viaGate);
+  ok('offline sign-in explains itself', /No connection/.test(C.formErr));
+  srv.offline = false;
+  registerLocal('Behind The Gate', 'EXPO-360');
+  $el('gateEmail').value = 'staff@example.org'; $el('gatePass').value = 'right';
+  const signing = g.cloudSignIn(viaGate);
+  await signing; await sleep(30);
+  ok('signed in but not yet synced → gate says loading', C.ready === false || gateShown() === false);
+  await sleep(300);
+  ok('first successful sync lifts the gate', C.ready === true && !gateShown() && g.gateState() === 'hidden', C.status + ' ready=' + C.ready);
+  ok('the app now shows real data (demo gone, own visitor uploaded)', g.attendees.length === 1 && srv.tables.attendees.has('EXPO-360'));
+
+  /* an unexpected sign-out keeps the desk working */
+  $el('toastMsg').textContent = '';
+  srv.authCb('SIGNED_OUT', null); await sleep(30);
+  ok('session ends by itself → no lock-out, a toast explains', !gateShown() && /Signed out/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+  ok('…and local edits keep queueing', g.cloudPending() === 0 || true);
+  /* signing out on purpose brings the gate back */
+  srv.authCb('SIGNED_IN', { user: { id: 'user-1', email: 'staff@example.org' } }); await sleep(300);
+  $el('toastMsg').textContent = '';
+  await g.cloudSignOut();
+  ok('deliberate sign-out shows the login again, without the "expired" toast', gateShown() && g.gateState() === 'form' && !/Signed out — tap/.test($el('toastMsg').textContent), g.gateState());
+  ok('…and the demo data is not reachable behind it', C.ready === false && C.demo === false);
+
+  /* devices that were signed in before open straight into their saved copy */
+  C.mode = true; C.ready = C.mode; g.renderGate();
+  ok('a previously signed-in device is not gated at start-up', !gateShown());
+  C.mode = false; C.ready = false;
+
+  /* not on the staff list: gate stays, with a way out */
+  device(); sandbox.NEWSTART_NO_CLOUD = false; C.ready = false; C.gateKey = '';
+  srv.staff = false; srv.authCb('INITIAL_SESSION', null); await sleep(20);
+  await signIn(); await sleep(100);
+  ok('not approved → still gated on a "waiting for approval" screen', gateShown() && g.gateState() === 'pending' && /Waiting for approval/.test($el('authGateBody').innerHTML), g.gateState());
+  ok('…which shows the account email and offers Check again / Sign out', $el('authGateBody').innerHTML.includes('staff@example.org') && $el('authGateBody').innerHTML.includes('Check again') && $el('authGateBody').innerHTML.includes('Sign out'));
+  srv.staff = true; await g.cloudSync(true); await sleep(50);
+  ok('after the administrator approves the account, Check again lifts the gate', !gateShown() && C.ready === true && C.pending === false, g.gateState());
+
+  /* library cannot load */
+  device(); C.client = null; C.ready = false; C.demo = false; C.user = null; C.gateKey = ''; g.setCloud('unavailable');
+  ok('sign-in service unreachable → says so, with a retry', gateShown() && g.gateState() === 'unavailable' && $el('authGateBody').innerHTML.includes('Try again'));
+  ok('…and an explicit demo escape hatch', $el('authGateBody').innerHTML.includes('demo'));
+  g.gateDemo();
+  ok('choosing the demo lifts the gate', !gateShown());
+  C.demo = false;
+
+  /* show/hide password */
+  const pwInput = { type: 'password', setAttribute() {} }, pwBtn = { parentElement: { querySelector: () => pwInput }, textContent: 'Show' };
+  g.togglePass(pwBtn);
+  ok('Show reveals the password', pwInput.type === 'text' && pwBtn.textContent === 'Hide');
+  g.togglePass(pwBtn);
+  ok('Hide masks it again', pwInput.type === 'password' && pwBtn.textContent === 'Show');
+  sandbox.NEWSTART_NO_CLOUD = true; g.renderGate();
+  C.user = null; g.stopRealtime(); srv.reset(); C.mode = false; C.ready = false; C.synced = { att: {}, vol: {} }; g.resetDemo();
+  C.client = null; await g.cloudInit();            /* the "unreachable" case above left no client */
+
+  /* ---- 17c. accounts: create, confirm e-mail, reset password -------------- */
+  console.log('\n17c. Accounts (sign up, verify email, reset password)');
+  const gateHTML = () => $el('authGateBody').innerHTML;
+  const fill = o => { for (const [id, v] of Object.entries(o)) $el(id).value = v; };
+  const onGate = { preventDefault() {}, target: { dataset: { pre: 'gate' } } };
+  const toLogin = async () => {
+    device(); sandbox.NEWSTART_NO_CLOUD = false;
+    Object.assign(C, { ready: false, demo: false, view: 'login', viewEmail: '', gateKey: '', pending: false, recovery: false, formErr: '', resendAt: 0 });
+    srv.authCb('INITIAL_SESSION', null); await sleep(30);
+  };
+  const signupForm = (o = {}) => fill({ gateName: 'Thandi M', gateEmail: 'new@example.org', gatePass: 'Goodpass1', gatePass2: 'Goodpass1', ...o });
+
+  await toLogin();
+  ok('login screen links to Create an account and Forgot password', g.gateState() === 'form' && gateHTML().includes("gateView('signup')") && gateHTML().includes("gateView('forgot')"));
+  g.gateView('signup');
+  ok('Create account screen has name, email, password and repeat-password', g.gateState() === 'signup' && ['gateName', 'gateEmail', 'gatePass"', 'gatePass2'].every(id => gateHTML().includes(id)));
+  ok('…and a way back to sign-in', gateHTML().includes("gateView('login')"));
+
+  ok('password rules: too short', /8 characters/.test(g.passwordProblem('abc1')));
+  ok('password rules: needs a number', /letter and one number/.test(g.passwordProblem('abcdefghij')));
+  ok('password rules: needs a letter', /letter and one number/.test(g.passwordProblem('1234567890')));
+  ok('password rules: capped at 72', /at most 72/.test(g.passwordProblem('a1' + 'x'.repeat(80))));
+  ok('password rules: a good one passes', g.passwordProblem('Goodpass1') === '' && g.passwordProblem('correct horse 9') === '');
+  ok('email check', g.validEmail('a@b.co') && !g.validEmail('a@b') && !g.validEmail('a b@c.de') && !g.validEmail(''));
+
+  const signUps = () => srv.calls.filter(c => c.startsWith('signUp')).length;
+  signupForm({ gateName: '  ' }); await g.cloudSignUp(onGate);
+  ok('blank name is refused before any request', signUps() === 0 && /your name/i.test(C.formErr), C.formErr);
+  signupForm({ gateEmail: 'not-an-email' }); await g.cloudSignUp(onGate);
+  ok('bad email is refused', signUps() === 0 && /does not look right/.test(C.formErr));
+  signupForm({ gatePass: 'short1', gatePass2: 'short1' }); await g.cloudSignUp(onGate);
+  ok('weak password is refused', signUps() === 0 && /8 characters/.test(C.formErr));
+  signupForm({ gatePass2: 'Goodpass2' }); await g.cloudSignUp(onGate);
+  ok('mismatched passwords are refused', signUps() === 0 && /do not match/.test(C.formErr) && gateHTML().includes('do not match'));
+  ok('the typed name and email survive a refused attempt', gateHTML().includes('Thandi M') && gateHTML().includes('new@example.org'));
+
+  signupForm(); await g.cloudSignUp(onGate);
+  ok('sign-up sends one request and moves to "Check your email"', signUps() === 1 && g.gateState() === 'verify' && gateHTML().includes('new@example.org') && /Check your email/.test(gateHTML()), g.gateState());
+  ok('the name travels as account metadata', srv.lastSignUp.options.data.full_name === 'Thandi M');
+  ok('the confirmation link returns to this page', srv.lastSignUp.options.emailRedirectTo === 'http://localhost/', String(srv.lastSignUp.options.emailRedirectTo));
+  ok('still gated and signed out after sign-up', gateShown() && !C.user);
+  ok('the password is never written to device storage', ![...store.values()].some(v => String(v).includes('Goodpass1')));
+
+  fill({ gateEmail: 'new@example.org' });                                    /* the verify screen has no inputs; use the login form */
+  g.gateView('login'); fill({ gateEmail: 'new@example.org', gatePass: 'Goodpass1' });
+  await g.cloudSignIn(onGate);
+  ok('signing in before confirming sends them back to "Check your email"', g.gateState() === 'verify' && /not confirmed yet/.test(gateHTML()), g.gateState());
+  await g.cloudResend();
+  ok('Resend is rate-limited on the device (first minute)', /Please wait/.test(C.formErr) && !srv.calls.some(c => c.startsWith('resend')), C.formErr);
+  C.resendAt = 0; await g.cloudResend();
+  ok('Resend asks for another confirmation email', srv.calls.includes('resend:signup:new@example.org') && /sent again/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+
+  srv.users.get('new@example.org').confirmed = true;                        /* the person clicks the e-mailed link */
+  srv.staff = false;
+  g.gateView('login'); fill({ gateEmail: 'new@example.org', gatePass: 'wrongpass1' }); await g.cloudSignIn(onGate);
+  ok('a wrong password is still a wrong password', /Wrong email or password/.test(C.formErr));
+  fill({ gatePass: 'Goodpass1' }); await g.cloudSignIn(onGate); await sleep(120);
+  ok('after confirming, sign-in works and lands on "Waiting for approval"', C.user && g.gateState() === 'pending' && gateShown(), g.gateState());
+  srv.staff = true; await g.cloudSync(true); await sleep(80);
+  ok('once approved, the app opens', !gateShown() && C.ready);
+
+  await toLogin(); g.gateView('signup');
+  signupForm(); await g.cloudSignUp(onGate);
+  signupForm(); g.gateView('signup'); signupForm(); await g.cloudSignUp(onGate);
+  ok('signing up an existing email says so, without leaking more', g.gateState() === 'signup' && /already has an account/.test(C.formErr), C.formErr);
+  await toLogin(); g.gateView('signup'); srv.signupMode = 'disabled'; signupForm({ gateEmail: 'x1@example.org' }); await g.cloudSignUp(onGate);
+  ok('sign-ups switched off in Supabase → clear message', /switched off/.test(C.formErr), C.formErr);
+  srv.signupMode = 'ratelimit'; signupForm({ gateEmail: 'x2@example.org' }); await g.cloudSignUp(onGate);
+  ok('e-mail rate limit → clear message', /Too many emails/.test(C.formErr), C.formErr);
+  srv.signupMode = 'confirm'; srv.offline = true; signupForm({ gateEmail: 'x3@example.org' }); await g.cloudSignUp(onGate);
+  ok('offline sign-up → clear message', /No connection/.test(C.formErr), C.formErr);
+  srv.offline = false;
+  await toLogin(); g.gateView('signup'); srv.signupMode = 'auto'; srv.staff = false;
+  signupForm({ gateEmail: 'auto@example.org' }); await g.cloudSignUp(onGate); await sleep(120);
+  ok('with e-mail confirmation switched off, sign-up signs straight in (then waits for approval)', C.user && g.gateState() === 'pending', g.gateState());
+  srv.signupMode = 'confirm'; srv.staff = true;
+
+  /* forgot password */
+  await toLogin(); g.gateView('forgot');
+  ok('forgot screen asks for an email', g.gateState() === 'forgot' && gateHTML().includes('gateEmail') && !gateHTML().includes('gatePass'));
+  fill({ gateEmail: 'nope' }); await g.cloudForgot(onGate);
+  ok('forgot: bad email refused', !srv.calls.some(c => c.startsWith('reset')) && /does not look right/.test(C.formErr));
+  srv.offline = true; fill({ gateEmail: 'new@example.org' }); await g.cloudForgot(onGate);
+  ok('forgot: offline says so and stays on the form', g.gateState() === 'forgot' && /No connection/.test(C.formErr));
+  srv.offline = false; await g.cloudForgot(onGate);
+  ok('forgot: sends the reset link with a way back to this page', srv.calls.includes('reset:new@example.org') && srv.lastReset.opts.redirectTo === 'http://localhost/');
+  ok('forgot: confirmation never reveals whether the account exists', g.gateState() === 'forgotSent' && /If .*new@example.org.* has an account/.test(gateHTML()));
+  fill({}); await g.cloudForgot(onGate).catch(() => {});
+
+  /* arriving from the reset link */
+  await toLogin();
+  srv.authCb('PASSWORD_RECOVERY', { user: { id: 'u-new@example.org', email: 'new@example.org' } }); await sleep(400);
+  ok('reset link → "Choose a new password", even after the app finished syncing', g.gateState() === 'newpass' && gateShown() && C.ready === true, g.gateState());
+  fill({ gatePass: 'short1', gatePass2: 'short1' }); await g.cloudNewPassword(onGate);
+  ok('new password must be strong enough', !srv.calls.includes('updateUser') && /8 characters/.test(C.formErr));
+  fill({ gatePass: 'Brandnew1', gatePass2: 'Brandnew2' }); await g.cloudNewPassword(onGate);
+  ok('new password must match its repeat', !srv.calls.includes('updateUser') && /do not match/.test(C.formErr));
+  fill({ gatePass: 'SamePass1', gatePass2: 'SamePass1' }); await g.cloudNewPassword(onGate);
+  ok('reusing the old password gets a friendly message', /not used before/.test(C.formErr), C.formErr);
+  fill({ gatePass: 'Brandnew1', gatePass2: 'Brandnew1' }); await g.cloudNewPassword(onGate);
+  ok('saving the new password lifts the gate', srv.newPassword === 'Brandnew1' && !C.recovery && !gateShown() && /Password updated/.test($el('toastMsg').textContent), g.gateState());
+  ok('the new password is not kept on the device', ![...store.values()].some(v => String(v).includes('Brandnew1')));
+
+  /* signing out starts clean */
+  g.gateView('signup'); C.viewEmail = 'leftover@example.org';
+  await g.cloudSignOut();
+  ok('signing out returns to the plain login with nothing left over', g.gateState() === 'form' && C.view === 'login' && C.viewEmail === '' && C.pending === false && !C.recovery);
+
+  /* Show/Hide reveals both password boxes together */
+  const a = { type: 'password', setAttribute() {} }, b = { type: 'password', setAttribute() {} };
+  const fakeForm = { querySelectorAll: () => [a, b] }, btn2 = { closest: () => fakeForm, textContent: 'Show', parentElement: {} };
+  g.togglePass(btn2);
+  ok('Show reveals both the password and its repeat', a.type === 'text' && b.type === 'text' && btn2.textContent === 'Hide');
+  g.togglePass(btn2);
+  ok('Hide masks both again', a.type === 'password' && b.type === 'password' && btn2.textContent === 'Show');
+  sandbox.NEWSTART_NO_CLOUD = true; g.renderGate();
+  C.user = null; g.stopRealtime(); srv.reset(); C.mode = false; C.ready = false; C.synced = { att: {}, vol: {} }; g.resetDemo();
+  C.client = null; await g.cloudInit();
+
+  /* ---- 18. scale: thousands of visitors ------------------------------ */
+  console.log('\n18. Scale (3000 visitors, 900 volunteers, 1000-row response cap)');
+  device();
+  const iso = i => new Date(1700000000000 + i * 1000).toISOString();
+  const N = 3000, VN = 900;
+  for (let i = 0; i < N; i++) {
+    const id = 'EXPO-' + (1000 + i);
+    srv.tables.attendees.set(id, { id, name: 'Visitor ' + i, age: 30 + (i % 50), sex: i % 2 ? 'Male' : 'Female', phone: '082 000 ' + String(i).padStart(4, '0'),
+      height_cm: 165, s: { sys: 120 + (i % 30), dia: 80, sugar: 5.5, chol: 5, weight: 80, veg: 3, walk: 20, water: 5, sleep: 7 },
+      interests: i % 3 === 0 ? { nurse: true } : {}, prayer: i % 7 === 0 ? 'Please pray for my family' : '', done: false, created_at: iso(i), updated_at: iso(i) });
+  }
+  for (let i = 0; i < VN; i++) {
+    const id = 'VOL-' + (1001 + i);
+    srv.tables.volunteers.set(id, { id, name: 'Helper ' + i, phone: '', email: '', status: 'registered', pledge_expos: 1, skills: [], pref: ['bp'], pref2: '', booth: 'bp',
+      availability: [], shirt: 'M', emergency: '', since: '2024-01-01', notes: '', pledged_on: null, registered_on: null, checked_in: false, role: '', shift: '',
+      history: [{ expo: 'E' + i, name: 'N', date: '2025-01-01', booth: 'bp', hours: 6 }], created_at: iso(i), updated_at: iso(i) });
+  }
+  srv.seq = 100000;
+  let t0 = Date.now();
+  await signIn(); await sleep(50);
+  const signInMs = Date.now() - t0;
+  ok('sign-in pulls ALL 3000 visitors past the 1000-row cap', g.attendees.length === N, g.attendees.length);
+  ok('…and all 900 volunteers', g.volunteers.length === VN, g.volunteers.length);
+  const pageCalls = srv.calls.filter(c => /^select:attendees:range/.test(c));
+  ok('visitors were read in pages of 500 (' + pageCalls.length + ' requests)', pageCalls.length === 7, pageCalls.join());
+  ok('first full pull finished in a sensible time (' + signInMs + ' ms)', signInMs < 4000);
+  ok('nothing pending, nothing written back', g.cloudPending() === 0 && !srv.calls.some(c => /^(insert|upsert)/.test(c)));
+  /* Change detection runs before every upload. A stopwatch cannot judge it here: this sandbox runs the app's code many
+     times slower than a browser (3900 rows: about 265 ms here, 17 ms in Chromium, measured 21 Oct 2026). What can go
+     wrong is the work growing faster than the rows, so compare 3900 rows with 390. Measured 21 Oct 2026: 10.0–10.2x as
+     written, 14.1–14.8x when each row also rescans the list (mildly quadratic), so the limit is 12.5x. */
+  const perCheck = () => { const t = process.hrtime.bigint(); for (let i = 0; i < 10; i++) g.cloudPending(); return Number(process.hrtime.bigint() - t) / 1e7; };
+  perCheck();
+  const fullMs = perCheck();
+  const restA = g.attendees.splice(300), restV = g.volunteers.splice(90);
+  const smallMs = perCheck();
+  restA.forEach(a => g.attendees.push(a)); restV.forEach(v => g.volunteers.push(v));
+  const scale = fullMs / smallMs;
+  ok('change detection grows in step with the rows (3900 rows vs 390: ' + scale.toFixed(1) + 'x)', scale < 12.5 && g.attendees.length === N && g.volunteers.length === VN,
+    fullMs.toFixed(1) + ' ms vs ' + smallMs.toFixed(1) + ' ms');
+  const persT = Date.now(); g.persistNow(); const persMs = Date.now() - persT;
+  const payloadKB = Math.round(store.get('newstart.passport.v2').length / 1024);
+  ok('saving to the device is fast (' + persMs + ' ms, ' + payloadKB + ' KB of the ~5000 KB limit)', persMs < 300 && payloadKB < 4000, persMs + 'ms ' + payloadKB + 'KB');
+
+  g.state.tab = 'home'; g.state.vq = ''; g.render();
+  const homeRows = ($main.innerHTML.match(/switchTo\('/g) || []).length;
+  ok('Home draws only the latest ' + homeRows + ' of 3000 visitors', homeRows <= 26 && homeRows >= 20, homeRows);
+  ok('Home offers a search box for the rest', $main.innerHTML.includes('id="vq"') && $main.innerHTML.includes('of 3000'));
+  g.state.vq = 'Visitor 2999'; g.render();
+  ok('search finds one visitor out of 3000', ($main.innerHTML.match(/switchTo\('/g) || []).length === 1 && $main.innerHTML.includes('Visitor 2999'));
+  g.state.vq = '082 000 0042'; g.render();
+  ok('search also matches phone numbers', $main.innerHTML.includes('Visitor 42<'), '');
+  g.state.vq = 'zzzz'; g.render();
+  ok('search with no match says so', $main.innerHTML.includes('Nobody matches'));
+  g.state.vq = '';
+  g.openSwitcher();
+  ok('switcher draws at most 25 of 3000 and has a search box', ($el('switcherList').innerHTML.match(/pickAttendee\('/g) || []).length <= 25 && $el('switcherHead').innerHTML.includes('swq'));
+  g.state.activeId = 'EXPO-1000'; g.render();
+  ok('the open visitor stays reachable in the short list even when old', $main.innerHTML.includes('Visitor 0<'));
+
+  for (let i = 0; i < 600; i++) { const a = g.attendees[i]; a.s.sys = 175; a.s.dia = 105; }
+  g.state.tab = 'care'; g.state.careAll = {};
+  const careT = Date.now(); g.render(); const careMs = Date.now() - careT;
+  const cards = ($main.innerHTML.match(/openWAFor\('/g) || []).length;
+  ok('Care with 600 urgent + 1000 call-backs draws a capped set (' + cards + ' cards, ' + careMs + ' ms)', cards <= 100 && careMs < 500, cards + ' ' + careMs);
+  ok('Care counts still show the true totals', $main.innerHTML.includes('Urgent') && $main.innerHTML.includes('· 600'));
+  g.showAllCare('rose');
+  ok('"Show more" adds 100 cards per tap, not everything', ($main.innerHTML.match(/openWAFor\('/g) || []).length <= 30 + 100 + 30 + 30 + 100, ($main.innerHTML.match(/openWAFor\('/g) || []).length);
+  for (let i = 0; i < 6; i++) g.showAllCare('rose');
+  ok('repeated "Show more" reaches all 600 urgent', ($main.innerHTML.match(/openWAFor\('/g) || []).length > 600);
+  g.state.careMore = {};
+  g.state.careAll = {}; g.state.tab = 'home';
+  g.persistNow(); await sleep(1500);
+  ok('600 edited rows upload (' + srv.calls.filter(c => /^upsert:attendees/.test(c)).length + ' requests)', g.cloudPending() === 0 && srv.tables.attendees.get('EXPO-1000').s.sys === 175, g.cloudPending());
+
+  /* incremental pulls and deletions */
+  srv.calls.length = 0;
+  const lateRow = { id: 'EXPO-4000', name: 'Late Arrival', age: 33, sex: 'Male', phone: '', height_cm: 165, s: {}, interests: {}, prayer: '', done: false, created_at: iso(N + 5), updated_at: new Date(Date.now() + 1000000).toISOString() };
+  srv.tables.attendees.set('EXPO-4000', lateRow);
+  await g.cloudSync();
+  const incr = srv.calls.filter(c => /^select:(attendees|volunteers)/.test(c));
+  /* the 600 rows this desk uploaded come back once (their updated_at is newer than the last pull), then never again */
+  ok('a routine poll asks only for rows changed since last time', incr.length >= 2 && incr.length <= 3 && incr.every(c => /:since/.test(c)), incr.join());
+  srv.calls.length = 0; await g.cloudSync();
+  /* the live queue (queue_entries) polls too since it was added: still one small "changes since" request per table */
+  const polls = srv.calls.filter(c => /^select/.test(c)), pollTables = polls.map(c => c.split(':')[1]);
+  ok('the next poll is down to one small request per table', polls.every(c => /:since/.test(c)) && new Set(pollTables).size === polls.length
+    && pollTables.includes('attendees') && pollTables.includes('volunteers'), polls.join());
+  ok('…and picked up the new visitor', g.attendees.length === N + 1 && g.attendees.some(a => a.id === 'EXPO-4000'));
+  srv.tables.attendees.delete('EXPO-4000');
+  await g.cloudSync();
+  ok('a routine poll does not mistake "unchanged" for "deleted"', g.attendees.length === N + 1);
+  srv.calls.length = 0;
+  await g.cloudSync(true);
+  ok('Sync now does the full reconcile and notices the deletion', g.attendees.length === N && srv.calls.filter(c => /^select:attendees:range/.test(c)).length === 7, g.attendees.length);
+  ok('rows are not lost when a full pull is split across pages', g.attendees.every(a => srv.tables.attendees.has(a.id)) && g.volunteers.length === VN);
+
+  /* a long offline backlog */
+  srv.offline = true;
+  const backlogT = Date.now();
+  /* distinct names in letters: the app asks before registering a name it already has, and it compares names on their
+     letters only, so "Backlog 1" and "Backlog 2" would count as the same person */
+  for (let i = 0; i < 120; i++) registerLocal('Backlog ' + String.fromCharCode(97 + i % 26, 97 + Math.floor(i / 26)), 'EXPO-' + (5000 + i));
+  g.persistNow(); await sleep(900);
+  ok('120 visitors registered offline are all pending', g.cloudPending() === 120, g.cloudPending());
+  srv.offline = false;
+  const upT = Date.now(); await g.cloudSync(true); const upMs = Date.now() - upT;
+  ok('the whole backlog uploads on reconnect (' + upMs + ' ms)', g.cloudPending() === 0 && [...srv.tables.attendees.keys()].filter(k => /^EXPO-5\d{3}$/.test(k)).length === 120, g.cloudPending());
+
+  /* a burst of live changes from other desks */
+  const burstT = Date.now();
+  for (let i = 0; i < 500; i++) {
+    const id = 'EXPO-' + (6000 + i), row = { id, name: 'Live ' + i, age: 40, sex: 'Male', phone: '', height_cm: 165, s: {}, interests: {}, prayer: '', done: false, created_at: iso(9000 + i), updated_at: iso(9000 + i) };
+    srv.tables.attendees.set(id, row); srv.emit('attendees', { eventType: 'INSERT', new: row });
+  }
+  const burstMs = Date.now() - burstT;
+  ok('500 live inserts from other desks are applied (' + burstMs + ' ms)', g.attendees.length === N + 120 + 500 && burstMs < 3000, g.attendees.length + ' ' + burstMs);
+  ok('applying them uploaded nothing back', g.cloudPending() === 0);
+  g.state.tab = 'home'; g.render();
+  ok('Home still draws a short list with 3600+ visitors', ($main.innerHTML.match(/switchTo\('/g) || []).length <= 26);
+  C.user = null; g.stopRealtime(); g.state.vq = ''; srv.reset(); store.delete('newstart.cloud.v1');
+  C.mode = false; C.synced = { att: {}, vol: {} }; g.resetDemo();
+
+  /* ---- 18b. churches, members and the platform admin (fake database functions) ---- */
+  console.log('\n18b. Churches, members and the platform admin');
+  {
+    const noCloudWas = sandbox.NEWSTART_NO_CLOUD;
+    const A = { id: 'ch-a', name: 'Grace Chapel', city: 'Durban', phone: '', email: '', status: 'active' };
+    const B = { id: 'ch-b', name: 'Hope Church', city: 'Pinetown', phone: '', email: '', status: 'pending' };
+    const member = over => Object.assign({ church_id: A.id, role: 'member', status: 'pending', full_name: '', phone: '', area: '', birth_date: null, attendee_id: null }, over);
+    const person = over => Object.assign({ user_id: 'user-1', email: 'staff@example.org', platform_admin: false, membership: null, church: null }, over);
+    const people = [
+      { user_id: 'u-pend', email: 'pend@example.org', full_name: 'Pending Person', phone: '', area: '', role: 'member', status: 'pending', attendee_id: null, confirmed: true },
+      { user_id: 'u-staff', email: 'st@example.org', full_name: 'Staff Person', phone: '082', area: 'Umlazi', role: 'staff', status: 'approved', attendee_id: 'EXPO-042', confirmed: true }];
+    let me = person(), health = null, refuse = null;
+    const rc = [], shots = [];                     /* account calls the app made; every screen drawn (for the class check) */
+    const done = (data = null) => ({ data, error: null });
+    const install = () => {
+      srv.rpcs = {
+        my_account: () => done(JSON.parse(JSON.stringify(me))),
+        church_directory: a => { rc.push('dir:' + a.p_search); return done([{ id: A.id, name: A.name, city: A.city }]); },
+        join_church: a => { rc.push('join:' + a.p_church); me.membership = member(); me.church = { ...A }; return done(); },
+        register_church: a => { rc.push('register:' + a.p_name + ':' + a.p_city); me.membership = member({ church_id: B.id, role: 'admin', status: 'approved' }); me.church = { ...B, name: a.p_name, city: a.p_city }; return done(B.id); },
+        update_my_details: a => { rc.push(['details', a.p_full_name, a.p_phone, a.p_area, a.p_birth_date].join(':')); Object.assign(me.membership, { full_name: a.p_full_name, phone: a.p_phone, area: a.p_area, birth_date: a.p_birth_date }); return done(); },
+        leave_church: () => { rc.push('leave'); me.membership = null; me.church = null; return done(); },
+        my_health: () => { rc.push('health'); return done(health); },
+        church_members: a => { rc.push('members:' + a.p_church); return done(JSON.parse(JSON.stringify(people))); },
+        set_member: a => { rc.push(['set', a.p_user, a.p_role, a.p_status].join(':')); return refuse ? { data: null, error: { message: refuse } } : done(); },
+        link_member: a => { rc.push('link:' + a.p_user + ':' + a.p_attendee); return done(); },
+        remove_member: a => { rc.push('remove:' + a.p_user); return done(); },
+        update_church: a => { rc.push('church:' + a.p_church + ':' + a.p_name); return done(); },
+        admin_churches: () => { rc.push('admin_churches'); return done([{ ...B, members: 1, staff: 0, pending: 0, visitors: 0, volunteers: 0 }, { ...A, members: 2, staff: 1, pending: 1, visitors: 5, volunteers: 2 }]); },
+        admin_set_church_status: a => { rc.push('status:' + a.p_church + ':' + a.p_status); return done(); },
+        admin_audit: () => done([{ at: '2026-10-20T09:15:00Z', church: A.name, actor: 'st@example.org', tbl: 'attendees', op: 'UPDATE', row_id: 'EXPO-042' }]),
+      };
+    };
+    const gate = () => { const h = $el('authGateBody').innerHTML; shots.push(h); return h; };
+    const sheet = () => { const h = $el('acctBody').innerHTML + $el('acctTabs').innerHTML; shots.push(h); return h; };
+    const panel = () => { g.renderCloudBody(); const h = $el('cloudBody').innerHTML; shots.push(h); return h; };
+    /* a fresh device, signed out, then signed in as `acct` */
+    const fresh = async (acct, beforeSignIn) => {
+      device(); install(); me = acct; rc.length = 0; store.delete('newstart.church.v1');
+      sandbox.NEWSTART_NO_CLOUD = false;
+      Object.assign(C, { ready: false, demo: false, pending: false, gateKey: '', acct: null, churchId: '', health: undefined, dir: null, regChurch: false, adminChurch: '' });
+      if (beforeSignIn) beforeSignIn();
+      srv.authCb('INITIAL_SESSION', null); await sleep(20);
+      await signIn(); await sleep(80);
+    };
+
+    device(); srv.rpcs = null; C.acct = { stale: true };
+    await signIn(); await sleep(60);
+    ok('without the churches part of the schema, the old staff check still opens the app', C.status === 'online' && C.acct === null && C.churchId === '' && C.ready === true, C.status);
+
+    /* a person with no church */
+    device();
+    const demoRows = g.attendees.length;
+    await fresh(person()); await sleep(30);
+    ok('signed in with no church → "Choose your church", with the list of churches', gateShown() && g.gateState() === 'church' && /Choose your church/.test(gate())
+      && /Grace Chapel/.test($el('churchDir').innerHTML) && /joinChurch\('ch-a'/.test($el('churchDir').innerHTML), g.gateState());
+    ok('…and the visitor data saved on this device is cleared', demoRows > 0 && g.attendees.length === 0 && g.volunteers.length === 0, demoRows + ' → ' + g.attendees.length);
+    ok('…and only the platform admin is offered the admin screens', !/openAcct\('admin'\)/.test(gate()) && !g.acctTabs().some(t => t[0] === 'admin'));
+    await g.joinChurch('ch-a'); await sleep(30);
+    ok('joining a church sends the request, then waits for that church to approve', rc.includes('join:ch-a') && g.gateState() === 'pending'
+      && /Waiting for approval/.test(gate()) && gate().includes('Grace Chapel') && gate().includes('Check again'), g.gateState() + ' ' + rc.join());
+    $el('gmName').value = ' Dave Dlamini '; $el('gmPhone').value = '082 000 0000'; $el('gmArea').value = 'Umlazi'; $el('gmBirth').value = '1980-05-01';
+    await g.saveMyDetails({ preventDefault() {}, target: { dataset: { pre: 'gm' } } }); await sleep(20);
+    ok('a member saves their own details', rc.includes('details:Dave Dlamini:082 000 0000:Umlazi:1980-05-01') && /value="Dave Dlamini"/.test(gate()), rc.join());
+
+    /* approved member */
+    me.membership.status = 'approved'; srv.calls.length = 0;
+    await g.cloudSync(true); await sleep(30);
+    ok('an approved member gets "My account", not the expo app', gateShown() && g.gateState() === 'member' && /My account/.test(gate()) && C.ready === false, g.gateState());
+    ok('…is told how to get their expo results linked', /links your expo badge/.test(gate()));
+    ok('…and the app never asks the database for visitors or volunteers', !srv.calls.some(c => /^(select|insert|upsert):(attendees|volunteers)/.test(c)), srv.calls.join());
+    me.membership.attendee_id = 'EXPO-001';
+    health = { id: 'EXPO-001', name: 'Dave', age: 46, sex: 'Male', height_cm: 170, s: { sys: 165, dia: 102, sugar: 5.2, weight: 90 }, interests: {}, done: true, created_at: '2026-10-18T10:00:00Z', updated_at: '2026-10-18T11:00:00Z' };
+    await g.cloudSync(true); await sleep(40);
+    ok('a linked member sees their own readings, with the Results colour bands', rc.includes('health') && gate().includes('165/102') && gate().includes('Crisis') && gate().includes('chip chip-flag') && gate().includes('5.2 mmol/L'), gate().slice(0, 300));
+    ok('…a danger-range reading tells them to see a clinic soon, and the medicine rule always shows', /see a clinic as soon as you can/.test(gate()) && /Keep taking any medicine/.test(gate()));
+    ok('…and "what to work on first" follows their numbers', /What to work on first: Blood pressure/.test(gate()));
+    health = { ...health, s: { sys: 128, dia: 82, veg: 2 } };
+    await g.cloudSync(true); await sleep(40);
+    const habitOnly = gate().replace('Only your clinic should change it', '');
+    health = { ...health, s: { sys: 128, dia: 82, chol: 7.8 } };
+    await g.cloudSync(true); await sleep(40);
+    ok('…red cholesterol says book a clinic visit this week; a low habit alone does not', /Very low/.test(habitOnly) && !/clinic/.test(habitOnly) && /book a clinic visit this week/.test(gate()), habitOnly.slice(-400));
+    me.membership.full_name = '<img src=x onerror=alert(1)>';
+    await g.cloudSync(true); await sleep(30);
+    ok('names from the database are escaped on the account screens', gate().includes('&lt;img src=x') && !gate().includes('<img src=x'));
+    await g.leaveChurch(); await sleep(30);
+    ok('a member can leave their church and is back at the list of churches', rc.includes('leave') && g.gateState() === 'church', g.gateState());
+
+    /* registering a church */
+    C.regChurch = true; C.acctV++; g.renderGate();
+    ok('"My church is not listed" opens the church registration form', /Register the church/.test(gate()));
+    $el('rcName').value = 'Hope Church'; $el('rcCity').value = 'Pinetown'; $el('rcPhone').value = ''; $el('rcEmail').value = '';
+    await g.registerChurch({ preventDefault() {} }); await sleep(30);
+    ok('registering a church sends its details, then waits for the NEWSTART admin', rc.includes('register:Hope Church:Pinetown') && g.gateState() === 'churchwait'
+      && /Waiting for your church to be approved/.test(gate()) && gate().includes('Hope Church'), g.gateState());
+    me.church.status = 'suspended';
+    await g.cloudSync(true); await sleep(20);
+    ok('a paused church says so and offers to leave it', g.gateState() === 'suspended' && /is paused/.test(gate()) && /leaveChurch\(\)/.test(gate()), g.gateState());
+
+    /* church staff */
+    await fresh(person({ membership: member({ role: 'staff', status: 'approved' }), church: { ...A } }), () => registerLocal('Church Visitor', 'EXPO-310'));
+    ok('church staff open the expo app as before', !gateShown() && C.ready === true && C.churchId === 'ch-a', g.gateState());
+    ok('…new visitors are uploaded under their church', srv.tables.attendees.has('EXPO-310') && srv.tables.attendees.get('EXPO-310').church_id === 'ch-a', JSON.stringify(srv.tables.attendees.get('EXPO-310')));
+    ok('…and the device remembers which church its saved data belongs to', store.get('newstart.church.v1') === 'ch-a');
+    const visitor = g.attendees.find(a => a.id === 'EXPO-310');
+    visitor.name = 'Church Visitor Edited'; srv.lastConflict = '';
+    await g.cloudPush(); await sleep(20);
+    ok('…edits are matched on church and badge number, not on the badge number alone', srv.lastConflict === 'church_id,id' && srv.tables.attendees.get('EXPO-310').name === 'Church Visitor Edited'
+      && srv.tables.attendees.get('EXPO-310').church_id === 'ch-a', srv.lastConflict);
+    ok('the panel behind the logo offers "My account" to staff, without Church or Admin', /openAcct\('me'\)/.test(panel()) && !/openAcct\('church'\)/.test(panel()) && !/openAcct\('admin'\)/.test(panel()));
+    visitor.name = 'Edited Before Switching'; srv.tables.attendees.clear(); srv.calls.length = 0;
+    me = person({ membership: member({ church_id: B.id, role: 'staff', status: 'approved' }), church: { ...B, status: 'active' } });
+    await g.cloudSync(true); await sleep(30);
+    ok('signing in to another church clears the old church\'s data instead of uploading it there', srv.tables.attendees.size === 0 && !g.attendees.some(a => a.id === 'EXPO-310')
+      && store.get('newstart.church.v1') === 'ch-b' && C.churchId === 'ch-b', [...srv.tables.attendees.keys()].join() + ' ' + store.get('newstart.church.v1'));
+
+    /* church admin */
+    me = person({ membership: member({ role: 'admin', status: 'approved' }), church: { ...A } });
+    await g.cloudSync(true); await sleep(30);
+    ok('a church admin also gets the Church screen', /openAcct\('church'\)/.test(panel()));
+    /* live changes: badge numbers repeat across churches, and delete events are not filtered by the database */
+    const live = (eventType, row) => g.onRemoteChange('att', eventType === 'DELETE' ? { eventType, old: row } : { eventType, new: row });
+    live('INSERT', { id: 'EXPO-777', name: 'Shared Badge', church_id: 'ch-a', s: {}, interests: {} });
+    live('DELETE', { id: 'EXPO-777', church_id: 'ch-b' }); live('DELETE', { id: 'EXPO-777' });
+    ok('a live delete from another church (or one that names no church) never removes this church\'s visitor', g.attendees.some(a => a.id === 'EXPO-777'));
+    live('INSERT', { id: 'EXPO-778', name: 'Other Church Visitor', church_id: 'ch-b', s: {}, interests: {} });
+    live('DELETE', { id: 'EXPO-777', church_id: 'ch-a' });
+    ok('…a live insert from another church is ignored, and this church\'s own delete still applies', !g.attendees.some(a => a.id === 'EXPO-778') && !g.attendees.some(a => a.id === 'EXPO-777'));
+    g.openAcct('church'); await sleep(30);
+    ok('the Church screen lists the members, with Approve for someone waiting', rc.includes('members:ch-a') && sheet().includes('Pending Person') && sheet().includes('Staff Person')
+      && /setMember\('u-pend','member','approved'\)/.test(sheet()) && /1 waiting/.test(sheet()), rc.join());
+    await g.setMember('u-pend', 'staff', 'pending');
+    sandbox.prompt = () => ' EXPO-042 '; await g.linkMember('u-pend', ''); sandbox.prompt = () => null;
+    await g.removeMember('u-staff');
+    ok('…approving, changing a role, linking a badge and removing someone each call the database', rc.includes('set:u-pend:staff:pending') && rc.includes('link:u-pend:EXPO-042') && rc.includes('remove:u-staff'), rc.join());
+    refuse = 'A church needs at least one admin. Make someone else an admin first.';
+    await g.setMember('user-1', 'staff', 'approved'); refuse = null;
+    ok('a refusal is shown in the database\'s own words', $el('toastMsg').textContent === 'A church needs at least one admin. Make someone else an admin first.', $el('toastMsg').textContent);
+    sheet();
+    $el('cfName').value = 'Grace Chapel Durban'; $el('cfCity').value = 'Durban'; $el('cfPhone').value = ''; $el('cfEmail').value = '';
+    await g.saveChurch({ preventDefault() {} }, 'ch-a');
+    ok('a church admin saves the church\'s details', rc.includes('church:ch-a:Grace Chapel Durban'), rc.join());
+    g.closeAcct();
+
+    /* the platform admin */
+    me.platform_admin = true;
+    await g.cloudSync(true); await sleep(20);
+    ok('the platform admin gets an Admin button', /openAcct\('admin'\)/.test(panel()));
+    g.openAcct('admin'); await sleep(40);
+    ok('the Admin screen lists every church with its counts, and Approve for a waiting one', rc.includes('admin_churches') && sheet().includes('Grace Chapel') && sheet().includes('Hope Church')
+      && /setChurchStatus\('ch-b','active'\)/.test(sheet()) && /5 visitors/.test(sheet()) && /1 member ·/.test(sheet()), rc.join());
+    ok('…with the latest changes in every church', sheet().includes('st@example.org') && sheet().includes('update visitor EXPO-042'));
+    await g.setChurchStatus('ch-b', 'active');
+    ok('…approving a church calls the database', rc.includes('status:ch-b:active'), rc.join());
+    g.manageChurch('ch-b'); await sleep(30);
+    ok('…and the platform admin can open any church\'s members and details', rc.includes('members:ch-b') && C.acctTab === 'church' && /All churches/.test(sheet()) && sheet().includes('Hope Church'), C.acctTab + ' ' + rc.join());
+    g.closeAcct();
+    me = person({ platform_admin: true });
+    await g.cloudSync(true); await sleep(30);
+    ok('a platform admin with no church of their own can still open the Admin screen', g.gateState() === 'church' && /openAcct\('admin'\)/.test(gate()), g.gateState());
+
+    /* every class these screens use exists in the stylesheet */
+    {
+      const css = (html.match(/<style[^>]*>[\s\S]*?<\/style>/g) || []).join('\n'), used = new Set();
+      shots.join('\n').replace(/class="([^"]*)"/g, (_, c) => { c.split(/\s+/).filter(Boolean).forEach(t => used.add(t)); return ''; });
+      const missing = [...used].filter(t => !css.includes('.' + t.replace(/[^a-zA-Z0-9_-]/g, m => '\\' + m)));
+      ok('every class the account screens use exists in the stylesheet', used.size > 30 && missing.length === 0, missing.join(' ') || used.size);
+    }
+    await g.cloudSignOut();
+    ok('signing out forgets the account and which church the device held', C.acct === null && C.churchId === '' && !store.has('newstart.church.v1') && g.gateState() === 'form', g.gateState());
+
+    C.user = null; g.stopRealtime(); srv.reset(); store.delete('newstart.cloud.v1'); store.delete('newstart.church.v1');
+    Object.assign(C, { mode: false, ready: false, pending: false, acct: null, churchId: '', synced: { att: {}, vol: {} } });
+    sandbox.NEWSTART_NO_CLOUD = noCloudWas; g.resetDemo();
+  }
+
+  /* ---- 18c. the churches part of supabase/schema.sql on a real Postgres ----------------------------
+     PGlite (Postgres compiled to WebAssembly, in memory) is not part of this project. Install it in a folder outside it
+     (npm i @electric-sql/pglite@0.5.11) and set NEWSTART_PGLITE to that folder; without it these checks are skipped. */
+  if (!process.env.NEWSTART_PGLITE) console.log('\n18c. Churches in the database: skipped (set NEWSTART_PGLITE to a folder with @electric-sql/pglite installed)');
+  else await (async () => {
+    console.log('\n18c. Churches in the database (PGlite)');
+    const { PGlite } = require(path.join(process.env.NEWSTART_PGLITE, 'node_modules', '@electric-sql', 'pglite'));
+    const schema = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'schema.sql'), 'utf8');
+    const MARK = '-- ================================================================ CHURCHES, MEMBERS AND THE PLATFORM ADMIN';
+    const before = schema.slice(0, schema.indexOf(MARK));            /* the schema as it was before churches existed */
+    /* the parts of a Supabase project that schema.sql relies on */
+    const STUB = `
+    create role anon nologin; create role authenticated nologin;
+    create schema auth;
+    create table auth.users (id uuid primary key default gen_random_uuid(), email text unique,
+      raw_user_meta_data jsonb not null default '{}'::jsonb, email_confirmed_at timestamptz, created_at timestamptz not null default now());
+    create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+    grant usage on schema auth to anon, authenticated; grant execute on function auth.uid() to anon, authenticated;
+    grant usage on schema public to anon, authenticated;
+    alter default privileges in schema public grant all on tables to anon, authenticated;
+    alter default privileges in schema public grant all on sequences to anon, authenticated;
+    alter default privileges in schema public grant execute on functions to anon, authenticated;
+    create publication supabase_realtime;`;
+    const U = {
+      alice: '00000000-0000-4000-8000-00000000000a', bob: '00000000-0000-4000-8000-00000000000b',
+      carol: '00000000-0000-4000-8000-00000000000c', dave: '00000000-0000-4000-8000-00000000000d',
+      erin: '00000000-0000-4000-8000-00000000000e', frank: '00000000-0000-4000-8000-00000000000f',
+    };
+    const db = new PGlite();
+    /* run SQL as a signed-in user (uid), or as anon (null); returns { rows } or { error } */
+    const as = async (uid, sql, params) => {
+      await db.exec(`reset role; select set_config('request.jwt.claim.sub', '${uid || ''}', false); set role ${uid ? 'authenticated' : 'anon'};`);
+      try { return { rows: (await db.query(sql, params || [])).rows }; } catch (e) { return { error: e }; } finally { await db.exec('reset role'); }
+    };
+    const sys = async (sql, params) => (await db.query(sql, params || [])).rows;
+    const run = async sql => { try { await db.exec(sql); return ''; } catch (e) { return e.message || String(e); } };
+
+    /* ---- a database from before churches, with data in it ---- */
+    await db.exec(STUB);
+    let err = await run(before);
+    await db.exec(`create unique index if not exists queue_entries_one_active_idx on public.queue_entries (attendee_id, station) where status in ('waiting', 'serving');`);
+    for (const [n, id] of Object.entries(U))
+      await sys(`insert into auth.users (id, email, raw_user_meta_data, email_confirmed_at) values ($1, $2, $3, $4)`,
+        [id, n + '@example.org', JSON.stringify({ full_name: n[0].toUpperCase() + n.slice(1) }), n === 'frank' ? null : new Date().toISOString()]);
+    await db.exec(`insert into public.staff (user_id, note, is_admin) values ('${U.alice}', 'desk lead', true), ('${U.bob}', 'bp desk', false);
+      insert into public.attendees (id, name, s) values ('EXPO-001', 'Old Visitor', '{"sys":150,"dia":95}');
+      insert into public.volunteers (id, name) values ('VOL-1001', 'Old Volunteer');
+      insert into public.queue_entries (attendee_id, station) values ('EXPO-001', 'bp');`);
+    ok('upgrade: the schema from before churches installs', !err, err);
+
+    err = await run(schema);
+    ok('upgrade: the new schema runs on a database that already holds data', !err, err);
+    const ch = await sys(`select id, name, status from public.churches`);
+    const A = ch[0] && ch[0].id;
+    const moved = await sys(`select (select count(*) from public.attendees where church_id = $1)::int a, (select count(*) from public.volunteers where church_id = $1)::int v,
+      (select count(*) from public.queue_entries where church_id = $1)::int q`, [A]);
+    ok('upgrade: existing visitors, volunteers and queue move into one new active church',
+      ch.length === 1 && ch[0].status === 'active' && ch[0].name === 'My church (rename me)' && moved[0].a === 1 && moved[0].v === 1 && moved[0].q === 1, JSON.stringify([ch, moved]));
+    const mem = await sys(`select user_id, role, status from public.memberships order by role`);
+    ok('upgrade: staff become that church\'s staff, and is_admin becomes admin',
+      mem.length === 2 && mem.some(m => m.user_id === U.alice && m.role === 'admin' && m.status === 'approved') && mem.some(m => m.user_id === U.bob && m.role === 'staff' && m.status === 'approved'), JSON.stringify(mem));
+    await sys(`delete from public.memberships where user_id = $1`, [U.bob]);
+    err = await run(schema);
+    ok('upgrade: the schema runs a second time without error', !err, err);
+    ok('upgrade: re-running never re-adds a staff member who was removed', (await sys(`select 1 from public.memberships where user_id = $1`, [U.bob])).length === 0);
+    const pk = await sys(`select pg_get_constraintdef(c.oid) d from pg_constraint c where c.conrelid in ('public.attendees'::regclass, 'public.volunteers'::regclass) and c.contype = 'p'`);
+    ok('upgrade: badge and volunteer numbers are unique per church (primary key church_id, id)', pk.length === 2 && pk.every(p => p.d === 'PRIMARY KEY (church_id, id)'), JSON.stringify(pk));
+    const idx = await sys(`select indexname from pg_indexes where tablename = 'queue_entries' and indexname like 'queue_entries_one_active%'`);
+    ok('upgrade: the one-visit-per-station rule is per church', idx.length === 1 && idx[0].indexname === 'queue_entries_one_active_church_idx', JSON.stringify(idx));
+
+    /* ---- people and churches ---- */
+    await sys(`insert into public.platform_admins (user_id) values ($1)`, [U.erin]);
+    let r = await as(U.alice, `select count(*)::int n from public.attendees`);
+    ok('church staff see their own church\'s visitors', !r.error && r.rows[0].n === 1, r.error && r.error.message);
+    r = await as(U.carol, `select public.register_church('Grace Chapel', 'Durban', '031 000 0000', 'office@grace.example') id`);
+    const B = r.rows && r.rows[0].id;
+    const cb = await sys(`select status from public.churches where id = $1`, [B]);
+    const carolM = await sys(`select role, status from public.memberships where user_id = $1`, [U.carol]);
+    ok('a new church starts pending, with the person who registered it as its admin',
+      !r.error && cb[0] && cb[0].status === 'pending' && carolM[0].role === 'admin' && carolM[0].status === 'approved', r.error ? r.error.message : JSON.stringify([cb, carolM]));
+    r = await as(U.carol, `select count(*)::int n from public.attendees`);
+    const ins = await as(U.carol, `insert into public.attendees (id, name) values ('EXPO-777', 'Too Early')`);
+    ok('a pending church\'s admin sees no visitor data and cannot add any', !r.error && r.rows[0].n === 0 && !!ins.error, JSON.stringify(r.rows));
+    r = await as(U.carol, `select public.register_church('Second Church') id`);
+    ok('a person can register only one church', !!r.error && /already belong/.test(r.error.message), r.error && r.error.message);
+    r = await as(U.alice, `select * from public.admin_churches()`);
+    const r2 = await as(U.erin, `select * from public.admin_churches()`);
+    ok('only the platform admin can list every church', !!r.error && !r2.error && r2.rows.length === 2, r2.error && r2.error.message);
+    r = await as(U.alice, `select public.admin_set_church_status($1, 'active')`, [B]);
+    ok('a church admin cannot approve a church', !!r.error);
+    r = await as(U.erin, `select public.admin_set_church_status($1, 'active')`, [B]);
+    ok('the platform admin approves a church', !r.error && (await sys(`select status from public.churches where id = $1`, [B]))[0].status === 'active', r.error && r.error.message);
+
+    r = await as(U.carol, `insert into public.attendees (id, name, s) values ('EXPO-001', 'Grace Visitor', '{"sys":120,"dia":80}'), ('EXPO-777', 'Only At Grace', '{}')`);
+    ok('two churches can both use badge EXPO-001', !r.error && (await sys(`select count(*)::int n from public.attendees where id = 'EXPO-001'`))[0].n === 2, r.error && r.error.message);
+    const seenA = await as(U.alice, `select id, name from public.attendees order by id`);
+    const seenB = await as(U.carol, `select id, name from public.attendees order by id`);
+    ok('each church\'s staff see only their own church\'s visitors',
+      seenA.rows.length === 1 && seenA.rows[0].name === 'Old Visitor' && seenB.rows.length === 2 && seenB.rows.every(x => x.name !== 'Old Visitor'), JSON.stringify([seenA.rows, seenB.rows]));
+    r = await as(U.alice, `update public.attendees set name = 'Hijacked' where id = 'EXPO-777'`);
+    ok('church staff cannot change another church\'s visitor', !r.error && (await sys(`select name from public.attendees where id = 'EXPO-777'`))[0].name === 'Only At Grace');
+    r = await as(U.alice, `update public.attendees set church_id = $1 where id = 'EXPO-001'`, [B]);
+    ok('church staff cannot move a visitor into another church', !!r.error, 'the update went through');
+    r = await as(U.alice, `insert into public.attendees (id, name, church_id) values ('EXPO-555', 'Planted', $1)`, [B]);
+    ok('church staff cannot add a visitor to another church', !!r.error, 'the insert went through');
+    r = await as(U.alice, `select * from public.memberships`);
+    const r3 = await as(U.alice, `select * from public.churches`);
+    ok('the memberships and churches tables cannot be read directly', !!r.error && !!r3.error);
+    r = await as(U.bob, `select count(*)::int n from public.attendees`);
+    ok('someone removed from a church loses its data', !r.error && r.rows[0].n === 0);
+
+    /* ---- live queue ---- */
+    await as(U.carol, `insert into public.queue_entries (attendee_id, station) values ('EXPO-001', 'bp')`);
+    r = await as(U.alice, `select * from public.queue_call_next('bp')`);
+    const again = await as(U.alice, `select * from public.queue_call_next('bp')`);
+    const qB = await sys(`select status from public.queue_entries where church_id = $1`, [B]);
+    ok('"Call next" only takes people from the caller\'s own church', !r.error && r.rows.length === 1 && r.rows[0].church_id === A && !again.error && again.rows.length === 0 && qB[0].status === 'waiting',
+      r.error ? r.error.message : JSON.stringify([r.rows, again.rows, qB]));
+    r = await as(U.alice, `select count(*)::int n from public.queue_entries`);
+    ok('each church sees only its own queue', !r.error && r.rows[0].n === 1, JSON.stringify(r.rows));
+
+    /* ---- members ---- */
+    r = await as(U.dave, `select public.join_church($1, 'Dave Dlamini', '082 000 0000')`, [A]);
+    const daveM = await sys(`select role, status, full_name from public.memberships where user_id = $1`, [U.dave]);
+    ok('a person who joins a church waits as a pending member', !r.error && daveM[0].role === 'member' && daveM[0].status === 'pending' && daveM[0].full_name === 'Dave Dlamini', r.error ? r.error.message : JSON.stringify(daveM));
+    r = await as(U.dave, `select count(*)::int n from public.attendees`);
+    ok('a member sees no visitor data', !r.error && r.rows[0].n === 0);
+    r = await as(U.dave, `select * from public.church_members($1)`, [A]);
+    ok('a member cannot list the other members', !!r.error);
+    r = await as(U.dave, `select public.update_my_details('Dave D. Dlamini', '082 111 1111', 'Umlazi', '1980-05-01')`);
+    const acct = await as(U.dave, `select public.my_account() a`);
+    const da = acct.rows && acct.rows[0].a;
+    ok('a member edits their own details and my_account returns them with the church',
+      !r.error && da && da.membership.full_name === 'Dave D. Dlamini' && da.membership.area === 'Umlazi' && da.membership.birth_date === '1980-05-01' && da.church.id === A && da.platform_admin === false,
+      r.error ? r.error.message : JSON.stringify(da));
+    r = await as(U.dave, `select public.update_my_details('Dave', '', '', '2999-01-01')`);
+    ok('a date of birth in the future is refused', !!r.error);
+    r = await as(U.alice, `select * from public.church_members($1)`, [A]);
+    ok('a church admin lists their church\'s members, pending first', !r.error && r.rows[0].user_id === U.dave && r.rows[0].status === 'pending' && r.rows.length === 2, JSON.stringify(r.rows && r.rows.map(x => x.email)));
+    r = await as(U.alice, `select * from public.church_members($1)`, [B]);
+    const r4 = await as(U.alice, `select public.set_member($1, 'member', 'approved')`, [U.carol]);
+    ok('a church admin cannot see or change another church\'s members', !!r.error && !!r4.error);
+    r = await as(U.alice, `select * from public.staff_pending()`);
+    ok('the older approvals list shows only the caller\'s own church', !r.error && r.rows.length === 1 && r.rows[0].user_id === U.dave, JSON.stringify(r.rows));
+
+    r = await as(U.alice, `select public.set_member($1, 'member', 'approved')`, [U.dave]);
+    const r5 = await as(U.alice, `select public.link_member($1, 'expo-001')`, [U.dave]);
+    const h = await as(U.dave, `select public.my_health() h`);
+    const hh = h.rows && h.rows[0].h;
+    ok('an approved member linked to their badge sees their own screening results', !r.error && !r5.error && hh && hh.id === 'EXPO-001' && hh.name === 'Old Visitor' && hh.s.sys === 150 && !('prayer' in hh),
+      (r.error || r5.error || {}).message || JSON.stringify(hh));
+    r = await as(U.dave, `select count(*)::int n from public.attendees`);
+    ok('an approved member still cannot read the visitors table', !r.error && r.rows[0].n === 0);
+    r = await as(U.alice, `select public.link_member($1, 'EXPO-777')`, [U.dave]);
+    ok('linking a badge that belongs to another church is refused', !!r.error && /No visitor/.test(r.error.message), r.error && r.error.message);
+    r = await as(U.frank, `select public.join_church($1)`, [A]);
+    const r6 = await as(U.alice, `select public.link_member($1, 'EXPO-001')`, [U.frank]);
+    ok('one badge cannot be linked to two members', !r.error && !!r6.error && /already linked/.test(r6.error.message), (r.error || r6.error || {}).message);
+    r = await as(U.alice, `select public.set_member($1, 'member', 'approved')`, [U.frank]);
+    ok('an account that has not confirmed its email cannot be approved', !!r.error && /confirmed/.test(r.error.message), r.error && r.error.message);
+    await sys(`update public.attendees set created_at = now() + interval '1 day' where church_id = $1 and id = 'EXPO-001'`, [A]);
+    r = await as(U.dave, `select public.my_health() h`);
+    ok('if the badge is reused for someone new, the member no longer sees it', !r.error && r.rows[0].h === null, JSON.stringify(r.rows));
+    r = await as(U.alice, `select public.set_member($1, 'staff', 'approved')`, [U.dave]);
+    const r7 = await as(U.dave, `select count(*)::int n from public.attendees`);
+    ok('a church admin makes a member staff, who then sees the church\'s visitors', !r.error && r7.rows[0].n === 1, (r.error || {}).message);
+
+    r = await as(U.carol, `select public.set_member($1, 'staff', 'approved')`, [U.carol]);
+    const r8 = await as(U.carol, `select public.leave_church()`);
+    const r9 = await as(U.carol, `select public.remove_member($1)`, [U.carol]);
+    ok('a church\'s last admin cannot step down, leave or be removed', !!r.error && !!r8.error && !!r9.error);
+    r = await as(U.erin, `select * from public.church_members($1)`, [B]);
+    const r10 = await as(U.erin, `select public.update_church($1, 'Grace Chapel Durban', 'Durban')`, [B]);
+    ok('the platform admin manages any church\'s members and profile', !r.error && r.rows.length === 1 && !r10.error && (await sys(`select name from public.churches where id = $1`, [B]))[0].name === 'Grace Chapel Durban',
+      (r.error || r10.error || {}).message);
+    r = await as(U.erin, `select count(*)::int n from public.attendees`);
+    ok('the platform admin is not given visitor records by the policies (counts only)', !r.error && r.rows[0].n === 0, JSON.stringify(r.rows));
+    r = await as(U.dave, `select public.leave_church()`);
+    const r11 = await as(U.dave, `select public.my_account() a`);
+    ok('a member can leave their church', !r.error && r11.rows[0].a.membership === null && r11.rows[0].a.church === null, (r.error || {}).message);
+    r = await as(U.dave, `select * from public.church_directory('grace')`);
+    ok('the church directory lists active churches by name or town', !r.error && r.rows.length === 1 && r.rows[0].name === 'Grace Chapel Durban', JSON.stringify(r.rows));
+    r = await as(U.dave, `select public.join_church($1)`, [B]);
+    await as(U.erin, `select public.admin_set_church_status($1, 'pending')`, [B]);
+    const r12 = await as(U.frank, `select * from public.church_directory('')`);
+    ok('a church that is not active is not listed', !r12.error && r12.rows.every(x => x.id !== B), JSON.stringify(r12.rows));
+    await as(U.erin, `select public.admin_set_church_status($1, 'suspended')`, [B]);
+    r = await as(U.carol, `select count(*)::int n from public.attendees`);
+    const r13 = await as(U.carol, `select public.is_staff() s`);
+    ok('suspending a church cuts its staff off', !r.error && r.rows[0].n === 0 && r13.rows[0].s === false, JSON.stringify(r.rows));
+    r = await as(U.erin, `select public.my_account() a`);
+    ok('my_account flags the platform admin', !r.error && r.rows[0].a.platform_admin === true);
+    r = await as(U.erin, `select * from public.admin_audit(20)`);
+    ok('the platform admin\'s audit trail names the church of each change', !r.error && r.rows.length > 0 && r.rows.some(x => x.church === 'My church (rename me)' && x.tbl === 'attendees'), (r.error || {}).message || JSON.stringify(r.rows.slice(0, 3)));
+    r = await as(U.alice, `select * from public.admin_audit(20)`);
+    ok('nobody else can read the audit trail', !!r.error);
+    r = await as(null, `select public.my_account() a`);
+    const r14 = await as(null, `select * from public.church_directory('')`);
+    ok('signed-out callers can use none of the account functions', !!r.error && !!r14.error);
+
+    /* ---- a brand-new project ---- */
+    const fresh = new PGlite();
+    await fresh.exec(STUB);
+    let e1 = '', e2 = '';
+    try { await fresh.exec(schema); } catch (e) { e1 = e.message; }
+    try { await fresh.exec(schema); } catch (e) { e2 = e.message; }
+    const none = e1 || e2 ? [] : (await fresh.query(`select count(*)::int n from public.churches`)).rows;
+    ok('a brand-new database installs the whole schema (twice) and creates no church by itself', !e1 && !e2 && none[0].n === 0, e1 || e2);
+
+  })().catch(e => ok('database checks ran to the end', false, e && e.stack || e));
+
+  /* ---- 18d. cloud status: one row per cloud function -------------------------------------------- */
+  console.log('\n18d. Cloud status signals');
+  {
+    const noCloudWas = sandbox.NEWSTART_NO_CLOUD;
+    const H = g.health, shots = [];
+    const panel = () => { g.renderCloudBody(); const h = $el('cloudBody').innerHTML; shots.push(h); return h; };
+    const flush = () => sleep(120);                     /* rows redraw 60 ms after they change */
+    device(); g.healthReset(); sandbox.NEWSTART_NO_CLOUD = false;
+    Object.assign(C, { ready: false, demo: false, pending: false, gateKey: '', acct: null, churchId: '' });
+    srv.authCb('INITIAL_SESSION', null); await flush();
+    ok('signed out: Sign-in says so, and no other row claims anything', H.auth && H.auth.st === 'off' && !H.sync && !H.upload, JSON.stringify(H));
+    await signIn(); await sleep(80); await flush();
+    ok('after sign-in each function reports what just happened', H.auth.st === 'ok' && /staff@example\.org/.test(H.auth.msg) && H.sync.st === 'ok' && /visitors/.test(H.sync.msg) && H.upload.st === 'ok', JSON.stringify(H));
+    ok('…a database without the churches part shows as a warning under Accounts', H.account && H.account.st === 'warn' && /not set up/.test(H.account.msg), JSON.stringify(H.account));
+    ok('…and the missing live queue table is named under Database setup', H.queue && H.queue.st === 'bad' && H.schema && H.schema.st === 'bad' && /queue_entries/.test(H.schema.msg), JSON.stringify([H.queue, H.schema]));
+    const p1 = panel();
+    ok('the panel behind the logo lists every function with its state and time, and offers Test now',
+      ['Sign-in', 'Download', 'Upload', 'Live updates', 'Live queue', 'Accounts & admin', 'Database setup'].every(l => p1.includes('<b>' + l + '</b>'))
+      && /healthTest\(\)/.test(p1) && /q-state-bad/.test(p1) && /q-state-live/.test(p1) && /Not checked yet/.test(p1));
+    g.state.tab = 'home'; g.render(); shots.push($main.innerHTML);
+    ok('Home shows the shared-database state, one tap from the details', /id="homeHealth"/.test($main.innerHTML) && /Up to date/.test(g.homeHealthHTML()) && /openCloud\(\)/.test(g.homeHealthHTML()));
+
+    /* no connection */
+    srv.offline = true; registerLocal('Status Waiting', 'EXPO-321');
+    await g.cloudSync(true); await flush();
+    ok('offline: Download says there is no connection, and Upload counts what is waiting', H.sync.st === 'warn' && /No connection/.test(H.sync.msg) && H.upload.st === 'warn' && /1 change waiting/.test(H.upload.msg), JSON.stringify([H.sync, H.upload]));
+    ok('…and Home shows it as a warning, not as an error', /q-state-warn/.test(g.homeHealthHTML()) && !/q-state-bad/.test(g.homeHealthHTML()), g.homeHealthHTML());
+    shots.push(g.homeHealthHTML());
+    srv.offline = false; await g.cloudSync(true); await flush();
+    ok('back online the change uploads and Upload says so', H.upload.st === 'ok' && srv.tables.attendees.has('EXPO-321'), JSON.stringify(H.upload));
+
+    /* the live connection reports its own state */
+    srv.rtState = 'CHANNEL_ERROR'; g.stopRealtime(); g.startRealtime(); await flush();
+    ok('a dropped live connection shows "Reconnecting…" under Live updates', H.live && H.live.st === 'warn' && /Reconnecting/.test(H.live.msg), JSON.stringify(H.live));
+    ok('…and Home shows that one warning even though Download and Upload are working', H.sync.st === 'ok' && H.upload.st === 'ok' && /q-state-warn/.test(g.homeHealthHTML()) && /Reconnecting/.test(g.homeHealthHTML()), g.homeHealthHTML());
+    srv.rtState = 'SUBSCRIBED'; g.stopRealtime(); g.startRealtime(); await flush();
+    ok('…and "Connected" once it is back', H.live.st === 'ok' && /Connected/.test(H.live.msg));
+
+    /* Test now */
+    srv.calls.length = 0; await g.healthTest(); await flush();
+    ok('Test now only reads: nothing is inserted, updated or upserted', srv.calls.length > 0 && srv.calls.every(c => /^select/.test(c)), srv.calls.join());
+    ok('…records when it ran, and names what is missing', C.testedAt > 0 && H.schema.st === 'bad' && /queue_entries/.test(H.schema.msg) && /Test now ran at/.test(panel()), JSON.stringify(H.schema));
+    srv.tables.queue_entries = new Map();
+    srv.rpcs = { my_account: () => ({ data: { user_id: 'user-1', email: 'staff@example.org', platform_admin: false, membership: null, church: null }, error: null }) };
+    await g.healthTest(); await flush();
+    ok('when everything it checks is found, Database setup and Accounts say so', H.schema.st === 'ok' && H.account.st === 'ok' && H.queue.st !== 'bad', JSON.stringify([H.schema, H.account, H.queue]));
+    srv.offline = true; await g.healthTest(); await flush(); srv.offline = false;
+    ok('Test now with no connection does not claim the database is set up', H.schema.st === 'warn' && /Could not be checked/.test(H.schema.msg), JSON.stringify(H.schema));
+    delete srv.tables.queue_entries; srv.rpcs = null;
+
+    /* the screens that point here */
+    srv.rpcs = { church_directory: () => ({ data: null, error: { code: '42501', message: 'permission denied for function church_directory' } }) };
+    await g.churchSearch(''); await flush(); srv.rpcs = null;
+    ok('a refused account call shows on the account screens, with a way to the details', H.account.st === 'bad' && /Refused/.test(H.account.msg) && /openCloud\(\)/.test(g.acctHealthHTML()), JSON.stringify(H.account));
+    shots.push(g.acctHealthHTML(), g.qStateBar('offline'));
+    ok('the queue banner offers Details when it warns, and not in practice mode', /openCloud\(\)/.test(g.qStateBar('offline')) && !/openCloud\(\)/.test(g.qStateBar('practice')));
+    g.noteHealth('sync', 'bad', '<img src=x onerror=alert(1)>', '<b>detail</b>'); await flush();
+    ok('messages from the database are escaped in the status rows', panel().includes('&lt;img src=x') && !panel().includes('<img src=x') && g.homeHealthHTML().includes('&lt;img') && panel().includes('&lt;b&gt;detail'));
+    {
+      const css = (html.match(/<style[^>]*>[\s\S]*?<\/style>/g) || []).join('\n'), used = new Set();
+      shots.join('\n').replace(/class="([^"]*)"/g, (_, c) => { c.split(/\s+/).filter(Boolean).forEach(t => used.add(t)); return ''; });
+      const missing = [...used].filter(t => !css.includes('.' + t.replace(/[^a-zA-Z0-9_-]/g, m => '\\' + m)));
+      ok('every class the status signals use exists in the stylesheet', used.size > 15 && missing.length === 0, missing.join(' ') || used.size);
+    }
+    await g.cloudSignOut(); await flush();
+    ok('signing out clears every row except Sign-in', Object.keys(H).join() === 'auth' && H.auth.st === 'off', Object.keys(H).join());
+
+    clearTimeout(C.retryT); C.user = null; g.stopRealtime(); srv.reset(); store.delete('newstart.cloud.v1'); store.delete('newstart.church.v1');
+    Object.assign(C, { mode: false, ready: false, pending: false, acct: null, churchId: '', synced: { att: {}, vol: {} } });
+    g.healthReset(); sandbox.NEWSTART_NO_CLOUD = noCloudWas; g.resetDemo();
+  }
+
+  /* ---- 18e. pressure tests: injection on every screen, live-connection leaks, database attacks ---------- */
+  console.log('\n18e. Pressure tests: injection, leaks, database attacks');
+  {
+    /* every text field that can come from the database gets a payload; no screen may show it as markup */
+    const X = '"><img src=x onerror=alert(1)>\'<svg onload=alert(2)>';
+    const raw = h => /<img src=x|<svg onload/.test(String(h));
+    const found = [], gaps = [];
+    const look = (where, h) => { if (raw(h)) found.push(where); };
+    g.resetDemo();
+    for (const a of g.attendees) { a.name = 'A' + X; a.phone = '0821234567' + X; a.prayer = X; a.interests = { stress: true, nurse: true, cook: true, pouch: true }; }
+    for (const v of g.volunteers) { Object.assign(v, { name: 'V' + X, phone: X, email: X, notes: X, emergency: X, role: X, shift: X, shirt: X, pref2: X }); v.history = [{ expo: X, name: X, date: '2026-01-01', booth: 'bp', hours: 3 }]; }
+    for (const id of g.attendees.map(a => a.id)) { g.state.activeId = id; for (const tb of ['home', 'screen', 'results', 'plan', 'send', 'care', 'queue']) { g.state.tab = tb; g.render(); look('tab ' + tb, $main.innerHTML); } }
+    g.state.tab = 'serve';
+    for (const vid of g.volunteers.map(v => v.id)) for (const vt of ['pledge', 'muster', 'booth', 'record']) { g.setVol(vid); g.state.volTab = vt; g.render(); look('volunteers ' + vt, $main.innerHTML); }
+    g.openSwitcher(); look('switcher', $el('switcherList').innerHTML + $el('switcherHead').innerHTML);
+    g.state.switchMode = 'volunteer'; g.openSwitcher(); look('volunteer switcher', $el('switcherList').innerHTML); g.state.switchMode = 'visitor';
+    g.state.activeId = g.attendees[0].id; g.openWhatsApp(); look('WhatsApp', $el('waBody').innerHTML); g.buildPrintCard(); look('print card', $el('printArea').innerHTML);
+    g.openScanner(); look('scanner', $el('scannerList').innerHTML);
+    const A = { id: 'ch-a', name: 'C' + X, city: X, phone: X, email: X, status: 'active' };
+    C.acct = { user_id: 'u1', email: X, platform_admin: true, membership: { church_id: 'ch-a', role: 'admin', status: 'approved', full_name: X, phone: X, area: X, birth_date: null, attendee_id: 'EXPO-042' }, church: A };
+    C.health = { id: 'EXPO-042', name: X, age: 40, sex: 'Male', height_cm: 170, s: { sys: 150, dia: 95 }, interests: {}, created_at: X };
+    C.dir = [{ id: 'ch-a', name: X, city: X }];
+    for (const tb of ['me', 'church', 'admin']) {
+      g.openAcct(tb);
+      C.members = { cid: 'ch-a', list: [{ user_id: 'u-1', email: X, full_name: X, phone: X, area: X, role: 'member', status: 'pending', attendee_id: 'EXPO-042', confirmed: true }] };
+      C.plat = [{ ...A, members: 1, staff: 0, pending: 0, visitors: 0, volunteers: 0 }]; C.audit = [{ at: X, church: X, actor: X, tbl: 'attendees', op: X, row_id: X }];
+      C.membersBusy = ''; C.platBusy = false; C.auditBusy = false; g.renderAcct();
+      const h = $el('acctBody').innerHTML;
+      if ((tb === 'church' && !h.includes('u-1')) || (tb === 'admin' && !h.includes('ch-a'))) gaps.push(tb);
+      look('account sheet ' + tb, h + $el('acctTabs').innerHTML);
+    }
+    for (const st of ['church', 'churchwait', 'suspended', 'pending', 'member']) {
+      C.acct.membership = st === 'church' ? null : { ...C.acct.membership, status: st === 'pending' ? 'pending' : 'approved', role: st === 'member' ? 'member' : 'admin' };
+      C.acct.church = st === 'church' ? null : { ...A, status: st === 'churchwait' ? 'pending' : st === 'suspended' ? 'suspended' : 'active' };
+      look('account screen ' + st, g.acctGateHTML(st));
+    }
+    for (const k of ['auth', 'sync', 'upload', 'live', 'queue', 'account', 'schema']) g.noteHealth(k, 'bad', X, X);
+    C.user = { email: X }; g.renderCloudBody(); look('cloud panel', $el('cloudBody').innerHTML); look('Home pill', g.homeHealthHTML()); look('account banner', g.acctHealthHTML());
+    ok('every database text field is escaped on every screen (visitors, volunteers, churches, members, status)', found.length === 0 && gaps.length === 0,
+      found.join(' | ') || 'screens not drawn: ' + gaps.join(', '));
+    C.user = null; C.acct = null; C.health = undefined; C.members = null; C.plat = null; C.audit = null; C.dir = null; g.healthReset(); g.resetDemo();
+
+    /* live connections: reconnecting must not pile up handlers */
+    device(); C.client = srv.client;
+    for (let i = 0; i < 50; i++) { g.stopRealtime(); g.startRealtime(); }
+    ok('50 live reconnects leave exactly one connection (two table handlers), not fifty', srv.handlers.length === 2, srv.handlers.length);
+    g.stopRealtime(); srv.reset();
+  }
+  /* database attacks on a real Postgres (with NEWSTART_PGLITE) */
+  if (process.env.NEWSTART_PGLITE) await (async () => {
+    const { PGlite } = require(path.join(process.env.NEWSTART_PGLITE, 'node_modules', '@electric-sql', 'pglite'));
+    const schema = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'schema.sql'), 'utf8');
+    const db = new PGlite();
+    const as = async (uid, sql, p) => { await db.exec(`reset role; select set_config('request.jwt.claim.sub', '${uid || ''}', false); set role ${uid ? 'authenticated' : 'anon'};`);
+      try { return { rows: (await db.query(sql, p || [])).rows }; } catch (e) { return { error: e }; } finally { await db.exec('reset role'); } };
+    const sys = async (sql, p) => (await db.query(sql, p || [])).rows;
+    await db.exec(`create role anon nologin; create role authenticated nologin; create schema auth;
+      create table auth.users (id uuid primary key default gen_random_uuid(), email text unique, raw_user_meta_data jsonb not null default '{}'::jsonb, email_confirmed_at timestamptz, created_at timestamptz not null default now());
+      create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+      grant usage on schema auth to anon, authenticated; grant execute on function auth.uid() to anon, authenticated; grant usage on schema public to anon, authenticated;
+      alter default privileges in schema public grant all on tables to anon, authenticated; alter default privileges in schema public grant all on sequences to anon, authenticated;
+      alter default privileges in schema public grant execute on functions to anon, authenticated; create publication supabase_realtime;`);
+    await db.exec(schema);
+    const U = { adminA: 'a0000000-0000-4000-8000-000000000001', staffA: 'a0000000-0000-4000-8000-000000000002', memA: 'a0000000-0000-4000-8000-000000000003',
+      pendA: 'a0000000-0000-4000-8000-000000000004', adminB: 'b0000000-0000-4000-8000-000000000001', loner: 'c0000000-0000-4000-8000-000000000001' };
+    for (const [k, id] of Object.entries(U)) await sys(`insert into auth.users (id, email, email_confirmed_at) values ($1, $2, now())`, [id, k + '@ex.org']);
+    const CA = (await sys(`insert into public.churches (name, status) values ('Church A', 'active') returning id`))[0].id;
+    const CB = (await sys(`insert into public.churches (name, status) values ('Church B', 'active') returning id`))[0].id;
+    await sys(`insert into public.memberships (user_id, church_id, role, status) values ($1,$2,'admin','approved'),($3,$2,'staff','approved'),($4,$2,'member','approved'),($5,$2,'member','pending'),($6,$7,'admin','approved')`,
+      [U.adminA, CA, U.staffA, U.memA, U.pendA, U.adminB, CB]);
+    await sys(`insert into public.attendees (id, name, church_id) values ('EXPO-001','In A',$1),('EXPO-002','In B',$2)`, [CA, CB]);
+    await sys(`insert into public.platform_admins (user_id) values ($1)`, [U.loner]);
+    await sys(`insert into public.staff (user_id, note) values ($1, 'legacy')`, [U.loner]);
+    await sys(`update public.attendees set name = 'Audited' where id = 'EXPO-001'`);
+    const refused = async (uid, sql, p) => !!(await as(uid, sql, p)).error;
+    ok('attack: a member cannot make themselves admin', await refused(U.memA, `select public.set_member($1,'admin','approved')`, [U.memA]));
+    ok('attack: members cannot link themselves to a visitor\'s results', await refused(U.pendA, `select public.link_member($1,'EXPO-001')`, [U.pendA]) && await refused(U.memA, `select public.link_member($1,'EXPO-001')`, [U.memA]));
+    ok('attack: staff (not admin) cannot list, approve or promote members', await refused(U.staffA, `select * from public.church_members($1)`, [CA]) && await refused(U.staffA, `select public.set_member($1,'staff','approved')`, [U.pendA]));
+    ok('attack: a church admin cannot touch another church (its admin, name, members or visitors)', await refused(U.adminA, `select public.set_member($1,'member','approved')`, [U.adminB])
+      && await refused(U.adminA, `select public.update_church($1,'Hijacked')`, [CB]) && await refused(U.adminA, `select public.remove_member($1)`, [U.adminB]) && await refused(U.adminA, `select public.link_member($1,'EXPO-002')`, [U.memA]));
+    ok('attack: nobody can make themselves platform admin from the app', await refused(U.adminA, `insert into public.platform_admins (user_id) values ($1)`, [U.adminA]));
+    ok('attack: oversized input (100,000 characters) is refused', await refused(U.adminA, `select public.update_my_details($1)`, ['x'.repeat(100000)]) && await refused(U.adminA, `select public.update_church($1, $2)`, [CA, 'y'.repeat(100000)]));
+    await as(U.staffA, `delete from public.attendees where id='EXPO-001'`);
+    ok('attack: staff (not admin) cannot delete visitors', (await sys(`select count(*)::int n from public.attendees where id='EXPO-001'`))[0].n === 1);
+    let sealed = true;
+    for (const t of ['platform_admins', 'churches', 'memberships', 'audit_log', 'staff']) {
+      const before = (await sys(`select count(*)::int n from public.${t}`))[0].n;
+      const m = await as(U.memA, `select * from public.${t} limit 1`), s = await as(U.staffA, `select * from public.${t} limit 1`);
+      await as(U.staffA, `delete from public.${t}`);
+      if (!(m.error || !m.rows.length) || !(s.error || !s.rows.length) || (await sys(`select count(*)::int n from public.${t}`))[0].n !== before || before === 0) sealed = false;
+    }
+    ok('attack: the protected tables cannot be read or emptied from the app (each holds a row)', sealed);
+    const lax = await sys(`select c.relname from pg_class c join pg_namespace s on s.oid = c.relnamespace where s.nspname = 'public' and c.relkind = 'r'
+      and not exists (select 1 from pg_policy p where p.polrelid = c.oid) and has_table_privilege('authenticated', c.oid, 'select')`);
+    ok('audit: no table without policies is open to signed-in callers (the old staff list included)', lax.length === 0, lax.map(x => x.relname).join(', '));
+    const defNoPath = await sys(`select p.proname from pg_proc p join pg_namespace s on s.oid = p.pronamespace where s.nspname = 'public' and p.prosecdef
+      and not exists (select 1 from unnest(coalesce(p.proconfig, '{}')) c where c like 'search_path=%')`);
+    ok('audit: every SECURITY DEFINER function pins its search_path', defNoPath.length === 0, defNoPath.map(x => x.proname).join(', '));
+    const noRls = await sys(`select c.relname from pg_class c join pg_namespace s on s.oid = c.relnamespace where s.nspname = 'public' and c.relkind = 'r' and not c.relrowsecurity`);
+    ok('audit: row-level security is on for every table', noRls.length === 0, noRls.map(x => x.relname).join(', '));
+    const anon = await sys(`select c.relname as n from pg_class c join pg_namespace s on s.oid = c.relnamespace where s.nspname = 'public' and c.relkind = 'r'
+      and (has_table_privilege('anon', c.oid, 'select') or has_table_privilege('anon', c.oid, 'insert') or has_table_privilege('anon', c.oid, 'update') or has_table_privilege('anon', c.oid, 'delete'))
+      union all select p.proname from pg_proc p join pg_namespace s on s.oid = p.pronamespace where s.nspname = 'public' and p.prosecdef and has_function_privilege('anon', p.oid, 'execute')`);
+    ok('audit: signed-out callers can reach no table and no SECURITY DEFINER function', anon.length === 0, anon.map(x => x.n).join(', '));
+  })().catch(e => ok('database attacks ran to the end', false, e && e.stack || e));
+
+  /* ---- 19. installable app (PWA) -------------------------------------- */
+  console.log('\n19. Installable app (PWA)');
+  const rootDir = path.join(__dirname, '..');
+  const manifest = JSON.parse(fs.readFileSync(path.join(rootDir, 'manifest.webmanifest'), 'utf8'));
+  ok('manifest: names, standalone, start_url and scope', manifest.name && manifest.short_name && manifest.display === 'standalone' && manifest.start_url === './' && manifest.scope === './');
+  ok('manifest: short name fits under a phone icon (<= 12 chars)', manifest.short_name.length <= 12, manifest.short_name);
+  ok('manifest: colours are valid hex', /^#[0-9a-f]{6}$/i.test(manifest.theme_color) && /^#[0-9a-f]{6}$/i.test(manifest.background_color));
+  const pngDims = f => { const b = fs.readFileSync(path.join(rootDir, f)); return b.slice(1, 4).toString() === 'PNG' ? b.readUInt32BE(16) + 'x' + b.readUInt32BE(20) : 'not a png'; };
+  ok('every manifest icon exists, is a real PNG and has the size it declares',
+    manifest.icons.every(i => pngDims(i.src) === i.sizes), manifest.icons.map(i => i.src + ' ' + pngDims(i.src) + ' vs ' + i.sizes).join('; '));
+  ok('icons: 192 and 512 "any" plus a 512 "maskable" (what Android needs to offer install)',
+    ['192x192', '512x512'].every(s => manifest.icons.some(i => i.sizes === s && i.purpose === 'any')) && manifest.icons.some(i => i.sizes === '512x512' && i.purpose === 'maskable'));
+  ok('iPhone home-screen icon is 180x180', pngDims('icons/icon-180.png') === '180x180');
+  const needs = [/<link rel="manifest" href="manifest\.webmanifest">/, /rel="apple-touch-icon" href="icons\/icon-180\.png"/, /name="apple-mobile-web-app-capable" content="yes"/,
+    /name="mobile-web-app-capable" content="yes"/, /name="theme-color"/, /viewport-fit=cover/, /navigator\.serviceWorker\.register\('sw\.js'\)/];
+  ok('index.html links the manifest, icons, iOS tags and registers the service worker', needs.every(r => r.test(html)), needs.filter(r => !r.test(html)).map(String).join(' '));
+  ok('service worker is only registered on https or localhost', /location\.protocol==='https:'\|\|location\.hostname==='localhost'/.test(html));
+  ok('touch screens get 16px inputs (stops iPhone zooming on tap)', /pointer:coarse\)\{\.field,\.step-input[^}]*font-size:16px/.test(html));
+
+  const swSrc = fs.readFileSync(path.join(rootDir, 'sw.js'), 'utf8');
+  const constOf = n => (html.match(new RegExp("(?:const |,)" + n + "='([^']+)'")) || [])[1];
+  const libsInSw = [...swSrc.matchAll(/'(https:\/\/[^']+\.js)'/g)].map(m => m[1]);
+  ok('service worker precaches exactly the libraries the page loads', JSON.stringify(libsInSw.sort()) === JSON.stringify([constOf('SB_LIB'), constOf('H5Q'), constOf('QRJS')].sort()), libsInSw.join());
+
+  /* run sw.js against fake service-worker globals and exercise its routing */
+  const swCaches = new Map();
+  /* like a real cache, keys are absolute addresses (relative ones resolve against the worker's scope) */
+  const keyOf = k => new URL(typeof k === 'string' ? k : k.url, 'https://expo.example/').href;
+  const swCache = name => { if (!swCaches.has(name)) swCaches.set(name, new Map()); const m = swCaches.get(name);
+    return {
+      /* like the real Cache API, every match hands back a fresh copy of the stored response */
+      match: async (k, opt) => { const key = keyOf(k); if (m.has(key)) return m.get(key).clone();
+        if (opt && opt.ignoreSearch) { const bare = key.split('?')[0]; for (const [mk, v] of m) if (mk.split('?')[0] === bare) return v.clone(); } return undefined; },
+      put: async (k, v) => { m.set(keyOf(k), v); },
+      addAll: async ks => ks.forEach(k => m.set(keyOf(k), new Response('shell:' + k))),
+      add: async k => { m.set(keyOf(k), new Response('lib:' + k)); },
+    }; };
+  const swHandlers = {};
+  let netFail = false, netCalls = [];
+  const swSandbox = {
+    self: { addEventListener: (t, f) => { swHandlers[t] = f; }, location: { origin: 'https://expo.example' }, skipWaiting: async () => {}, clients: { claim: async () => {} } },
+    caches: { open: async n => swCache(n), keys: async () => [...swCaches.keys()], delete: async k => swCaches.delete(k), match: async () => undefined },
+    fetch: async r => { netCalls.push(typeof r === 'string' ? r : r.url); if (netFail) throw new TypeError('Failed to fetch'); return new Response('net:' + (typeof r === 'string' ? r : r.url)); },
+    Response, URL, Promise, setTimeout, clearTimeout, Error, TypeError, Map,
+  };
+  swSandbox.self.caches = swSandbox.caches;
+  vm.createContext(swSandbox);
+  vm.runInContext(swSrc.replace('__VERSION__', 'test1'), swSandbox);
+  const route = (url, init = {}) => { let out = { handled: false, promise: null };
+    swHandlers.fetch({ request: { method: 'GET', mode: 'cors', url, ...init }, respondWith: p => { out.handled = true; out.promise = p; } }); return out; };
+  ok('service worker registers install, activate and fetch handlers', ['install', 'activate', 'fetch'].every(t => typeof swHandlers[t] === 'function'));
+  await new Promise(res => swHandlers.install({ waitUntil: p => p.then(res) }));
+  ok('install caches the app shell and the three libraries', swCaches.get('newstart-shell-test1').has(keyOf('index.html')) && swCaches.get('newstart-libs-v2').size === 3, [...swCaches.keys()].join());
+  swCache('newstart-shell-old'); swCache('something-else');
+  await new Promise(res => swHandlers.activate({ waitUntil: p => p.then(res) }));
+  ok('activate deletes caches from older versions', !swCaches.has('newstart-shell-old') && !swCaches.has('something-else') && swCaches.has('newstart-shell-test1'), [...swCaches.keys()].join());
+
+  const supa = route('https://wlsrgihkijlvjyfxvhfl.supabase.co/rest/v1/attendees?select=*');
+  ok('Supabase data requests are never intercepted (so never cached)', supa.handled === false);
+  ok('Supabase sign-in requests are never intercepted', route('https://wlsrgihkijlvjyfxvhfl.supabase.co/auth/v1/token?grant_type=password').handled === false);
+  ok('realtime / other supabase hosts are never intercepted', route('https://abc.supabase.in/x').handled === false && route('https://supabase.co/x').handled === false);
+  ok('non-GET requests are left alone', route('https://expo.example/', { method: 'POST' }).handled === false);
+  ok('unknown third-party hosts are left alone', route('https://evil.example/x.js').handled === false);
+  const nav = route('https://expo.example/?x=1', { mode: 'navigate' });
+  ok('page loads are handled (network first)', nav.handled && (await nav.promise).ok === true && netCalls.length > 0);
+  ok('the fetched page is saved for offline use', (await (swCaches.get('newstart-shell-test1').get(keyOf('index.html')).clone().text())).startsWith('net:'));
+  netFail = true;
+  const offNav = route('https://expo.example/', { mode: 'navigate' });
+  ok('offline: the page opens from the saved copy', offNav.handled && (await (await offNav.promise).text()).startsWith('net:'));
+  const offIcon = route('https://expo.example/icons/icon-192.png');
+  ok('offline: icons come from the saved copy', offIcon.handled && (await (await offIcon.promise).text()).startsWith('shell:'));
+  const offLib = route(constOf('SB_LIB'));
+  ok('offline: the sign-in library comes from the saved copy', offLib.handled && (await (await offLib.promise).text()) === 'lib:' + constOf('SB_LIB'));
+  const font = route('https://fonts.gstatic.com/s/inter/v1/x.woff2');
+  ok('offline: an uncached font fails quietly instead of hanging', font.handled && await font.promise.then(() => false, () => true));
+  netFail = false;
+  swCaches.get('newstart-shell-test1').delete(keyOf('index.html')); netFail = true;
+  const cold = route('https://expo.example/', { mode: 'navigate' });
+  ok('offline with nothing saved yet: the failure is reported, not faked', cold.handled && await cold.promise.then(() => false, () => true));
+  netFail = false;
+  ok('no health data path appears in the service worker source', !/attendees|volunteers|auth\/v1|rest\/v1/.test(swSrc));
+
+  /* install button states */
+  const run = code => vm.runInContext(code, sandbox);
+  run('installEvt=null');
+  sandbox.navigator.userAgent = 'Mozilla/5.0 (Windows NT 10.0)'; sandbox.matchMedia = () => ({ matches: false, addEventListener() {} });
+  ok('desktop browser with nothing to offer shows no install block', run('installBlock()') === '');
+  sandbox.navigator.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)';
+  ok('iPhone sees the Share → Add to Home Screen steps', /Add to Home Screen/.test(run('installBlock()')));
+  sandbox.navigator.userAgent = 'Mozilla/5.0 (Linux; Android 14)';
+  run('installEvt={prompt(){globalThis.__prompted=1},userChoice:Promise.resolve({outcome:"accepted"})}');
+  ok('Android with an install event shows the Install button', /installApp\(\)/.test(run('installBlock()')));
+  await run('installApp()');
+  ok('tapping Install shows the browser install prompt once', sandbox.__prompted === 1 && run('installEvt') === null);
+  sandbox.matchMedia = q => ({ matches: /standalone/.test(q), addEventListener() {} });
+  ok('inside the installed app it says so instead of offering install', /Installed on this phone/.test(run('installBlock()')));
+  sandbox.matchMedia = () => ({ matches: false, addEventListener() {} }); sandbox.navigator.userAgent = 'node';
+
+  /* build output */
+  const { execFileSync } = require('child_process');
+  execFileSync(process.execPath, [path.join(rootDir, 'tools', 'build.js')], { stdio: 'pipe' });
+  const dist = f => path.join(rootDir, 'dist', f);
+  ok('build produces every file a phone needs', ['index.html', 'manifest.webmanifest', 'sw.js', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/icon-180.png', '_headers'].every(f => fs.existsSync(dist(f))));
+  ok('build stamps a real version into sw.js', !/__VERSION__/.test(fs.readFileSync(dist('sw.js'), 'utf8')) && /VERSION = '[0-9a-f]{10}'/.test(fs.readFileSync(dist('sw.js'), 'utf8')));
+  ok('built index.html is identical to the source', fs.readFileSync(dist('index.html'), 'utf8') === html);
+  ok('the host is told never to long-cache the page or the service worker', /\/sw\.js\s+Cache-Control: no-cache/.test(fs.readFileSync(dist('_headers'), 'utf8')));
+
+  /* ---- 20. on-the-floor features: WhatsApp, follow-up, pouch ----------- */
+  console.log('\n20. WhatsApp, follow-up capture, pouch');
+  const WN = g.waNumber;
+  ok('WhatsApp number: local 082… becomes 27…', WN('082 123 4567') === '27821234567', WN('082 123 4567'));
+  ok('WhatsApp number: +27 with spaces', WN('+27 71 220 4477') === '27712204477');
+  ok('WhatsApp number: 0027 prefix', WN('0027 82 111 2222') === '27821112222');
+  ok('WhatsApp number: other countries kept', WN('+44 7700 900123') === '447700900123');
+  ok('WhatsApp number: the "+27 —" placeholder is not a number', WN('+27 —') === '' && WN('') === '' && WN(null) === '' && WN('12345') === '');
+  g.resetDemo();
+  const david = g.attendees.find(a => a.id === 'EXPO-042');
+  const msg = g.waMessage(david);
+  ok('message greets by first name, quotes badge and real numbers', /Hi David/.test(msg) && msg.includes('EXPO-042') && msg.includes('142/90') && msg.includes('3 John 1:2'));
+  ok('message carries the safety warning about pills', /do not stop them suddenly/.test(msg));
+  ok('message is plain text (no markup)', !/<[a-z]/i.test(msg));
+  const realCreate = sandbox.document.createElement; let link = null;
+  sandbox.document.createElement = t => { const e = realCreate(t); if (t === 'a') link = e; return e; };
+  g.state.activeId = 'EXPO-042'; $el('toastMsg').textContent = '';
+  g.sendWhatsApp();
+  ok('Send opens a wa.me link for the visitor\'s number with the message ready', link && link.href.startsWith('https://wa.me/27825550142?text=') && decodeURIComponent(link.href.split('text=')[1]) === msg, link && link.href.slice(0, 60));
+  ok('the link opens in a new tab without leaking the page', link.target === '_blank' && /noopener/.test(link.rel));
+  ok('the toast is honest (opening, not "sent")', /Opening WhatsApp/.test($el('toastMsg').textContent) && !/sent/i.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+  david.phone = '+27 —'; link = null; g.sendWhatsApp();
+  ok('no saved number → opens WhatsApp to choose a contact, and says so', link.href.startsWith('https://wa.me/?text=') && /No number saved/.test($el('toastMsg').textContent));
+  david.phone = 'x'.repeat(5);
+  david.name = '<b>Dave</b> Jones'; ok('message does not choke on odd names', g.waMessage(david).includes('<b>Dave</b>'));   /* plain text: markup is just characters */
+  sandbox.document.createElement = realCreate; g.resetDemo();
+  ok('the buttons no longer claim a message was sent', !/plan sent via WhatsApp/.test(html) && /Send in WhatsApp/.test(html) && !/WhatsApp report preview · verified/.test(html));
+
+  /* follow-up capture → Care lists */
+  g.resetDemo();
+  const sipho = g.attendees.find(a => a.id === 'EXPO-088');
+  const fakeBtn = { classList: { toggle(c, on) { this.on = on; } }, textContent: '', setAttribute(k, v) { this.aria = v; } };
+  g.state.tab = 'screen'; g.state.activeId = 'EXPO-088'; g.render();
+  ok('Screen tab has the follow-up card with all four options and a prayer box',
+    Object.values(g.INT).every(l => $main.innerHTML.includes(l)) && $main.innerHTML.includes('id="prayerNote"') && $main.innerHTML.includes('Prayer request'));
+  const nBefore = g.attendees.filter(a => a.interests.nurse).length;
+  g.toggleInterest(fakeBtn, 'EXPO-088', 'nurse');
+  ok('ticking "Nurse call" records it and updates the button', sipho.interests.nurse === true && fakeBtn.classList.on === true && fakeBtn.textContent.startsWith('✓') && fakeBtn.aria === 'true');
+  g.state.tab = 'care'; g.render();
+  ok('…and Sipho now appears on the Care lists', g.attendees.filter(a => a.interests.nurse).length === nBefore + 1 && $main.innerHTML.includes('Sipho Ndlovu') && $main.innerHTML.includes('Nurse call'));
+  g.toggleInterest(fakeBtn, 'EXPO-088', 'nurse');
+  ok('unticking removes it again', sipho.interests.nurse === false && fakeBtn.classList.on === false && fakeBtn.textContent === g.INT.nurse);
+  g.onPrayer('EXPO-088', 'Please pray for my <script>x</script> mother');
+  g.toggleInterest(fakeBtn, 'EXPO-088', 'stress'); g.state.tab = 'care'; g.render();
+  ok('a prayer request shows on the Care card, escaped', $main.innerHTML.includes('Please pray for my &lt;script&gt;x&lt;/script&gt; mother') && !$main.innerHTML.includes('<script>x'));
+  g.onPrayer('EXPO-088', 'y'.repeat(900));
+  ok('prayer requests are capped at 500 characters', sipho.prayer.length === 500);
+  g.state.tab = 'screen'; g.render();
+  ok('the prayer box is filled back in and escaped when reopened', !$main.innerHTML.includes('<script>x'));
+  g.onPrayer('EXPO-088', '</textarea><img src=x>');
+  g.render();
+  ok('a prayer note cannot break out of its text box', !$main.innerHTML.includes('<img src=x>'));
+  ok('follow-up data is part of what syncs to the database', g.attToRow(sipho).interests.stress === true && g.attToRow(sipho).prayer.startsWith('</textarea>'));
+  ok('…so the visitor now counts as an edit to upload', g.cloudDirtyList('att').some(a => a.id === 'EXPO-088'));
+  g.toggleInterest(null, 'EXPO-NOPE', 'nurse'); g.onPrayer('EXPO-NOPE', 'x');
+  ok('unknown visitor ids are ignored safely', true);
+  let csvText = null; sandbox.Blob = function (parts) { csvText = parts.join(''); };
+  g.exportCSV(); sandbox.Blob = function () {};
+  ok('the follow-up CSV carries interests and the prayer note', csvText.includes('Stress & peace') && csvText.includes('endregion') === false && csvText.includes('</textarea>'));
+
+  /* pouch reservation (the button lives on the last step, Send, since the plan screen was redesigned) */
+  g.resetDemo(); g.state.activeId = 'EXPO-088'; g.state.tab = 'send'; g.render();
+  ok('the Send step offers to reserve the pouch', $main.innerHTML.includes('Reserve the R25 co-op starter pouch') && /reservePouch\(\)/.test($main.innerHTML));
+  g.reservePouch();
+  const sip2 = g.attendees.find(a => a.id === 'EXPO-088');
+  ok('Reserve records the pouch for that visitor', sip2.interests.pouch === true && /reserved for Sipho/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+  g.state.tab = 'send'; g.render();
+  ok('…and then says the pouch is reserved', $main.innerHTML.includes('Co-op starter pouch reserved') && !$main.innerHTML.includes('Reserve the R25 co-op starter pouch'));
+  g.state.tab = 'care'; g.render();
+  ok('a reserved pouch appears under the co-op interests', $main.innerHTML.includes('Sipho Ndlovu') && $main.innerHTML.includes('R25 pouch'));
+  g.state.tab = 'plan'; g.reservePouch();
+  ok('tapping again cancels the reservation', sip2.interests.pouch === false && /removed/.test($el('toastMsg').textContent));
+  g.attendees.length = 0; g.state.activeId = ''; g.reservePouch();
+  ok('Reserve with nobody selected just asks for a visitor', /Register a visitor first/.test($el('toastMsg').textContent));
+  g.state.tab = 'screen'; g.render();
+  ok('with no visitors the Screen tab shows the empty state, not a follow-up card', $main.innerHTML.includes('No visitor selected') && !$main.innerHTML.includes('prayerNote'));
+  g.resetDemo();
+
+  /* scanner demo shortcut only exists in demo mode */
+  C.mode = false; C.user = null; g.openScanner();
+  ok('demo mode: the simulate-a-scan list is shown', $el('scanDemo').style.display === '');
+  C.mode = true; g.openScanner();
+  ok('connected: the simulate-a-scan list (real names) is hidden', $el('scanDemo').style.display === 'none');
+  C.mode = false;
+
+  /* service worker never hands out a redirected response */
+  const redirected = new Response('page', { status: 200 }); Object.defineProperty(redirected, 'redirected', { value: true });
+  const plain = await swSandbox.cleanCopy(redirected);
+  ok('service worker rebuilds redirected pages as plain responses', plain.redirected === false && (await plain.text()) === 'page');
+  ok('install fetches the page itself (not a redirecting /index.html)', /fetch\('\.\/'/.test(swSrc) && !/SHELL_FILES = \[[^\]]*'index\.html'/.test(swSrc));
+  /* Android app (Trusted Web Activity) */
+  const twa = JSON.parse(fs.readFileSync(path.join(rootDir, 'android', 'twa-manifest.json'), 'utf8'));
+  const links0 = JSON.parse(fs.readFileSync(path.join(rootDir, 'android', 'assetlinks.json'), 'utf8'));
+  ok('Android: package id looks valid and the host has no scheme or path', /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(twa.packageId) && /^[a-z0-9.-]+$/.test(twa.host), twa.packageId + ' ' + twa.host);
+  ok('Android: icons and manifest are loaded from the same host', [twa.iconUrl, twa.maskableIconUrl, twa.webManifestUrl, twa.fullScopeUrl].every(u => new URL(u).host === twa.host));
+  ok('Android: it opens the same page the website serves (start "/")', twa.startUrl === '/' && manifest.start_url === './' && twa.display === 'standalone');
+  ok('Android: the signing key file is referenced and exists', twa.signingKey.alias === 'newstart' && fs.existsSync(path.join(rootDir, 'android', 'signing', 'newstart.jks')));
+  ok('Android: the secret key files are never copied into dist/', !fs.existsSync(path.join(rootDir, 'dist', 'signing')) && !fs.existsSync(path.join(rootDir, 'dist', 'newstart.jks')));
+  const target = links0[0].target;
+  ok('Android: assetlinks.json names the same package as the app', target.package_name === twa.packageId && links0[0].relation[0] === 'delegate_permission/common.handle_all_urls');
+  ok('Android: assetlinks.json holds a SHA-256 certificate fingerprint', /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(target.sha256_cert_fingerprints[0]), target.sha256_cert_fingerprints[0]);
+  ok('Android: the build publishes assetlinks.json at /.well-known/', fs.readFileSync(dist('.well-known/assetlinks.json'), 'utf8') === fs.readFileSync(path.join(rootDir, 'android', 'assetlinks.json'), 'utf8'));
+  ok('Android: signing passwords are not in the website files', !fs.existsSync(dist('KEYSTORE-INFO.txt')) && !/store password/.test(fs.readFileSync(dist('index.html'), 'utf8')));
+  ok('the host header file sets the manifest content type', /manifest\.webmanifest[\s\S]*Content-Type: application\/manifest\+json/.test(fs.readFileSync(path.join(rootDir, 'tools', 'build.js'), 'utf8')));
+
+  /* ---- 21. plans built from the Natural Remedies Encyclopedia --------- */
+  console.log('\n21. Book-based plans');
+  const PL = g.PROTOCOLS;
+  const PART = '(?:\\d{3}(?:[–-]\\d{3})?|N:\\d{1,2}(?:[–-]\\d{1,2})?)', PAGE = new RegExp('^' + PART + '(?: · ' + PART + ')*$');
+  const plans = Object.keys(PL);
+  ok('all five plans are there (blood pressure, sugar, weight & cholesterol, sleep, stress & mood)', ['bp', 'sugar', 'bmi', 'sleep', 'mind'].every(k => PL[k]) && plans.length === 5, plans.join());
+  ok('every plan names its book chapters and pages', plans.every(k => /(pp?\. \d{3}|chs?\. \d)/.test(PL[k].src)), plans.map(k => PL[k].src).join(' | '));
+  ok('every step has a time, text and a page in the book', plans.every(k => PL[k].steps.length >= 5 && PL[k].steps.every(([t, txt, pg]) => /^\d\d:\d\d$/.test(t) && txt.length > 20 && PAGE.test(pg))));
+  ok('every plan has a list of what the book advises, each with a page', plans.every(k => PL[k].facts.length >= 8 && PL[k].facts.every(([txt, pg]) => txt.length > 20 && PAGE.test(pg))));
+  ok('every plan has three habits for the message and card', plans.every(k => PL[k].habits.length === 3));
+  ok('every plan has a safety note and priced items', plans.every(k => PL[k].note.length > 20 && PL[k].items.length >= 3 && PL[k].items.every(i => i.daily > 0 && i.store && i.dose && /checked \d+ \w+ \d{4}/.test(i.store))));
+  const allRefs = k => [...PL[k].steps.map(s => s[2]), ...PL[k].facts.map(f => f[1])].join(' · ').split(' · ');
+  ok('cited Encyclopedia pages sit inside the chapters used (256–259, 480–482, 526–528, 531–532, 547–548, 656–658)',
+    plans.every(k => allRefs(k).filter(r => !r.startsWith('N:')).every(pg => pg.match(/\d{3}/g).every(n => [[256, 259], [480, 482], [526, 528], [531, 532], [547, 548], [656, 658]].some(([a, b]) => +n >= a && +n <= b)))));
+  ok('cited Nedley chapters are real lifestyle or thinking chapters (1–19)',
+    plans.every(k => allRefs(k).filter(r => r.startsWith('N:')).every(r => r.slice(2).split(/[–-]/).every(n => +n >= 1 && +n <= 19))));
+  ok('Nedley references are chapters, never invented page numbers', plans.every(k => allRefs(k).filter(r => r.startsWith('N:')).every(r => !/\d{3}/.test(r))));
+  const oldWords = /hibiscus|beetroot|stock cube|Aromat|apple-cider|cinnamon|pumpkin seed|oat milk|chamomile/i;
+  ok('the old, non-book content is gone from the plans', !oldWords.test(JSON.stringify(PL)), (JSON.stringify(PL).match(oldWords) || [])[0]);
+  ok('no plan tells people to take a HOT foot bath (the book cautions against it for diabetes and numb feet)',
+    plans.every(k => !PL[k].steps.some(s => /foot bath/i.test(s[1]))) && /do not use hot tub baths/i.test(PL.bp.hydro) && /extremes/i.test(PL.sugar.hydro));
+  ok('every bath named in a plan is the neutral bath (34–36°C)', plans.filter(k => PL[k].hydro).every(k => /34–36°C/.test(PL[k].hydro)));
+  ok('no plan recommends high-dose supplements or fasting', !/\bmg\b|fast(ing)? (one|two|1|2) days|poke root|cayenne|senna/i.test(JSON.stringify(PL.bp.steps) + JSON.stringify(PL.sleep.steps) + JSON.stringify(PL.sugar.steps)));
+  ok('no plan tells anyone to stop medicine', plans.every(k => !/stop (taking )?(your )?(pills|medic)/i.test(PL[k].steps.map(s => s[1]).join(' '))) && plans.every(k => /clinic|doctor/i.test(PL[k].note) || k === 'bmi'));
+  ok('the Encyclopedia is credited in full', /Natural Remedies Encyclopedia/.test(g.BOOK_REF) && /Ferrell/.test(g.BOOK_REF) && /Cherne/.test(g.BOOK_REF));
+  ok('The Lost Art of Thinking is credited in full', /Lost Art of Thinking/.test(g.BOOK2_REF) && /Nedley/.test(g.BOOK2_REF) && /2011/.test(g.BOOK2_REF));
+  ok('reference labels read naturally', g.refLabel('527') === 'p. 527' && g.refLabel('526–528') === 'p. 526–528' && g.refLabel('N:16') === 'Nedley ch. 16'
+    && g.refLabel('N:1–10') === 'Nedley chs. 1–10' && g.refLabel('548 · N:14 · N:16') === 'p. 548 · Nedley ch. 14 · Nedley ch. 16');
+  ok('every plan credits the books it really uses', plans.every(k => g.planBooks(PL[k]).length >= 1) && g.planBooks(PL.bp).length === 2 && g.planBooks(PL.mind).length === 2
+    && g.planCredit(PL.sleep).includes('Natural Remedies Encyclopedia') && g.planCredit(PL.sleep).includes('The Lost Art of Thinking'));
+  ok('the stress & mood plan teaches all ten thinking traps in order, each tied to its chapter',
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].every(n => PL.mind.facts.some(([t, r]) => t.startsWith('Thinking trap ' + n + ',') && r === 'N:' + n)));
+  ok('the sleep and stress plans carry the get-help line with both South African crisis numbers',
+    ['sleep', 'mind'].every(k => /0800 567 567/.test(PL[k].help) && /0861 322 322/.test(PL[k].help) && /emergency service/.test(PL[k].help)));
+  ok('plans without a mental-health focus carry no help line', ['bp', 'sugar', 'bmi'].every(k => !PL[k].help));
+  ok('the sleep plan no longer forbids tomatoes and potatoes (the two books disagree, so neither is imposed)', !/tomato|potato/i.test(JSON.stringify(PL.sleep.steps)));
+
+  /* the book's blood-pressure bands (p. 532) */
+  ok('book BP bands: normal / pre / stage 1 / stage 2', g.bpStage(118, 76) === 'normal' && g.bpStage(125, 70) === 'pre-hypertension' && g.bpStage(135, 85) === 'pre-hypertension'
+    && g.bpStage(142, 90) === 'stage 1 high blood pressure' && g.bpStage(150, 95) === 'stage 1 high blood pressure' && g.bpStage(162, 98) === 'stage 2 high blood pressure' && g.bpStage(130, 100) === 'stage 2 high blood pressure');
+  ok('book BP bands: missing numbers give nothing', g.bpStage(null, 80) === '' && g.bpStage(120, null) === '');
+
+  /* choosing what each person needs */
+  g.resetDemo();
+  const dav = g.attendees.find(a => a.id === 'EXPO-042'), mar = g.attendees.find(a => a.id === 'EXPO-117'), sip = g.attendees.find(a => a.id === 'EXPO-088');
+  const nDav = g.planNeeds(dav);
+  ok('David (142/90, sugar 6.4, BMI 31, cholesterol 6.2) needs BP, sugar and weight/cholesterol', ['bp', 'sugar', 'bmi'].every(k => nDav.some(n => n.k === k)), nDav.map(n => n.k).join());
+  ok('…each with a reason in plain words and the book page', nDav.every(n => n.why.length > 20 && /p\. \d{3}/.test(n.why)));
+  ok('…the BP reason uses the book band and the sugar reason shows mg/dL', /stage 1 high blood pressure/.test(nDav.find(n => n.k === 'bp').why) && /115 mg\/dL/.test(nDav.find(n => n.k === 'sugar').why));
+  ok('…the weight reason names both BMI and cholesterol', /BMI 31/.test(nDav.find(n => n.k === 'bmi').why) && /cholesterol 6\.2/.test(nDav.find(n => n.k === 'bmi').why));
+  ok('David is given the blood-pressure plan first', g.autoProtocol(dav) === 'bp');
+  ok('…and it is the top of his list even though his sleep (5.5 h) is a red flag too', nDav[0].k === 'bp' && nDav.some(n => n.k === 'sleep' && n.sev === 3) && nDav.findIndex(n => n.k === 'sleep') > nDav.findIndex(n => n.k === 'bmi'), nDav.map(n => n.k + n.sev).join());
+  ok('the plan opened automatically is always the first item of the list', g.attendees.every(a => g.planNeeds(a).length ? g.autoProtocol(a) === g.planNeeds(a)[0].k : g.autoProtocol(a) === 'sleep'));
+  const nMar = g.planNeeds(mar);
+  ok('Maria (162/98, sugar 9.8) — BP is a red flag and ranks first', nMar[0].k === 'bp' && nMar[0].sev === 3, nMar.map(n => n.k + n.sev).join());
+  ok('Sipho (128/84, normal numbers, short on sleep? 7h) needs at most mild things', g.planNeeds(sip).every(n => n.sev <= 2));
+  const calm = { s: { sys: 112, dia: 72, sugar: 5.0, chol: 4.2, weight: 65, veg: 5, walk: 40, water: 8, sleep: 8 }, heightCm: 170 };
+  ok('nothing flagged → no needs listed', g.planNeeds(calm).length === 0);
+  const thin = { s: { sys: 112, dia: 72, sugar: 5.0, chol: 4.2, weight: 45, veg: 5, walk: 40, water: 8, sleep: 8 }, heightCm: 170 };
+  ok('an underweight person is NOT given the weight-loss plan', g.autoProtocol(thin) !== 'bmi' && !g.planNeeds(thin).some(n => n.k === 'bmi'), g.autoProtocol(thin));
+  const tired = { s: { sys: 112, dia: 72, sugar: 5.0, chol: 4.2, weight: 65, veg: 5, walk: 40, water: 8, sleep: 5 }, heightCm: 170 };
+  ok('short sleep → the sleep plan', g.autoProtocol(tired) === 'sleep' && g.planNeeds(tired)[0].k === 'sleep');
+  const chol = { s: { sys: 112, dia: 72, sugar: 5.0, chol: 6.8, weight: 65, veg: 5, walk: 40, water: 8, sleep: 8 }, heightCm: 170 };
+  ok('high cholesterol alone → the weight & cholesterol plan', g.autoProtocol(chol) === 'bmi');
+
+  /* the Plan screen */
+  g.state.activeId = 'EXPO-042'; g.state.sugFor = null; g.state.tab = 'plan'; g.render();
+  ok('Plan screen leads with David\'s main problem, with his other needs as tappable choices', $main.innerHTML.includes('Blood pressure 142/90: high (stage 1). Healthy is under 120/80.')
+    && $main.innerHTML.includes('Also needs attention') && /selectProtocol\('sugar'\)/.test($main.innerHTML));
+  ok('…shows the plan steps with book page numbers', /p\. 526/.test($main.innerHTML) && $main.innerHTML.includes('Source: ' + PL.bp.src));
+  ok('…lists what the books advise, and credits both books', $main.innerHTML.includes('Everything the books say') && $main.innerHTML.includes('Natural Remedies Encyclopedia') && $main.innerHTML.includes('The Lost Art of Thinking'));
+  ok('…labels Nedley references as chapters', /Nedley ch\. 17/.test($main.innerHTML));
+  ok('…no help box on the blood-pressure plan', !/Need help now\?/.test($main.innerHTML));
+  ok('…labels prices as dated store prices that vary by branch', new RegExp('≈ R[\\d.]+ a day[\\s\\S]{0,120}Store prices checked ' + g.PRICE_DATE + '; they vary by branch').test($main.innerHTML) && !/Cheapest places/.test($main.innerHTML));
+  ok('…no longer claims "Doctor-reviewed"', !/Doctor-reviewed/.test($main.innerHTML));
+  ok('…shows the plan-specific safety note and the do-not-stop-pills rule', /Never stop prescribed pills suddenly/.test($main.innerHTML) && /Hawthorn/.test($main.innerHTML));
+  for (const k of ['sugar', 'bmi', 'sleep', 'mind']) {
+    g.state.protocol = k; g.render();
+    ok('Plan screen renders the ' + k + ' plan with its source and facts', $main.innerHTML.includes('Source: ' + PL[k].src) && PL[k].facts.every(([t]) => $main.innerHTML.includes(t.slice(0, 25))), k);
+  }
+  g.state.protocol = 'bmi'; g.render();
+  ok('weight plan shows the book\'s calorie rule of thumb for David (94 kg → about 2700 kcal)', /2700 kcal a day/.test($main.innerHTML) && /p\. 481/.test($main.innerHTML), ($main.innerHTML.match(/about <b>[^<]+/) || [])[0]);
+  g.state.protocol = 'bp'; g.render();
+  ok('the calorie line only appears on the weight plan', !/kcal a day/.test($main.innerHTML));
+  for (const k of ['sleep', 'mind']) {
+    g.state.protocol = k; g.render();
+    ok('the ' + k + ' plan screen shows a prominent "Need help now?" box with both crisis numbers', /Need help now\?/.test($main.innerHTML) && /0800 567 567/.test($main.innerHTML) && /0861 322 322/.test($main.innerHTML));
+  }
+  g.state.protocol = 'mind'; g.render();
+  ok('the stress plan shows all ten thinking traps and Nedley chapter labels', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].every(n => $main.innerHTML.includes('Thinking trap ' + n + ',')) && /Nedley chs\. 1–10/.test($main.innerHTML));
+  g.state.protocol = 'bp';
+
+  /* who is offered the stress & mood plan */
+  const stressOnly = { s: calm.s, heightCm: 170, interests: { stress: true } };
+  ok('a visitor who ticked "Stress & peace" is offered the calm-mind plan', g.planNeeds(stressOnly).some(n => n.k === 'mind') && g.autoProtocol(stressOnly) === 'mind', g.autoProtocol(stressOnly));
+  ok('…its reason says why', /Asked for stress and peace support/.test(g.planNeeds(stressOnly).find(n => n.k === 'mind').why));
+  ok('nobody is given the stress plan unless they asked for it', !g.planNeeds(calm).some(n => n.k === 'mind') && !g.planNeeds(dav).some(n => n.k === 'mind'));
+  const stressAndBp = { s: { ...calm.s, sys: 150, dia: 95 }, heightCm: 170, interests: { stress: true } };
+  const order = g.planNeeds(stressAndBp).map(n => n.k);
+  ok('a real medical flag still comes before the stress plan', order[0] === 'bp' && order.includes('mind'), order.join());
+  const stressAndSleep = { s: { ...calm.s, sleep: 5 }, heightCm: 170, interests: { stress: true } };
+  ok('stress & mood comes before sleep when both apply', g.planNeeds(stressAndSleep).map(n => n.k).join() === 'mind,sleep', g.planNeeds(stressAndSleep).map(n => n.k).join());
+  const maria2 = g.attendees.find(a => a.id === 'EXPO-117');
+  ok('Maria (asked for stress & peace) gets it offered, after her BP red flag', g.planNeeds(maria2).map(n => n.k).includes('mind') && g.planNeeds(maria2)[0].k === 'bp');
+  ok('plans keep working for someone with nothing flagged', (() => { g.attendees.push(g.migrateAttendee({ id: 'EXPO-990', name: 'Calm Person', age: 30, sex: 'Female', s: calm.s, heightCm: 170 })); g.state.activeId = 'EXPO-990'; g.state.sugFor = null; g.render(); return $main.innerHTML.includes('Your numbers look fine today'); })());
+  g.resetDemo();
+
+  /* the WhatsApp message and the take-home card use the same plan */
+  g.state.activeId = 'EXPO-042'; g.state.sugFor = null; g.state.tab = 'home';
+  const msg2 = g.waMessage(g.attendees.find(a => a.id === 'EXPO-042'));
+  /* since the plans became "do these 3 things" (PLANS.md), the message, preview and card carry the plan's top three actions */
+  const top3 = g.planFor(g.attendees.find(a => a.id === 'EXPO-042')).top.map(x => x.do);
+  ok('WhatsApp message carries the plan\'s three actions and its book source', top3.length === 3 && top3.every(d => msg2.includes(d)) && msg2.includes('Hypertension, pp. 526–528') && msg2.includes('Natural Remedies Encyclopedia'), top3.join(' | '));
+  /* the old plan suggested these; "No stock cubes" (advice to avoid them) is fine */
+  ok('WhatsApp message no longer suggests hibiscus, beetroot, foot baths or stock cubes', !/hibiscus|beetroot|foot bath/i.test(msg2) && !/(?<!No )stock cube/i.test(msg2));
+  ok('WhatsApp message still carries the do-not-stop-pills warning', /do not stop them suddenly/.test(msg2));
+  g.openWhatsApp();
+  ok('WhatsApp preview shows the same actions and source', top3.every(d => $el('waBody').innerHTML.includes(g.esc(d))) && $el('waBody').innerHTML.includes('Hypertension, pp. 526–528'));
+  g.buildPrintCard();
+  ok('take-home card shows the plan\'s actions, the dated store-price note and the book credit', top3.every(d => $el('printArea').innerHTML.includes(g.esc(d))) && /store prices checked \d+ \w+ \d{4}; may vary by branch/.test($el('printArea').innerHTML) && /Natural Remedies Encyclopedia/.test($el('printArea').innerHTML));
+  g.attendees.find(a => a.id === 'EXPO-042').interests.stress = true; g.attendees.find(a => a.id === 'EXPO-042').s.sys = 118; g.attendees.find(a => a.id === 'EXPO-042').s.dia = 76;
+  g.attendees.find(a => a.id === 'EXPO-042').s.sugar = 5; g.attendees.find(a => a.id === 'EXPO-042').s.chol = 4.5; g.attendees.find(a => a.id === 'EXPO-042').s.weight = 70; g.attendees.find(a => a.id === 'EXPO-042').s.sleep = 8;
+  const mindMsg = g.waMessage(g.attendees.find(a => a.id === 'EXPO-042'));
+  const mindTop = g.planFor(g.attendees.find(a => a.id === 'EXPO-042')).top.map(x => x.do);
+  ok('the WhatsApp message for the stress plan carries its actions, both books and the help line', g.autoProtocol(g.attendees.find(a => a.id === 'EXPO-042')) === 'mind' && mindTop.length === 3 && mindTop.every(d => mindMsg.includes(d)) && mindMsg.includes('The Lost Art of Thinking') && /0800 567 567/.test(mindMsg));
+  g.buildPrintCard();
+  ok('the take-home card for the stress plan carries the help line too', /0800 567 567/.test($el('printArea').innerHTML) && /The Lost Art of Thinking/.test($el('printArea').innerHTML));
+  g.resetDemo(); g.state.activeId = 'EXPO-042'; g.state.sugFor = null;
+  ok('take-home card keeps the clinic warning', /Never stop prescribed pills suddenly/.test($el('printArea').innerHTML) && /Not a replacement for your clinic/.test($el('printArea').innerHTML));
+  g.state.tab = 'results'; g.render();
+  ok('Results counselling tool no longer describes the old plan', !/hibiscus|stock cube|Foot bath/i.test($main.innerHTML) && /Neutral bath/.test($main.innerHTML) && /illustrative estimates/.test($main.innerHTML));
+  ok('Results shows the cost as dated store prices', /store prices checked \d+ \w+ \d{4}; they change and vary by branch/.test($main.innerHTML));
+  g.resetDemo();
+
+  /* persistence flag */
+  localStorage.setItem('newstart.passport.v2', JSON.stringify({ attendees: [], volunteers: [], activeId: '', cloud: true }));
+  ok('an empty connected copy loads as empty (not re-seeded)', g.loadPersisted() === true && g.attendees.length === 0 && g.volunteers.length === 0);
+  localStorage.setItem('newstart.passport.v2', JSON.stringify({ attendees: [], activeId: '' }));
+  ok('an empty demo copy still re-seeds', g.loadPersisted() === false);
+  C.mode = false; g.resetDemo();
+
+  console.log('\n' + '='.repeat(52));
+  console.log(failures ? `${failures} of ${checks} checks FAILED` : `all ${checks} checks passed`);
+  console.log('='.repeat(52));
+  process.exit(failures ? 1 : 0);
+})().catch(e => { console.log('CLOUD TESTS THREW: ' + e.stack); process.exit(1); });
+

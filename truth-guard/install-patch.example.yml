@@ -1,0 +1,11 @@
+﻿# Append this row to $DSH_HOME/profiles/<profile>/cordis.patch.yml.
+# The package must already be resolvable from that profile.
+- insert:
+    - id: truth-guard
+      name: dsh-truth-guard
+      config:
+        enabled: true
+        promptContract: true
+        auditUrls: true
+        auditTestTampering: true
+        auditBypass: true
