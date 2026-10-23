@@ -1,6 +1,6 @@
 # Builds, zip-aligns and signs the Capacitor Android app:   powershell -File tools\sign-app.ps1
 # Output: capacitor\android\app-release-signed.apk  (and prints its signing certificate fingerprint)
-# Same key and the same Credential Manager entries as tools\sign-apk.ps1 (NEWSTART-Expo/keystore-store and
+# Signs with android\signing\newstart.jks and the Credential Manager entries (NEWSTART-Expo/keystore-store and
 # NEWSTART-Expo/keystore-key), so the app installs over the current one. Capacitor 8 needs Java 21: the portable JDK in
 # %LOCALAPPDATA%\expo-build-tools\jdk-21 is used unless JAVA_HOME already points at one.
 $ErrorActionPreference = 'Stop'

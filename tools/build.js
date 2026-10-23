@@ -18,15 +18,9 @@ fs.copyFileSync(path.join(root, 'manifest.webmanifest'), path.join(dist, 'manife
 fs.writeFileSync(path.join(dist, 'sw.js'), fs.readFileSync(path.join(root, 'sw.js'), 'utf8').replace('__VERSION__', version));
 for (const f of fs.readdirSync(path.join(root, 'icons'))) fs.copyFileSync(path.join(root, 'icons', f), path.join(dist, 'icons', f));
 
-/* Android app: lets Android confirm the installed app belongs to this website (so it opens with no browser bar).
-   The fingerprint is that of android/signing/newstart.jks; the file is public by design and holds no secret. */
-const links = path.join(root, 'android', 'assetlinks.json');
-if (fs.existsSync(links)) {
-  fs.mkdirSync(path.join(dist, '.well-known'), { recursive: true });
-  fs.copyFileSync(links, path.join(dist, '.well-known', 'assetlinks.json'));
-}
-/* the APK itself, if one has been built, so phones can download it from the same address */
-const apk = path.join(root, 'android', 'app-release-signed.apk');
+/* the Android app (capacitor/, built by tools/sign-app.ps1), if one has been built, so phones can download it from the
+   same address */
+const apk = path.join(root, 'capacitor', 'android', 'app-release-signed.apk');
 if (fs.existsSync(apk)) fs.copyFileSync(apk, path.join(dist, 'newstart.apk'));
 
 /* Security headers for every file. The CSP still needs 'unsafe-inline' for scripts because the app is one page with inline
@@ -56,7 +50,6 @@ fs.writeFileSync(path.join(dist, '_headers'), [
   '/sw.js', '  Cache-Control: no-cache', '/index.html', '  Cache-Control: no-cache', '/manifest.webmanifest', '  Cache-Control: no-cache',
   '  Content-Type: application/manifest+json', '/',
   '  Cache-Control: no-cache', '/icons/*', '  Cache-Control: public, max-age=86400',
-  '/.well-known/assetlinks.json', '  Content-Type: application/json', '  Cache-Control: no-cache',
   '/newstart.apk', '  Content-Type: application/vnd.android.package-archive', '  Content-Disposition: attachment; filename="NEWSTART.apk"', ''].join('\n'));
 
 const files = [];

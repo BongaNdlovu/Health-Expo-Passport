@@ -16,9 +16,6 @@
   Cache-Control: no-cache
 /icons/*
   Cache-Control: public, max-age=86400
-/.well-known/assetlinks.json
-  Content-Type: application/json
-  Cache-Control: no-cache
 /newstart.apk
   Content-Type: application/vnd.android.package-archive
   Content-Disposition: attachment; filename="NEWSTART.apk"

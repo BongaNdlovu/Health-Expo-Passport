@@ -142,7 +142,7 @@ delete from public.staff where user_id = (select id from auth.users where email 
 Findings of the security pressure test (21 Oct 2026) that only you can act on:
 
 - **Android signing passwords** belong in a password manager. On this PC they are Windows credentials
-  `NEWSTART-Expo/keystore-store` and `NEWSTART-Expo/keystore-key`. `tools/sign-apk.ps1` reads those. Do not put them
+  `NEWSTART-Expo/keystore-store` and `NEWSTART-Expo/keystore-key`. `tools/sign-app.ps1` reads those. Do not put them
   back in the project folder.
 - **Password rules on the server.** The app asks for 8+ characters with a letter and a number, but someone calling
   Supabase directly is held only to Supabase's own minimum (not visible from outside, so not checked). In the Supabase

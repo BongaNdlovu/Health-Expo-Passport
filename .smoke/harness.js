@@ -2344,18 +2344,15 @@ function makeServer() {
   const plain = await swSandbox.cleanCopy(redirected);
   ok('service worker rebuilds redirected pages as plain responses', plain.redirected === false && (await plain.text()) === 'page');
   ok('install fetches the page itself (not a redirecting /index.html)', /fetch\('\.\/'/.test(swSrc) && !/SHELL_FILES = \[[^\]]*'index\.html'/.test(swSrc));
-  /* Android app (Trusted Web Activity) */
-  const twa = JSON.parse(fs.readFileSync(path.join(rootDir, 'android', 'twa-manifest.json'), 'utf8'));
-  const links0 = JSON.parse(fs.readFileSync(path.join(rootDir, 'android', 'assetlinks.json'), 'utf8'));
-  ok('Android: package id looks valid and the host has no scheme or path', /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(twa.packageId) && /^[a-z0-9.-]+$/.test(twa.host), twa.packageId + ' ' + twa.host);
-  ok('Android: icons and manifest are loaded from the same host', [twa.iconUrl, twa.maskableIconUrl, twa.webManifestUrl, twa.fullScopeUrl].every(u => new URL(u).host === twa.host));
-  ok('Android: it opens the same page the website serves (start "/")', twa.startUrl === '/' && manifest.start_url === './' && twa.display === 'standalone');
-  ok('Android: the signing key file is referenced and exists', twa.signingKey.alias === 'newstart' && fs.existsSync(path.join(rootDir, 'android', 'signing', 'newstart.jks')));
+  /* Android app (Capacitor, capacitor/); the old Trusted Web Activity in android/ is gone, only its signing key stays */
+  const signApp = fs.readFileSync(path.join(rootDir, 'tools', 'sign-app.ps1'), 'utf8');
+  const buildJs = fs.readFileSync(path.join(rootDir, 'tools', 'build.js'), 'utf8');
+  const capId = fs.existsSync(path.join(rootDir, 'capacitor')) ? JSON.parse(fs.readFileSync(path.join(rootDir, 'capacitor', 'capacitor.config.json'), 'utf8')).appId : '';
+  ok('Android: the app keeps the package id of the installed app', capId === 'org.newstart.expopassport', capId);
+  ok('Android: the signing key file is referenced and exists', /android\\signing\\newstart\.jks/.test(signApp) && /--ks-key-alias newstart/.test(signApp) && fs.existsSync(path.join(rootDir, 'android', 'signing', 'newstart.jks')));
   ok('Android: the secret key files are never copied into dist/', !fs.existsSync(path.join(rootDir, 'dist', 'signing')) && !fs.existsSync(path.join(rootDir, 'dist', 'newstart.jks')));
-  const target = links0[0].target;
-  ok('Android: assetlinks.json names the same package as the app', target.package_name === twa.packageId && links0[0].relation[0] === 'delegate_permission/common.handle_all_urls');
-  ok('Android: assetlinks.json holds a SHA-256 certificate fingerprint', /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(target.sha256_cert_fingerprints[0]), target.sha256_cert_fingerprints[0]);
-  ok('Android: the build publishes assetlinks.json at /.well-known/', fs.readFileSync(dist('.well-known/assetlinks.json'), 'utf8') === fs.readFileSync(path.join(rootDir, 'android', 'assetlinks.json'), 'utf8'));
+  ok('Android: the web site offers the Capacitor app for download', /path\.join\(root, 'capacitor', 'android', 'app-release-signed\.apk'\)/.test(buildJs) && !/assetlinks/.test(buildJs));
+  ok('Android: the old web-wrapper app is gone', !fs.existsSync(path.join(rootDir, 'android', 'twa-manifest.json')) && !fs.existsSync(path.join(rootDir, 'tools', 'sign-apk.ps1')) && !fs.existsSync(dist('.well-known/assetlinks.json')));
   ok('Android: signing passwords are not in the website files', !fs.existsSync(dist('KEYSTORE-INFO.txt')) && !/store password/.test(fs.readFileSync(dist('index.html'), 'utf8')));
   ok('the host header file sets the manifest content type', /manifest\.webmanifest[\s\S]*Content-Type: application\/manifest\+json/.test(fs.readFileSync(path.join(rootDir, 'tools', 'build.js'), 'utf8')));
 
