@@ -771,6 +771,37 @@ function makeServer() {
       /fonts\.googleapis\.com\/css2\?family=Inter/.test(webFonts) && !/vendor\//.test(webFonts));
   }
 
+  /* ---- 16c. intro, every screen size, quicker screens ---- */
+  console.log('\n16c. Intro, screen sizes, quicker screens');
+  {
+    const css = (html.match(/v8 · INTRO, EVERY SCREEN SIZE, QUICKER SCREENS[\s\S]*?<\/style>/) || [''])[0];
+    const mainScript = html.indexOf('\n<script>\n');
+    ok('intro: the logo is in the page itself, so it shows before any script runs',
+      html.indexOf('<div id="intro"') > html.indexOf('<body>') && html.indexOf('<div id="intro"') < mainScript && /class="intro-badge"/.test(html));
+    ok('intro: the logo pops in and beats once, then the app rises into place',
+      /\.intro-badge\{[^}]*animation:introPop[^}]*introBeat/.test(css) && /@keyframes introBeat/.test(css) && /\.intro-rise #app[^{]*\{animation:introRise/.test(css));
+    ok('intro: it leaves on its own and never holds the app back',
+      $el('intro').classList.contains('intro-out') && document.documentElement.classList.contains('intro-rise'));
+    ok('intro: people who ask for less motion do not see it',
+      /@media \(prefers-reduced-motion:reduce\)\{#intro\{display:none\}/.test(css) && /prefers-reduced-motion: reduce\)'\)\.matches\)\{el\.remove\(\);return;\}/.test(html));
+    ok('screens: the header never makes the page wider than the phone',
+      /\.hdr-brand\{flex:0 0 auto\}/.test(css) && /\.hdr-tools\{min-width:0;flex:0 1 auto\}/.test(css) && /@media \(max-width:439\.98px\)\{\.hdr-title\{display:none\}\}/.test(css)
+      && /#headerChip>span\.text-left>span\{overflow:hidden;text-overflow:ellipsis/.test(css) && /class="hdr-brand /.test(html) && /class="hdr-tools /.test(html) && /class="hdr-title /.test(html));
+    ok('screens: the header and the tabs clear the phone\'s status bar and gesture bar',
+      /<header [^>]*padding-top:max\(\.75rem,calc\(var\(--safe-area-inset-top,0px\) \+ \.5rem\)/.test(html) && /<nav [^>]*padding-bottom:max\(\.75rem,calc\(var\(--safe-area-inset-bottom,0px\) \+ \.5rem\)/.test(html));
+    g.state.tab = 'home'; g.render();
+    ok('screens: a long visitor name wraps on the Home card instead of being cut',
+      /\.hero \.display\.truncate\{white-space:normal;display:-webkit-box;-webkit-line-clamp:2/.test(css) && /class="display truncate/.test($main.innerHTML));
+    ok('screens: cards arrive within half a second and progress bars fill in half a second',
+      /\.stagger>\*,\.pour>\*\{animation-duration:\.3s\}/.test(css) && /nth-child\(n\+5\)\{animation-delay:\.12s\}/.test(css) && /\.bar-fill\{animation-duration:\.5s\}/.test(css));
+    const capDir = path.join(__dirname, '..', 'capacitor');
+    const styles = fs.existsSync(capDir) ? fs.readFileSync(path.join(capDir, 'android', 'app', 'src', 'main', 'res', 'values', 'styles.xml'), 'utf8') : '';
+    ok('app: Android\'s launch screen uses the app\'s colour and logo',
+      /<item name="windowSplashScreenBackground">#F6F8F6<\/item>/.test(styles) && /<item name="windowSplashScreenAnimatedIcon">@mipmap\/ic_launcher<\/item>/.test(styles));
+    const capCfg = fs.existsSync(capDir) ? JSON.parse(fs.readFileSync(path.join(capDir, 'capacitor.config.json'), 'utf8')) : {};
+    ok('app: the web view starts in the app\'s colour (no white flash)', capCfg.backgroundColor === '#f6f8f6');
+  }
+
   console.log('\n17. Cloud sync (fake Supabase)');
   const srv = makeServer();
   sandbox.supabase = { createClient: () => srv.client };
