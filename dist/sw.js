@@ -3,7 +3,7 @@
    it loads from CDNs. It NEVER stores anything from Supabase — visitor health data, volunteer details and sign-in
    tokens travel only between the app and the database (the app keeps its own saved copy on the device).
    VERSION is stamped by tools/build.js so every release replaces the old cache. */
-const VERSION = '08706364f8';
+const VERSION = '74952dd599';
 const SHELL = 'newstart-shell-' + VERSION;
 const LIBS = 'newstart-libs-v2';              /* v2: scripts are now loaded with integrity checks (CORS), so older opaque copies are dropped */
 
@@ -45,17 +45,28 @@ self.addEventListener('activate', event => {
 async function cleanCopy(res) {
   return new Response(await res.blob(), { status: res.status, statusText: res.statusText, headers: res.headers });
 }
-/* the page: use the network when it answers quickly (so updates arrive), the saved copy when it does not */
+/* the page: use the network, and the saved copy only when the network does not answer.
+   A rejected answer here is shown on the phone as net::ERR_CACHE_MISS, so this must always return a response.
+   The 4s cutoff applies only when a saved copy exists. With nothing saved, a slow phone must be allowed to finish. */
 async function page(request) {
   const cache = await caches.open(SHELL);
-  try {
-    const res = await Promise.race([fetch(request), new Promise((_, no) => setTimeout(() => no(new Error('slow')), 4000))]);
-    if (res && res.ok) cache.put('index.html', await cleanCopy(res.clone()));
+  const saved = await cache.match('index.html');
+  const pull = async () => {
+    const res = await fetch(request);
+    const html = res && res.ok && (res.headers.get('content-type') || '').includes('text/html');
+    if (html) cache.put('index.html', await cleanCopy(res.clone()));
     return res;
+  };
+  if (!saved) {
+    try { return await pull(); }
+    catch (err) {
+      return new Response('The page could not be loaded. Check the connection and try again.', { status: 503, headers: { 'Content-Type': 'text/plain; charset=UTF-8' } });
+    }
+  }
+  try {
+    return await Promise.race([pull(), new Promise((_, no) => setTimeout(() => no(new Error('slow')), 4000))]);
   } catch (err) {
-    const saved = await cache.match('index.html');
-    if (saved) return saved;
-    throw err;
+    return saved;
   }
 }
 /* own files: answer from the saved copy at once, refresh it in the background */
@@ -80,6 +91,10 @@ self.addEventListener('fetch', event => {
   const request = event.request, url = new URL(request.url);
   if (request.method !== 'GET') return;
   if (isSupabase(url.hostname)) return;                                 /* data and sign-in: straight to the network, never stored */
+  /* Android's in-app browser fails the worker's own fetch and then shows net::ERR_CACHE_MISS. Let it load the site itself. */
+  if ((request.headers.get('User-Agent') || '').includes('; wv)')) return;
+  /* the install file must reach the phone unchanged. Intercepting it can hand the phone this web page instead of the apk, and the installer then refuses the file. */
+  if (url.origin === self.location.origin && url.pathname.endsWith('.apk')) return;
   if (request.mode === 'navigate' && url.origin === self.location.origin) { event.respondWith(page(request)); return; }
   if (url.origin === self.location.origin) { event.respondWith(ownFile(request)); return; }
   if (LIB_HOSTS.includes(url.hostname)) event.respondWith(library(request));

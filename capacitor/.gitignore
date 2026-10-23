@@ -1,0 +1,5 @@
+# installed packages and the generated app files (tools/build-app.js rebuilds www/ from index.html and vendor/)
+node_modules/
+www/
+# the signed app is a build output, like the apk itself (android/.gitignore)
+android/*.idsig

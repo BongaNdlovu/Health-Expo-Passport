@@ -1,0 +1,3 @@
+# The app bundles these libraries byte for byte: tools/build-app.js checks them against the integrity hashes in
+# index.html, so git must never change their line endings.
+vendor/** -text

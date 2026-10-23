@@ -1,0 +1,3898 @@
+{
+ "note": "MEASURED by make-expected.js. Never edit by hand; regenerate instead.",
+ "toolHashes": {
+  "config.js": "2d42403bbefb8cebadfc068239d850692110143aaf729927de499a76b0bea9a6",
+  "edits.js": "13b947ae885c44e6f1c94293d57015fa59faf422abcdd7f022e0b1742a87ec24",
+  "apply.js": "7c2aa2ed89fde06e94432469075d8e5cf4f2bfe6e9299ffb5fbdf8d33dffa024",
+  "lib.js": "0ae73e6117cb2595af8bbd61a75cbab927f7f5a963b62910b6f7b82bb11fa93e",
+  "scope-report.js": "4b2e2cae22f7cd71aa03f5b542c225364ab465559abb6589b155ec7ff4b3f296"
+ },
+ "baselineManifest": {
+  ".cursor/settings.json": "4672ba9dc967e1b9e910bcfb25c2c1756128bc035a833a861773cbebd19ccb3d",
+  ".gitignore": "8218c869e70613acb38c0beb1335f88b5deaf2dd0136171f0b2c6125826bea73",
+  ".smoke/harness.js": "61f1d3fd804d61c0753c61acda645c8cad62dfef39e5de817014a12499e01ca4",
+  ".smoke/serve.js": "d7e0e175a42afa01d8ce8a194cd6021936614ac7dd7f0c2bb16c1c8dc5b9e621",
+  ".wrangler/cache/pages.json": "ecd6b7211caba15e4dac1423d7cbbbc39d7d4b68010adb68619895b18a4a42f7",
+  ".wrangler/cache/wrangler-account.json": "70654d6746b0fd3e6d83dfc5f5fd49fea176a2a5268a61ef9b7c55c0c86f2e4e",
+  "android/app/build.gradle": "e1f28dd76d6fa878df1d1d8a8a72704b9c3a429f1873f21c7703603ef68cf439",
+  "android/app/src/main/AndroidManifest.xml": "b26273ea419266c5877cd275c7e5a8f60c1778f4ac4643e92137af00659cd074",
+  "android/app/src/main/java/org/newstart/expopassport/Application.java": "b2a2aafa12561de77cc9644efc8e99d8fd08eaa92e495df4e2e391fcefdd62b0",
+  "android/app/src/main/java/org/newstart/expopassport/DelegationService.java": "7af9f6dfc2686203f69ace2cf08a57d5c6cddce3ceddc87a50d1454aa3c8ae6f",
+  "android/app/src/main/java/org/newstart/expopassport/LauncherActivity.java": "ca064d27fd3f009d0f1ea57f113f7e5ca7684827fc810db70042391f58ea4efc",
+  "android/app/src/main/res/drawable-anydpi/shortcut_legacy_background.xml": "86ba1e4e3ff3b8f2560dad59678b1083f3173b722707b9824365f812bc0662ae",
+  "android/app/src/main/res/drawable-hdpi/splash.png": "0f3b1fd50004da72e5943657c06e878ba140d180ccf62bbc62a4dc0bc0f6826a",
+  "android/app/src/main/res/drawable-mdpi/splash.png": "bff929573c1a8d644f9bef362440d1bf0209cbda2bf1e0652124368ed346d17c",
+  "android/app/src/main/res/drawable-xhdpi/splash.png": "600e5598c56fd3953cc10428fd512fd7c9de7d7b705bb35da99eecd1e1ce0e1f",
+  "android/app/src/main/res/drawable-xxhdpi/splash.png": "0de75a7939d86c0858623446c284bb9fe070fdf63853ab5c5f5a22a8b9e4eb76",
+  "android/app/src/main/res/drawable-xxxhdpi/splash.png": "b9384bf167d20b4d90f8c28840c8275d2db04334f9e1339ec6391f51fa87a4c6",
+  "android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml": "a94c005e5559dca0b61137671d9e9a06176cf2449e39099b2a82fdd1a4e5cc75",
+  "android/app/src/main/res/mipmap-hdpi/ic_launcher.png": "fcf5845d6c3496f362185e2d5fa66c86d2d468134114d5c3184b03ca0412e200",
+  "android/app/src/main/res/mipmap-hdpi/ic_maskable.png": "3fad86ae825df50b3abf302c2f9e609eeac9600782e7abfdb829377157b11e6a",
+  "android/app/src/main/res/mipmap-mdpi/ic_launcher.png": "6ef62d81e7787eccea9dc398158bad2895b82cc18d513c3e6d0f0bdcce6492f4",
+  "android/app/src/main/res/mipmap-mdpi/ic_maskable.png": "5b39eda430aaf9530bda3af4f6319590d0f01aeb9372c30b4e579094f52d9cd5",
+  "android/app/src/main/res/mipmap-xhdpi/ic_launcher.png": "a45bb16f5aa0a0d72565ec9931daa6ead73b3b43d2ba4042eedb5e1e744dc99d",
+  "android/app/src/main/res/mipmap-xhdpi/ic_maskable.png": "6fd26687269411860ce7fed9a429276800068851ddc921df70ed56e119e0d2f7",
+  "android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png": "701c79007492237af7dffb5888811b97eaf18d1c2b7000e045780344227bc2a8",
+  "android/app/src/main/res/mipmap-xxhdpi/ic_maskable.png": "5f422f8996af3668c10a07db4042c364b4c4e8db32cdfefb5ae7284e66dae5f7",
+  "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png": "7f62491cefe84673855525c664f8c84b98aac66835497702d6363bc18ce1175b",
+  "android/app/src/main/res/mipmap-xxxhdpi/ic_maskable.png": "525ff51df73d96efdf862dc22b01b8d690858f4cc111e801b299674391c1bbf7",
+  "android/app/src/main/res/raw/web_app_manifest.json": "ff6428739156ade487f96ca6f44bb74fba64209452e677c0126beb296058086f",
+  "android/app/src/main/res/values/colors.xml": "4cd4bb4d8bbe5f38161bfc3de1069f3e00a2cd1b6f282df78611f91dea33f782",
+  "android/app/src/main/res/values/strings.xml": "97d8e03de4749b4104a99b22e514e36aca6ccc04d129e2a662f53d00c5353f91",
+  "android/app/src/main/res/xml/filepaths.xml": "3d51d25482d106acad7aee6d8194979eb700353aab1bac8290762def34e5ff11",
+  "android/app/src/main/res/xml/shortcuts.xml": "09e0c1798ab467d1018ae01b3c44c657c5dbfeb8edd6fcf588bc875613866101",
+  "android/app-release-signed.apk": "d4658316a2aa5c25b4a8a81b6ad3dfeae625eb78de1dec1642011293381780a4",
+  "android/app-release-signed.apk.idsig": "851030f80d29fbbe94500d0d90fe8133c138582fce40bf39d28511ae097c4f90",
+  "android/assetlinks.json": "b7521952c932f71fc6000b9d419d05d3ce7f6b32ea39ec2a299855bf859a946c",
+  "android/build.gradle": "d0f27b20d2c5d578508364791121a021d6866b3e0ddb20e3f8e4695ecfba0c9f",
+  "android/gradle/wrapper/gradle-wrapper.jar": "3dc39ad650d40f6c029bd8ff605c6d95865d657dbfdeacdb079db0ddfffedf9f",
+  "android/gradle/wrapper/gradle-wrapper.properties": "32f03ec0547597c12e334bf8fedd7fb13129db49cd8a1aa583170a774aaeb47b",
+  "android/gradle.properties": "87426c918daa47c581c66214b9f33c2b02550ec3b205e146ce89911c961585dc",
+  "android/gradlew": "d8231d345ab33433ab7b2c0720d5beb416c8d5c6789dbc01ad122b63bc2cae0d",
+  "android/gradlew.bat": "bdecf875b6868cbcbd36a1f85eedf0832f358ff28092c5797ed645f7edce77d9",
+  "android/local.properties": "c4db09bbc06f4518fed01eeac7b1490646a6a5769c89dd8d2bea82e62164e10c",
+  "android/manifest-checksum.txt": "b4345315b43a22ded50076087ccadeee10afebae6660fbe1a5441cd00a31d252",
+  "android/settings.gradle": "4b919cfffaed71637d1ee9c89f21f4247273e14eb8433afdcd0672eba906b41f",
+  "android/signing/newstart.jks": "eee27f6efbf958230b39e683800cd1f5d484e2cc13aef0ebeb707423bad09d59",
+  "android/store_icon.png": "5d32ddcf420e3c8c50ca3aceb2f50ce42a51f49c620706bb693f33d98a530c82",
+  "android/twa-manifest.json": "404361410b421de5b9baf756e820759c89621a12db6f73ecdf50552508b86257",
+  "ANDROID.md": "774465663a508b5cdfc25380b97a548b8ab6b15371c4a0969ab3b33444067690",
+  "app-blueprint/BLUEPRINT.md": "b4307c3d170a67da413c1ffaf5320eaebdedffa49cae4fc84156a0e810db00b9",
+  "app-blueprint/EXAMPLE-stokfam.md": "8c27b4c7c8e56814f9ee9ec0fc3d2a3d5362b623616b9452f72274b3906b22dd",
+  "app-blueprint/README.md": "54b66a519f2f4a0adfff17982715cb08094c9b3599a36303c53bf96ec583fe9b",
+  "dist/.well-known/assetlinks.json": "b7521952c932f71fc6000b9d419d05d3ce7f6b32ea39ec2a299855bf859a946c",
+  "dist/icons/favicon-32.png": "1b24c537bb81e9222b5e9ba78bab57f501f670060ca2ecefa41e743423468fca",
+  "dist/icons/icon-180.png": "95fae84ec92b7d1404c619211103d30d5b81c5777589512f9cd38da034bd12c3",
+  "dist/icons/icon-192.png": "d6a1f9b4c339758e467cb7ce9573681f17defee9bd1380ec1261057acefa276d",
+  "dist/icons/icon-512.png": "9a99173e8a48969e5b8637c5483f3bc32f3549280f548bff170c7a3486016510",
+  "dist/icons/icon-maskable-512.png": "a8d75cd2133dd764ab0373623ce29b5b28d811a83561dbd498c1f323cd923949",
+  "dist/index.html": "4f7b0ddbaaf713d3c2a75e504b1e39b81b640fdd509389a578b3e667f047ddd0",
+  "dist/manifest.webmanifest": "c737ff776fef74a8b6a53d606e47be2bc8c98882b0745c52ce0ebab26eade547",
+  "dist/newstart.apk": "d4658316a2aa5c25b4a8a81b6ad3dfeae625eb78de1dec1642011293381780a4",
+  "dist/sw.js": "03919700c6ca390ad6703690cd83f84d56a0e65c77877009865a079b37cec242",
+  "dist/_headers": "2a46a1d21a59685e96146c5ae05c465fcacd67ca8be13e838525e7324455d8ae",
+  "fix-plan/apply.js": "f92bf0177fff939d2ccee8b1adf8be644cdaab5b6104942c75145043c04f44e0",
+  "fix-plan/expected.json": "58ca088e892f38b0275b72fb641bbb9f4f03506121e0792b6e412b341fd1f12c",
+  "fix-plan/gate.js": "52a1f3bddb8ba4bd63b750d19a6686996394cc9f5da217ce90b8096388ed5f57",
+  "fix-plan-churches/apply.js": "7c2aa2ed89fde06e94432469075d8e5cf4f2bfe6e9299ffb5fbdf8d33dffa024",
+  "fix-plan-churches/config.js": "4cd70e1e81b30c82875182c45ca29da7be4bf8f96cae171a3b1fed422805c066",
+  "fix-plan-churches/edits.js": "a0cac4f0bd0c3e192aafee52f626da97046817ba9a3f1fe2040fb0bdba3ecc2b",
+  "fix-plan-churches/expected.json": "8b129616f13224a6c1abea0ed45633ea06fc31a7bb9fd2d35e6eb0c99dd491e0",
+  "fix-plan-churches/gate.js": "5cbff7e707d2bcc2166cbcbb23032da4fee1f4f194370446f155e5efe3187060",
+  "fix-plan-churches/lib.js": "0ae73e6117cb2595af8bbd61a75cbab927f7f5a963b62910b6f7b82bb11fa93e",
+  "fix-plan-churches/make-expected.js": "7fe7c8f26c8d2429f206790928616c887faedc35d17ee53dbe440f2887556af0",
+  "fix-plan-churches/scope-report.js": "4b2e2cae22f7cd71aa03f5b542c225364ab465559abb6589b155ec7ff4b3f296",
+  "fix-plan-churches/tamper-test.js": "1fa1be9c0c3a56a3abcaa5446a2d0404978bd18f5d65bd50a67182a0d35c2943",
+  "FIX-PLAN-churches.md": "6e5a5ebff8b656cf0d1f5ad25233cfa36a426f7649c2b658d866f485be2453e4",
+  "FIX-PLAN-harness-failures.md": "0bead7342b644f97af3fc7e05af582f3eac16fff7e26802fe47b3487402a63d7",
+  "fix-plan-status/apply.js": "7c2aa2ed89fde06e94432469075d8e5cf4f2bfe6e9299ffb5fbdf8d33dffa024",
+  "fix-plan-status/config.js": "bfddd5caa1f47795492184995ee06b470a35244060eafd1127d58463f9ded89b",
+  "fix-plan-status/edits.js": "2e2b2d1ada73691fad6405e96de08cead1a03c55d93977232a9cfb3150217fff",
+  "fix-plan-status/expected.json": "20d25c93973cf337f42c1d66952e799971013cdd1921babd683a9736f9ac9ce5",
+  "fix-plan-status/gate.js": "5cbff7e707d2bcc2166cbcbb23032da4fee1f4f194370446f155e5efe3187060",
+  "fix-plan-status/lib.js": "0ae73e6117cb2595af8bbd61a75cbab927f7f5a963b62910b6f7b82bb11fa93e",
+  "fix-plan-status/make-expected.js": "7fe7c8f26c8d2429f206790928616c887faedc35d17ee53dbe440f2887556af0",
+  "fix-plan-status/scope-report.js": "4b2e2cae22f7cd71aa03f5b542c225364ab465559abb6589b155ec7ff4b3f296",
+  "fix-plan-status/tamper-test.js": "1fa1be9c0c3a56a3abcaa5446a2d0404978bd18f5d65bd50a67182a0d35c2943",
+  "FIX-PLAN-status.md": "59fab5678d2c571789e1286258290cc638207a10f3dd48e9747c4755c8143572",
+  "HOSTING.md": "d3470b62e18ed75a3f9868adef2c7b7a6ee62f8203d7c337fbfe2abfbe8c816a",
+  "icons/favicon-32.png": "1b24c537bb81e9222b5e9ba78bab57f501f670060ca2ecefa41e743423468fca",
+  "icons/icon-180.png": "95fae84ec92b7d1404c619211103d30d5b81c5777589512f9cd38da034bd12c3",
+  "icons/icon-192.png": "d6a1f9b4c339758e467cb7ce9573681f17defee9bd1380ec1261057acefa276d",
+  "icons/icon-512.png": "9a99173e8a48969e5b8637c5483f3bc32f3549280f548bff170c7a3486016510",
+  "icons/icon-maskable-512.png": "a8d75cd2133dd764ab0373623ce29b5b28d811a83561dbd498c1f323cd923949",
+  "index.html": "4f7b0ddbaaf713d3c2a75e504b1e39b81b640fdd509389a578b3e667f047ddd0",
+  "manifest.webmanifest": "c737ff776fef74a8b6a53d606e47be2bc8c98882b0745c52ce0ebab26eade547",
+  "newstart-passport (2).html": "3fd0e4f28d68458189b284f15d8c47b34a841bca4d6e451a8f59b73f7f4f9d9f",
+  "PLAN-native-app.md": "9bf663253cbceb77987d2c94bb6c5729753c02873d7323c7a7c88e52c76af037",
+  "PLANS.md": "1b6cd1f5750a0f72722a4482ffd91e17b4631c7a8a8fa2567798db8a13c483fb",
+  "PRESSURE-TEST-2026-10-21.md": "6b5af28b10c63153219a06336c2a101b325351b7e0035292319c65283c4e4eee",
+  "prices/prices.csv": "27bf3af39f6e799ea9ef71947340f554ea851d59dc5146b6702e7b966e3a3dd1",
+  "prices/PRICES.md": "a7813d9a081e93998165d1dfe4064d68f1a8480d2d724f7f8569b229089fc20d",
+  "supabase/README.md": "d42e75e8fc5fb5382a692c26c38d6c10417a09a58baa47989edba29ea7daabe7",
+  "supabase/schema.sql": "b477b30357beb518ce0b9eea5bd86638285a7d6913a9d3c4fa2abbb377d43c12",
+  "supabase/seed-demo.sql": "77cb46ed77e4e9ca9751d6fbd6cbd659b5558e0183c7cb13ecaff71aa0358c4c",
+  "sw.js": "60ed05bfb1e4af0dbef66fe206aeeb8c704cd64d6304a22723eadf49b184546e",
+  "tools/build.js": "b626a4ce26ab7144cd6c9adb2a2551ab3f3cf5c612eee6144072b5873a661fc8",
+  "tools/make-icons.js": "237f4c990e672715fef11158f96acd9f4d05f205a97967e0e293b5c2fc26c085",
+  "tools/sign-apk.ps1": "34918998a1cd302ce42166049399249fde3e6e977b37afebfe71a17f80e3dae2",
+  "tools/update-prices.js": "6d03e6d0fc15e5d9291edbb4ea94fffe58ba5cf1712ad49afa86f8a7c24e4d6e",
+  "truth-guard/install-patch.example.yml": "9aa76b85743c8c37ea94a0e96772dc853fd268b1d846ef74a7981455f087d0e1",
+  "truth-guard/INSTALLED.md": "8b7c8c70a6d61b299325ceccbd2063ef37bf2abfe56780be7728ea4e60b74807",
+  "truth-guard/lib/audit.js": "31a79b7b5c79d0bff084144d9e9ef24bb21073ce92281e7874b5f46a290d8139",
+  "truth-guard/lib/contract.js": "cb7b02490ee915129204da7fe4a040d069982125c92c9a015a73aac0495668ff",
+  "truth-guard/lib/index.js": "25c399b7e3d58873ab4a429ac44ae74e9442f6de669f6b248910464a69302b53",
+  "truth-guard/package.json": "395e052d2b251d9fc0135fd798be1e1b9511c0694a18cf7829b5e5b9b7a97a42",
+  "truth-guard/README.md": "7742f41d17d8e8decb4b789c4ae22c8e76f7b41bf9f1ab66ed91e2d66addebc2",
+  "truth-guard/test/audit.test.js": "b82a857738ac810215fcb407b1c1ebe48476cf095303d6b1b4f6c58a9832bc23",
+  "truth-guard/test/false-positive.test.mjs": "6e8fb6703e9104f17ccf7c8eb0bac27b1e4416a27df724a3847d570a618f072c",
+  "truth-guard/test/integration.mjs": "f3bb0bc3845d318b27517b1371c9a3e3b4a74746b8dae04dcb35116dec7a37b9",
+  "truth-guard/test/smoke.mjs": "12d682a2450c123c20440236f825f7e85333edf8ba415e7edede10fcdc99f72e",
+  "wrangler.jsonc": "25c1e7e348bbc38371c7ca4e36177e5ef484c5a4f5b7008905a8f777dddf4014"
+ },
+ "afterManifest": {
+  ".cursor/settings.json": "4672ba9dc967e1b9e910bcfb25c2c1756128bc035a833a861773cbebd19ccb3d",
+  ".gitignore": "8218c869e70613acb38c0beb1335f88b5deaf2dd0136171f0b2c6125826bea73",
+  ".smoke/harness.js": "9f03379e63ad8b77c98dbe6cc936f55bf305766fd7e79940e05c8648bf69cfaa",
+  ".smoke/serve.js": "d7e0e175a42afa01d8ce8a194cd6021936614ac7dd7f0c2bb16c1c8dc5b9e621",
+  ".wrangler/cache/pages.json": "ecd6b7211caba15e4dac1423d7cbbbc39d7d4b68010adb68619895b18a4a42f7",
+  ".wrangler/cache/wrangler-account.json": "70654d6746b0fd3e6d83dfc5f5fd49fea176a2a5268a61ef9b7c55c0c86f2e4e",
+  "android/app/build.gradle": "e1f28dd76d6fa878df1d1d8a8a72704b9c3a429f1873f21c7703603ef68cf439",
+  "android/app/src/main/AndroidManifest.xml": "b26273ea419266c5877cd275c7e5a8f60c1778f4ac4643e92137af00659cd074",
+  "android/app/src/main/java/org/newstart/expopassport/Application.java": "b2a2aafa12561de77cc9644efc8e99d8fd08eaa92e495df4e2e391fcefdd62b0",
+  "android/app/src/main/java/org/newstart/expopassport/DelegationService.java": "7af9f6dfc2686203f69ace2cf08a57d5c6cddce3ceddc87a50d1454aa3c8ae6f",
+  "android/app/src/main/java/org/newstart/expopassport/LauncherActivity.java": "ca064d27fd3f009d0f1ea57f113f7e5ca7684827fc810db70042391f58ea4efc",
+  "android/app/src/main/res/drawable-anydpi/shortcut_legacy_background.xml": "86ba1e4e3ff3b8f2560dad59678b1083f3173b722707b9824365f812bc0662ae",
+  "android/app/src/main/res/drawable-hdpi/splash.png": "0f3b1fd50004da72e5943657c06e878ba140d180ccf62bbc62a4dc0bc0f6826a",
+  "android/app/src/main/res/drawable-mdpi/splash.png": "bff929573c1a8d644f9bef362440d1bf0209cbda2bf1e0652124368ed346d17c",
+  "android/app/src/main/res/drawable-xhdpi/splash.png": "600e5598c56fd3953cc10428fd512fd7c9de7d7b705bb35da99eecd1e1ce0e1f",
+  "android/app/src/main/res/drawable-xxhdpi/splash.png": "0de75a7939d86c0858623446c284bb9fe070fdf63853ab5c5f5a22a8b9e4eb76",
+  "android/app/src/main/res/drawable-xxxhdpi/splash.png": "b9384bf167d20b4d90f8c28840c8275d2db04334f9e1339ec6391f51fa87a4c6",
+  "android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml": "a94c005e5559dca0b61137671d9e9a06176cf2449e39099b2a82fdd1a4e5cc75",
+  "android/app/src/main/res/mipmap-hdpi/ic_launcher.png": "fcf5845d6c3496f362185e2d5fa66c86d2d468134114d5c3184b03ca0412e200",
+  "android/app/src/main/res/mipmap-hdpi/ic_maskable.png": "3fad86ae825df50b3abf302c2f9e609eeac9600782e7abfdb829377157b11e6a",
+  "android/app/src/main/res/mipmap-mdpi/ic_launcher.png": "6ef62d81e7787eccea9dc398158bad2895b82cc18d513c3e6d0f0bdcce6492f4",
+  "android/app/src/main/res/mipmap-mdpi/ic_maskable.png": "5b39eda430aaf9530bda3af4f6319590d0f01aeb9372c30b4e579094f52d9cd5",
+  "android/app/src/main/res/mipmap-xhdpi/ic_launcher.png": "a45bb16f5aa0a0d72565ec9931daa6ead73b3b43d2ba4042eedb5e1e744dc99d",
+  "android/app/src/main/res/mipmap-xhdpi/ic_maskable.png": "6fd26687269411860ce7fed9a429276800068851ddc921df70ed56e119e0d2f7",
+  "android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png": "701c79007492237af7dffb5888811b97eaf18d1c2b7000e045780344227bc2a8",
+  "android/app/src/main/res/mipmap-xxhdpi/ic_maskable.png": "5f422f8996af3668c10a07db4042c364b4c4e8db32cdfefb5ae7284e66dae5f7",
+  "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png": "7f62491cefe84673855525c664f8c84b98aac66835497702d6363bc18ce1175b",
+  "android/app/src/main/res/mipmap-xxxhdpi/ic_maskable.png": "525ff51df73d96efdf862dc22b01b8d690858f4cc111e801b299674391c1bbf7",
+  "android/app/src/main/res/raw/web_app_manifest.json": "ff6428739156ade487f96ca6f44bb74fba64209452e677c0126beb296058086f",
+  "android/app/src/main/res/values/colors.xml": "4cd4bb4d8bbe5f38161bfc3de1069f3e00a2cd1b6f282df78611f91dea33f782",
+  "android/app/src/main/res/values/strings.xml": "97d8e03de4749b4104a99b22e514e36aca6ccc04d129e2a662f53d00c5353f91",
+  "android/app/src/main/res/xml/filepaths.xml": "3d51d25482d106acad7aee6d8194979eb700353aab1bac8290762def34e5ff11",
+  "android/app/src/main/res/xml/shortcuts.xml": "09e0c1798ab467d1018ae01b3c44c657c5dbfeb8edd6fcf588bc875613866101",
+  "android/app-release-signed.apk": "d4658316a2aa5c25b4a8a81b6ad3dfeae625eb78de1dec1642011293381780a4",
+  "android/app-release-signed.apk.idsig": "851030f80d29fbbe94500d0d90fe8133c138582fce40bf39d28511ae097c4f90",
+  "android/assetlinks.json": "b7521952c932f71fc6000b9d419d05d3ce7f6b32ea39ec2a299855bf859a946c",
+  "android/build.gradle": "d0f27b20d2c5d578508364791121a021d6866b3e0ddb20e3f8e4695ecfba0c9f",
+  "android/gradle/wrapper/gradle-wrapper.jar": "3dc39ad650d40f6c029bd8ff605c6d95865d657dbfdeacdb079db0ddfffedf9f",
+  "android/gradle/wrapper/gradle-wrapper.properties": "32f03ec0547597c12e334bf8fedd7fb13129db49cd8a1aa583170a774aaeb47b",
+  "android/gradle.properties": "87426c918daa47c581c66214b9f33c2b02550ec3b205e146ce89911c961585dc",
+  "android/gradlew": "d8231d345ab33433ab7b2c0720d5beb416c8d5c6789dbc01ad122b63bc2cae0d",
+  "android/gradlew.bat": "bdecf875b6868cbcbd36a1f85eedf0832f358ff28092c5797ed645f7edce77d9",
+  "android/local.properties": "c4db09bbc06f4518fed01eeac7b1490646a6a5769c89dd8d2bea82e62164e10c",
+  "android/manifest-checksum.txt": "b4345315b43a22ded50076087ccadeee10afebae6660fbe1a5441cd00a31d252",
+  "android/settings.gradle": "4b919cfffaed71637d1ee9c89f21f4247273e14eb8433afdcd0672eba906b41f",
+  "android/signing/newstart.jks": "eee27f6efbf958230b39e683800cd1f5d484e2cc13aef0ebeb707423bad09d59",
+  "android/store_icon.png": "5d32ddcf420e3c8c50ca3aceb2f50ce42a51f49c620706bb693f33d98a530c82",
+  "android/twa-manifest.json": "404361410b421de5b9baf756e820759c89621a12db6f73ecdf50552508b86257",
+  "ANDROID.md": "774465663a508b5cdfc25380b97a548b8ab6b15371c4a0969ab3b33444067690",
+  "app-blueprint/BLUEPRINT.md": "b4307c3d170a67da413c1ffaf5320eaebdedffa49cae4fc84156a0e810db00b9",
+  "app-blueprint/EXAMPLE-stokfam.md": "8c27b4c7c8e56814f9ee9ec0fc3d2a3d5362b623616b9452f72274b3906b22dd",
+  "app-blueprint/README.md": "54b66a519f2f4a0adfff17982715cb08094c9b3599a36303c53bf96ec583fe9b",
+  "dist/.well-known/assetlinks.json": "b7521952c932f71fc6000b9d419d05d3ce7f6b32ea39ec2a299855bf859a946c",
+  "dist/icons/favicon-32.png": "1b24c537bb81e9222b5e9ba78bab57f501f670060ca2ecefa41e743423468fca",
+  "dist/icons/icon-180.png": "95fae84ec92b7d1404c619211103d30d5b81c5777589512f9cd38da034bd12c3",
+  "dist/icons/icon-192.png": "d6a1f9b4c339758e467cb7ce9573681f17defee9bd1380ec1261057acefa276d",
+  "dist/icons/icon-512.png": "9a99173e8a48969e5b8637c5483f3bc32f3549280f548bff170c7a3486016510",
+  "dist/icons/icon-maskable-512.png": "a8d75cd2133dd764ab0373623ce29b5b28d811a83561dbd498c1f323cd923949",
+  "dist/index.html": "afa1cd35d8f4b60718c8b11f4ed1af247a66a114110d8b1e7b6f849ce5e0889a",
+  "dist/manifest.webmanifest": "c737ff776fef74a8b6a53d606e47be2bc8c98882b0745c52ce0ebab26eade547",
+  "dist/newstart.apk": "d4658316a2aa5c25b4a8a81b6ad3dfeae625eb78de1dec1642011293381780a4",
+  "dist/sw.js": "9bf5a3540ada5cdae47c0c34ad9b067d94cd8bde564b4a72efcdb49869e1b6e6",
+  "dist/_headers": "2a46a1d21a59685e96146c5ae05c465fcacd67ca8be13e838525e7324455d8ae",
+  "fix-plan/apply.js": "f92bf0177fff939d2ccee8b1adf8be644cdaab5b6104942c75145043c04f44e0",
+  "fix-plan/expected.json": "58ca088e892f38b0275b72fb641bbb9f4f03506121e0792b6e412b341fd1f12c",
+  "fix-plan/gate.js": "52a1f3bddb8ba4bd63b750d19a6686996394cc9f5da217ce90b8096388ed5f57",
+  "fix-plan-churches/apply.js": "7c2aa2ed89fde06e94432469075d8e5cf4f2bfe6e9299ffb5fbdf8d33dffa024",
+  "fix-plan-churches/config.js": "4cd70e1e81b30c82875182c45ca29da7be4bf8f96cae171a3b1fed422805c066",
+  "fix-plan-churches/edits.js": "a0cac4f0bd0c3e192aafee52f626da97046817ba9a3f1fe2040fb0bdba3ecc2b",
+  "fix-plan-churches/expected.json": "8b129616f13224a6c1abea0ed45633ea06fc31a7bb9fd2d35e6eb0c99dd491e0",
+  "fix-plan-churches/gate.js": "5cbff7e707d2bcc2166cbcbb23032da4fee1f4f194370446f155e5efe3187060",
+  "fix-plan-churches/lib.js": "0ae73e6117cb2595af8bbd61a75cbab927f7f5a963b62910b6f7b82bb11fa93e",
+  "fix-plan-churches/make-expected.js": "7fe7c8f26c8d2429f206790928616c887faedc35d17ee53dbe440f2887556af0",
+  "fix-plan-churches/scope-report.js": "4b2e2cae22f7cd71aa03f5b542c225364ab465559abb6589b155ec7ff4b3f296",
+  "fix-plan-churches/tamper-test.js": "1fa1be9c0c3a56a3abcaa5446a2d0404978bd18f5d65bd50a67182a0d35c2943",
+  "FIX-PLAN-churches.md": "6e5a5ebff8b656cf0d1f5ad25233cfa36a426f7649c2b658d866f485be2453e4",
+  "FIX-PLAN-harness-failures.md": "0bead7342b644f97af3fc7e05af582f3eac16fff7e26802fe47b3487402a63d7",
+  "fix-plan-status/apply.js": "7c2aa2ed89fde06e94432469075d8e5cf4f2bfe6e9299ffb5fbdf8d33dffa024",
+  "fix-plan-status/config.js": "bfddd5caa1f47795492184995ee06b470a35244060eafd1127d58463f9ded89b",
+  "fix-plan-status/edits.js": "2e2b2d1ada73691fad6405e96de08cead1a03c55d93977232a9cfb3150217fff",
+  "fix-plan-status/expected.json": "20d25c93973cf337f42c1d66952e799971013cdd1921babd683a9736f9ac9ce5",
+  "fix-plan-status/gate.js": "5cbff7e707d2bcc2166cbcbb23032da4fee1f4f194370446f155e5efe3187060",
+  "fix-plan-status/lib.js": "0ae73e6117cb2595af8bbd61a75cbab927f7f5a963b62910b6f7b82bb11fa93e",
+  "fix-plan-status/make-expected.js": "7fe7c8f26c8d2429f206790928616c887faedc35d17ee53dbe440f2887556af0",
+  "fix-plan-status/scope-report.js": "4b2e2cae22f7cd71aa03f5b542c225364ab465559abb6589b155ec7ff4b3f296",
+  "fix-plan-status/tamper-test.js": "1fa1be9c0c3a56a3abcaa5446a2d0404978bd18f5d65bd50a67182a0d35c2943",
+  "FIX-PLAN-status.md": "59fab5678d2c571789e1286258290cc638207a10f3dd48e9747c4755c8143572",
+  "HOSTING.md": "d3470b62e18ed75a3f9868adef2c7b7a6ee62f8203d7c337fbfe2abfbe8c816a",
+  "icons/favicon-32.png": "1b24c537bb81e9222b5e9ba78bab57f501f670060ca2ecefa41e743423468fca",
+  "icons/icon-180.png": "95fae84ec92b7d1404c619211103d30d5b81c5777589512f9cd38da034bd12c3",
+  "icons/icon-192.png": "d6a1f9b4c339758e467cb7ce9573681f17defee9bd1380ec1261057acefa276d",
+  "icons/icon-512.png": "9a99173e8a48969e5b8637c5483f3bc32f3549280f548bff170c7a3486016510",
+  "icons/icon-maskable-512.png": "a8d75cd2133dd764ab0373623ce29b5b28d811a83561dbd498c1f323cd923949",
+  "index.html": "afa1cd35d8f4b60718c8b11f4ed1af247a66a114110d8b1e7b6f849ce5e0889a",
+  "manifest.webmanifest": "c737ff776fef74a8b6a53d606e47be2bc8c98882b0745c52ce0ebab26eade547",
+  "newstart-passport (2).html": "3fd0e4f28d68458189b284f15d8c47b34a841bca4d6e451a8f59b73f7f4f9d9f",
+  "PLAN-native-app.md": "9bf663253cbceb77987d2c94bb6c5729753c02873d7323c7a7c88e52c76af037",
+  "PLANS.md": "1b6cd1f5750a0f72722a4482ffd91e17b4631c7a8a8fa2567798db8a13c483fb",
+  "PRESSURE-TEST-2026-10-21.md": "6b5af28b10c63153219a06336c2a101b325351b7e0035292319c65283c4e4eee",
+  "prices/prices.csv": "27bf3af39f6e799ea9ef71947340f554ea851d59dc5146b6702e7b966e3a3dd1",
+  "prices/PRICES.md": "a7813d9a081e93998165d1dfe4064d68f1a8480d2d724f7f8569b229089fc20d",
+  "supabase/README.md": "d42e75e8fc5fb5382a692c26c38d6c10417a09a58baa47989edba29ea7daabe7",
+  "supabase/schema.sql": "b477b30357beb518ce0b9eea5bd86638285a7d6913a9d3c4fa2abbb377d43c12",
+  "supabase/seed-demo.sql": "77cb46ed77e4e9ca9751d6fbd6cbd659b5558e0183c7cb13ecaff71aa0358c4c",
+  "sw.js": "60ed05bfb1e4af0dbef66fe206aeeb8c704cd64d6304a22723eadf49b184546e",
+  "tools/build.js": "b626a4ce26ab7144cd6c9adb2a2551ab3f3cf5c612eee6144072b5873a661fc8",
+  "tools/make-icons.js": "237f4c990e672715fef11158f96acd9f4d05f205a97967e0e293b5c2fc26c085",
+  "tools/sign-apk.ps1": "34918998a1cd302ce42166049399249fde3e6e977b37afebfe71a17f80e3dae2",
+  "tools/update-prices.js": "6d03e6d0fc15e5d9291edbb4ea94fffe58ba5cf1712ad49afa86f8a7c24e4d6e",
+  "truth-guard/install-patch.example.yml": "9aa76b85743c8c37ea94a0e96772dc853fd268b1d846ef74a7981455f087d0e1",
+  "truth-guard/INSTALLED.md": "8b7c8c70a6d61b299325ceccbd2063ef37bf2abfe56780be7728ea4e60b74807",
+  "truth-guard/lib/audit.js": "31a79b7b5c79d0bff084144d9e9ef24bb21073ce92281e7874b5f46a290d8139",
+  "truth-guard/lib/contract.js": "cb7b02490ee915129204da7fe4a040d069982125c92c9a015a73aac0495668ff",
+  "truth-guard/lib/index.js": "25c399b7e3d58873ab4a429ac44ae74e9442f6de669f6b248910464a69302b53",
+  "truth-guard/package.json": "395e052d2b251d9fc0135fd798be1e1b9511c0694a18cf7829b5e5b9b7a97a42",
+  "truth-guard/README.md": "7742f41d17d8e8decb4b789c4ae22c8e76f7b41bf9f1ab66ed91e2d66addebc2",
+  "truth-guard/test/audit.test.js": "b82a857738ac810215fcb407b1c1ebe48476cf095303d6b1b4f6c58a9832bc23",
+  "truth-guard/test/false-positive.test.mjs": "6e8fb6703e9104f17ccf7c8eb0bac27b1e4416a27df724a3847d570a618f072c",
+  "truth-guard/test/integration.mjs": "f3bb0bc3845d318b27517b1371c9a3e3b4a74746b8dae04dcb35116dec7a37b9",
+  "truth-guard/test/smoke.mjs": "12d682a2450c123c20440236f825f7e85333edf8ba415e7edede10fcdc99f72e",
+  "wrangler.jsonc": "25c1e7e348bbc38371c7ca4e36177e5ef484c5a4f5b7008905a8f777dddf4014"
+ },
+ "changed": [
+  ".smoke/harness.js",
+  "dist/index.html",
+  "dist/sw.js",
+  "index.html"
+ ],
+ "anchors": [
+  {
+   "file": "index.html",
+   "needle": "family=Inter:wght@400..800&family=Plus+Jakarta+Sans",
+   "lines": [
+    19
+   ],
+   "occurrences": 1
+  },
+  {
+   "file": "index.html",
+   "needle": "/* ================= SEED DATA ================= */",
+   "lines": [
+    1071
+   ],
+   "occurrences": 1
+  },
+  {
+   "file": "index.html",
+   "needle": "function loadScript(src)",
+   "lines": [
+    2738
+   ],
+   "occurrences": 1
+  },
+  {
+   "file": "index.html",
+   "needle": "function sendWhatsApp()",
+   "lines": [
+    3723
+   ],
+   "occurrences": 1
+  },
+  {
+   "file": "index.html",
+   "needle": "link.target='_blank'",
+   "lines": [
+    3729
+   ],
+   "occurrences": 1
+  },
+  {
+   "file": "index.html",
+   "needle": "async function printCard()",
+   "lines": [
+    3795
+   ],
+   "occurrences": 1
+  },
+  {
+   "file": "index.html",
+   "needle": " window.print();",
+   "lines": [
+    3800
+   ],
+   "occurrences": 1
+  },
+  {
+   "file": "index.html",
+   "needle": "const SYNC_KEY=",
+   "lines": [
+    3913
+   ],
+   "occurrences": 1
+  },
+  {
+   "file": "index.html",
+   "needle": "function installBlock()",
+   "lines": [
+    4030
+   ],
+   "occurrences": 1
+  },
+  {
+   "file": "index.html",
+   "needle": "if('serviceWorker' in navigator",
+   "lines": [
+    4036
+   ],
+   "occurrences": 1
+  },
+  {
+   "file": "index.html",
+   "needle": "const authRedirect=",
+   "lines": [
+    4081
+   ],
+   "occurrences": 1
+  },
+  {
+   "file": ".smoke/harness.js",
+   "needle": "console.log('\\n17. Cloud sync (fake Supabase)');",
+   "lines": [
+    696
+   ],
+   "occurrences": 1
+  }
+ ],
+ "eol": {
+  "index.html": "LF",
+  ".smoke/harness.js": "LF"
+ },
+ "invariants": {
+  "content": "55ddd1727ed6a70ecffb94cbc75410e0ba142af1d9260bce6e55303d17f36a1d",
+  "logic": "45e90114a34047caa3df44a4f9d00c6f99cc4e5d8c23071a9dfea33845c2d88d",
+  "plan": "0d931ce428dcace75c36b8bddf96a0d7ed91fff7497f2cb4fffe2856f0cdf042",
+  "sync": "74316c63190faf59d1d15f5653b0e71c40b77b78e96e05eb1de6d6e7a96f24f1"
+ },
+ "testBefore": {
+  "pass": 427,
+  "fail": 0,
+  "total": 433,
+  "exitCode": 1,
+  "rows": [
+   [
+    "PASS",
+    "7 seed volunteers loaded"
+   ],
+   [
+    "PASS",
+    "Thandi: 4 expos / 30h"
+   ],
+   [
+    "PASS",
+    "Grace: 6 expos / 45.5h"
+   ],
+   [
+    "PASS",
+    "Nomvula: 0 expos"
+   ],
+   [
+    "PASS",
+    "hours sum correctly (Grace = 45.5)"
+   ],
+   [
+    "PASS",
+    "next tier for Grace is Platinum"
+   ],
+   [
+    "PASS",
+    "Grace needs 3 more expos for Platinum"
+   ],
+   [
+    "PASS",
+    "Grace needs 14.5 more hours"
+   ],
+   [
+    "PASS",
+    "progress tracks the weaker requirement (67%)"
+   ],
+   [
+    "PASS",
+    "blocking requirement is expos"
+   ],
+   [
+    "PASS",
+    "remaining sentence names both gaps"
+   ],
+   [
+    "PASS",
+    "hours-gated helper reports hours"
+   ],
+   [
+    "PASS",
+    "hours-gated progress is 60%"
+   ],
+   [
+    "PASS",
+    "hours-gated helper needs 3 more expos"
+   ],
+   [
+    "PASS",
+    "meeting both minimums promotes (6 expos / 36h"
+   ],
+   [
+    "PASS",
+    "Legend has no next tier"
+   ],
+   [
+    "PASS",
+    "exactly one top-tier badge"
+   ],
+   [
+    "PASS",
+    "12 booths defined"
+   ],
+   [
+    "PASS",
+    "helpersAt(bp) counts only registered"
+   ],
+   [
+    "PASS",
+    "boothLabel resolves"
+   ],
+   [
+    "PASS",
+    "unknown booth falls back"
+   ],
+   [
+    "PASS",
+    "prospects are not counted as staffed"
+   ],
+   [
+    "PASS",
+    "2 pledges await registration"
+   ],
+   [
+    "PASS",
+    "serve/pledge renders markup"
+   ],
+   [
+    "PASS",
+    "serve/muster renders markup"
+   ],
+   [
+    "PASS",
+    "serve/booth renders markup"
+   ],
+   [
+    "PASS",
+    "serve/record renders markup"
+   ],
+   [
+    "PASS",
+    "registration form renders"
+   ],
+   [
+    "PASS",
+    "registration form lists 12 booth choices"
+   ],
+   [
+    "PASS",
+    "existing tab home still renders"
+   ],
+   [
+    "PASS",
+    "existing tab screen still renders"
+   ],
+   [
+    "PASS",
+    "existing tab results still renders"
+   ],
+   [
+    "PASS",
+    "existing tab plan still renders"
+   ],
+   [
+    "PASS",
+    "existing tab care still renders"
+   ],
+   [
+    "PASS",
+    "serve tab keeps the container visible"
+   ],
+   [
+    "PASS",
+    "serve tab content was written"
+   ],
+   [
+    "PASS",
+    "back on home: container visible"
+   ],
+   [
+    "PASS",
+    "back on home: has content"
+   ],
+   [
+    "PASS",
+    "back on screen: container visible"
+   ],
+   [
+    "PASS",
+    "back on screen: has content"
+   ],
+   [
+    "PASS",
+    "back on results: container visible"
+   ],
+   [
+    "PASS",
+    "back on results: has content"
+   ],
+   [
+    "PASS",
+    "back on plan: container visible"
+   ],
+   [
+    "PASS",
+    "back on plan: has content"
+   ],
+   [
+    "PASS",
+    "back on care: container visible"
+   ],
+   [
+    "PASS",
+    "back on care: has content"
+   ],
+   [
+    "PASS",
+    "serve/pledge visible + populated"
+   ],
+   [
+    "PASS",
+    "serve/muster visible + populated"
+   ],
+   [
+    "PASS",
+    "serve/booth visible + populated"
+   ],
+   [
+    "PASS",
+    "serve/record visible + populated"
+   ],
+   [
+    "PASS",
+    "serve works after round-tripping through Care"
+   ],
+   [
+    "PASS",
+    "pledge creates a volunteer"
+   ],
+   [
+    "PASS",
+    "new volunteer gets a VOL- id"
+   ],
+   [
+    "PASS",
+    "new volunteer starts at Friend tier"
+   ],
+   [
+    "PASS",
+    "new volunteer has no expo history"
+   ],
+   [
+    "PASS",
+    "first-choice list caps at 2"
+   ],
+   [
+    "PASS",
+    "oldest choice is dropped (FIFO)"
+   ],
+   [
+    "PASS",
+    "log form reads the hours input"
+   ],
+   [
+    "PASS",
+    "expo appended to history"
+   ],
+   [
+    "PASS",
+    "hours recorded"
+   ],
+   [
+    "PASS",
+    "badge promoted Friend"
+   ],
+   [
+    "PASS",
+    "entry can be removed again"
+   ],
+   [
+    "PASS",
+    "badge reverts after removal"
+   ],
+   [
+    "PASS",
+    "zero hours is rejected"
+   ],
+   [
+    "PASS",
+    "shift added"
+   ],
+   [
+    "PASS",
+    "shift removed on second tap"
+   ],
+   [
+    "PASS",
+    "multiple shifts accumulate"
+   ],
+   [
+    "PASS",
+    "shift survives a reload"
+   ],
+   [
+    "PASS",
+    "payload contains volunteers"
+   ],
+   [
+    "PASS",
+    "payload contains active volunteer id"
+   ],
+   [
+    "PASS",
+    "older payloads without volunteers still load"
+   ],
+   [
+    "PASS",
+    "full payload reloads"
+   ],
+   [
+    "PASS",
+    "esc neutralises a script tag"
+   ],
+   [
+    "PASS",
+    "hostile name is stored raw but rendered escaped"
+   ],
+   [
+    "PASS",
+    "render output has no live <b> tag from the name"
+   ],
+   [
+    "PASS",
+    "CSV produced"
+   ],
+   [
+    "PASS",
+    "CSV header present"
+   ],
+   [
+    "PASS",
+    "CSV quotes embedded correctly"
+   ],
+   [
+    "PASS",
+    "one CSV row per volunteer"
+   ],
+   [
+    "PASS",
+    "reset restores 7 seed volunteers"
+   ],
+   [
+    "PASS",
+    "reset restores the seed active volunteer"
+   ],
+   [
+    "PASS",
+    "badge already in use is refused"
+   ],
+   [
+    "PASS",
+    "a badge that is not EXPO-nnn is refused"
+   ],
+   [
+    "PASS",
+    "blank name is refused"
+   ],
+   [
+    "PASS",
+    "out-of-range age is refused"
+   ],
+   [
+    "PASS",
+    "lower-case / zero-padded badge normalised to EXPO-201"
+   ],
+   [
+    "PASS",
+    "new visitor becomes the active passport"
+   ],
+   [
+    "PASS",
+    "no unescaped visitor markup on any visitor tab"
+   ],
+   [
+    "PASS",
+    "visitor switcher escapes names"
+   ],
+   [
+    "PASS",
+    "scanner list escapes names"
+   ],
+   [
+    "PASS",
+    "WhatsApp preview escapes names"
+   ],
+   [
+    "PASS",
+    "print card escapes names"
+   ],
+   [
+    "PASS",
+    "care list escapes name, phone and prayer note"
+   ],
+   [
+    "PASS",
+    "nextBadge skips ids already issued"
+   ],
+   [
+    "PASS",
+    "migrateAttendee strips unsafe characters from ids"
+   ],
+   [
+    "PASS",
+    "EXPO-042 parses"
+   ],
+   [
+    "PASS",
+    "expo 42 (spaces, lower case) parses"
+   ],
+   [
+    "PASS",
+    "EXPO-0042 equals EXPO-042"
+   ],
+   [
+    "PASS",
+    "bare number parses"
+   ],
+   [
+    "PASS",
+    "badge inside a URL parses"
+   ],
+   [
+    "PASS",
+    "garbage is rejected"
+   ],
+   [
+    "PASS",
+    "scanning a known badge opens that visitor"
+   ],
+   [
+    "PASS",
+    "scanning an unknown badge opens registration with the id prefilled"
+   ],
+   [
+    "PASS",
+    "first + tap on an empty field shows the default (120), not a guess above it"
+   ],
+   [
+    "PASS",
+    "the second + tap then steps up by one (121)"
+   ],
+   [
+    "PASS",
+    "first − tap on an empty field also shows the default (120)"
+   ],
+   [
+    "PASS",
+    "sugar: first tap shows 5.5"
+   ],
+   [
+    "PASS",
+    "sugar: second tap steps by 0.1 without float noise (5.6)"
+   ],
+   [
+    "PASS",
+    "stepper stops at the minimum"
+   ],
+   [
+    "PASS",
+    "stepper stops at the maximum"
+   ],
+   [
+    "PASS",
+    "too-high reading is not saved (and not clamped to 30)"
+   ],
+   [
+    "PASS",
+    "too-high reading tells the volunteer why"
+   ],
+   [
+    "PASS",
+    "72 for sugar is not saved but offers the one-tap fix 7.2"
+   ],
+   [
+    "PASS",
+    "a comma decimal \"6,5\" is saved as 6.5"
+   ],
+   [
+    "PASS",
+    "text such as \"abc\" is not saved and the message says it is not a number"
+   ],
+   [
+    "PASS",
+    "an emptied field clears the reading and the warning"
+   ],
+   [
+    "PASS",
+    "an in-range reading is kept exactly as typed (5.4)"
+   ],
+   [
+    "PASS",
+    "blood pressure 300 is not saved and gets no decimal \"fix\""
+   ],
+   [
+    "PASS",
+    "non-numeric entry clears the field"
+   ],
+   [
+    "PASS",
+    "empty entry stays empty (not zero)"
+   ],
+   [
+    "PASS",
+    "0 servings of veg still counts as recorded"
+   ],
+   [
+    "PASS",
+    "BP 160/80 is a red flag"
+   ],
+   [
+    "PASS",
+    "BP 120/80 is normal"
+   ],
+   [
+    "PASS",
+    "sugar 15 is a red flag"
+   ],
+   [
+    "PASS",
+    "incomplete attendee gets no health age"
+   ],
+   [
+    "PASS",
+    "pledging from the Home card switches to the Team tab"
+   ],
+   [
+    "PASS",
+    "pledge form is actually rendered"
+   ],
+   [
+    "PASS",
+    "Back from a new pledge restores a real volunteer"
+   ],
+   [
+    "PASS",
+    "pledge screen shows a badge card again after Back"
+   ],
+   [
+    "PASS",
+    "setVolTab from another tab lands on Team/Muster"
+   ],
+   [
+    "PASS",
+    "edit form is prefilled for Thandi"
+   ],
+   [
+    "PASS",
+    "draft does not leak between volunteers (Grace)"
+   ],
+   [
+    "PASS",
+    "a tab button closes the open form"
+   ],
+   [
+    "PASS",
+    "leaving a half-open new pledge restores a volunteer"
+   ],
+   [
+    "PASS",
+    "Switch volunteer opens the volunteer picker"
+   ],
+   [
+    "PASS",
+    "volunteer picker lists names unmangled"
+   ],
+   [
+    "PASS",
+    "more than 24 hours is refused"
+   ],
+   [
+    "PASS",
+    "a future date is refused"
+   ],
+   [
+    "PASS",
+    "negative hours are refused"
+   ],
+   [
+    "PASS",
+    "valid entry is saved"
+   ],
+   [
+    "PASS",
+    "today is allowed"
+   ],
+   [
+    "PASS",
+    "the same day at the same booth is not double-counted"
+   ],
+   [
+    "PASS",
+    "todayStr is a local YYYY-MM-DD date"
+   ],
+   [
+    "PASS",
+    "incoming expo is in the future"
+   ],
+   [
+    "PASS",
+    "status of a corrupt record falls back to prospect"
+   ],
+   [
+    "PASS",
+    "formula cell is defused"
+   ],
+   [
+    "PASS",
+    "@ cell is defused"
+   ],
+   [
+    "PASS",
+    "+27 phone numbers are left alone"
+   ],
+   [
+    "PASS",
+    "plain text and quotes are escaped"
+   ],
+   [
+    "PASS",
+    "null becomes an empty cell"
+   ],
+   [
+    "PASS",
+    "visitor CSV: header + one row per visitor"
+   ],
+   [
+    "PASS",
+    "\"Dr Samuel Adeyemi\" greets as Samuel"
+   ],
+   [
+    "PASS",
+    "plain names keep their first word"
+   ],
+   [
+    "PASS",
+    "a lone title is not dropped"
+   ],
+   [
+    "PASS",
+    "empty name is safe"
+   ],
+   [
+    "PASS",
+    "initials ignore stray spaces"
+   ],
+   [
+    "PASS",
+    "no template class is missing from the stylesheet (465 checked)"
+   ],
+   [
+    "PASS",
+    "attendee rows survive a database round trip"
+   ],
+   [
+    "PASS",
+    "volunteer rows (history, arrays, dates) survive a round trip"
+   ],
+   [
+    "PASS",
+    "untouched demo rows are recognised"
+   ],
+   [
+    "PASS",
+    "a pristine demo device has nothing to upload"
+   ],
+   [
+    "PASS",
+    "an edited demo row counts as pending"
+   ],
+   [
+    "PASS",
+    "before sign-in only the real visitor is pending"
+   ],
+   [
+    "PASS",
+    "cloud client is created from the library"
+   ],
+   [
+    "PASS",
+    "no session"
+   ],
+   [
+    "PASS",
+    "sign-in reaches the online state"
+   ],
+   [
+    "PASS",
+    "real visitor uploaded"
+   ],
+   [
+    "PASS",
+    "demo visitors/volunteers were NOT uploaded"
+   ],
+   [
+    "PASS",
+    "demo rows removed from the device"
+   ],
+   [
+    "PASS",
+    "nothing left pending after the first sync"
+   ],
+   [
+    "PASS",
+    "sync ledger saved to storage"
+   ],
+   [
+    "PASS",
+    "persisted copy remembers it is connected"
+   ],
+   [
+    "PASS",
+    "volunteer numbering starts at VOL-1001 for an empty database"
+   ],
+   [
+    "PASS",
+    "reset is refused while connected"
+   ],
+   [
+    "PASS",
+    "empty database"
+   ],
+   [
+    "PASS",
+    "every tab renders with no data"
+   ],
+   [
+    "PASS",
+    "home invites registering the first visitor"
+   ],
+   [
+    "PASS",
+    "screening tab asks for a visitor instead of showing a ghost"
+   ],
+   [
+    "PASS",
+    "team tabs render with no volunteers"
+   ],
+   [
+    "PASS",
+    "new visitor inserted after the debounce"
+   ],
+   [
+    "PASS",
+    "edit uploaded as an update"
+   ],
+   [
+    "PASS",
+    "new volunteer inserted with a VOL id"
+   ],
+   [
+    "PASS",
+    "logged expo history stored as jsonb"
+   ],
+   [
+    "PASS",
+    "offline: status says offline, edit stays pending"
+   ],
+   [
+    "PASS",
+    "offline: edit is safe on the device"
+   ],
+   [
+    "PASS",
+    "back online: queued edit uploaded"
+   ],
+   [
+    "PASS",
+    "live: a visitor from another desk appears"
+   ],
+   [
+    "PASS",
+    "live: a clean row takes the remote edit"
+   ],
+   [
+    "PASS",
+    "live: a pending local edit is not overwritten"
+   ],
+   [
+    "PASS",
+    "…and it is uploaded afterwards"
+   ],
+   [
+    "PASS",
+    "live: delete on another desk removes the visitor"
+   ],
+   [
+    "PASS",
+    "live: echo of our own save changes nothing"
+   ],
+   [
+    "PASS",
+    "pull: server rows replace the demo data"
+   ],
+   [
+    "PASS",
+    "pull: mapped fields intact"
+   ],
+   [
+    "PASS",
+    "pull: nothing pending and nothing written back"
+   ],
+   [
+    "PASS",
+    "pull: volunteer numbering continues after the highest id"
+   ],
+   [
+    "PASS",
+    "pull: active selections point at real rows"
+   ],
+   [
+    "PASS",
+    "not staff: clear error, no sync"
+   ],
+   [
+    "PASS",
+    "not staff: local data is untouched and nothing was written"
+   ],
+   [
+    "PASS",
+    "not staff: no retry storm"
+   ],
+   [
+    "PASS",
+    "clash setup: this desk pulled VOL-1001 and counts on from 1002"
+   ],
+   [
+    "PASS",
+    "this desk first numbered the pledge VOL-1002"
+   ],
+   [
+    "PASS",
+    "volunteer id clash"
+   ],
+   [
+    "PASS",
+    "volunteer selection follows the new id"
+   ],
+   [
+    "PASS",
+    "a stale counter skips ids already on the device"
+   ],
+   [
+    "PASS",
+    "lanyard clash: the other desk's visitor wins on the server"
+   ],
+   [
+    "PASS",
+    "lanyard clash: this desk now shows that visitor"
+   ],
+   [
+    "PASS",
+    "lanyard clash did not stop the rest uploading"
+   ],
+   [
+    "PASS",
+    "a refused row is skipped, the rest still upload"
+   ],
+   [
+    "PASS",
+    "…without looping on it"
+   ],
+   [
+    "PASS",
+    "missing tables"
+   ],
+   [
+    "PASS",
+    "signed-out sheet shows the form"
+   ],
+   [
+    "PASS",
+    "wrong password gives a friendly message"
+   ],
+   [
+    "PASS",
+    "email is kept after a failed attempt"
+   ],
+   [
+    "PASS",
+    "blank fields are caught before any request"
+   ],
+   [
+    "PASS",
+    "offline sign-in explains itself"
+   ],
+   [
+    "PASS",
+    "correct password signs in"
+   ],
+   [
+    "PASS",
+    "signed-in sheet escapes the email"
+   ],
+   [
+    "PASS",
+    "signed-in sheet shows counts"
+   ],
+   [
+    "PASS",
+    "sign-out returns the device to demo data"
+   ],
+   [
+    "PASS",
+    "sign-out clears the sync ledger and connected flag"
+   ],
+   [
+    "PASS",
+    "sign-out kept the server data"
+   ],
+   [
+    "PASS",
+    "reset works again once signed out"
+   ],
+   [
+    "PASS",
+    "cold start: gate covers the app while connecting"
+   ],
+   [
+    "PASS",
+    "the test switch really hides the gate"
+   ],
+   [
+    "PASS",
+    "no saved session"
+   ],
+   [
+    "PASS",
+    "form has email + password fields and a sign-in button"
+   ],
+   [
+    "PASS",
+    "wrong password shows its message on the gate"
+   ],
+   [
+    "PASS",
+    "the same error twice still resets the button"
+   ],
+   [
+    "PASS",
+    "email survives a failed attempt"
+   ],
+   [
+    "PASS",
+    "blank email is caught on the gate"
+   ],
+   [
+    "PASS",
+    "offline sign-in explains itself"
+   ],
+   [
+    "PASS",
+    "signed in but not yet synced"
+   ],
+   [
+    "PASS",
+    "first successful sync lifts the gate"
+   ],
+   [
+    "PASS",
+    "the app now shows real data (demo gone, own visitor uploaded)"
+   ],
+   [
+    "PASS",
+    "session ends by itself"
+   ],
+   [
+    "PASS",
+    "…and local edits keep queueing"
+   ],
+   [
+    "PASS",
+    "deliberate sign-out shows the login again, without the \"expired\" toast"
+   ],
+   [
+    "PASS",
+    "…and the demo data is not reachable behind it"
+   ],
+   [
+    "PASS",
+    "a previously signed-in device is not gated at start-up"
+   ],
+   [
+    "PASS",
+    "not approved"
+   ],
+   [
+    "PASS",
+    "…which shows the account email and offers Check again / Sign out"
+   ],
+   [
+    "PASS",
+    "after the administrator approves the account, Check again lifts the gate"
+   ],
+   [
+    "PASS",
+    "sign-in service unreachable"
+   ],
+   [
+    "PASS",
+    "…and an explicit demo escape hatch"
+   ],
+   [
+    "PASS",
+    "choosing the demo lifts the gate"
+   ],
+   [
+    "PASS",
+    "Show reveals the password"
+   ],
+   [
+    "PASS",
+    "Hide masks it again"
+   ],
+   [
+    "PASS",
+    "login screen links to Create an account and Forgot password"
+   ],
+   [
+    "PASS",
+    "Create account screen has name, email, password and repeat-password"
+   ],
+   [
+    "PASS",
+    "…and a way back to sign-in"
+   ],
+   [
+    "PASS",
+    "password rules: too short"
+   ],
+   [
+    "PASS",
+    "password rules: needs a number"
+   ],
+   [
+    "PASS",
+    "password rules: needs a letter"
+   ],
+   [
+    "PASS",
+    "password rules: capped at 72"
+   ],
+   [
+    "PASS",
+    "password rules: a good one passes"
+   ],
+   [
+    "PASS",
+    "email check"
+   ],
+   [
+    "PASS",
+    "blank name is refused before any request"
+   ],
+   [
+    "PASS",
+    "bad email is refused"
+   ],
+   [
+    "PASS",
+    "weak password is refused"
+   ],
+   [
+    "PASS",
+    "mismatched passwords are refused"
+   ],
+   [
+    "PASS",
+    "the typed name and email survive a refused attempt"
+   ],
+   [
+    "PASS",
+    "sign-up sends one request and moves to \"Check your email\""
+   ],
+   [
+    "PASS",
+    "the name travels as account metadata"
+   ],
+   [
+    "PASS",
+    "the confirmation link returns to this page"
+   ],
+   [
+    "PASS",
+    "still gated and signed out after sign-up"
+   ],
+   [
+    "PASS",
+    "the password is never written to device storage"
+   ],
+   [
+    "PASS",
+    "signing in before confirming sends them back to \"Check your email\""
+   ],
+   [
+    "PASS",
+    "Resend is rate-limited on the device (first minute)"
+   ],
+   [
+    "PASS",
+    "Resend asks for another confirmation email"
+   ],
+   [
+    "PASS",
+    "a wrong password is still a wrong password"
+   ],
+   [
+    "PASS",
+    "after confirming, sign-in works and lands on \"Waiting for approval\""
+   ],
+   [
+    "PASS",
+    "once approved, the app opens"
+   ],
+   [
+    "PASS",
+    "signing up an existing email says so, without leaking more"
+   ],
+   [
+    "PASS",
+    "sign-ups switched off in Supabase"
+   ],
+   [
+    "PASS",
+    "e-mail rate limit"
+   ],
+   [
+    "PASS",
+    "offline sign-up"
+   ],
+   [
+    "PASS",
+    "with e-mail confirmation switched off, sign-up signs straight in (then waits for approval)"
+   ],
+   [
+    "PASS",
+    "forgot screen asks for an email"
+   ],
+   [
+    "PASS",
+    "forgot: bad email refused"
+   ],
+   [
+    "PASS",
+    "forgot: offline says so and stays on the form"
+   ],
+   [
+    "PASS",
+    "forgot: sends the reset link with a way back to this page"
+   ],
+   [
+    "PASS",
+    "forgot: confirmation never reveals whether the account exists"
+   ],
+   [
+    "PASS",
+    "reset link"
+   ],
+   [
+    "PASS",
+    "new password must be strong enough"
+   ],
+   [
+    "PASS",
+    "new password must match its repeat"
+   ],
+   [
+    "PASS",
+    "reusing the old password gets a friendly message"
+   ],
+   [
+    "PASS",
+    "saving the new password lifts the gate"
+   ],
+   [
+    "PASS",
+    "the new password is not kept on the device"
+   ],
+   [
+    "PASS",
+    "signing out returns to the plain login with nothing left over"
+   ],
+   [
+    "PASS",
+    "Show reveals both the password and its repeat"
+   ],
+   [
+    "PASS",
+    "Hide masks both again"
+   ],
+   [
+    "PASS",
+    "sign-in pulls ALL 3000 visitors past the 1000-row cap"
+   ],
+   [
+    "PASS",
+    "…and all 900 volunteers"
+   ],
+   [
+    "PASS",
+    "visitors were read in pages of 500 (7 requests)"
+   ],
+   [
+    "ANY",
+    "first full pull finished in a sensible time"
+   ],
+   [
+    "PASS",
+    "nothing pending, nothing written back"
+   ],
+   [
+    "ANY",
+    "change detection grows in step with the rows"
+   ],
+   [
+    "ANY",
+    "saving to the device is fast"
+   ],
+   [
+    "PASS",
+    "Home draws only the latest 25 of 3000 visitors"
+   ],
+   [
+    "PASS",
+    "Home offers a search box for the rest"
+   ],
+   [
+    "PASS",
+    "search finds one visitor out of 3000"
+   ],
+   [
+    "PASS",
+    "search also matches phone numbers"
+   ],
+   [
+    "PASS",
+    "search with no match says so"
+   ],
+   [
+    "PASS",
+    "switcher draws at most 25 of 3000 and has a search box"
+   ],
+   [
+    "PASS",
+    "the open visitor stays reachable in the short list even when old"
+   ],
+   [
+    "ANY",
+    "Care with 600 urgent + 1000 call-backs draws a capped set"
+   ],
+   [
+    "PASS",
+    "Care counts still show the true totals"
+   ],
+   [
+    "PASS",
+    "\"Show more\" adds 100 cards per tap, not everything"
+   ],
+   [
+    "PASS",
+    "repeated \"Show more\" reaches all 600 urgent"
+   ],
+   [
+    "PASS",
+    "600 edited rows upload (606 requests)"
+   ],
+   [
+    "PASS",
+    "a routine poll asks only for rows changed since last time"
+   ],
+   [
+    "PASS",
+    "the next poll is down to one small request per table"
+   ],
+   [
+    "PASS",
+    "…and picked up the new visitor"
+   ],
+   [
+    "PASS",
+    "a routine poll does not mistake \"unchanged\" for \"deleted\""
+   ],
+   [
+    "PASS",
+    "Sync now does the full reconcile and notices the deletion"
+   ],
+   [
+    "PASS",
+    "rows are not lost when a full pull is split across pages"
+   ],
+   [
+    "PASS",
+    "120 visitors registered offline are all pending"
+   ],
+   [
+    "ANY",
+    "the whole backlog uploads on reconnect"
+   ],
+   [
+    "ANY",
+    "500 live inserts from other desks are applied"
+   ],
+   [
+    "PASS",
+    "applying them uploaded nothing back"
+   ],
+   [
+    "PASS",
+    "Home still draws a short list with 3600+ visitors"
+   ],
+   [
+    "PASS",
+    "without the churches part of the schema, the old staff check still opens the app"
+   ],
+   [
+    "PASS",
+    "signed in with no church"
+   ],
+   [
+    "PASS",
+    "…and the visitor data saved on this device is cleared"
+   ],
+   [
+    "PASS",
+    "…and only the platform admin is offered the admin screens"
+   ],
+   [
+    "PASS",
+    "joining a church sends the request, then waits for that church to approve"
+   ],
+   [
+    "PASS",
+    "a member saves their own details"
+   ],
+   [
+    "PASS",
+    "an approved member gets \"My account\", not the expo app"
+   ],
+   [
+    "PASS",
+    "…is told how to get their expo results linked"
+   ],
+   [
+    "PASS",
+    "…and the app never asks the database for visitors or volunteers"
+   ],
+   [
+    "PASS",
+    "a linked member sees their own readings, with the Results colour bands"
+   ],
+   [
+    "PASS",
+    "…a danger-range reading tells them to see a clinic soon, and the medicine rule always shows"
+   ],
+   [
+    "PASS",
+    "…and \"what to work on first\" follows their numbers"
+   ],
+   [
+    "PASS",
+    "…red cholesterol says book a clinic visit this week; a low habit alone does not"
+   ],
+   [
+    "PASS",
+    "names from the database are escaped on the account screens"
+   ],
+   [
+    "PASS",
+    "a member can leave their church and is back at the list of churches"
+   ],
+   [
+    "PASS",
+    "\"My church is not listed\" opens the church registration form"
+   ],
+   [
+    "PASS",
+    "registering a church sends its details, then waits for the NEWSTART admin"
+   ],
+   [
+    "PASS",
+    "a paused church says so and offers to leave it"
+   ],
+   [
+    "PASS",
+    "church staff open the expo app as before"
+   ],
+   [
+    "PASS",
+    "…new visitors are uploaded under their church"
+   ],
+   [
+    "PASS",
+    "…and the device remembers which church its saved data belongs to"
+   ],
+   [
+    "PASS",
+    "…edits are matched on church and badge number, not on the badge number alone"
+   ],
+   [
+    "PASS",
+    "the panel behind the logo offers \"My account\" to staff, without Church or Admin"
+   ],
+   [
+    "PASS",
+    "signing in to another church clears the old church's data instead of uploading it there"
+   ],
+   [
+    "PASS",
+    "a church admin also gets the Church screen"
+   ],
+   [
+    "PASS",
+    "a live delete from another church (or one that names no church) never removes this church's visitor"
+   ],
+   [
+    "PASS",
+    "…a live insert from another church is ignored, and this church's own delete still applies"
+   ],
+   [
+    "PASS",
+    "the Church screen lists the members, with Approve for someone waiting"
+   ],
+   [
+    "PASS",
+    "…approving, changing a role, linking a badge and removing someone each call the database"
+   ],
+   [
+    "PASS",
+    "a refusal is shown in the database's own words"
+   ],
+   [
+    "PASS",
+    "a church admin saves the church's details"
+   ],
+   [
+    "PASS",
+    "the platform admin gets an Admin button"
+   ],
+   [
+    "PASS",
+    "the Admin screen lists every church with its counts, and Approve for a waiting one"
+   ],
+   [
+    "PASS",
+    "…with the latest changes in every church"
+   ],
+   [
+    "PASS",
+    "…approving a church calls the database"
+   ],
+   [
+    "PASS",
+    "…and the platform admin can open any church's members and details"
+   ],
+   [
+    "PASS",
+    "a platform admin with no church of their own can still open the Admin screen"
+   ],
+   [
+    "PASS",
+    "every class the account screens use exists in the stylesheet"
+   ],
+   [
+    "PASS",
+    "signing out forgets the account and which church the device held"
+   ],
+   [
+    "PASS",
+    "the bottom bar ends with a Profile tab"
+   ],
+   [
+    "PASS",
+    "with sign-in switched off the page says so instead of showing a form"
+   ],
+   [
+    "PASS",
+    "…and the Profile tab is the highlighted one while open"
+   ],
+   [
+    "PASS",
+    "signed out, Profile offers sign-in, Forgot password and Create an account, and no Sign out"
+   ],
+   [
+    "PASS",
+    "a wrong password is shown on the Profile page itself"
+   ],
+   [
+    "PASS",
+    "a blank email is caught there too"
+   ],
+   [
+    "PASS",
+    "the normal sign-in screen has no \"Back to the app\" link"
+   ],
+   [
+    "PASS",
+    "a device holding saved data shows no gate by itself"
+   ],
+   [
+    "PASS",
+    "Create an account from Profile opens the sign-up screen over that copy, with Back to the app"
+   ],
+   [
+    "PASS",
+    "Forgot password opens the reset screen the same way"
+   ],
+   [
+    "PASS",
+    "Back to the app hides it again"
+   ],
+   [
+    "PASS",
+    "after signing in from Profile the page shows the person, not the form"
+   ],
+   [
+    "PASS",
+    "…with role and church as labels, and no admin buttons for plain staff"
+   ],
+   [
+    "PASS",
+    "…and the sync, details, password and account sections"
+   ],
+   [
+    "PASS",
+    "a church admin who is also platform admin sees both labels and both shortcuts"
+   ],
+   [
+    "PASS",
+    "saving details from Profile calls the database and the page then shows the new name"
+   ],
+   [
+    "PASS",
+    "a short new password is refused on the page and never sent"
+   ],
+   [
+    "PASS",
+    "…and so is a repeat that does not match"
+   ],
+   [
+    "PASS",
+    "a password the account already has is explained"
+   ],
+   [
+    "PASS",
+    "a good new password is saved, the boxes are cleared and a toast says so"
+   ],
+   [
+    "PASS",
+    "Delete my account opens a warning that names what stays, and its button starts disabled"
+   ],
+   [
+    "PASS",
+    "typing something else keeps it disabled"
+   ],
+   [
+    "PASS",
+    "…and pressing it anyway sends nothing"
+   ],
+   [
+    "PASS",
+    "typing DELETE, in any case, enables it"
+   ],
+   [
+    "PASS",
+    "the database's refusal is shown under the box and the person stays signed in"
+   ],
+   [
+    "PASS",
+    "without the latest schema.sql it says what to do"
+   ],
+   [
+    "PASS",
+    "offline it says there is no connection"
+   ],
+   [
+    "PASS",
+    "a successful delete signs this device out, says so, and leaves the Profile page open"
+   ],
+   [
+    "PASS",
+    "…and that page is the sign-in form again"
+   ],
+   [
+    "PASS",
+    "a member's account screen offers Change password and Delete my account"
+   ],
+   [
+    "PASS",
+    "…and the delete confirmation opens inside that screen"
+   ],
+   [
+    "PASS",
+    "every class the Profile screens use exists in the stylesheet"
+   ],
+   [
+    "PASS",
+    "signed out: Sign-in says so, and no other row claims anything"
+   ],
+   [
+    "PASS",
+    "after sign-in each function reports what just happened"
+   ],
+   [
+    "PASS",
+    "…a database without the churches part shows as a warning under Accounts"
+   ],
+   [
+    "PASS",
+    "…and the missing live queue table is named under Database setup"
+   ],
+   [
+    "PASS",
+    "the panel behind the logo lists every function with its state and time, and offers Test now"
+   ],
+   [
+    "PASS",
+    "Home shows the shared-database state, one tap from the details"
+   ],
+   [
+    "PASS",
+    "offline: Download says there is no connection, and Upload counts what is waiting"
+   ],
+   [
+    "PASS",
+    "…and Home shows it as a warning, not as an error"
+   ],
+   [
+    "PASS",
+    "back online the change uploads and Upload says so"
+   ],
+   [
+    "PASS",
+    "a dropped live connection shows \"Reconnecting…\" under Live updates"
+   ],
+   [
+    "PASS",
+    "…and Home shows that one warning even though Download and Upload are working"
+   ],
+   [
+    "PASS",
+    "…and \"Connected\" once it is back"
+   ],
+   [
+    "PASS",
+    "Test now only reads: nothing is inserted, updated or upserted"
+   ],
+   [
+    "PASS",
+    "…records when it ran, and names what is missing"
+   ],
+   [
+    "PASS",
+    "when everything it checks is found, Database setup and Accounts say so"
+   ],
+   [
+    "PASS",
+    "Test now with no connection does not claim the database is set up"
+   ],
+   [
+    "PASS",
+    "a refused account call shows on the account screens, with a way to the details"
+   ],
+   [
+    "PASS",
+    "the queue banner offers Details when it warns, and not in practice mode"
+   ],
+   [
+    "PASS",
+    "messages from the database are escaped in the status rows"
+   ],
+   [
+    "PASS",
+    "every class the status signals use exists in the stylesheet"
+   ],
+   [
+    "PASS",
+    "signing out clears every row except Sign-in"
+   ],
+   [
+    "PASS",
+    "every database text field is escaped on every screen (visitors, volunteers, churches, members, status)"
+   ],
+   [
+    "PASS",
+    "50 live reconnects leave exactly one connection (two table handlers), not fifty"
+   ],
+   [
+    "PASS",
+    "manifest: names, standalone, start_url and scope"
+   ],
+   [
+    "PASS",
+    "manifest: short name fits under a phone icon (<= 12 chars)"
+   ],
+   [
+    "PASS",
+    "manifest: colours are valid hex"
+   ],
+   [
+    "PASS",
+    "every manifest icon exists, is a real PNG and has the size it declares"
+   ],
+   [
+    "PASS",
+    "icons: 192 and 512 \"any\" plus a 512 \"maskable\" (what Android needs to offer install)"
+   ],
+   [
+    "PASS",
+    "iPhone home-screen icon is 180x180"
+   ],
+   [
+    "PASS",
+    "index.html links the manifest, icons, iOS tags and registers the service worker"
+   ],
+   [
+    "PASS",
+    "service worker is only registered on https or localhost"
+   ],
+   [
+    "PASS",
+    "touch screens get 16px inputs (stops iPhone zooming on tap)"
+   ],
+   [
+    "PASS",
+    "service worker precaches exactly the libraries the page loads"
+   ],
+   [
+    "PASS",
+    "service worker registers install, activate and fetch handlers"
+   ],
+   [
+    "PASS",
+    "install caches the app shell and the three libraries"
+   ],
+   [
+    "PASS",
+    "activate deletes caches from older versions"
+   ],
+   [
+    "PASS",
+    "Supabase data requests are never intercepted (so never cached)"
+   ],
+   [
+    "PASS",
+    "Supabase sign-in requests are never intercepted"
+   ],
+   [
+    "PASS",
+    "realtime / other supabase hosts are never intercepted"
+   ],
+   [
+    "PASS",
+    "non-GET requests are left alone"
+   ]
+  ]
+ },
+ "testAfter": {
+  "pass": 439,
+  "fail": 0,
+  "total": 445,
+  "exitCode": 1,
+  "rows": [
+   [
+    "PASS",
+    "7 seed volunteers loaded"
+   ],
+   [
+    "PASS",
+    "Thandi: 4 expos / 30h"
+   ],
+   [
+    "PASS",
+    "Grace: 6 expos / 45.5h"
+   ],
+   [
+    "PASS",
+    "Nomvula: 0 expos"
+   ],
+   [
+    "PASS",
+    "hours sum correctly (Grace = 45.5)"
+   ],
+   [
+    "PASS",
+    "next tier for Grace is Platinum"
+   ],
+   [
+    "PASS",
+    "Grace needs 3 more expos for Platinum"
+   ],
+   [
+    "PASS",
+    "Grace needs 14.5 more hours"
+   ],
+   [
+    "PASS",
+    "progress tracks the weaker requirement (67%)"
+   ],
+   [
+    "PASS",
+    "blocking requirement is expos"
+   ],
+   [
+    "PASS",
+    "remaining sentence names both gaps"
+   ],
+   [
+    "PASS",
+    "hours-gated helper reports hours"
+   ],
+   [
+    "PASS",
+    "hours-gated progress is 60%"
+   ],
+   [
+    "PASS",
+    "hours-gated helper needs 3 more expos"
+   ],
+   [
+    "PASS",
+    "meeting both minimums promotes (6 expos / 36h"
+   ],
+   [
+    "PASS",
+    "Legend has no next tier"
+   ],
+   [
+    "PASS",
+    "exactly one top-tier badge"
+   ],
+   [
+    "PASS",
+    "12 booths defined"
+   ],
+   [
+    "PASS",
+    "helpersAt(bp) counts only registered"
+   ],
+   [
+    "PASS",
+    "boothLabel resolves"
+   ],
+   [
+    "PASS",
+    "unknown booth falls back"
+   ],
+   [
+    "PASS",
+    "prospects are not counted as staffed"
+   ],
+   [
+    "PASS",
+    "2 pledges await registration"
+   ],
+   [
+    "PASS",
+    "serve/pledge renders markup"
+   ],
+   [
+    "PASS",
+    "serve/muster renders markup"
+   ],
+   [
+    "PASS",
+    "serve/booth renders markup"
+   ],
+   [
+    "PASS",
+    "serve/record renders markup"
+   ],
+   [
+    "PASS",
+    "registration form renders"
+   ],
+   [
+    "PASS",
+    "registration form lists 12 booth choices"
+   ],
+   [
+    "PASS",
+    "existing tab home still renders"
+   ],
+   [
+    "PASS",
+    "existing tab screen still renders"
+   ],
+   [
+    "PASS",
+    "existing tab results still renders"
+   ],
+   [
+    "PASS",
+    "existing tab plan still renders"
+   ],
+   [
+    "PASS",
+    "existing tab care still renders"
+   ],
+   [
+    "PASS",
+    "serve tab keeps the container visible"
+   ],
+   [
+    "PASS",
+    "serve tab content was written"
+   ],
+   [
+    "PASS",
+    "back on home: container visible"
+   ],
+   [
+    "PASS",
+    "back on home: has content"
+   ],
+   [
+    "PASS",
+    "back on screen: container visible"
+   ],
+   [
+    "PASS",
+    "back on screen: has content"
+   ],
+   [
+    "PASS",
+    "back on results: container visible"
+   ],
+   [
+    "PASS",
+    "back on results: has content"
+   ],
+   [
+    "PASS",
+    "back on plan: container visible"
+   ],
+   [
+    "PASS",
+    "back on plan: has content"
+   ],
+   [
+    "PASS",
+    "back on care: container visible"
+   ],
+   [
+    "PASS",
+    "back on care: has content"
+   ],
+   [
+    "PASS",
+    "serve/pledge visible + populated"
+   ],
+   [
+    "PASS",
+    "serve/muster visible + populated"
+   ],
+   [
+    "PASS",
+    "serve/booth visible + populated"
+   ],
+   [
+    "PASS",
+    "serve/record visible + populated"
+   ],
+   [
+    "PASS",
+    "serve works after round-tripping through Care"
+   ],
+   [
+    "PASS",
+    "pledge creates a volunteer"
+   ],
+   [
+    "PASS",
+    "new volunteer gets a VOL- id"
+   ],
+   [
+    "PASS",
+    "new volunteer starts at Friend tier"
+   ],
+   [
+    "PASS",
+    "new volunteer has no expo history"
+   ],
+   [
+    "PASS",
+    "first-choice list caps at 2"
+   ],
+   [
+    "PASS",
+    "oldest choice is dropped (FIFO)"
+   ],
+   [
+    "PASS",
+    "log form reads the hours input"
+   ],
+   [
+    "PASS",
+    "expo appended to history"
+   ],
+   [
+    "PASS",
+    "hours recorded"
+   ],
+   [
+    "PASS",
+    "badge promoted Friend"
+   ],
+   [
+    "PASS",
+    "entry can be removed again"
+   ],
+   [
+    "PASS",
+    "badge reverts after removal"
+   ],
+   [
+    "PASS",
+    "zero hours is rejected"
+   ],
+   [
+    "PASS",
+    "shift added"
+   ],
+   [
+    "PASS",
+    "shift removed on second tap"
+   ],
+   [
+    "PASS",
+    "multiple shifts accumulate"
+   ],
+   [
+    "PASS",
+    "shift survives a reload"
+   ],
+   [
+    "PASS",
+    "payload contains volunteers"
+   ],
+   [
+    "PASS",
+    "payload contains active volunteer id"
+   ],
+   [
+    "PASS",
+    "older payloads without volunteers still load"
+   ],
+   [
+    "PASS",
+    "full payload reloads"
+   ],
+   [
+    "PASS",
+    "esc neutralises a script tag"
+   ],
+   [
+    "PASS",
+    "hostile name is stored raw but rendered escaped"
+   ],
+   [
+    "PASS",
+    "render output has no live <b> tag from the name"
+   ],
+   [
+    "PASS",
+    "CSV produced"
+   ],
+   [
+    "PASS",
+    "CSV header present"
+   ],
+   [
+    "PASS",
+    "CSV quotes embedded correctly"
+   ],
+   [
+    "PASS",
+    "one CSV row per volunteer"
+   ],
+   [
+    "PASS",
+    "reset restores 7 seed volunteers"
+   ],
+   [
+    "PASS",
+    "reset restores the seed active volunteer"
+   ],
+   [
+    "PASS",
+    "badge already in use is refused"
+   ],
+   [
+    "PASS",
+    "a badge that is not EXPO-nnn is refused"
+   ],
+   [
+    "PASS",
+    "blank name is refused"
+   ],
+   [
+    "PASS",
+    "out-of-range age is refused"
+   ],
+   [
+    "PASS",
+    "lower-case / zero-padded badge normalised to EXPO-201"
+   ],
+   [
+    "PASS",
+    "new visitor becomes the active passport"
+   ],
+   [
+    "PASS",
+    "no unescaped visitor markup on any visitor tab"
+   ],
+   [
+    "PASS",
+    "visitor switcher escapes names"
+   ],
+   [
+    "PASS",
+    "scanner list escapes names"
+   ],
+   [
+    "PASS",
+    "WhatsApp preview escapes names"
+   ],
+   [
+    "PASS",
+    "print card escapes names"
+   ],
+   [
+    "PASS",
+    "care list escapes name, phone and prayer note"
+   ],
+   [
+    "PASS",
+    "nextBadge skips ids already issued"
+   ],
+   [
+    "PASS",
+    "migrateAttendee strips unsafe characters from ids"
+   ],
+   [
+    "PASS",
+    "EXPO-042 parses"
+   ],
+   [
+    "PASS",
+    "expo 42 (spaces, lower case) parses"
+   ],
+   [
+    "PASS",
+    "EXPO-0042 equals EXPO-042"
+   ],
+   [
+    "PASS",
+    "bare number parses"
+   ],
+   [
+    "PASS",
+    "badge inside a URL parses"
+   ],
+   [
+    "PASS",
+    "garbage is rejected"
+   ],
+   [
+    "PASS",
+    "scanning a known badge opens that visitor"
+   ],
+   [
+    "PASS",
+    "scanning an unknown badge opens registration with the id prefilled"
+   ],
+   [
+    "PASS",
+    "first + tap on an empty field shows the default (120), not a guess above it"
+   ],
+   [
+    "PASS",
+    "the second + tap then steps up by one (121)"
+   ],
+   [
+    "PASS",
+    "first − tap on an empty field also shows the default (120)"
+   ],
+   [
+    "PASS",
+    "sugar: first tap shows 5.5"
+   ],
+   [
+    "PASS",
+    "sugar: second tap steps by 0.1 without float noise (5.6)"
+   ],
+   [
+    "PASS",
+    "stepper stops at the minimum"
+   ],
+   [
+    "PASS",
+    "stepper stops at the maximum"
+   ],
+   [
+    "PASS",
+    "too-high reading is not saved (and not clamped to 30)"
+   ],
+   [
+    "PASS",
+    "too-high reading tells the volunteer why"
+   ],
+   [
+    "PASS",
+    "72 for sugar is not saved but offers the one-tap fix 7.2"
+   ],
+   [
+    "PASS",
+    "a comma decimal \"6,5\" is saved as 6.5"
+   ],
+   [
+    "PASS",
+    "text such as \"abc\" is not saved and the message says it is not a number"
+   ],
+   [
+    "PASS",
+    "an emptied field clears the reading and the warning"
+   ],
+   [
+    "PASS",
+    "an in-range reading is kept exactly as typed (5.4)"
+   ],
+   [
+    "PASS",
+    "blood pressure 300 is not saved and gets no decimal \"fix\""
+   ],
+   [
+    "PASS",
+    "non-numeric entry clears the field"
+   ],
+   [
+    "PASS",
+    "empty entry stays empty (not zero)"
+   ],
+   [
+    "PASS",
+    "0 servings of veg still counts as recorded"
+   ],
+   [
+    "PASS",
+    "BP 160/80 is a red flag"
+   ],
+   [
+    "PASS",
+    "BP 120/80 is normal"
+   ],
+   [
+    "PASS",
+    "sugar 15 is a red flag"
+   ],
+   [
+    "PASS",
+    "incomplete attendee gets no health age"
+   ],
+   [
+    "PASS",
+    "pledging from the Home card switches to the Team tab"
+   ],
+   [
+    "PASS",
+    "pledge form is actually rendered"
+   ],
+   [
+    "PASS",
+    "Back from a new pledge restores a real volunteer"
+   ],
+   [
+    "PASS",
+    "pledge screen shows a badge card again after Back"
+   ],
+   [
+    "PASS",
+    "setVolTab from another tab lands on Team/Muster"
+   ],
+   [
+    "PASS",
+    "edit form is prefilled for Thandi"
+   ],
+   [
+    "PASS",
+    "draft does not leak between volunteers (Grace)"
+   ],
+   [
+    "PASS",
+    "a tab button closes the open form"
+   ],
+   [
+    "PASS",
+    "leaving a half-open new pledge restores a volunteer"
+   ],
+   [
+    "PASS",
+    "Switch volunteer opens the volunteer picker"
+   ],
+   [
+    "PASS",
+    "volunteer picker lists names unmangled"
+   ],
+   [
+    "PASS",
+    "more than 24 hours is refused"
+   ],
+   [
+    "PASS",
+    "a future date is refused"
+   ],
+   [
+    "PASS",
+    "negative hours are refused"
+   ],
+   [
+    "PASS",
+    "valid entry is saved"
+   ],
+   [
+    "PASS",
+    "today is allowed"
+   ],
+   [
+    "PASS",
+    "the same day at the same booth is not double-counted"
+   ],
+   [
+    "PASS",
+    "todayStr is a local YYYY-MM-DD date"
+   ],
+   [
+    "PASS",
+    "incoming expo is in the future"
+   ],
+   [
+    "PASS",
+    "status of a corrupt record falls back to prospect"
+   ],
+   [
+    "PASS",
+    "formula cell is defused"
+   ],
+   [
+    "PASS",
+    "@ cell is defused"
+   ],
+   [
+    "PASS",
+    "+27 phone numbers are left alone"
+   ],
+   [
+    "PASS",
+    "plain text and quotes are escaped"
+   ],
+   [
+    "PASS",
+    "null becomes an empty cell"
+   ],
+   [
+    "PASS",
+    "visitor CSV: header + one row per visitor"
+   ],
+   [
+    "PASS",
+    "\"Dr Samuel Adeyemi\" greets as Samuel"
+   ],
+   [
+    "PASS",
+    "plain names keep their first word"
+   ],
+   [
+    "PASS",
+    "a lone title is not dropped"
+   ],
+   [
+    "PASS",
+    "empty name is safe"
+   ],
+   [
+    "PASS",
+    "initials ignore stray spaces"
+   ],
+   [
+    "PASS",
+    "no template class is missing from the stylesheet (465 checked)"
+   ],
+   [
+    "PASS",
+    "app: the page boots as the Android app"
+   ],
+   [
+    "PASS",
+    "web: the page does not think it is the app"
+   ],
+   [
+    "PASS",
+    "web: the libraries still load from their pinned CDN addresses"
+   ],
+   [
+    "PASS",
+    "app: the sign-in library loads from the copy inside the app, with the same integrity check"
+   ],
+   [
+    "PASS",
+    "app: the scanner and QR libraries load from the copies inside the app"
+   ],
+   [
+    "PASS",
+    "app: sign-up and password emails link back to the web site, not to the app"
+   ],
+   [
+    "PASS",
+    "app: no service worker is registered inside the app"
+   ],
+   [
+    "PASS",
+    "app: no \"Add to Home Screen\" steps are shown inside the app"
+   ],
+   [
+    "PASS",
+    "app: WhatsApp opens the WhatsApp app with the message ready"
+   ],
+   [
+    "PASS",
+    "app: without WhatsApp on the phone, the message goes to the share sheet"
+   ],
+   [
+    "PASS",
+    "app: the take-home card goes to the phone's print service as an A6 page"
+   ],
+   [
+    "PASS",
+    "fonts: the app uses its own copy, the web site Google Fonts"
+   ],
+   [
+    "PASS",
+    "attendee rows survive a database round trip"
+   ],
+   [
+    "PASS",
+    "volunteer rows (history, arrays, dates) survive a round trip"
+   ],
+   [
+    "PASS",
+    "untouched demo rows are recognised"
+   ],
+   [
+    "PASS",
+    "a pristine demo device has nothing to upload"
+   ],
+   [
+    "PASS",
+    "an edited demo row counts as pending"
+   ],
+   [
+    "PASS",
+    "before sign-in only the real visitor is pending"
+   ],
+   [
+    "PASS",
+    "cloud client is created from the library"
+   ],
+   [
+    "PASS",
+    "no session"
+   ],
+   [
+    "PASS",
+    "sign-in reaches the online state"
+   ],
+   [
+    "PASS",
+    "real visitor uploaded"
+   ],
+   [
+    "PASS",
+    "demo visitors/volunteers were NOT uploaded"
+   ],
+   [
+    "PASS",
+    "demo rows removed from the device"
+   ],
+   [
+    "PASS",
+    "nothing left pending after the first sync"
+   ],
+   [
+    "PASS",
+    "sync ledger saved to storage"
+   ],
+   [
+    "PASS",
+    "persisted copy remembers it is connected"
+   ],
+   [
+    "PASS",
+    "volunteer numbering starts at VOL-1001 for an empty database"
+   ],
+   [
+    "PASS",
+    "reset is refused while connected"
+   ],
+   [
+    "PASS",
+    "empty database"
+   ],
+   [
+    "PASS",
+    "every tab renders with no data"
+   ],
+   [
+    "PASS",
+    "home invites registering the first visitor"
+   ],
+   [
+    "PASS",
+    "screening tab asks for a visitor instead of showing a ghost"
+   ],
+   [
+    "PASS",
+    "team tabs render with no volunteers"
+   ],
+   [
+    "PASS",
+    "new visitor inserted after the debounce"
+   ],
+   [
+    "PASS",
+    "edit uploaded as an update"
+   ],
+   [
+    "PASS",
+    "new volunteer inserted with a VOL id"
+   ],
+   [
+    "PASS",
+    "logged expo history stored as jsonb"
+   ],
+   [
+    "PASS",
+    "offline: status says offline, edit stays pending"
+   ],
+   [
+    "PASS",
+    "offline: edit is safe on the device"
+   ],
+   [
+    "PASS",
+    "back online: queued edit uploaded"
+   ],
+   [
+    "PASS",
+    "live: a visitor from another desk appears"
+   ],
+   [
+    "PASS",
+    "live: a clean row takes the remote edit"
+   ],
+   [
+    "PASS",
+    "live: a pending local edit is not overwritten"
+   ],
+   [
+    "PASS",
+    "…and it is uploaded afterwards"
+   ],
+   [
+    "PASS",
+    "live: delete on another desk removes the visitor"
+   ],
+   [
+    "PASS",
+    "live: echo of our own save changes nothing"
+   ],
+   [
+    "PASS",
+    "pull: server rows replace the demo data"
+   ],
+   [
+    "PASS",
+    "pull: mapped fields intact"
+   ],
+   [
+    "PASS",
+    "pull: nothing pending and nothing written back"
+   ],
+   [
+    "PASS",
+    "pull: volunteer numbering continues after the highest id"
+   ],
+   [
+    "PASS",
+    "pull: active selections point at real rows"
+   ],
+   [
+    "PASS",
+    "not staff: clear error, no sync"
+   ],
+   [
+    "PASS",
+    "not staff: local data is untouched and nothing was written"
+   ],
+   [
+    "PASS",
+    "not staff: no retry storm"
+   ],
+   [
+    "PASS",
+    "clash setup: this desk pulled VOL-1001 and counts on from 1002"
+   ],
+   [
+    "PASS",
+    "this desk first numbered the pledge VOL-1002"
+   ],
+   [
+    "PASS",
+    "volunteer id clash"
+   ],
+   [
+    "PASS",
+    "volunteer selection follows the new id"
+   ],
+   [
+    "PASS",
+    "a stale counter skips ids already on the device"
+   ],
+   [
+    "PASS",
+    "lanyard clash: the other desk's visitor wins on the server"
+   ],
+   [
+    "PASS",
+    "lanyard clash: this desk now shows that visitor"
+   ],
+   [
+    "PASS",
+    "lanyard clash did not stop the rest uploading"
+   ],
+   [
+    "PASS",
+    "a refused row is skipped, the rest still upload"
+   ],
+   [
+    "PASS",
+    "…without looping on it"
+   ],
+   [
+    "PASS",
+    "missing tables"
+   ],
+   [
+    "PASS",
+    "signed-out sheet shows the form"
+   ],
+   [
+    "PASS",
+    "wrong password gives a friendly message"
+   ],
+   [
+    "PASS",
+    "email is kept after a failed attempt"
+   ],
+   [
+    "PASS",
+    "blank fields are caught before any request"
+   ],
+   [
+    "PASS",
+    "offline sign-in explains itself"
+   ],
+   [
+    "PASS",
+    "correct password signs in"
+   ],
+   [
+    "PASS",
+    "signed-in sheet escapes the email"
+   ],
+   [
+    "PASS",
+    "signed-in sheet shows counts"
+   ],
+   [
+    "PASS",
+    "sign-out returns the device to demo data"
+   ],
+   [
+    "PASS",
+    "sign-out clears the sync ledger and connected flag"
+   ],
+   [
+    "PASS",
+    "sign-out kept the server data"
+   ],
+   [
+    "PASS",
+    "reset works again once signed out"
+   ],
+   [
+    "PASS",
+    "cold start: gate covers the app while connecting"
+   ],
+   [
+    "PASS",
+    "the test switch really hides the gate"
+   ],
+   [
+    "PASS",
+    "no saved session"
+   ],
+   [
+    "PASS",
+    "form has email + password fields and a sign-in button"
+   ],
+   [
+    "PASS",
+    "wrong password shows its message on the gate"
+   ],
+   [
+    "PASS",
+    "the same error twice still resets the button"
+   ],
+   [
+    "PASS",
+    "email survives a failed attempt"
+   ],
+   [
+    "PASS",
+    "blank email is caught on the gate"
+   ],
+   [
+    "PASS",
+    "offline sign-in explains itself"
+   ],
+   [
+    "PASS",
+    "signed in but not yet synced"
+   ],
+   [
+    "PASS",
+    "first successful sync lifts the gate"
+   ],
+   [
+    "PASS",
+    "the app now shows real data (demo gone, own visitor uploaded)"
+   ],
+   [
+    "PASS",
+    "session ends by itself"
+   ],
+   [
+    "PASS",
+    "…and local edits keep queueing"
+   ],
+   [
+    "PASS",
+    "deliberate sign-out shows the login again, without the \"expired\" toast"
+   ],
+   [
+    "PASS",
+    "…and the demo data is not reachable behind it"
+   ],
+   [
+    "PASS",
+    "a previously signed-in device is not gated at start-up"
+   ],
+   [
+    "PASS",
+    "not approved"
+   ],
+   [
+    "PASS",
+    "…which shows the account email and offers Check again / Sign out"
+   ],
+   [
+    "PASS",
+    "after the administrator approves the account, Check again lifts the gate"
+   ],
+   [
+    "PASS",
+    "sign-in service unreachable"
+   ],
+   [
+    "PASS",
+    "…and an explicit demo escape hatch"
+   ],
+   [
+    "PASS",
+    "choosing the demo lifts the gate"
+   ],
+   [
+    "PASS",
+    "Show reveals the password"
+   ],
+   [
+    "PASS",
+    "Hide masks it again"
+   ],
+   [
+    "PASS",
+    "login screen links to Create an account and Forgot password"
+   ],
+   [
+    "PASS",
+    "Create account screen has name, email, password and repeat-password"
+   ],
+   [
+    "PASS",
+    "…and a way back to sign-in"
+   ],
+   [
+    "PASS",
+    "password rules: too short"
+   ],
+   [
+    "PASS",
+    "password rules: needs a number"
+   ],
+   [
+    "PASS",
+    "password rules: needs a letter"
+   ],
+   [
+    "PASS",
+    "password rules: capped at 72"
+   ],
+   [
+    "PASS",
+    "password rules: a good one passes"
+   ],
+   [
+    "PASS",
+    "email check"
+   ],
+   [
+    "PASS",
+    "blank name is refused before any request"
+   ],
+   [
+    "PASS",
+    "bad email is refused"
+   ],
+   [
+    "PASS",
+    "weak password is refused"
+   ],
+   [
+    "PASS",
+    "mismatched passwords are refused"
+   ],
+   [
+    "PASS",
+    "the typed name and email survive a refused attempt"
+   ],
+   [
+    "PASS",
+    "sign-up sends one request and moves to \"Check your email\""
+   ],
+   [
+    "PASS",
+    "the name travels as account metadata"
+   ],
+   [
+    "PASS",
+    "the confirmation link returns to this page"
+   ],
+   [
+    "PASS",
+    "still gated and signed out after sign-up"
+   ],
+   [
+    "PASS",
+    "the password is never written to device storage"
+   ],
+   [
+    "PASS",
+    "signing in before confirming sends them back to \"Check your email\""
+   ],
+   [
+    "PASS",
+    "Resend is rate-limited on the device (first minute)"
+   ],
+   [
+    "PASS",
+    "Resend asks for another confirmation email"
+   ],
+   [
+    "PASS",
+    "a wrong password is still a wrong password"
+   ],
+   [
+    "PASS",
+    "after confirming, sign-in works and lands on \"Waiting for approval\""
+   ],
+   [
+    "PASS",
+    "once approved, the app opens"
+   ],
+   [
+    "PASS",
+    "signing up an existing email says so, without leaking more"
+   ],
+   [
+    "PASS",
+    "sign-ups switched off in Supabase"
+   ],
+   [
+    "PASS",
+    "e-mail rate limit"
+   ],
+   [
+    "PASS",
+    "offline sign-up"
+   ],
+   [
+    "PASS",
+    "with e-mail confirmation switched off, sign-up signs straight in (then waits for approval)"
+   ],
+   [
+    "PASS",
+    "forgot screen asks for an email"
+   ],
+   [
+    "PASS",
+    "forgot: bad email refused"
+   ],
+   [
+    "PASS",
+    "forgot: offline says so and stays on the form"
+   ],
+   [
+    "PASS",
+    "forgot: sends the reset link with a way back to this page"
+   ],
+   [
+    "PASS",
+    "forgot: confirmation never reveals whether the account exists"
+   ],
+   [
+    "PASS",
+    "reset link"
+   ],
+   [
+    "PASS",
+    "new password must be strong enough"
+   ],
+   [
+    "PASS",
+    "new password must match its repeat"
+   ],
+   [
+    "PASS",
+    "reusing the old password gets a friendly message"
+   ],
+   [
+    "PASS",
+    "saving the new password lifts the gate"
+   ],
+   [
+    "PASS",
+    "the new password is not kept on the device"
+   ],
+   [
+    "PASS",
+    "signing out returns to the plain login with nothing left over"
+   ],
+   [
+    "PASS",
+    "Show reveals both the password and its repeat"
+   ],
+   [
+    "PASS",
+    "Hide masks both again"
+   ],
+   [
+    "PASS",
+    "sign-in pulls ALL 3000 visitors past the 1000-row cap"
+   ],
+   [
+    "PASS",
+    "…and all 900 volunteers"
+   ],
+   [
+    "PASS",
+    "visitors were read in pages of 500 (7 requests)"
+   ],
+   [
+    "ANY",
+    "first full pull finished in a sensible time"
+   ],
+   [
+    "PASS",
+    "nothing pending, nothing written back"
+   ],
+   [
+    "ANY",
+    "change detection grows in step with the rows"
+   ],
+   [
+    "ANY",
+    "saving to the device is fast"
+   ],
+   [
+    "PASS",
+    "Home draws only the latest 25 of 3000 visitors"
+   ],
+   [
+    "PASS",
+    "Home offers a search box for the rest"
+   ],
+   [
+    "PASS",
+    "search finds one visitor out of 3000"
+   ],
+   [
+    "PASS",
+    "search also matches phone numbers"
+   ],
+   [
+    "PASS",
+    "search with no match says so"
+   ],
+   [
+    "PASS",
+    "switcher draws at most 25 of 3000 and has a search box"
+   ],
+   [
+    "PASS",
+    "the open visitor stays reachable in the short list even when old"
+   ],
+   [
+    "ANY",
+    "Care with 600 urgent + 1000 call-backs draws a capped set"
+   ],
+   [
+    "PASS",
+    "Care counts still show the true totals"
+   ],
+   [
+    "PASS",
+    "\"Show more\" adds 100 cards per tap, not everything"
+   ],
+   [
+    "PASS",
+    "repeated \"Show more\" reaches all 600 urgent"
+   ],
+   [
+    "PASS",
+    "600 edited rows upload (606 requests)"
+   ],
+   [
+    "PASS",
+    "a routine poll asks only for rows changed since last time"
+   ],
+   [
+    "PASS",
+    "the next poll is down to one small request per table"
+   ],
+   [
+    "PASS",
+    "…and picked up the new visitor"
+   ],
+   [
+    "PASS",
+    "a routine poll does not mistake \"unchanged\" for \"deleted\""
+   ],
+   [
+    "PASS",
+    "Sync now does the full reconcile and notices the deletion"
+   ],
+   [
+    "PASS",
+    "rows are not lost when a full pull is split across pages"
+   ],
+   [
+    "PASS",
+    "120 visitors registered offline are all pending"
+   ],
+   [
+    "ANY",
+    "the whole backlog uploads on reconnect"
+   ],
+   [
+    "ANY",
+    "500 live inserts from other desks are applied"
+   ],
+   [
+    "PASS",
+    "applying them uploaded nothing back"
+   ],
+   [
+    "PASS",
+    "Home still draws a short list with 3600+ visitors"
+   ],
+   [
+    "PASS",
+    "without the churches part of the schema, the old staff check still opens the app"
+   ],
+   [
+    "PASS",
+    "signed in with no church"
+   ],
+   [
+    "PASS",
+    "…and the visitor data saved on this device is cleared"
+   ],
+   [
+    "PASS",
+    "…and only the platform admin is offered the admin screens"
+   ],
+   [
+    "PASS",
+    "joining a church sends the request, then waits for that church to approve"
+   ],
+   [
+    "PASS",
+    "a member saves their own details"
+   ],
+   [
+    "PASS",
+    "an approved member gets \"My account\", not the expo app"
+   ],
+   [
+    "PASS",
+    "…is told how to get their expo results linked"
+   ],
+   [
+    "PASS",
+    "…and the app never asks the database for visitors or volunteers"
+   ],
+   [
+    "PASS",
+    "a linked member sees their own readings, with the Results colour bands"
+   ],
+   [
+    "PASS",
+    "…a danger-range reading tells them to see a clinic soon, and the medicine rule always shows"
+   ],
+   [
+    "PASS",
+    "…and \"what to work on first\" follows their numbers"
+   ],
+   [
+    "PASS",
+    "…red cholesterol says book a clinic visit this week; a low habit alone does not"
+   ],
+   [
+    "PASS",
+    "names from the database are escaped on the account screens"
+   ],
+   [
+    "PASS",
+    "a member can leave their church and is back at the list of churches"
+   ],
+   [
+    "PASS",
+    "\"My church is not listed\" opens the church registration form"
+   ],
+   [
+    "PASS",
+    "registering a church sends its details, then waits for the NEWSTART admin"
+   ],
+   [
+    "PASS",
+    "a paused church says so and offers to leave it"
+   ],
+   [
+    "PASS",
+    "church staff open the expo app as before"
+   ],
+   [
+    "PASS",
+    "…new visitors are uploaded under their church"
+   ],
+   [
+    "PASS",
+    "…and the device remembers which church its saved data belongs to"
+   ],
+   [
+    "PASS",
+    "…edits are matched on church and badge number, not on the badge number alone"
+   ],
+   [
+    "PASS",
+    "the panel behind the logo offers \"My account\" to staff, without Church or Admin"
+   ],
+   [
+    "PASS",
+    "signing in to another church clears the old church's data instead of uploading it there"
+   ],
+   [
+    "PASS",
+    "a church admin also gets the Church screen"
+   ],
+   [
+    "PASS",
+    "a live delete from another church (or one that names no church) never removes this church's visitor"
+   ],
+   [
+    "PASS",
+    "…a live insert from another church is ignored, and this church's own delete still applies"
+   ],
+   [
+    "PASS",
+    "the Church screen lists the members, with Approve for someone waiting"
+   ],
+   [
+    "PASS",
+    "…approving, changing a role, linking a badge and removing someone each call the database"
+   ],
+   [
+    "PASS",
+    "a refusal is shown in the database's own words"
+   ],
+   [
+    "PASS",
+    "a church admin saves the church's details"
+   ],
+   [
+    "PASS",
+    "the platform admin gets an Admin button"
+   ],
+   [
+    "PASS",
+    "the Admin screen lists every church with its counts, and Approve for a waiting one"
+   ],
+   [
+    "PASS",
+    "…with the latest changes in every church"
+   ],
+   [
+    "PASS",
+    "…approving a church calls the database"
+   ],
+   [
+    "PASS",
+    "…and the platform admin can open any church's members and details"
+   ],
+   [
+    "PASS",
+    "a platform admin with no church of their own can still open the Admin screen"
+   ],
+   [
+    "PASS",
+    "every class the account screens use exists in the stylesheet"
+   ],
+   [
+    "PASS",
+    "signing out forgets the account and which church the device held"
+   ],
+   [
+    "PASS",
+    "the bottom bar ends with a Profile tab"
+   ],
+   [
+    "PASS",
+    "with sign-in switched off the page says so instead of showing a form"
+   ],
+   [
+    "PASS",
+    "…and the Profile tab is the highlighted one while open"
+   ],
+   [
+    "PASS",
+    "signed out, Profile offers sign-in, Forgot password and Create an account, and no Sign out"
+   ],
+   [
+    "PASS",
+    "a wrong password is shown on the Profile page itself"
+   ],
+   [
+    "PASS",
+    "a blank email is caught there too"
+   ],
+   [
+    "PASS",
+    "the normal sign-in screen has no \"Back to the app\" link"
+   ],
+   [
+    "PASS",
+    "a device holding saved data shows no gate by itself"
+   ],
+   [
+    "PASS",
+    "Create an account from Profile opens the sign-up screen over that copy, with Back to the app"
+   ],
+   [
+    "PASS",
+    "Forgot password opens the reset screen the same way"
+   ],
+   [
+    "PASS",
+    "Back to the app hides it again"
+   ],
+   [
+    "PASS",
+    "after signing in from Profile the page shows the person, not the form"
+   ],
+   [
+    "PASS",
+    "…with role and church as labels, and no admin buttons for plain staff"
+   ],
+   [
+    "PASS",
+    "…and the sync, details, password and account sections"
+   ],
+   [
+    "PASS",
+    "a church admin who is also platform admin sees both labels and both shortcuts"
+   ],
+   [
+    "PASS",
+    "saving details from Profile calls the database and the page then shows the new name"
+   ],
+   [
+    "PASS",
+    "a short new password is refused on the page and never sent"
+   ],
+   [
+    "PASS",
+    "…and so is a repeat that does not match"
+   ],
+   [
+    "PASS",
+    "a password the account already has is explained"
+   ],
+   [
+    "PASS",
+    "a good new password is saved, the boxes are cleared and a toast says so"
+   ],
+   [
+    "PASS",
+    "Delete my account opens a warning that names what stays, and its button starts disabled"
+   ],
+   [
+    "PASS",
+    "typing something else keeps it disabled"
+   ],
+   [
+    "PASS",
+    "…and pressing it anyway sends nothing"
+   ],
+   [
+    "PASS",
+    "typing DELETE, in any case, enables it"
+   ],
+   [
+    "PASS",
+    "the database's refusal is shown under the box and the person stays signed in"
+   ],
+   [
+    "PASS",
+    "without the latest schema.sql it says what to do"
+   ],
+   [
+    "PASS",
+    "offline it says there is no connection"
+   ],
+   [
+    "PASS",
+    "a successful delete signs this device out, says so, and leaves the Profile page open"
+   ],
+   [
+    "PASS",
+    "…and that page is the sign-in form again"
+   ],
+   [
+    "PASS",
+    "a member's account screen offers Change password and Delete my account"
+   ],
+   [
+    "PASS",
+    "…and the delete confirmation opens inside that screen"
+   ],
+   [
+    "PASS",
+    "every class the Profile screens use exists in the stylesheet"
+   ],
+   [
+    "PASS",
+    "signed out: Sign-in says so, and no other row claims anything"
+   ],
+   [
+    "PASS",
+    "after sign-in each function reports what just happened"
+   ],
+   [
+    "PASS",
+    "…a database without the churches part shows as a warning under Accounts"
+   ],
+   [
+    "PASS",
+    "…and the missing live queue table is named under Database setup"
+   ],
+   [
+    "PASS",
+    "the panel behind the logo lists every function with its state and time, and offers Test now"
+   ],
+   [
+    "PASS",
+    "Home shows the shared-database state, one tap from the details"
+   ],
+   [
+    "PASS",
+    "offline: Download says there is no connection, and Upload counts what is waiting"
+   ],
+   [
+    "PASS",
+    "…and Home shows it as a warning, not as an error"
+   ],
+   [
+    "PASS",
+    "back online the change uploads and Upload says so"
+   ],
+   [
+    "PASS",
+    "a dropped live connection shows \"Reconnecting…\" under Live updates"
+   ],
+   [
+    "PASS",
+    "…and Home shows that one warning even though Download and Upload are working"
+   ],
+   [
+    "PASS",
+    "…and \"Connected\" once it is back"
+   ],
+   [
+    "PASS",
+    "Test now only reads: nothing is inserted, updated or upserted"
+   ],
+   [
+    "PASS",
+    "…records when it ran, and names what is missing"
+   ],
+   [
+    "PASS",
+    "when everything it checks is found, Database setup and Accounts say so"
+   ],
+   [
+    "PASS",
+    "Test now with no connection does not claim the database is set up"
+   ],
+   [
+    "PASS",
+    "a refused account call shows on the account screens, with a way to the details"
+   ],
+   [
+    "PASS",
+    "the queue banner offers Details when it warns, and not in practice mode"
+   ],
+   [
+    "PASS",
+    "messages from the database are escaped in the status rows"
+   ],
+   [
+    "PASS",
+    "every class the status signals use exists in the stylesheet"
+   ],
+   [
+    "PASS",
+    "signing out clears every row except Sign-in"
+   ],
+   [
+    "PASS",
+    "every database text field is escaped on every screen (visitors, volunteers, churches, members, status)"
+   ],
+   [
+    "PASS",
+    "50 live reconnects leave exactly one connection (two table handlers), not fifty"
+   ],
+   [
+    "PASS",
+    "manifest: names, standalone, start_url and scope"
+   ],
+   [
+    "PASS",
+    "manifest: short name fits under a phone icon (<= 12 chars)"
+   ],
+   [
+    "PASS",
+    "manifest: colours are valid hex"
+   ],
+   [
+    "PASS",
+    "every manifest icon exists, is a real PNG and has the size it declares"
+   ],
+   [
+    "PASS",
+    "icons: 192 and 512 \"any\" plus a 512 \"maskable\" (what Android needs to offer install)"
+   ],
+   [
+    "PASS",
+    "iPhone home-screen icon is 180x180"
+   ],
+   [
+    "PASS",
+    "index.html links the manifest, icons, iOS tags and registers the service worker"
+   ],
+   [
+    "PASS",
+    "service worker is only registered on https or localhost"
+   ],
+   [
+    "PASS",
+    "touch screens get 16px inputs (stops iPhone zooming on tap)"
+   ],
+   [
+    "PASS",
+    "service worker precaches exactly the libraries the page loads"
+   ],
+   [
+    "PASS",
+    "service worker registers install, activate and fetch handlers"
+   ],
+   [
+    "PASS",
+    "install caches the app shell and the three libraries"
+   ],
+   [
+    "PASS",
+    "activate deletes caches from older versions"
+   ],
+   [
+    "PASS",
+    "Supabase data requests are never intercepted (so never cached)"
+   ],
+   [
+    "PASS",
+    "Supabase sign-in requests are never intercepted"
+   ],
+   [
+    "PASS",
+    "realtime / other supabase hosts are never intercepted"
+   ],
+   [
+    "PASS",
+    "non-GET requests are left alone"
+   ]
+  ]
+ }
+}

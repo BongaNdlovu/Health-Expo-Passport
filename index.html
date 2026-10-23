@@ -14,9 +14,14 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="color-scheme" content="light"/>
 <title>Health Expo Passport</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Plus+Jakarta+Sans:wght@600..800&display=swap" rel="stylesheet">
+<!-- Fonts: the Android app carries its own copy (vendor/fonts.css), so it shows the same letters with no internet;
+     the web site loads them from Google Fonts as before. -->
+<script id="fontPick">(function(){
+ var app=!!(window.Capacitor&&typeof window.Capacitor.isNativePlatform==='function'&&window.Capacitor.isNativePlatform());
+ document.write(app?'<link href="vendor/fonts.css" rel="stylesheet">'
+  :'<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+  +'<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Plus+Jakarta+Sans:wght@600..800&display=swap" rel="stylesheet">');
+})();</script>
 <style>
   /* ============ BASE ============ */
   *{-webkit-tap-highlight-color:transparent}
@@ -1068,6 +1073,13 @@
 </div>
 
 <script>
+/* ================= ANDROID APP (Capacitor) =================
+   The same page also runs packaged inside the Android app, where it opens with no internet and syncs when there is
+   signal. IS_APP is true only there; the few places that differ (libraries, fonts, WhatsApp, printing, email links)
+   ask it. APP_SITE is the web address: sign-up and password emails must link there, not to the app. */
+const IS_APP=!!(window.Capacitor&&typeof window.Capacitor.isNativePlatform==='function'&&window.Capacitor.isNativePlatform());
+const APP_SITE='https://winter-bonus-626a.ndlovufanelesibonge8.workers.dev/';
+
 /* ================= SEED DATA ================= */
 const SEED=[
  {id:'EXPO-042',name:'David Mokoena',age:50,sex:'Male',phone:'+27 82 555 0142',heightCm:174,
@@ -2735,7 +2747,7 @@ function downloadCSV(rows,filename){
 /* ================= REAL CAMERA QR SCANNING ================= */
 let camStream=null,detector=null,scanTimer=null,h5qr=null,scanSession=0;   /* scanSession: each opening gets a number; stopCamera() retires it */
 const _scripts={};
-function loadScript(src){return _scripts[src]||(_scripts[src]=new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;
+function loadScript(src){return _scripts[src]||(_scripts[src]=new Promise((res,rej)=>{const s=document.createElement('script');s.src=appCopyOf(src);
   /* a library whose bytes differ from the audited release is refused, so a hijacked CDN cannot run code next to patient data */
   if(typeof SRI!=='undefined'&&SRI[src]){s.integrity=SRI[src];s.crossOrigin='anonymous';}
   s.onload=res;s.onerror=()=>{delete _scripts[src];rej();};document.head.appendChild(s);}));}
@@ -3725,9 +3737,20 @@ function sendWhatsApp(){
  if(!a){toast('Select a visitor first');return;}
  const n=waNumber(a.phone),url=`https://wa.me/${n}?text=${encodeURIComponent(waMessage(a))}`;
  closeWhatsApp();
+ if(IS_APP){sendWhatsAppInApp(n,waMessage(a));return;}
  toast(n?'Opening WhatsApp…':'No number saved for this visitor — choose the contact in WhatsApp');
  const link=document.createElement('a');link.href=url;link.target='_blank';link.rel='noopener noreferrer';
  document.body.appendChild(link);link.click();link.remove();
+}
+/* Android app: straight into the WhatsApp app with the message ready (it goes once the phone has signal). Without
+   WhatsApp on the phone, the phone's own share sheet offers SMS, email and the rest. */
+async function sendWhatsAppInApp(n,msg){
+ const P=window.Capacitor.Plugins;
+ let opened=false;
+ try{const r=await P.AppLauncher.openUrl({url:`whatsapp://send?${n?`phone=${n}&`:''}text=${encodeURIComponent(msg)}`});opened=!!(r&&r.completed);}catch(e){}
+ if(opened){toast(n?'Opening WhatsApp…':'No number saved for this visitor — choose the contact in WhatsApp');return;}
+ toast('WhatsApp is not on this phone — choose another way to send');
+ try{await P.Share.share({text:msg});}catch(e){}
 }
 function recycleBadge(){
  const a=attendees.find(x=>x.id===state.activeId);if(!a){closeWhatsApp();return;}
@@ -3796,8 +3819,23 @@ async function printCard(){
  if(!attendees.length){toast('Register a visitor first');return;}
  await ensureQrLib();
  buildPrintCard();
+ if(IS_APP){printCardInApp();return;}
  document.body.classList.add('print-mode');
  window.print();
+}
+/* Android app: the card (with only its own .pc-* styles) goes to the CardPrinter plugin, which prints it through the
+   phone's print service on an A6 page. The QR code is drawn on a canvas, which does not survive copying the HTML, so
+   it travels as a picture. */
+function printCardInApp(){
+ const pa=$('#printArea');
+ pa.querySelectorAll('.pc-qr').forEach(q=>{const c=q.querySelector('canvas');if(!c||!c.toDataURL)return;
+  try{const u=c.toDataURL('image/png');q.innerHTML='';const i=document.createElement('img');i.src=u;i.alt='';q.appendChild(i);}catch(e){}});
+ const css=[...(document.styleSheets||[])].flatMap(s=>{try{return [...s.cssRules];}catch(e){return [];}})
+  .filter(r=>r.selectorText&&r.selectorText.includes('.pc-')).map(r=>r.cssText).join('\n');
+ const html=`<!doctype html><html><head><meta charset="utf-8"><style>@page{size:105mm 148mm;margin:0}html,body{margin:0;background:#fff}${css}</style></head><body>${pa.innerHTML}</body></html>`;
+ const P=window.Capacitor.Plugins.CardPrinter;
+ if(!P){toast('Printing is not available in this version of the app');return;}
+ P.print({html,name:'Health Expo card '+A().id}).catch(e=>toast('Could not open printing: '+(e&&e.message||e)));
 }
 window.addEventListener('afterprint',()=>document.body.classList.remove('print-mode'));
 
@@ -3910,6 +3948,10 @@ const SRI={
  [H5Q]:'sha384-c9d8RFSL+u3exBOJ4Yp3HUJXS4znl9f+z66d1y54ig+ea249SpqR+w1wyvXz/lk+',
  [QRJS]:'sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU',
 };
+/* Inside the Android app the libraries are bundled (tools/build-app.js copies them and refuses any whose bytes do not
+   match the hash above), so the app needs no internet to start. The integrity check still applies to the copy. */
+const APP_LIB={[SB_LIB]:'vendor/supabase.min.js',[H5Q]:'vendor/html5-qrcode.min.js',[QRJS]:'vendor/qrcode.min.js'};
+function appCopyOf(src){return IS_APP&&APP_LIB[src]||src;}
 const SYNC_KEY='newstart.cloud.v1';
 
 const nulIfEmpty=v=>v?v:null;
@@ -4028,12 +4070,13 @@ async function installApp(){
  installChanged();
 }
 function installBlock(){
+ if(IS_APP)return '';
  if(isStandalone())return `<p class="mt-4 text-center text-[11px] font-bold text-brand-700">Installed on this phone ✓</p>`;
  if(installEvt)return `<button onclick="installApp()" class="btn btn-soft mt-4 w-full py-2.5 text-xs">Install the app on this phone</button>`;
  if(isIOS())return `<p class="mt-4 rounded-[14px] bg-white/60 px-3 py-2 text-[11px] leading-relaxed text-[#5b7178]"><b>Install on iPhone:</b> open this page in Safari, tap the Share button, then <b>Add to Home Screen</b>.</p>`;
  return '';
 }
-if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1'))
+if(!IS_APP&&'serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1'))
  addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 
 /* ---------- sign-in gate ---------- */
@@ -4078,7 +4121,7 @@ const pwField=(id,label,auto,ph)=>`<label class="block"><span class="microlabel"
    <span class="relative mt-1 block"><input id="${id}" type="password" autocomplete="${auto}" required placeholder="${ph||'Password'}" class="field" style="padding-right:4.5rem">
    <button type="button" onclick="togglePass(this)" class="text-[11px] font-extrabold text-brand-700" style="position:absolute;right:.9rem;top:50%;transform:translateY(-50%)">Show</button></span></label>`;
 /* where the e-mailed links (confirm / reset) send people back to: this page, if it has a web address */
-const authRedirect=()=>/^https?:$/.test(location.protocol)?location.origin+location.pathname:undefined;
+const authRedirect=()=>IS_APP?APP_SITE:/^https?:$/.test(location.protocol)?location.origin+location.pathname:undefined;
 function gateView(v){
  const e=$('#gateEmail');if(e&&e.value)cloud.viewEmail=e.value.trim();
  cloud.view=v;cloud.formErr='';cloud.gateKey='';renderGate();

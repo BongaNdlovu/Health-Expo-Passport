@@ -1,0 +1,18 @@
+{
+  "name": "health-expo-passport-app",
+  "private": true,
+  "description": "The Android app: the web app (../index.html) packaged with Capacitor. Build with tools/sign-app.ps1.",
+  "scripts": {
+    "build": "node ../tools/build-app.js",
+    "sync": "node ../tools/build-app.js && cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/app-launcher": "8.0.1",
+    "@capacitor/core": "8.5.3",
+    "@capacitor/share": "8.0.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.3"
+  }
+}

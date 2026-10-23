@@ -693,6 +693,84 @@ function makeServer() {
 }
 
 (async () => {
+  /* ---- 16b. the Android app (Capacitor): the same page, booted as the app ----
+     Placed before the service-worker tests so it runs even when a later section stops the harness. */
+  console.log('\n16b. Android app (Capacitor)');
+  {
+    const opened = [], shared = [], printed = [], swRegistered = [];
+    let whatsappInstalled = true;
+    const Capacitor = {
+      isNativePlatform: () => true,
+      Plugins: {
+        AppLauncher: { openUrl: async o => { opened.push(o.url); return { completed: whatsappInstalled }; } },
+        Share: { share: async o => { shared.push(o.text); return {}; } },
+        CardPrinter: { print: async o => { printed.push(o.html); return {}; } },
+      },
+    };
+    /* the app gets its own storage, so its saves can never change what the web checks after it see */
+    const appMem = new Map();
+    const appStore = { getItem: k => (appMem.has(k) ? appMem.get(k) : null), setItem: (k, v) => appMem.set(k, String(v)), removeItem: k => appMem.delete(k) };
+    const head = makeEl('app-head');
+    const appDoc = { ...document, head, body: makeEl('app-body'), createElement: () => makeEl('created') };
+    function QRCode() {} QRCode.CorrectLevel = { L: 1 };
+    const appBox = {
+      ...sandbox, document: appDoc, Capacitor, QRCode, __A: undefined, localStorage: appStore,
+      print: () => { throw new Error('window.print does not exist inside the Android app'); },
+      location: { href: 'https://localhost/', protocol: 'https:', origin: 'https://localhost', pathname: '/', hostname: 'localhost' },
+      navigator: { ...sandbox.navigator, userAgent: 'Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/140 Mobile Safari/537.36',
+        serviceWorker: { register: u => { swRegistered.push(u); return Promise.resolve(); } } },
+      addEventListener: (ev, fn) => { if (ev === 'load') fn(); },
+    };
+    appBox.window = appBox; appBox.globalThis = appBox;
+    vm.createContext(appBox);
+    let booted = true;
+    try {
+      vm.runInContext(body + '\n;globalThis.__A={IS_APP:typeof IS_APP!=="undefined"?IS_APP:undefined,loadScript,authRedirect,installBlock,' +
+        'sendWhatsApp,printCard,waMessage,waNumber,attendees,state,SB_LIB,H5Q,QRJS,SRI};', appBox, { filename: 'app-mode.js' });
+    } catch (e) { booted = false; console.log('APP BOOT THREW: ' + e.stack); }
+    const A = appBox.__A || {};
+    const tick = () => new Promise(r => setTimeout(r, 0));
+    ok('app: the page boots as the Android app', booted && A.IS_APP === true);
+    ok('web: the page does not think it is the app', vm.runInContext('typeof IS_APP!=="undefined"&&IS_APP===false', sandbox) === true);
+    ok('web: the libraries still load from their pinned CDN addresses', vm.runInContext('typeof appCopyOf==="function"&&appCopyOf(SB_LIB)===SB_LIB&&appCopyOf(H5Q)===H5Q&&appCopyOf(QRJS)===QRJS', sandbox) === true);
+
+    let srcs = [], sbEl = {};
+    if (booted) {
+      A.loadScript(A.SB_LIB).catch(() => {}); A.loadScript(A.H5Q).catch(() => {}); A.loadScript(A.QRJS).catch(() => {});
+      srcs = head.children.map(c => c.src);
+      sbEl = head.children.find(c => c.src === 'vendor/supabase.min.js') || {};
+    }
+    ok('app: the sign-in library loads from the copy inside the app, with the same integrity check', !!A.SRI && sbEl.integrity === A.SRI[A.SB_LIB]);
+    ok('app: the scanner and QR libraries load from the copies inside the app', srcs.includes('vendor/html5-qrcode.min.js') && srcs.includes('vendor/qrcode.min.js') && !srcs.some(s => /^https:/.test(s)));
+    ok('app: sign-up and password emails link back to the web site, not to the app', booted && A.authRedirect() === 'https://winter-bonus-626a.ndlovufanelesibonge8.workers.dev/');
+    ok('app: no service worker is registered inside the app', booted && swRegistered.length === 0);
+    appBox.navigator.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)';
+    ok('app: no "Add to Home Screen" steps are shown inside the app', booted && A.installBlock() === '');
+
+    let msg = '', num = '';
+    if (booted) {
+      const a0 = A.attendees[0]; A.state.activeId = a0.id; A.state.sugFor = null;
+      msg = A.waMessage(a0); num = A.waNumber(a0.phone);
+      A.sendWhatsApp(); await tick(); await tick();
+    }
+    ok('app: WhatsApp opens the WhatsApp app with the message ready', opened.length === 1 && opened[0] === 'whatsapp://send?phone=' + num + '&text=' + encodeURIComponent(msg) && shared.length === 0);
+    whatsappInstalled = false;
+    if (booted) { A.sendWhatsApp(); await tick(); await tick(); }
+    ok('app: without WhatsApp on the phone, the message goes to the share sheet', opened.length === 2 && shared.length === 1 && shared[0] === msg);
+
+    let printThrew = false;
+    if (booted) { try { await A.printCard(); await tick(); } catch (e) { printThrew = true; } }
+    ok('app: the take-home card goes to the phone\'s print service as an A6 page', booted && !printThrew && printed.length === 1 &&
+      printed[0].includes('@page{size:105mm 148mm') && printed[0].includes('Never stop prescribed pills suddenly'));
+
+    const pick = (html.match(/<script id="fontPick">([\s\S]*?)<\/script>/) || [])[1];
+    const fontsFor = win => { let out = ''; vm.runInNewContext(pick || 'throw new Error("no fontPick")', { window: win, document: { write: s => { out += s; } } }); return out; };
+    let appFonts = '', webFonts = '';
+    try { appFonts = fontsFor({ Capacitor }); webFonts = fontsFor({}); } catch (e) { }
+    ok('fonts: the app uses its own copy, the web site Google Fonts', /href="vendor\/fonts\.css"/.test(appFonts) && !/googleapis/.test(appFonts) &&
+      /fonts\.googleapis\.com\/css2\?family=Inter/.test(webFonts) && !/vendor\//.test(webFonts));
+  }
+
   console.log('\n17. Cloud sync (fake Supabase)');
   const srv = makeServer();
   sandbox.supabase = { createClient: () => srv.client };
@@ -2002,17 +2080,24 @@ function makeServer() {
     }; };
   const swHandlers = {};
   let netFail = false, netCalls = [];
+  /* like a real host, every answer says what it is: pages are HTML, unless the address asks for plain text */
+  const typeOfNet = u => /\.js(\?|$)/.test(u) ? 'application/javascript' : /\.png(\?|$)/.test(u) ? 'image/png' : /\.woff2(\?|$)/.test(u) ? 'font/woff2'
+    : /[?&]plain=1/.test(u) ? 'text/plain' : 'text/html; charset=utf-8';
   const swSandbox = {
     self: { addEventListener: (t, f) => { swHandlers[t] = f; }, location: { origin: 'https://expo.example' }, skipWaiting: async () => {}, clients: { claim: async () => {} } },
     caches: { open: async n => swCache(n), keys: async () => [...swCaches.keys()], delete: async k => swCaches.delete(k), match: async () => undefined },
-    fetch: async r => { netCalls.push(typeof r === 'string' ? r : r.url); if (netFail) throw new TypeError('Failed to fetch'); return new Response('net:' + (typeof r === 'string' ? r : r.url)); },
+    fetch: async r => { const u = typeof r === 'string' ? r : r.url; netCalls.push(u); if (netFail) throw new TypeError('Failed to fetch');
+      return new Response('net:' + u, { headers: { 'Content-Type': typeOfNet(u) } }); },
     Response, URL, Promise, setTimeout, clearTimeout, Error, TypeError, Map,
   };
   swSandbox.self.caches = swSandbox.caches;
   vm.createContext(swSandbox);
   vm.runInContext(swSrc.replace('__VERSION__', 'test1'), swSandbox);
   const route = (url, init = {}) => { let out = { handled: false, promise: null };
-    swHandlers.fetch({ request: { method: 'GET', mode: 'cors', url, ...init }, respondWith: p => { out.handled = true; out.promise = p; } }); return out; };
+    /* a real request carries headers; init.ua stands for the browser's User-Agent */
+    const { ua, ...rest } = init;
+    const headers = { get: n => (String(n).toLowerCase() === 'user-agent' ? (ua || null) : null) };
+    swHandlers.fetch({ request: { method: 'GET', mode: 'cors', url, headers, ...rest }, respondWith: p => { out.handled = true; out.promise = p; } }); return out; };
   ok('service worker registers install, activate and fetch handlers', ['install', 'activate', 'fetch'].every(t => typeof swHandlers[t] === 'function'));
   await new Promise(res => swHandlers.install({ waitUntil: p => p.then(res) }));
   ok('install caches the app shell and the three libraries', swCaches.get('newstart-shell-test1').has(keyOf('index.html')) && swCaches.get('newstart-libs-v2').size === 3, [...swCaches.keys()].join());
@@ -2028,10 +2113,21 @@ function makeServer() {
   ok('unknown third-party hosts are left alone', route('https://evil.example/x.js').handled === false);
   const nav = route('https://expo.example/?x=1', { mode: 'navigate' });
   ok('page loads are handled (network first)', nav.handled && (await nav.promise).ok === true && netCalls.length > 0);
-  ok('the fetched page is saved for offline use', (await (swCaches.get('newstart-shell-test1').get(keyOf('index.html')).clone().text())).startsWith('net:'));
+  const savedPage = async () => (await swCaches.get('newstart-shell-test1').get(keyOf('index.html')).clone().text());
+  ok('the fetched page is saved for offline use', (await savedPage()) === 'net:https://expo.example/?x=1');
+  const plainNav = route('https://expo.example/?plain=1', { mode: 'navigate' });
+  if (plainNav.handled) await plainNav.promise;
+  ok('an answer that is not a web page is not saved as the offline page', plainNav.handled && (await savedPage()) === 'net:https://expo.example/?x=1');
+  const wv = route('https://expo.example/', { mode: 'navigate', ua: 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Build/AP2A; wv) AppleWebKit/537.36' });
+  const chrome = route('https://expo.example/', { mode: 'navigate', ua: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36' });
+  if (chrome.handled) await chrome.promise;
+  ok('Android\'s in-app browser (wv) loads pages itself, untouched by the worker', wv.handled === false && chrome.handled === true);
+  ok('the app download (.apk) is never intercepted', route('https://expo.example/newstart.apk').handled === false);
   netFail = true;
   const offNav = route('https://expo.example/', { mode: 'navigate' });
-  ok('offline: the page opens from the saved copy', offNav.handled && (await (await offNav.promise).text()).startsWith('net:'));
+  /* a rejection must count as a failed check, not stop the harness */
+  const offText = offNav.handled ? await offNav.promise.then(r => r.text(), () => '') : '';
+  ok('offline: the page opens from the saved copy', offText.startsWith('net:'));
   const offIcon = route('https://expo.example/icons/icon-192.png');
   ok('offline: icons come from the saved copy', offIcon.handled && (await (await offIcon.promise).text()).startsWith('shell:'));
   const offLib = route(constOf('SB_LIB'));
@@ -2041,7 +2137,9 @@ function makeServer() {
   netFail = false;
   swCaches.get('newstart-shell-test1').delete(keyOf('index.html')); netFail = true;
   const cold = route('https://expo.example/', { mode: 'navigate' });
-  ok('offline with nothing saved yet: the failure is reported, not faked', cold.handled && await cold.promise.then(() => false, () => true));
+  /* sw.js answers with a short 503 message instead of rejecting: a rejection shows on the phone as net::ERR_CACHE_MISS */
+  const coldRes = cold.handled ? await cold.promise.then(r => r, () => null) : null;
+  ok('offline with nothing saved yet: the failure is reported, not faked', !!coldRes && coldRes.status === 503 && /could not be loaded/.test(await coldRes.text()));
   netFail = false;
   ok('no health data path appears in the service worker source', !/attendees|volunteers|auth\/v1|rest\/v1/.test(swSrc));
 
