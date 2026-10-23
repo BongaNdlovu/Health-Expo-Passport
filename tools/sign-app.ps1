@@ -55,7 +55,10 @@ $root    = Split-Path -Parent $PSScriptRoot
 $cap     = Join-Path $root 'capacitor'
 $android = Join-Path $cap 'android'
 $sdk     = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { Join-Path $env:LOCALAPPDATA 'Android\Sdk' }
-$jdk     = if ($env:JAVA_HOME -and (Test-Path (Join-Path $env:JAVA_HOME 'bin\java.exe')) -and ((& (Join-Path $env:JAVA_HOME 'bin\java.exe') -version 2>&1 | Out-String) -match 'version "21')) { $env:JAVA_HOME } else { Join-Path $env:LOCALAPPDATA 'expo-build-tools\jdk-21' }
+# the JDK's own "release" file says its version; running java -version would write to stderr, which 'Stop' turns into a crash
+$isJdk21 = { param($h) $h -and (Test-Path (Join-Path $h 'bin\java.exe')) -and (Test-Path (Join-Path $h 'release')) -and
+             ((Get-Content (Join-Path $h 'release') -Raw) -match '(?m)^JAVA_VERSION="21\.') }
+$jdk     = if (& $isJdk21 $env:JAVA_HOME) { $env:JAVA_HOME } else { Join-Path $env:LOCALAPPDATA 'expo-build-tools\jdk-21' }
 if (-not (Test-Path (Join-Path $jdk 'bin\java.exe'))) { throw "Java 21 not found at $jdk" }
 $env:JAVA_HOME = $jdk; $env:ANDROID_HOME = $sdk; $env:ANDROID_SDK_ROOT = $sdk
 
