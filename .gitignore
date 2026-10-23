@@ -7,6 +7,16 @@ android/.gradle/
 android/app/build/
 android/build/
 
+# Capacitor build outputs (the sources and capacitor/www stay tracked)
+capacitor/android/.gradle/
+capacitor/android/app/build/
+capacitor/android/build/
+capacitor/android/capacitor-cordova-android-plugins/build/
+capacitor/android/local.properties
+capacitor/android/app/src/main/assets/public/
+capacitor/android/app-release-signed.apk
+capacitor/android/app-release-signed.apk.idsig
+
 # Local tool caches
 node_modules/
 .wrangler/

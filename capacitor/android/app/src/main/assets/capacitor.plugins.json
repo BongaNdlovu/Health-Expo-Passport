@@ -1,0 +1,10 @@
+[
+	{
+		"pkg": "@capacitor/app-launcher",
+		"classpath": "com.capacitorjs.plugins.applauncher.AppLauncherPlugin"
+	},
+	{
+		"pkg": "@capacitor/share",
+		"classpath": "com.capacitorjs.plugins.share.SharePlugin"
+	}
+]

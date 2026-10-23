@@ -42,6 +42,15 @@ const CSP = [
   "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.supabase.in wss://*.supabase.in",
   "worker-src 'self'", "manifest-src 'self'", "object-src 'none'", "base-uri 'self'", "form-action 'self'", "frame-ancestors 'none'",
 ].join('; ');
+
+/* index.html carries the same policy as a <meta> tag (it travels with the page — the packaged Android app has no
+   host to read _headers). Fail the build if the two copies ever drift apart. */
+{
+  const m = /<meta http-equiv="Content-Security-Policy" content="([^"]*)"\s*\/?>/.exec(fs.readFileSync(path.join(root, 'index.html'), 'utf8'));
+  if (!m) throw new Error('index.html has no Content-Security-Policy meta tag — add it (see dist/_headers)');
+  if (m[1] !== CSP) throw new Error('index.html CSP meta tag differs from the _headers policy in tools/build.js — make them identical');
+}
+
 const SECURITY = ['/*',
   '  Content-Security-Policy: ' + CSP,
   '  X-Content-Type-Options: nosniff',

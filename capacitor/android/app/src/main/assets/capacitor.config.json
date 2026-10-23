@@ -1,0 +1,14 @@
+{
+	"appId": "org.newstart.expopassport",
+	"appName": "Health Expo Passport",
+	"webDir": "www",
+	"backgroundColor": "#f6f8f6",
+	"android": {
+		"allowMixedContent": false,
+		"captureInput": false,
+		"webContentsDebuggingEnabled": false
+	},
+	"server": {
+		"androidScheme": "https"
+	}
+}
