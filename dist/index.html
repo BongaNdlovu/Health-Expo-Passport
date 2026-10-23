@@ -3964,13 +3964,21 @@ if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
 })();
 
 /* ===== intro ===== */
-/* The logo beats once, then the app rises into place. It never holds the app back: it leaves about a second after the
-   page started loading, or straight away if loading took longer, and people who ask for less motion never see it. */
+/* The logo pops in and beats once, then the app rises into place. The intro leaves when the logo's own animation has
+   finished, so it plays in full however late the page first paints. It never holds the app back: it leaves anyway
+   1.6 s after the logo appears, or 5 s after this script runs if the logo never gets to show (a hidden tab), and
+   browsers that cannot report animations get the old timing. People who ask for less motion never see it. */
 (function introLeave(){
  const el=document.getElementById('intro');if(!el)return;
  if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches){el.remove();return;}
- const leave=()=>{document.documentElement.classList.add('intro-rise');el.classList.add('intro-out');setTimeout(()=>el.remove(),450);};
- setTimeout(leave,Math.max(120,1100-performance.now()));
+ let gone=false;
+ const leave=()=>{if(gone)return;gone=true;document.documentElement.classList.add('intro-rise');el.classList.add('intro-out');setTimeout(()=>el.remove(),450);};
+ const badge=el.querySelector('.intro-badge');
+ const anims=badge&&badge.getAnimations?badge.getAnimations():[];
+ if(!anims.length){setTimeout(leave,Math.max(120,1100-performance.now()));return;}
+ Promise.all(anims.map(a=>a.finished)).then(leave,leave);
+ Promise.all(anims.map(a=>a.ready)).then(()=>setTimeout(leave,1600),leave);
+ setTimeout(leave,5000);
 })();
 
 /* =====================================================================

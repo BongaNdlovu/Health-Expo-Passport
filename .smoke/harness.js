@@ -802,6 +802,61 @@ function makeServer() {
     ok('app: the web view starts in the app\'s colour (no white flash)', capCfg.backgroundColor === '#f6f8f6');
   }
 
+  /* ---- 16d. the intro plays in full ---- */
+  console.log('\n16d. The intro plays in full');
+  {
+    const src = (html.match(/\(function introLeave\(\)\{[\s\S]*?\n\}\)\(\);/) || [''])[0];
+    /* runs the intro script on its own, with the logo's animations and the timers under the test's control */
+    const runIntro = anims => {
+      const timers = [], rose = new Set(), out = new Set(); let removed = 0;
+      const badge = anims ? { getAnimations: () => anims } : {};
+      const el = { remove() { removed++; }, classList: { add: c => out.add(c) }, querySelector: () => badge };
+      const ctx = {
+        document: { getElementById: () => el, documentElement: { classList: { add: c => rose.add(c) } } },
+        matchMedia: () => ({ matches: false }), performance: { now: () => 5000 }, Promise,
+        setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
+      };
+      ctx.window = ctx;
+      if (src) vm.runInNewContext(src, ctx);
+      return {
+        left: () => out.has('intro-out') && rose.has('intro-rise'),
+        removed: () => removed,
+        /* fires every timer due by `upTo` ms, including ones they add */
+        runTimers: upTo => { for (let i = 0; i < timers.length; i++) if (!timers[i].done && timers[i].ms <= upTo) { timers[i].done = true; timers[i].fn(); } },
+      };
+    };
+    const later = () => { let res; const p = new Promise(r => { res = r; }); return { p, res }; };
+    const never = () => new Promise(() => {});
+
+    const fin = later(), shown = later();
+    const a = runIntro([{ finished: fin.p, ready: shown.p }]);
+    await sleep(0); a.runTimers(1600);
+    const beforePaint = a.left();
+    shown.res(); await sleep(0);
+    const whilePlaying = a.left();
+    fin.res(); await sleep(0);
+    ok('intro: it waits for the logo\'s animation to finish, however late the page first paints', !!src && !beforePaint && !whilePlaying && a.left());
+
+    const b = runIntro([{ finished: never(), ready: Promise.resolve() }]);
+    await sleep(0); b.runTimers(1599);
+    const beforeNet = b.left(); b.runTimers(1600);
+    ok('intro: it still leaves 1.6 s after the logo appears if the animation stalls', !beforeNet && b.left());
+
+    const c = runIntro([{ finished: never(), ready: never() }]);
+    await sleep(0); c.runTimers(4999);
+    const beforeCap = c.left(); c.runTimers(5000);
+    ok('intro: it still leaves after 5 s if the logo never gets to show', !beforeCap && c.left());
+
+    const d = runIntro([{ finished: Promise.resolve(), ready: Promise.resolve() }]);
+    await sleep(0); d.runTimers(5000);
+    ok('intro: it leaves only once, however many of its timers fire', d.left() && d.removed() === 1, 'removed ' + d.removed() + ' times');
+
+    const e = runIntro(null);
+    await sleep(0);
+    const straightAway = e.left(); e.runTimers(120);
+    ok('intro: browsers that cannot report animations get the old timing', !straightAway && e.left());
+  }
+
   console.log('\n17. Cloud sync (fake Supabase)');
   const srv = makeServer();
   sandbox.supabase = { createClient: () => srv.client };
