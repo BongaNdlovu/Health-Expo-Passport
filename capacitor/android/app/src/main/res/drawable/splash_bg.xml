@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launch screen is the app's own background colour and nothing else: the oversized logo that
+     used to sit here is gone, so the first thing the app shows is the page's own intro animation. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#F6F8F6" />
+</shape>

@@ -370,7 +370,6 @@
   @media (prefers-reduced-motion:reduce){.b4,.b5{animation:none}}
 
   /* ============ v5 · MORE LIQUID ============ */
-  @property --r{syntax:'<length>';inherits:false;initial-value:0px}
   .ambient{inset:-60px;transition:transform 1.4s cubic-bezier(.22,1,.36,1)}
   .b1,.b4{-webkit-mask-image:radial-gradient(closest-side,#000 12%,transparent);mask-image:radial-gradient(closest-side,#000 12%,transparent);transition:background-color 1.6s ease}
   .b1{background:var(--t2);opacity:.9}
@@ -392,10 +391,11 @@
   ::view-transition-old(vt-head),::view-transition-old(vt-nav){display:none}
   ::view-transition-new(vt-head),::view-transition-new(vt-nav){animation:none}
   ::view-transition-old(root){animation:none}
-  ::view-transition-new(root){animation:vtReveal .65s cubic-bezier(.4,0,.2,1) both;
-    -webkit-mask-image:radial-gradient(circle at var(--vx,50%) var(--vy,100%),#000 calc(var(--r) - 120px),transparent var(--r));
-    mask-image:radial-gradient(circle at var(--vx,50%) var(--vy,100%),#000 calc(var(--r) - 120px),transparent var(--r))}
-  @keyframes vtReveal{from{--r:0px}to{--r:150vmax}}
+  /* the wipe is a clip-path circle, never a gradient mask: an animated mask re-rasterises the whole
+     screen on the main thread every frame (janky in Android's WebView), while a clipped layer
+     just gets a new clip each frame — and circle() animations run on the compositor */
+  ::view-transition-new(root){animation:vtReveal .45s cubic-bezier(.3,.6,.2,1) both}
+  @keyframes vtReveal{from{clip-path:circle(0px at var(--vx,50%) var(--vy,100%))}to{clip-path:circle(150vmax at var(--vx,50%) var(--vy,100%))}}
   @media (prefers-reduced-motion:reduce){.wave{animation:none}.b1,.b4{transition:none}}
 
   /* ============ v6 · LIQUID FINISH ============ */
@@ -435,7 +435,6 @@
   /* entry animations without filter:blur (blur on many cards at once is the worst offender) */
   @keyframes rise{from{opacity:0;transform:translate3d(0,16px,0) scale(.98)}to{opacity:1;transform:none}}
   @keyframes pour{0%{opacity:0;transform:translate3d(0,16px,0) scale(.97,.95)}55%{opacity:1;transform:translate3d(0,-3px,0) scale(1.01,1.02)}100%{transform:none}}
-  .stagger>*,.pour>*{will-change:transform,opacity}
   .stagger>*,.pour>*{animation-fill-mode:backwards}
   /* modal scrim: fade only, no animated backdrop blur */
   @keyframes scrim{from{opacity:0}}
@@ -1845,13 +1844,17 @@ const SERVE_TABS=[
 /* function declaration (not a const) so hoisting keeps inline onclick handlers safe */
 function isServe(){return state.tab==='serve';}
 
-function render(){
+function render(anim){
  renderHeaderChip();renderNav();
  /* hide/show with an inline style rather than a class, so the two render paths
     (visitor views vs the serve section) cannot fight over one shared classList */
  const el=$('#main');
  if(isServe()){el.style.display='none';renderServeView();}
- else{el.style.display='';renderMain(true);}
+ else{el.style.display='';renderMain(anim!==false);}
+ /* during a view transition the cards' entry animation is stripped: the transition's snapshot is
+    taken the moment it starts, so cards caught rising would leave the wipe revealing a half-empty
+    page that only fills in after the animation — the settled screen reads as instant instead */
+ if(anim===false)el.querySelectorAll(':scope > .stagger').forEach(s=>s.classList.remove('stagger'));
  renderServeSheet();/* rebuilt by renderVolModal() */persist();
 }
 function renderHeaderChip(){
@@ -1974,8 +1977,9 @@ function switchTab(t){
  _navTo=t;
  if(JOURNEY.includes(t)){state.step=t;state.stepFor=state.activeId;}
  if(state.food)state.food.open=false;   /* tapping a tab (even Plan) leaves the Food screen — at the tap, not when the animation ends */
- const go=()=>{state.tab=_navTo;render();};
- if(document.startViewTransition&&!document.documentElement.classList.contains('lite')&&!matchMedia('(prefers-reduced-motion: reduce)').matches&&t!==state.tab){
+ const vtOn=!!document.startViewTransition&&!document.documentElement.classList.contains('lite')&&!matchMedia('(prefers-reduced-motion: reduce)').matches&&t!==state.tab;
+ const go=()=>{state.tab=_navTo;render(!vtOn);};
+ if(vtOn){
   const b=document.querySelectorAll('.nav-item')[SERVE_TABS.findIndex(x=>x[0]===navKey(t))];
   if(b){const r=b.getBoundingClientRect(),st=document.documentElement.style;st.setProperty('--vx',(r.left+r.width/2)+'px');st.setProperty('--vy',(r.top+r.height/2)+'px');}
   /* a quick second tap skips the animation; that is fine, so don't let it surface as an error */

@@ -775,7 +775,7 @@ function makeServer() {
   console.log('\n16c. Intro, screen sizes, quicker screens');
   {
     const css = (html.match(/v8 · INTRO, EVERY SCREEN SIZE, QUICKER SCREENS[\s\S]*?<\/style>/) || [''])[0];
-    const mainScript = html.indexOf('\n<script>\n');
+    const mainScript = html.search(/\r?\n<script>\r?\n/);   /* \r? — a Windows checkout has CRLF endings */
     ok('intro: the logo is in the page itself, so it shows before any script runs',
       html.indexOf('<div id="intro"') > html.indexOf('<body>') && html.indexOf('<div id="intro"') < mainScript && /class="intro-badge"/.test(html));
     ok('intro: the logo pops in and beats once, then the app rises into place',
@@ -794,10 +794,23 @@ function makeServer() {
       /\.hero \.display\.truncate\{white-space:normal;display:-webkit-box;-webkit-line-clamp:2/.test(css) && /class="display truncate/.test($main.innerHTML));
     ok('screens: cards arrive within half a second and progress bars fill in half a second',
       /\.stagger>\*,\.pour>\*\{animation-duration:\.3s\}/.test(css) && /nth-child\(n\+5\)\{animation-delay:\.12s\}/.test(css) && /\.bar-fill\{animation-duration:\.5s\}/.test(css));
+    ok('screens: the tab wipe is a clip-path circle, never an animated mask (a mask re-rasterises the whole screen every frame)',
+      /::view-transition-new\(root\)\{animation:vtReveal \.45s[^}]*\}/.test(html) && /@keyframes vtReveal\{from\{clip-path:circle\(0px at var\(--vx,50%\) var\(--vy,100%\)\)\}/.test(html)
+      && !/view-transition-new\(root\)[^}]*mask-image/.test(html) && !/will-change/.test(html.match(/\.stagger>\*,\.pour>\*\{[^}]*\}/g).join('')));
+    ok('screens: cards do not play their entry animation inside a tab transition (the snapshot is taken as it starts, so rising cards would be captured invisible)',
+      /const vtOn=!!document\.startViewTransition/.test(body) && /render\(!vtOn\)/.test(body));
+    /* a transition that behaves like the browser's (callback synchronous, ready a promise) must still switch tabs */
+    document.startViewTransition = cb => { cb(); return { ready: Promise.resolve() }; };
+    g.state.tab = 'home';
+    g.switchTab('plan');
+    document.startViewTransition = null;
+    ok('screens: switching tabs through a view transition lands on the new tab',
+      g.state.tab === 'plan' && /stagger space-y-3\.5/.test($el('main').innerHTML));
     const capDir = path.join(__dirname, '..', 'capacitor');
     const styles = fs.existsSync(capDir) ? fs.readFileSync(path.join(capDir, 'android', 'app', 'src', 'main', 'res', 'values', 'styles.xml'), 'utf8') : '';
-    ok('app: Android\'s launch screen uses the app\'s colour and logo',
-      /<item name="windowSplashScreenBackground">#F6F8F6<\/item>/.test(styles) && /<item name="windowSplashScreenAnimatedIcon">@mipmap\/ic_launcher<\/item>/.test(styles));
+    ok('app: Android\'s launch screen is the app\'s colour alone, so the page\'s intro animation is what opens the app',
+      /<item name="windowSplashScreenBackground">#F6F8F6<\/item>/.test(styles) && /<item name="windowSplashScreenAnimatedIcon">@android:color\/transparent<\/item>/.test(styles)
+      && /<item name="android:background">@drawable\/splash_bg<\/item>/.test(styles));
     const capCfg = fs.existsSync(capDir) ? JSON.parse(fs.readFileSync(path.join(capDir, 'capacitor.config.json'), 'utf8')) : {};
     ok('app: the web view starts in the app\'s colour (no white flash)', capCfg.backgroundColor === '#f6f8f6');
   }
