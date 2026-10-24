@@ -40,7 +40,7 @@
 
   /* ============ AMBIENT BACKGROUND ============ */
   .ambient{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none}
-  .blob{position:absolute;border-radius:50%;filter:blur(80px);opacity:.75;will-change:transform}
+  .blob{position:absolute;border-radius:50%;opacity:.75;will-change:transform}
   .b1{width:70vw;height:70vw;max-width:620px;max-height:620px;top:-22%;left:-24%;
       background:radial-gradient(circle,#c4e9e0,#e6f6f2 70%);animation:drift1 24s ease-in-out infinite}
   .b2{width:64vw;height:64vw;max-width:560px;max-height:560px;top:28%;right:-28%;
@@ -356,7 +356,7 @@
   .hue-tint .step-input:focus{border-color:var(--s1);box-shadow:0 0 0 4px color-mix(in srgb,var(--s1) 22%,transparent)}
   .chip-ok{background:rgba(106,164,106,.14);border-color:rgba(106,164,106,.28);color:#36633f}
   .tile-ok .tile-v{color:#3f6e48}
-  .nav-pill{background-color:var(--t2);background-image:linear-gradient(160deg,rgba(255,255,255,.85),rgba(255,255,255,.12))}
+  .nav-pill{background-color:var(--t2);background-image:linear-gradient(160deg,rgba(255,255,255,.95),rgba(255,255,255,.55))}
   .nav-item-active{color:var(--ink)}
   input[type=range]::-webkit-slider-runnable-track{background:linear-gradient(90deg,var(--s1,#6fbfb1) var(--pct,50%),rgba(23,51,47,.09) var(--pct,50%))}
   input[type=range]::-moz-range-progress{background:var(--s1,#6fbfb1)}
@@ -374,7 +374,9 @@
   .b1,.b4{-webkit-mask-image:radial-gradient(closest-side,#000 12%,transparent);mask-image:radial-gradient(closest-side,#000 12%,transparent);transition:background-color 1.6s ease}
   .b1{background:var(--t2);opacity:.9}
   .b4{background:var(--t1);opacity:.95}
-  .nav-goo{position:absolute;inset:0;border-radius:inherit;filter:url(#goo);pointer-events:none}
+  /* the pill layer: a plain positioned box (the old SVG goo filter re-filtered the whole bar every
+     frame the pill moved, and read as a stray blob on the active tab) */
+  .nav-goo{position:absolute;inset:0;border-radius:inherit;pointer-events:none}
   .nav-goo .nav-pill{box-shadow:inset 0 1.5px 0 #fff,inset 0 -1px 0 rgba(63,157,143,.22)}
   .wave{position:absolute;left:0;right:0;bottom:0;height:66px;z-index:-1;pointer-events:none;background-repeat:repeat-x;background-size:200px 100%}
   .w1{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 64' preserveAspectRatio='none'%3E%3Cpath d='M0 28Q50 8 100 28T200 28V64H0Z' fill='%23aedcd0' fill-opacity='.5'/%3E%3C/svg%3E");animation:waveX 9s linear infinite}
@@ -453,7 +455,6 @@
   .lite .blob,.lite .wave,.lite .bar-fill::after,.lite .hero::after{animation:none!important}
   .lite .ambient{transition:none}
   .lite .stagger>*,.lite .pour>*{animation-duration:.25s!important}
-  .lite .nav-goo{filter:none}
   @media (prefers-reduced-motion:reduce){.w1,.w2,.bar-fill::after{animation:none!important}}
 
   /* ============ VOLUNTEER / SERVE ============ */
@@ -888,12 +889,6 @@
 <body>
 <!-- intro: the app's logo, shown from the very first paint (before any script runs); the script below lets it go -->
 <div id="intro" aria-hidden="true"><div class="intro-badge"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12zM7.5 12h2.25l1.5-3 2 5 1.5-2h2.25"/></svg></div></div>
-<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
- <filter id="goo" x="-10%" y="-40%" width="120%" height="180%" color-interpolation-filters="sRGB">
-  <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="b"/>
-  <feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 16 -6" result="g"/>
-  <feComposite in="SourceGraphic" in2="g" operator="atop"/>
- </filter></defs></svg>
 
 <!-- ambient light field -->
 <div class="ambient" aria-hidden="true">
@@ -932,7 +927,7 @@
 
   <!-- ===== Floating glass nav ===== -->
   <nav class="sticky bottom-0 z-30 px-3 pb-3 pt-1" style="padding-bottom:max(.75rem,calc(var(--safe-area-inset-bottom,0px) + .5rem),calc(env(safe-area-inset-bottom,0px) + .5rem))">
-    <div id="navBar" class="glass relative rounded-[24px] p-1.5"><span class="nav-goo" aria-hidden="true"><span id="navPill" class="nav-pill"></span><span id="navDrop" class="nav-pill nav-drop"></span></span><div id="navItems" class="relative flex items-stretch gap-1"></div></div>
+    <div id="navBar" class="glass relative rounded-[24px] p-1.5"><span class="nav-goo" aria-hidden="true"><span id="navPill" class="nav-pill"></span></span><div id="navItems" class="relative flex items-stretch gap-1"></div></div>
   </nav>
 </div>
 
@@ -1986,6 +1981,7 @@ function switchTab(t){
   /* a quick second tap skips the animation; that is fine, so don't let it surface as an error */
   const vt=document.startViewTransition(()=>{go();window.scrollTo(0,0);});
   if(vt&&vt.ready)vt.ready.catch(()=>{});
+  if(vt&&vt.finished)vt.finished.then(movePill,()=>{});   /* the pill re-measures on the settled layout */
  }else{go();window.scrollTo({top:0,behavior:'smooth'});}
 }
 
@@ -3960,25 +3956,32 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeScanner();clos
 /* ================= LIQUID INTERACTIONS ================= */
 function syncRanges(){document.querySelectorAll('input[type=range]').forEach(r=>r.style.setProperty('--pct',((r.value-r.min)/((r.max-r.min)||1)*100)+'%'));}
 document.addEventListener('input',e=>{if(e.target.type==='range')syncRanges();});
-/* nav pill: stretches toward the new tab, then settles with a spring */
-let _pill={x:null,w:0},_pillT;
+/* nav pill: slides to the new tab in one quick spring (the old two-phase stretch + trailing
+   droplet took most of a second to settle and read as a stray blob on the active tab) */
+let _pill={x:null,w:0},_pillRaf=0;
 function movePill(){
- const it=document.querySelector('.nav-item-active'),p=$('#navPill'),dr=$('#navDrop'),box=$('#navItems');
- if(!it||!p||!dr||!box)return;
+ const it=document.querySelector('.nav-item-active'),p=$('#navPill'),box=$('#navItems');
+ if(!it||!p||!box)return;
  const hue=(it.className.match(/hue-\w+/)||[''])[0];
- p.className='nav-pill '+hue;dr.className='nav-pill nav-drop '+hue;document.querySelector('.ambient').className='ambient '+hue;
- const x=it.offsetLeft+box.offsetLeft,w=it.offsetWidth,h=it.offsetHeight,y=box.offsetTop,T=`translate3d(${x}px,${y}px,0)`,
-  dw=w*.62,dh=h*.62,DT=`translate3d(${x+(w-dw)/2}px,${y+(h-dh)/2}px,0)`,BG=',background-color .5s';
- p.style.height=h+'px';dr.style.height=dh+'px';dr.style.width=dw+'px';clearTimeout(_pillT);
- if(_pill.x===null||(_pill.x===x&&_pill.w===w)){p.style.transition=dr.style.transition='none';p.style.width=w+'px';p.style.transform=T;dr.style.transform=DT;}
+ p.className='nav-pill '+hue;document.querySelector('.ambient').className='ambient '+hue;
+ const x=it.offsetLeft+box.offsetLeft,w=it.offsetWidth,h=it.offsetHeight,y=box.offsetTop,T=`translate3d(${x}px,${y}px,0)`;
+ p.style.height=h+'px';
+ if(_pill.x===null||(_pill.x===x&&_pill.w===w)){p.style.transition='none';p.style.width=w+'px';p.style.transform=T;}
  else{
-  const l=Math.min(_pill.x,x),r=Math.max(_pill.x+_pill.w,x+w);
-  p.style.transition='transform .22s cubic-bezier(.5,0,.2,1),width .22s cubic-bezier(.5,0,.2,1)'+BG;
-  p.style.width=(r-l)+'px';p.style.transform=`translate3d(${l}px,${y}px,0)`;
-  dr.style.transition='transform .85s cubic-bezier(.3,1.4,.5,1) .05s'+BG;dr.style.transform=DT;
-  _pillT=setTimeout(()=>{p.style.transition='transform .6s cubic-bezier(.34,1.6,.5,1),width .6s cubic-bezier(.34,1.6,.5,1)'+BG;p.style.width=w+'px';p.style.transform=T;},190);
+  p.style.transition='transform .3s cubic-bezier(.3,1.25,.45,1),width .3s cubic-bezier(.3,1.25,.45,1),background-color .5s';
+  p.style.width=w+'px';p.style.transform=T;
  }
  _pill={x,w};
+ /* fonts and scrollbars settle a beat after a render and shift every item a little; measure
+    again once the layout is final, so the pill is exactly on the active tab however the
+    first measurement landed */
+ if(_pillRaf)cancelAnimationFrame(_pillRaf);
+ _pillRaf=requestAnimationFrame(()=>requestAnimationFrame(()=>{
+  _pillRaf=0;
+  const it2=document.querySelector('.nav-item-active');
+  if(!it2||!p.isConnected)return;
+  if(it2.offsetLeft+box.offsetLeft!==_pill.x||it2.offsetWidth!==_pill.w)movePill();
+ }));
 }
 addEventListener('resize',()=>{_pill.x=null;movePill();});
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{_pill.x=null;movePill();});

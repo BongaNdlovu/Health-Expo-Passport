@@ -600,8 +600,8 @@ console.log('\n16. Every CSS class the markup uses actually exists');
   g.state.tab = 'screen'; g.render(); grab($main.innerHTML);
   g.resetDemo();
   const cssEsc = t => t.replace(/[^a-zA-Z0-9_-]/g, m => '\\' + m);
-  /* marker classes: nav-drop is styled through #navDrop; jr-next / jr-back are hooks only (the buttons are styled by .btn and .jr-btns) */
-  const IGNORE = new Set(['nav-drop', 'jr-next', 'jr-back']);
+  /* marker classes: jr-next / jr-back are hooks only (the buttons are styled by .btn and .jr-btns) */
+  const IGNORE = new Set(['jr-next', 'jr-back']);
   const missing = [...used].filter(t => !IGNORE.has(t) && !css.includes('.' + cssEsc(t)));
   ok('no template class is missing from the stylesheet (' + used.size + ' checked)', missing.length === 0, missing.join(' '));
 }
@@ -828,6 +828,13 @@ function makeServer() {
       && !/view-transition-new\(root\)[^}]*mask-image/.test(html) && !/will-change/.test(html.match(/\.stagger>\*,\.pour>\*\{[^}]*\}/g).join('')));
     ok('screens: cards do not play their entry animation inside a tab transition (the snapshot is taken as it starts, so rising cards would be captured invisible)',
       /const vtOn=!!document\.startViewTransition/.test(body) && /render\(!vtOn\)/.test(body));
+    ok('nav: the pill slides in one spring, self-corrects once the layout settles, and there is no SVG goo filter re-filtering the bar every frame or trailing droplet blob',
+      /\.nav-goo\{position:absolute;inset:0;border-radius:inherit;pointer-events:none\}/.test(html) && !/url\(#goo\)/.test(html) && !/id="goo"/.test(html)
+      && !/navDrop/.test(html) && !/nav-drop/.test(html) && !/_pillT/.test(body) && /_pillRaf/.test(body) && /vt\.finished\.then\(movePill/.test(body));
+    ok('nav: the pill tint stays subtle on every tab (a strong hue read as a stray coloured circle on the active tab)',
+      /\.nav-pill\{background-color:var\(--t2\);background-image:linear-gradient\(160deg,rgba\(255,255,255,\.95\),rgba\(255,255,255,\.55\)\)\}/.test(html));
+    ok('speed: the ambient blobs are gradient-softened, not GPU-blurred (five blur(80px) layers is the heaviest static cost on the page)',
+      /\.blob\{position:absolute;border-radius:50%;opacity:\.75;will-change:transform\}/.test(html) && !/\.blob\{[^}]*filter:blur/.test(html));
     /* a transition that behaves like the browser's (callback synchronous, ready a promise) must still switch tabs */
     document.startViewTransition = cb => { cb(); return { ready: Promise.resolve() }; };
     g.state.tab = 'home';
