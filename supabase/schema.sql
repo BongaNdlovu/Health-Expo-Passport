@@ -115,6 +115,7 @@ create table if not exists public.attendees (
   sex        text,
   phone      text,
   height_cm  numeric,
+  email      text,                                 -- optional; used to send the plan by email
   s          jsonb not null default '{}'::jsonb,   -- station readings: sys, dia, sugar, chol, weight, veg, walk, water, sleep
   interests  jsonb not null default '{}'::jsonb,   -- nurse / cook / stress / pouch
   prayer     text not null default '',
@@ -122,6 +123,8 @@ create table if not exists public.attendees (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+-- older databases get the email column on re-run (safe to re-run, like everything here)
+alter table public.attendees add column if not exists email text;
 drop trigger if exists attendees_touch on public.attendees;
 create trigger attendees_touch before update on public.attendees
   for each row execute function public.touch_updated_at();
@@ -307,7 +310,8 @@ $$;
 
 alter table public.attendees drop constraint if exists attendees_limits;
 alter table public.attendees add constraint attendees_limits check (
-  length(name) <= 200 and coalesce(length(phone), 0) <= 40 and coalesce(length(sex), 0) <= 20 and length(prayer) <= 2000
+  length(name) <= 200 and coalesce(length(phone), 0) <= 40 and coalesce(length(email), 0) <= 200
+  and coalesce(length(sex), 0) <= 20 and length(prayer) <= 2000
   and public.jsonb_numbers_only(s) and octet_length(s::text) <= 1000
   and jsonb_typeof(interests) = 'object' and octet_length(interests::text) <= 500
 ) not valid;

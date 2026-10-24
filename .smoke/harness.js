@@ -29,7 +29,7 @@ const EXPORTS = [
   'showAllCare', 'filterVisitors', 'visitorsToShow', 'fetchRows',
   'gateState', 'renderGate', 'gateDemo', 'togglePass',
   'gateView', 'cloudSignUp', 'cloudResend', 'cloudForgot', 'cloudNewPassword', 'passwordProblem', 'validEmail',
-  'waNumber', 'waMessage', 'sendWhatsApp', 'toggleInterest', 'onPrayer', 'reservePouch', 'followUpCard', 'INT',
+  'waNumber', 'waMessage', 'sendWhatsApp', 'openEmail', 'sendEmail', 'mailtoHref', 'toggleInterest', 'onPrayer', 'reservePouch', 'followUpCard', 'INT',
   'planNeeds', 'bpStage', 'PROTOCOLS', 'BOOK_REF', 'autoProtocol', 'costOf',
   'BOOK2_REF', 'refLabel', 'planBooks', 'planCredit', 'HELP_LINE',
   'acctGate', 'acctGateHTML', 'loadAccount', 'openAcct', 'closeAcct', 'renderAcct', 'acctTabs', 'acctButtons', 'joinChurch',
@@ -372,7 +372,7 @@ console.log('\n11. Visitor registration');
 const submitReg = (o) => {
   g.state.tab = 'home'; g.state.regOpen = true;
   $el('rgName').value = o.name; $el('rgAge').value = o.age ?? '46'; $el('rgSex').value = 'Male';
-  $el('rgPhone').value = o.phone ?? ''; $el('rgHeight').value = '170'; $el('rgBadge').value = o.badge;
+  $el('rgPhone').value = o.phone ?? ''; $el('rgEmail').value = o.email ?? ''; $el('rgHeight').value = '170'; $el('rgBadge').value = o.badge;
   g.registerSubmit({ preventDefault() {} });
 };
 g.resetDemo();
@@ -385,9 +385,22 @@ submitReg({ name: '   ', badge: 'EXPO-200' });
 ok('blank name is refused', g.attendees.length === n0);
 submitReg({ name: 'Too Young', age: '3', badge: 'EXPO-200' });
 ok('out-of-range age is refused', g.attendees.length === n0);
+submitReg({ name: 'Bad Email', badge: 'EXPO-202', email: 'not-an-email' });
+ok('a malformed email address is refused', g.attendees.length === n0);
+submitReg({ name: 'Mail Visitor', badge: 'EXPO-203', email: 'visitor@example.org' });
+const mailed = g.attendees.find(a => a.id === 'EXPO-203');
+ok('a visitor registers with an email address and no phone number', !!mailed && g.attendees.length === n0 + 1 && mailed.email === 'visitor@example.org' && mailed.phone === '+27 —', JSON.stringify(mailed && { email: mailed.email, phone: mailed.phone }));
+ok('the email reaches the sync row (attToRow) and comes back (rowToAtt)',
+  g.attToRow(mailed).email === 'visitor@example.org' && g.rowToAtt(g.attToRow(mailed)).email === 'visitor@example.org');
+submitReg({ name: 'Same Email Again', badge: 'EXPO-204', email: 'VISITOR@example.org ' });
+ok('an email another visitor already uses is refused (case, spacing ignored)', g.attendees.length === n0 + 1, String(g.attendees.length));
+submitReg({ name: 'No Contact At All', badge: 'EXPO-205' });
+const bare = g.attendees.find(a => a.id === 'EXPO-205');
+ok('a visitor with neither phone nor email still registers (both are optional)', !!bare && bare.email === '' && bare.phone === '+27 —');
+g.state.regOpen = false;
 submitReg({ name: '<img src=x onerror=alert(1)> Tester', badge: 'expo-0201', phone: '<b>082 123 4567</b>' });
 const hostile = g.attendees.find(a => a.id === 'EXPO-201');
-ok('lower-case / zero-padded badge normalised to EXPO-201', !!hostile && g.attendees.length === n0 + 1);
+ok('lower-case / zero-padded badge normalised to EXPO-201', !!hostile && g.attendees.length === n0 + 3, 'attendees=' + g.attendees.length + ' expected ' + (n0 + 3));
 ok('new visitor becomes the active passport', g.state.activeId === 'EXPO-201');
 const shown = {};
 for (const t of ['home', 'screen', 'plan', 'results']) { g.state.tab = t; g.render(); shown[t] = $main.innerHTML; }
@@ -726,7 +739,7 @@ function makeServer() {
     let booted = true;
     try {
       vm.runInContext(body + '\n;globalThis.__A={IS_APP:typeof IS_APP!=="undefined"?IS_APP:undefined,loadScript,authRedirect,installBlock,' +
-        'sendWhatsApp,printCard,waMessage,waNumber,attendees,state,SB_LIB,H5Q,QRJS,SRI};', appBox, { filename: 'app-mode.js' });
+        'sendWhatsApp,sendEmail,mailtoHref,openEmail,printCard,waMessage,waNumber,attendees,state,SB_LIB,H5Q,QRJS,SRI};', appBox, { filename: 'app-mode.js' });
     } catch (e) { booted = false; console.log('APP BOOT THREW: ' + e.stack); }
     const A = appBox.__A || {};
     const tick = () => new Promise(r => setTimeout(r, 0));
@@ -757,6 +770,22 @@ function makeServer() {
     whatsappInstalled = false;
     if (booted) { A.sendWhatsApp(); await tick(); await tick(); }
     ok('app: without WhatsApp on the phone, the message goes to the share sheet', opened.length === 2 && shared.length === 1 && shared[0] === msg);
+
+    let mailBody = '';
+    whatsappInstalled = true;
+    if (booted) {
+      const a0 = A.attendees[0]; a0.email = ''; A.state.activeId = a0.id;
+      $el('emTo').value = 'visitor@example.org'; $el('emSave').checked = true;
+      mailBody = A.waMessage(a0);
+      A.sendEmail(); await tick(); await tick();
+    }
+    ok('app: the plan opens in the phone\'s email app as a mailto: link with the plan as the body',
+      opened.length === 3 && opened[2].startsWith('mailto:visitor%40example.org?subject=') && decodeURIComponent(opened[2].split('&body=')[1]) === mailBody);
+    ok('app: the typed email address was saved to the visitor', booted && A.attendees[0].email === 'visitor@example.org');
+    whatsappInstalled = false;
+    if (booted) { $el('emTo').value = 'visitor@example.org'; A.sendEmail(); await tick(); await tick(); }
+    ok('app: with no email app installed, the plan goes to the share sheet',
+      opened.length === 4 && opened[3].startsWith('mailto:visitor%40example.org') && shared.length === 2 && shared[1] === mailBody);
 
     let printThrew = false;
     if (booted) { try { await A.printCard(); await tick(); } catch (e) { printThrew = true; } }
@@ -2294,6 +2323,34 @@ function makeServer() {
   david.name = '<b>Dave</b> Jones'; ok('message does not choke on odd names', g.waMessage(david).includes('<b>Dave</b>'));   /* plain text: markup is just characters */
   sandbox.document.createElement = realCreate; g.resetDemo();
   ok('the buttons no longer claim a message was sent', !/plan sent via WhatsApp/.test(html) && /Send in WhatsApp/.test(html) && !/WhatsApp report preview · verified/.test(html));
+
+  /* ---- the same plan by email ---- */
+  g.resetDemo();
+  const mailDave = g.attendees.find(a => a.id === 'EXPO-042');
+  mailDave.email = '';
+  const href = g.mailtoHref(mailDave, 'David@Example.ORG');
+  ok('the email link is a mailto: with the address, a subject and the exact plan text as the body',
+    href.startsWith('mailto:David%40Example.ORG?subject=') && decodeURIComponent(href.split('&body=')[1]) === g.waMessage(mailDave) && href.includes('21-day%20plan'), href.slice(0, 80));
+  g.state.activeId = 'EXPO-042'; g.state.tab = 'send'; g.render();
+  ok('the Send tab offers the email option next to WhatsApp',
+    /openEmail\(\)/.test($main.innerHTML) && /Email the plan/.test($main.innerHTML) && $main.innerHTML.includes('none saved'));
+  g.openEmail();
+  ok('with no email saved, the preview opens with an empty address and a save box',
+    /id="emTo"[^>]*value=""/.test($el('waBody').innerHTML) && $el('waBody').innerHTML.includes('emSave') && $el('waFoot').innerHTML.includes('Send by email') && $el('waSub').textContent.includes('email app'));
+  sandbox.document.createElement = t => { const e = realCreate(t); if (t === 'a') link = e; return e; };
+  $el('emTo').value = 'not-an-email'; link = null; g.sendEmail();
+  ok('a malformed email address is refused and nothing opens', !link);
+  $el('emTo').value = 'david+plan@example.org'; $el('emSave').checked = true; g.sendEmail();
+  ok('a good address opens the email app with the plan ready',
+    link && link.href.startsWith('mailto:david%2Bplan%40example.org?subject=') && decodeURIComponent(link.href.split('&body=')[1]) === g.waMessage(mailDave), link && link.href.slice(0, 60));
+  ok('a typed address is saved to the visitor when the box says so', mailDave.email === 'david+plan@example.org');
+  link = null; g.openEmail();
+  ok('with an email saved there is no save-again box and the address is prefilled',
+    !$el('waBody').innerHTML.includes('emSave') && $el('waBody').innerHTML.includes('value="david+plan@example.org"'));
+  $el('emTo').value = 'no-one@example.org'; g.sendEmail();
+  ok('sending again just opens the email app', link && link.href.startsWith('mailto:no-one%40example.org?subject='));
+  sandbox.document.createElement = realCreate;
+  ok('the email body is plain text with the safety warning', !/<[a-z]/i.test(g.waMessage(mailDave)) && /do not stop them suddenly/.test(g.waMessage(mailDave)));
 
   /* follow-up capture → Care lists */
   g.resetDemo();

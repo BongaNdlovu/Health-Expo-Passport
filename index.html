@@ -1061,7 +1061,7 @@
         <div class="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-xs font-extrabold backdrop-blur">NS</div>
         <div>
           <div class="text-sm font-bold">Health Expo Team</div>
-          <div class="text-[10px] text-white/75">Message preview · opens in WhatsApp</div>
+          <div class="text-[10px] text-white/75" id="waSub">Message preview · opens in WhatsApp</div>
         </div>
       </div>
       <button onclick="closeWhatsApp()" aria-label="Close" class="text-white/70 transition hover:text-white">
@@ -1069,7 +1069,7 @@
       </button>
     </div>
     <div id="waBody" class="flex-1 space-y-3 overflow-y-auto bg-white/40 p-4"></div>
-    <div class="flex gap-2 border-t border-white/60 bg-white/50 p-3 backdrop-blur">
+    <div id="waFoot" class="flex gap-2 border-t border-white/60 bg-white/50 p-3 backdrop-blur">
       <button onclick="recycleBadge()" class="btn btn-glass flex-1 py-2.5 text-[11px] text-[#5b7178]">Recycle badge</button>
       <button onclick="sendWhatsApp()"
         class="btn flex-1 py-2.5 text-[11px] text-white"
@@ -1779,7 +1779,7 @@ function migrateAttendee(a){
  if(a.interests&&typeof a.interests==='object')a=Object.assign({},a,{interests:Object.fromEntries(Object.keys(a.interests).filter(k=>/^[a-z]{1,12}$/.test(k)).map(k=>[k,!!a.interests[k]]))});
  /* ids are interpolated into onclick handlers, so keep them to letters, digits and dashes */
  const id=String(a.id==null?'':a.id).replace(/[^A-Za-z0-9-]/g,'');
- return Object.assign({heightCm:165,interests:{},prayer:'',done:false},a,{id,s});
+ return Object.assign({heightCm:165,interests:{},email:'',prayer:'',done:false},a,{id,s,email:String(a.email==null?'':a.email).trim().slice(0,200)});
 }
 function migrateVolunteer(v){
  const o=Object.assign({phone:'',email:'',status:'prospect',pledgeExpos:1,skills:[],pref:[],pref2:'',
@@ -1948,6 +1948,7 @@ function viewSend(){
   </div>
   <div class="snd-list">
    ${item('openWhatsApp()','💬','Send the plan on WhatsApp',wa?`Preview, then send to ${esc(a.phone)}`:'Preview, then pick their contact (no number saved)',false)}
+   ${item('openEmail()','✉️','Email the plan',a.email?`Preview, then send to ${esc(a.email)}`:'Preview, then type their email (none saved)',false)}
    ${item('printCard()','🖨️','Print the take-home card','A6 card: their numbers and the 3 actions',false)}
    ${item('reservePouch()','🛍️',a.interests&&a.interests.pouch?'Co-op starter pouch reserved':'Reserve the R25 co-op starter pouch','Bulk staples for 21 days, ready at the exit table',!!(a.interests&&a.interests.pouch))}
   </div>
@@ -2041,9 +2042,10 @@ function viewHome(){
      <div><label class="microlabel" for="rgSex">Sex</label><select id="rgSex" required class="field mt-1 appearance-none"><option value="" selected disabled>Choose…</option><option>Male</option><option>Female</option></select></div>
     </div>
     <div class="grid grid-cols-2 gap-3">
-     <div><label class="microlabel" for="rgPhone">WhatsApp</label><input id="rgPhone" type="tel" inputmode="tel" placeholder="082 123 4567" class="field mono mt-1"></div>
+     <div><label class="microlabel" for="rgPhone">WhatsApp (optional)</label><input id="rgPhone" type="tel" inputmode="tel" placeholder="082 123 4567" class="field mono mt-1"></div>
      <div><label class="microlabel" for="rgHeight">Height (cm)</label><input id="rgHeight" type="text" inputmode="numeric" placeholder="if measured" class="field mono mt-1"></div>
     </div>
+    <div><label class="microlabel" for="rgEmail">Email (optional)</label><input id="rgEmail" type="email" inputmode="email" autocomplete="off" placeholder="for sending the plan by email" class="field mt-1"></div>
     <div><label class="microlabel" for="rgBadge">Lanyard badge</label>
      <div class="mt-1 flex gap-2">
       <input id="rgBadge" required value="${state.pendingBadge||''}" placeholder="Scan or type, e.g. EXPO-042" autocomplete="off"
@@ -2091,7 +2093,7 @@ function visitorsToShow(query){
  const q=String(query||'').trim().toLowerCase(),out=[];
  if(q){
   for(let i=attendees.length-1;i>=0&&out.length<LIST_CAP;i--){const x=attendees[i];
-   if(`${x.name} ${x.id} ${x.phone||''}`.toLowerCase().includes(q))out.push(x);}
+   if(`${x.name} ${x.id} ${x.phone||''} ${x.email||''}`.toLowerCase().includes(q))out.push(x);}
   return out;
  }
  if(attendees.length<=LIST_CAP)return attendees;
@@ -2130,12 +2132,14 @@ function registerSubmit(e,force){
  const name=$('#rgName').value.trim().replace(/\s+/g,' ');
  const ageRaw=$('#rgAge').value.trim(),age=Math.round(+ageRaw);
  const sex=$('#rgSex').value,phone=$('#rgPhone').value.trim(),hRaw=$('#rgHeight').value.trim().replace(',','.');
+ const email=$('#rgEmail')?$('#rgEmail').value.trim().slice(0,200):'';
  if(!name)return regError('Type the visitor’s full name.');
  if(!ageRaw||!(age>=12&&age<=105))return regError('Type their age (12 to 105).');
  if(!sex)return regError('Choose Male or Female.');
  const h=hRaw===''?null:+hRaw;
  if(h!=null&&!(h>=100&&h<=220))return regError(`Height ${esc(hRaw)} cm cannot be right (100–220). Leave it empty if not measured.`);
  if(phone&&!waNumber(phone))return regError('That WhatsApp number looks incomplete. Check it (for example 082 123 4567), or leave it empty.');
+ if(email&&!validEmail(email))return regError('That email address does not look right. Check it, or leave it empty.');
  /* the id is used in handlers and matched against scanned QR codes, so it must be a clean EXPO-nnn */
  const raw=$('#rgBadge').value.trim();
  if(!raw)return regError('Scan their lanyard badge, or type the number printed on it.');
@@ -2143,13 +2147,15 @@ function registerSubmit(e,force){
  if(!id)return regError('A badge looks like EXPO-042.');
  const taken=attendees.find(x=>x.id===id);
  if(taken)return regError(`${id} already belongs to ${esc(taken.name)}. Use a different lanyard.`);
- /* the same person twice gives two half-filled passports: ask first */
+ /* the same person twice gives two half-filled passports: ask first (name, last 9 phone digits, or email) */
  const digits=phone.replace(/\D/g,'').slice(-9);
- const dup=!force&&attendees.find(x=>normName(x.name)===normName(name)||(digits.length===9&&String(x.phone||'').replace(/\D/g,'').slice(-9)===digits));
+ const dup=!force&&attendees.find(x=>normName(x.name)===normName(name)
+   ||(digits.length===9&&String(x.phone||'').replace(/\D/g,'').slice(-9)===digits)
+   ||(email&&String(x.email||'').toLowerCase()===email.toLowerCase()));
  if(dup)return regError(`${esc(dup.name)} may already be registered as <b>${esc(dup.id)}</b>.
    <span class="mt-2 flex gap-2"><button type="button" class="st-fix" style="background:#2b8074" onclick="state.regOpen=false;switchTo('${dup.id}')">Open ${esc(dup.id)}</button>
    <button type="button" class="st-fix" style="background:#6b8187" onclick="registerSubmit(null,true)">Register a new passport</button></span>`);
- const a=migrateAttendee({id,name,age,sex,phone:phone||'+27 —',heightCm:h,s:{},interests:{},prayer:'',done:false});
+ const a=migrateAttendee({id,name,age,sex,phone:phone||'+27 —',email,heightCm:h,s:{},interests:{},prayer:'',done:false});
  attendees.push(a);state.activeId=a.id;state.regOpen=false;state.pendingBadge=null;state.sugFor=null;state._goal=null;
  switchTab('screen');toast(`${a.id} linked to ${firstName(a.name)} ✓ Start the checks`);
 }
@@ -2759,12 +2765,12 @@ function careCard(a){
  </div>`;
 }
 function exportCSV(){
- const rows=[['Badge','Name','Phone','Age','Sex','BP','Sugar mmol/L','BMI','Health age','Flags','Interests','Prayer note']];
+ const rows=[['Badge','Name','Phone','Email','Age','Sex','BP','Sugar mmol/L','BMI','Health age','Flags','Interests','Prayer note']];
  attendees.forEach(a=>{
   const ha=healthAge(a);
   const fl=[cat('bp',{sys:a.s.sys,dia:a.s.dia}),cat('sugar',a.s.sugar),cat('bmi',bmi(a))].filter(c=>c[0]==='flag'||c[0]==='watch').map(c=>c[1]).join('; ');
   const it=Object.keys(INT).filter(k=>a.interests[k]).map(k=>INT[k]).join('; ');
-  rows.push([a.id,a.name,a.phone,a.age,a.sex,a.s.sys&&a.s.dia?`${a.s.sys}/${a.s.dia}`:'',a.s.sugar??'',bmi(a)?fmt1(bmi(a)):'',ha.health!=null?fmt1(ha.health):'incomplete',fl,it,a.prayer]);
+  rows.push([a.id,a.name,a.phone,a.email||'',a.age,a.sex,a.s.sys&&a.s.dia?`${a.s.sys}/${a.s.dia}`:'',a.s.sugar??'',bmi(a)?fmt1(bmi(a)):'',ha.health!=null?fmt1(ha.health):'incomplete',fl,it,a.prayer]);
  });
  downloadCSV(rows,'newstart-followup.csv');
  toast('Follow-up sheet exported (CSV) ✓');
@@ -3703,10 +3709,10 @@ function renderVolModal(){
 function pickAttendee(id){state.activeId=id;state.sugFor=null;state._goal=null;closeSwitcher();render();toast(`Now serving ${firstName(A().name)} · ${id}`);}
 function registerNew(){closeSwitcher();state.pendingBadge=null;state.regOpen=true;switchTab('home');}
 function openWAFor(id){state.activeId=id;state.sugFor=null;state._goal=null;render();openWhatsApp();}
-function openWhatsApp(){
- if(!attendees.length){toast('Register a visitor first');return;}
- const a=A(),ha=healthAge(a),{sys,dia}=simBP(a),proj=projection(a),P=planFor(a),pk=P.pk,p=P.p;
- $('#waBody').innerHTML=`<div class="modal-in rounded-[20px] rounded-tl-md border border-white/90 bg-white/85 p-4 shadow-sm backdrop-blur">
+/* the scorecard-and-plan preview both sending ways share (the message that goes out is waMessage(a)) */
+function waPreviewHTML(a){
+ const ha=healthAge(a),{sys,dia}=simBP(a),proj=projection(a),P=planFor(a),pk=P.pk,p=P.p;
+ return `<div class="modal-in rounded-[20px] rounded-tl-md border border-white/90 bg-white/85 p-4 shadow-sm backdrop-blur">
   <div class="flex items-center justify-between border-b border-[#123033]/[.07] pb-2">
    <span class="text-sm font-bold text-brand-800">🌿 Hi ${esc(firstName(a.name))}!</span>
    <span class="mono rounded-md tint px-2 py-0.5 text-[10px] font-bold">${esc(a.id)}</span>
@@ -3732,6 +3738,35 @@ function openWhatsApp(){
   ${p.help?`<p class="mt-2 text-[10px] font-bold leading-relaxed text-rose-700">${esc(p.help)}</p>`:''}
   <p class="mt-3 text-[10px] italic text-[#6b8187]">“Beloved, I pray that you may prosper in all things and be in health, just as your soul prospers.” — 3 John 1:2</p>
  </div>`;
+}
+function waFootHTML(kind){
+ return kind==='mail'
+  ?`<button onclick="closeWhatsApp()" class="btn btn-glass flex-1 py-2.5 text-[11px] text-[#5b7178]">Back</button>
+    <button onclick="sendEmail()" class="btn btn-primary flex-1 py-2.5 text-[11px] text-white">Send by email →</button>`
+  :`<button onclick="recycleBadge()" class="btn btn-glass flex-1 py-2.5 text-[11px] text-[#5b7178]">Recycle badge</button>
+    <button onclick="sendWhatsApp()" class="btn flex-1 py-2.5 text-[11px] text-white"
+     style="background:linear-gradient(135deg,#25D366,#1aa851);box-shadow:0 12px 24px -14px rgba(37,211,102,.9)">Send in WhatsApp →</button>`;
+}
+function openWhatsApp(){
+ if(!attendees.length){toast('Register a visitor first');return;}
+ const a=A();
+ $('#waSub').textContent='Message preview · opens in WhatsApp';
+ $('#waBody').innerHTML=waPreviewHTML(a);
+ $('#waFoot').innerHTML=waFootHTML('wa');
+ showModal('#waModal');
+}
+/* the same plan by email: the body is exactly the message WhatsApp would send */
+function openEmail(){
+ if(!attendees.length){toast('Register a visitor first');return;}
+ const a=A();
+ $('#waSub').textContent='Message preview · opens in their email app';
+ $('#waBody').innerHTML=waPreviewHTML(a)+`
+  <div class="modal-in mt-3 rounded-[16px] border border-white/90 bg-white/85 p-3">
+   <label class="microlabel" for="emTo">Send to</label>
+   <input id="emTo" type="email" inputmode="email" autocomplete="off" value="${esc(a.email||'')}" placeholder="their email address" class="field mt-1">
+   ${a.email?'':`<label class="mt-1.5 flex items-center gap-2 text-[10px] font-bold text-[#5b7178]"><input id="emSave" type="checkbox" checked class="h-3.5 w-3.5"> Save this email to ${esc(a.id)}</label>`}
+  </div>`;
+ $('#waFoot').innerHTML=waFootHTML('mail');
  showModal('#waModal');
 }
 function closeWhatsApp(){hideModal('#waModal');}
@@ -3790,6 +3825,39 @@ async function sendWhatsAppInApp(n,msg){
  try{const r=await P.AppLauncher.openUrl({url:`whatsapp://send?${n?`phone=${n}&`:''}text=${encodeURIComponent(msg)}`});opened=!!(r&&r.completed);}catch(e){}
  if(opened){toast(n?'Opening WhatsApp…':'No number saved for this visitor — choose the contact in WhatsApp');return;}
  toast('WhatsApp is not on this phone — choose another way to send');
+ try{await P.Share.share({text:msg});}catch(e){}
+}
+/* ===== the same plan by email ===== */
+/* The email app does the sending (nothing leaves this device from here), exactly like WhatsApp above:
+   a mailto: link with the same plan text as the subject-line body. */
+function mailtoHref(a,to){
+ return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(`Your health scorecard & 21-day plan (badge ${a.id})`)}&body=${encodeURIComponent(waMessage(a))}`;
+}
+function sendEmail(){
+ const a=attendees.find(x=>x.id===state.activeId);
+ if(!a){closeWhatsApp();return;}
+ const input=$('#emTo'),to=String(input&&input.value||'').trim();
+ if(!validEmail(to)){
+  if(input){try{input.focus();}catch(e){}}
+  toast('That email address does not look right — check it, or leave email out');return;
+ }
+ const save=$('#emSave');
+ const saving=!!(save&&save.checked);
+ if(saving){a.email=to;persist();}
+ closeWhatsApp();
+ if(IS_APP){sendEmailInApp(mailtoHref(a,to),waMessage(a),saving?a.id:'');return;}
+ toast(saving?`Email saved to ${a.id} ✓ Opening the email app…`:'Opening the email app…');
+ const link=document.createElement('a');link.href=mailtoHref(a,to);link.target='_blank';link.rel='noopener noreferrer';
+ document.body.appendChild(link);link.click();link.remove();
+}
+/* Android app: into the phone's email app with the message ready; with no mail app installed,
+   the share sheet takes it (it offers email, and everything else). */
+async function sendEmailInApp(href,msg,savedTo){
+ const P=window.Capacitor.Plugins;
+ let opened=false;
+ try{const r=await P.AppLauncher.openUrl({url:href});opened=!!(r&&r.completed);}catch(e){}
+ if(opened){toast(savedTo?`Email saved to ${savedTo} ✓ Opening the email app…`:'Opening the email app…');return;}
+ toast('No email app on this phone — the plan goes to the share sheet instead');
  try{await P.Share.share({text:msg});}catch(e){}
 }
 function recycleBadge(){
@@ -4014,9 +4082,9 @@ const SYNC_KEY='newstart.cloud.v1';
 
 const nulIfEmpty=v=>v?v:null;
 const attToRow=a=>({id:a.id,name:a.name,age:Number.isFinite(+a.age)&&a.age!=='' ?Math.round(+a.age):null,sex:a.sex||null,
- phone:a.phone||null,height_cm:a.heightCm!=null&&a.heightCm!==''&&Number.isFinite(+a.heightCm)?+a.heightCm:null,s:a.s||{},interests:a.interests||{},
+ phone:a.phone||null,email:a.email||null,height_cm:a.heightCm!=null&&a.heightCm!==''&&Number.isFinite(+a.heightCm)?+a.heightCm:null,s:a.s||{},interests:a.interests||{},
  prayer:a.prayer||'',done:!!a.done});
-const rowToAtt=r=>migrateAttendee({id:r.id,name:r.name,age:r.age==null?0:r.age,sex:r.sex||'',phone:r.phone||'',
+const rowToAtt=r=>migrateAttendee({id:r.id,name:r.name,age:r.age==null?0:r.age,sex:r.sex||'',phone:r.phone||'',email:r.email||'',
  heightCm:r.height_cm==null?null:Number(r.height_cm),s:r.s||{},interests:r.interests||{},prayer:r.prayer||'',done:!!r.done});
 const volToRow=v=>({id:v.id,name:v.name,phone:v.phone||'',email:v.email||'',status:v.status||'prospect',
  pledge_expos:Number(v.pledgeExpos)||1,skills:v.skills||[],pref:v.pref||[],pref2:v.pref2||'',booth:nulIfEmpty(v.booth),
