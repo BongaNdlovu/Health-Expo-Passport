@@ -387,17 +387,9 @@
   @keyframes dropIn{0%{transform:scale(.3,.5) translateY(32px);opacity:0}35%{transform:scale(1.12,.86) translateY(-4px);opacity:1}60%{transform:scale(.96,1.05)}100%{transform:none}}
   @keyframes scrim{from{opacity:0;-webkit-backdrop-filter:blur(0);backdrop-filter:blur(0)}}
   [role=dialog]:not(.is-closing){animation:scrim .45s ease both}
-  header{view-transition-name:vt-head}
-  #app>nav{view-transition-name:vt-nav}
-  ::view-transition-group(vt-head),::view-transition-group(vt-nav){animation:none}
-  ::view-transition-old(vt-head),::view-transition-old(vt-nav){display:none}
-  ::view-transition-new(vt-head),::view-transition-new(vt-nav){animation:none}
-  ::view-transition-old(root){animation:none}
-  /* the wipe is a clip-path circle, never a gradient mask: an animated mask re-rasterises the whole
-     screen on the main thread every frame (janky in Android's WebView), while a clipped layer
-     just gets a new clip each frame — and circle() animations run on the compositor */
-  ::view-transition-new(root){animation:vtReveal .45s cubic-bezier(.3,.6,.2,1) both}
-  @keyframes vtReveal{from{clip-path:circle(0px at var(--vx,50%) var(--vy,100%))}to{clip-path:circle(150vmax at var(--vx,50%) var(--vy,100%))}}
+  /* tab switches are plain renders: the old view-transition wipe captured and animated full-page
+     snapshot layers, which low-end phones struggled with — the cards' own light entry animation
+     and the nav pill's slide (both plain transform/opacity) are all the motion a switch needs */
   @media (prefers-reduced-motion:reduce){.wave{animation:none}.b1,.b4{transition:none}}
 
   /* ============ v6 · LIQUID FINISH ============ */
@@ -438,6 +430,7 @@
   @keyframes rise{from{opacity:0;transform:translate3d(0,16px,0) scale(.98)}to{opacity:1;transform:none}}
   @keyframes pour{0%{opacity:0;transform:translate3d(0,16px,0) scale(.97,.95)}55%{opacity:1;transform:translate3d(0,-3px,0) scale(1.01,1.02)}100%{transform:none}}
   .stagger>*,.pour>*{animation-fill-mode:backwards}
+  @media (prefers-reduced-motion:reduce){.stagger>*,.pour>*{animation:none!important}}   /* they asked for less motion: screens appear at once */
   /* modal scrim: fade only, no animated backdrop blur */
   @keyframes scrim{from{opacity:0}}
   /* bar shimmer on the compositor (transform) instead of animating background-position */
@@ -1839,17 +1832,13 @@ const SERVE_TABS=[
 /* function declaration (not a const) so hoisting keeps inline onclick handlers safe */
 function isServe(){return state.tab==='serve';}
 
-function render(anim){
+function render(){
  renderHeaderChip();renderNav();
  /* hide/show with an inline style rather than a class, so the two render paths
     (visitor views vs the serve section) cannot fight over one shared classList */
  const el=$('#main');
  if(isServe()){el.style.display='none';renderServeView();}
- else{el.style.display='';renderMain(anim!==false);}
- /* during a view transition the cards' entry animation is stripped: the transition's snapshot is
-    taken the moment it starts, so cards caught rising would leave the wipe revealing a half-empty
-    page that only fills in after the animation — the settled screen reads as instant instead */
- if(anim===false)el.querySelectorAll(':scope > .stagger').forEach(s=>s.classList.remove('stagger'));
+ else{el.style.display='';renderMain(true);}
  renderServeSheet();/* rebuilt by renderVolModal() */persist();
 }
 function renderHeaderChip(){
@@ -1966,23 +1955,10 @@ function viewNoVisitor(){
   <button onclick="registerNew()" class="btn btn-primary mt-3 w-full py-2.5 text-xs">Register a visitor →</button>
  </div></section>`;
 }
-/* Two quick taps start two animated transitions, and the browser may run their updates out of order — so every update
-   goes to the LATEST tab tapped, never the one its own tap asked for. */
-let _navTo='';
 function switchTab(t){
- _navTo=t;
  if(JOURNEY.includes(t)){state.step=t;state.stepFor=state.activeId;}
- if(state.food)state.food.open=false;   /* tapping a tab (even Plan) leaves the Food screen — at the tap, not when the animation ends */
- const vtOn=!!document.startViewTransition&&!document.documentElement.classList.contains('lite')&&!matchMedia('(prefers-reduced-motion: reduce)').matches&&t!==state.tab;
- const go=()=>{state.tab=_navTo;render(!vtOn);};
- if(vtOn){
-  const b=document.querySelectorAll('.nav-item')[SERVE_TABS.findIndex(x=>x[0]===navKey(t))];
-  if(b){const r=b.getBoundingClientRect(),st=document.documentElement.style;st.setProperty('--vx',(r.left+r.width/2)+'px');st.setProperty('--vy',(r.top+r.height/2)+'px');}
-  /* a quick second tap skips the animation; that is fine, so don't let it surface as an error */
-  const vt=document.startViewTransition(()=>{go();window.scrollTo(0,0);});
-  if(vt&&vt.ready)vt.ready.catch(()=>{});
-  if(vt&&vt.finished)vt.finished.then(movePill,()=>{});   /* the pill re-measures on the settled layout */
- }else{go();window.scrollTo({top:0,behavior:'smooth'});}
+ if(state.food)state.food.open=false;   /* tapping a tab (even Plan) leaves the Food screen — at the tap */
+ state.tab=t;render();window.scrollTo(0,0);
 }
 
 /* ================= VIEW: HOME ================= */
@@ -3729,6 +3705,8 @@ function waPreviewHTML(a){
    <p class="mt-2 text-[11px] font-semibold leading-relaxed text-[#33504f]">📅 ${esc(P.recheck[0])}</p></div>
   <div class="mt-3 rounded-[14px] border border-amber-200/70 bg-amber-50/80 p-2.5 text-[10px] leading-relaxed text-amber-900">
    <b>Shopping list (store prices checked ${PRICE_DATE}; may vary by branch):</b> ${p.items.map(it=>`${it.name} (${it.dose})`).join('; ')}.
+   <br><b>Where to buy it cheapest:</b> ${p.items.map(it=>{const Pr=foodPriceOf(it.name);return Pr?`${esc(shortFood(it.name))} at ${Pr.parts.map(pp=>esc(pp.cheap)).join(' & ')}`:'';}).filter(Boolean).join(' · ')} —
+   about <b>${money(p.items.reduce((t,it)=>t+cheapDay(it),0))} a day</b> at those stores instead of ${money(costOf(pk))} typical.
   </div>
   <p class="mt-3 text-[10px] leading-relaxed text-[#8a9aa0]">From ${planCredit(p)} — ${p.src}.</p>
   ${p.help?`<p class="mt-2 text-[10px] font-bold leading-relaxed text-rose-700">${esc(p.help)}</p>`:''}
@@ -3773,6 +3751,20 @@ function waNumber(phone){
  else if(d.startsWith('0'))d='27'+d.slice(1);
  return d.length>=11&&d.length<=15?d:'';          /* "+27 —" (no number captured) leaves just "27" → not usable */
 }
+/* ---------- where to buy it cheapest (the value the visitor takes home) ---------- */
+/* FOOD_PRICES holds the verified per-store prices; an item's daily cost is worked out at the typical
+   (median) price, so the same data also gives the cheapest-store version of every cost. */
+const foodPriceOf=name=>FOOD_PRICES[foodKeyOf(name)]||null;
+function cheapDay(it){
+ const P=foodPriceOf(it.name);
+ return P?P.parts.reduce((t,p)=>t+p.min*p.qty,0):it.daily;
+}
+function cheapLine(it){
+ const name=`${it.name} (${it.dose})`,P=foodPriceOf(it.name);
+ if(!P||!P.parts.length)return `• ${name}: no verified store price yet — about ${money(it.daily)} a day`;
+ const where=P.parts.map(p=>`${p.label?`${p.label} cheapest at `:'cheapest at '}${p.cheap} (${money(p.min)} ${p.unit})${p.n<2?', only one price found':''}`).join(' · ');
+ return `• ${name}: ${where} — about ${money(cheapDay(it))} a day`;
+}
 /* the same content as the preview, as the plain text that gets sent */
 function waMessage(a){
  const ha=healthAge(a),{sys,dia}=simBP(a),proj=projection(a),P=planFor(a),pk=P.pk,p=P.p;
@@ -3790,9 +3782,10 @@ function waMessage(a){
   '',
   ...P.top.flatMap((x,i)=>[`${i+1}. ${x.do}`,`   How: ${x.how.join('; ')}.`,`   Why: ${x.why}`,'']),
   `📅 ${P.recheck[0]}`,
-  `Food for this plan: about ${money(costOf(pk))} a day.`,
+  `Food for this plan: about ${money(costOf(pk))} a day at typical store prices — about ${money(p.items.reduce((t,it)=>t+cheapDay(it),0))} if you buy each food where it is cheapest.`,
   '',
-  `Shopping list (store prices checked ${PRICE_DATE}; may vary by branch): ${p.items.map(it=>`${it.name} (${it.dose})`).join('; ')}.`,
+  `WHERE TO BUY IT CHEAPEST (store prices checked ${PRICE_DATE}):`,
+  ...p.items.map(cheapLine),
   '',
   `Plan source: ${planCredit(p)}, ${p.src}.`,
   '',

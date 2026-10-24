@@ -30,6 +30,8 @@ const EXPORTS = [
   'gateState', 'renderGate', 'gateDemo', 'togglePass',
   'gateView', 'cloudSignUp', 'cloudResend', 'cloudForgot', 'cloudNewPassword', 'passwordProblem', 'validEmail',
   'waNumber', 'waMessage', 'sendWhatsApp', 'openEmail', 'sendEmail', 'mailtoHref', 'toggleInterest', 'onPrayer', 'reservePouch', 'followUpCard', 'INT',
+  'queue', 'qs', 'queueJoin', 'queueCallNext', 'queueServe', 'queueDone', 'queueBack', 'queueRemove', 'qStats', 'qList', 'qMode', 'qCan', 'viewQueue',
+  'cheapDay', 'cheapLine', 'foodPriceOf', 'foodKeyOf', 'FOOD_PRICES', 'money', 'closeWhatsApp',
   'planNeeds', 'bpStage', 'PROTOCOLS', 'BOOK_REF', 'autoProtocol', 'costOf',
   'BOOK2_REF', 'refLabel', 'planBooks', 'planCredit', 'HELP_LINE',
   'acctGate', 'acctGateHTML', 'loadAccount', 'openAcct', 'closeAcct', 'renderAcct', 'acctTabs', 'acctButtons', 'joinChurch',
@@ -823,24 +825,20 @@ function makeServer() {
       /\.hero \.display\.truncate\{white-space:normal;display:-webkit-box;-webkit-line-clamp:2/.test(css) && /class="display truncate/.test($main.innerHTML));
     ok('screens: cards arrive within half a second and progress bars fill in half a second',
       /\.stagger>\*,\.pour>\*\{animation-duration:\.3s\}/.test(css) && /nth-child\(n\+5\)\{animation-delay:\.12s\}/.test(css) && /\.bar-fill\{animation-duration:\.5s\}/.test(css));
-    ok('screens: the tab wipe is a clip-path circle, never an animated mask (a mask re-rasterises the whole screen every frame)',
-      /::view-transition-new\(root\)\{animation:vtReveal \.45s[^}]*\}/.test(html) && /@keyframes vtReveal\{from\{clip-path:circle\(0px at var\(--vx,50%\) var\(--vy,100%\)\)\}/.test(html)
-      && !/view-transition-new\(root\)[^}]*mask-image/.test(html) && !/will-change/.test(html.match(/\.stagger>\*,\.pour>\*\{[^}]*\}/g).join('')));
-    ok('screens: cards do not play their entry animation inside a tab transition (the snapshot is taken as it starts, so rising cards would be captured invisible)',
-      /const vtOn=!!document\.startViewTransition/.test(body) && /render\(!vtOn\)/.test(body));
+    ok('screens: tab switches are plain renders — no view-transition snapshots for a weak phone to capture and animate',
+      !/startViewTransition/.test(body) && !/::view-transition/.test(html) && !/vtReveal/.test(html) && /state\.tab=t;render\(\);window\.scrollTo\(0,0\)/.test(body));
+    ok('screens: people who ask for less motion get no card entry animations either',
+      /@media \(prefers-reduced-motion:reduce\)\{\.stagger>\*,\.pour>\*\{animation:none!important\}\}/.test(html));
     ok('nav: the pill slides in one spring, self-corrects once the layout settles, and there is no SVG goo filter re-filtering the bar every frame or trailing droplet blob',
       /\.nav-goo\{position:absolute;inset:0;border-radius:inherit;pointer-events:none\}/.test(html) && !/url\(#goo\)/.test(html) && !/id="goo"/.test(html)
-      && !/navDrop/.test(html) && !/nav-drop/.test(html) && !/_pillT/.test(body) && /_pillRaf/.test(body) && /vt\.finished\.then\(movePill/.test(body));
+      && !/navDrop/.test(html) && !/nav-drop/.test(html) && !/_pillT/.test(body) && /_pillRaf/.test(body));
     ok('nav: the pill tint stays subtle on every tab (a strong hue read as a stray coloured circle on the active tab)',
       /\.nav-pill\{background-color:var\(--t2\);background-image:linear-gradient\(160deg,rgba\(255,255,255,\.95\),rgba\(255,255,255,\.55\)\)\}/.test(html));
     ok('speed: the ambient blobs are gradient-softened, not GPU-blurred (five blur(80px) layers is the heaviest static cost on the page)',
       /\.blob\{position:absolute;border-radius:50%;opacity:\.75;will-change:transform\}/.test(html) && !/\.blob\{[^}]*filter:blur/.test(html));
-    /* a transition that behaves like the browser's (callback synchronous, ready a promise) must still switch tabs */
-    document.startViewTransition = cb => { cb(); return { ready: Promise.resolve() }; };
     g.state.tab = 'home';
     g.switchTab('plan');
-    document.startViewTransition = null;
-    ok('screens: switching tabs through a view transition lands on the new tab',
+    ok('screens: tapping a tab lands on it and renders the new screen at once',
       g.state.tab === 'plan' && /stagger space-y-3\.5/.test($el('main').innerHTML));
     const capDir = path.join(__dirname, '..', 'capacitor');
     const styles = fs.existsSync(capDir) ? fs.readFileSync(path.join(capDir, 'android', 'app', 'src', 'main', 'res', 'values', 'styles.xml'), 'utf8') : '';
@@ -2358,6 +2356,61 @@ function makeServer() {
   ok('sending again just opens the email app', link && link.href.startsWith('mailto:no-one%40example.org?subject='));
   sandbox.document.createElement = realCreate;
   ok('the email body is plain text with the safety warning', !/<[a-z]/i.test(g.waMessage(mailDave)) && /do not stop them suddenly/.test(g.waMessage(mailDave)));
+
+  /* ---- the report carries the cheapest stores (the value the visitor takes home) ---- */
+  g.resetDemo();
+  const priceDave = g.attendees.find(a => a.id === 'EXPO-042');
+  const planItems = Object.keys(g.PROTOCOLS).flatMap(k => g.PROTOCOLS[k].items || []);
+  ok('pricing: every shopping-list item in every plan has verified store prices',
+    planItems.length > 0 && planItems.every(i => g.foodPriceOf(i.name) && g.foodPriceOf(i.name).parts.length));
+  const msgP = g.waMessage(priceDave);
+  const bestDay = g.PROTOCOLS.bp.items.reduce((t, i) => t + g.cheapDay(i), 0), typDay = g.costOf('bp');
+  ok('pricing: the message tells the visitor where each food is cheapest, at what price',
+    /WHERE TO BUY IT CHEAPEST \(store prices checked/.test(msgP) && /cheapest at SPAR \(R29\.99 per kg\)/.test(msgP) && msgP.includes('60g breakfast'), msgP.slice(msgP.indexOf('WHERE TO BUY'), msgP.indexOf('WHERE TO BUY') + 120));
+  ok('pricing: the cheapest-store day total is lower than the typical one, and both are quoted',
+    bestDay > 0 && bestDay < typDay && msgP.includes(g.money(bestDay)) && msgP.includes(g.money(typDay)), 'best=' + bestDay + ' typical=' + typDay);
+  const slaw = planItems.find(i => /Cabbage/.test(i.name));
+  ok('pricing: multi-part foods name a cheapest store for each part',
+    !!slaw && g.cheapLine(slaw).includes('carrots cheapest at') && g.cheapLine(slaw).includes('cabbage cheapest at'), slaw && g.cheapLine(slaw));
+  g.state.activeId = 'EXPO-042'; g.openWhatsApp();
+  ok('pricing: the send preview shows the cheapest stores and both totals',
+    $el('waBody').innerHTML.includes('Where to buy it cheapest') && $el('waBody').innerHTML.includes(g.money(bestDay)));
+  g.closeWhatsApp();
+
+  /* ---- 20b. the queue: join, call next, serve, done, back, remove ---- */
+  console.log('\n20b. The queue (demo mode)');
+  g.resetDemo();
+  ok('queue: empty at boot, and demo mode allows changes', g.queue.length === 0 && g.qMode() === 'demo' && g.qCan());
+  await g.queueJoin('EXPO-042', 'bp');
+  await g.queueJoin('EXPO-088', 'bp');
+  await g.queueJoin('EXPO-042', 'bp');
+  ok('queue: two visitors join and a duplicate is refused', g.qList('bp', 'waiting').length === 2);
+  ok('queue: the line is first-in-first-out', g.qList('bp', 'waiting')[0].attendeeId === 'EXPO-042' && g.qList('bp', 'waiting')[1].attendeeId === 'EXPO-088');
+  ok('queue: the nav badge counts the waiting line', />2</.test($el('navItems').innerHTML));
+  const stats = g.qStats('bp');
+  ok('queue: stats estimate a wait and flag a line nobody is serving', stats.wait.length === 2 && stats.eta > 0 && (stats.tone === 'ok' || stats.tone === 'watch'));
+  await g.queueCallNext('bp');
+  ok('queue: call-next serves the first arrival', g.qList('bp', 'serving').length === 1 && g.qList('bp', 'serving')[0].attendeeId === 'EXPO-042' && g.qList('bp', 'waiting')[0].attendeeId === 'EXPO-088');
+  await g.queueCallNext('bp');
+  ok('queue: a second desk can serve the next visitor at the same time', g.qList('bp', 'serving').length === 2 && g.qList('bp', 'waiting').length === 0);
+  await g.queueCallNext('bp');
+  ok('queue: calling next past the end of the line changes nothing', g.qList('bp', 'serving').length === 2 && g.qList('bp', 'waiting').length === 0);
+  await g.queueBack(g.qList('bp', 'serving')[0].id);
+  ok('queue: a person being served can go back to the line, keeping their place',
+    g.qList('bp', 'waiting')[0].attendeeId === 'EXPO-042' && g.qList('bp', 'serving').length === 1 && g.qList('bp', 'serving')[0].attendeeId === 'EXPO-088');
+  await g.queueCallNext('bp');
+  const qid = g.qList('bp', 'serving')[0].id;
+  await g.queueDone(qid);
+  ok('queue: finishing a visit clears the desk and counts it done', g.qStats('bp').done === 1 && g.qList('bp', 'serving').length === 1);
+  await g.queueJoin('EXPO-117', 'bp');
+  const wid = g.qList('bp', 'waiting')[0].id;
+  await g.queueRemove(wid);
+  ok('queue: removing someone takes a confirming second tap', !!g.queue.find(e => e.id === wid));
+  await g.queueRemove(wid);
+  ok('queue: the second tap takes them out of the line (kept on record as "left")',
+    g.queue.find(e => e.id === wid).status === 'left' && g.qList('bp', 'waiting').length === 0);
+  g.state.tab = 'queue'; g.state.qStation = 'bp'; g.render();
+  ok('queue: the queue screen renders the station board', $main.innerHTML.includes('Who is waiting where') && $main.innerHTML.includes('Big screen') && $main.innerHTML.includes('Being served'));
 
   /* follow-up capture → Care lists */
   g.resetDemo();
