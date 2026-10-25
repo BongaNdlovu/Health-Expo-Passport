@@ -1,0 +1,82 @@
+/* fix-plan-warnings/config.js: what the warnings-and-precautions change may touch and how it is verified. */
+module.exports = {
+  /* SCOPE. The app (index.html), the harness and PLANS.md. dist/ is rebuilt by build.js. */
+  edited: ['index.html', '.smoke/harness.js', 'PLANS.md'],
+  generated: ['dist/index.html', 'dist/sw.js'],
+  generate: { cmd: 'node', args: ['tools/build.js'] },
+
+  skipDirs: ['fix-plan', 'fix-plan-churches', 'fix-plan-status', 'fix-plan-provenance', 'fix-plan-herbs', 'fix-plan-egw', 'fix-plan-church-plans', 'fix-plan-warnings', '.git', 'node_modules', '.claude', '.cursor', '.wrangler', '.gradle', 'build', 'signing'],
+  copySkipDirs: ['fix-plan', 'fix-plan-churches', 'fix-plan-status', 'fix-plan-provenance', 'fix-plan-herbs', 'fix-plan-egw', 'fix-plan-church-plans', 'fix-plan-warnings', '.git', 'node_modules', '.claude', '.cursor', '.wrangler', '.gradle', 'build'],
+  skipFiles: ['FIX-PLAN-warnings.md'],
+
+  /* run with NEWSTART_PGLITE set, as the previous plan was, so the database checks keep running */
+  test: {
+    cmd: 'node', args: ['.smoke/harness.js'], shell: false, timeoutSec: 900,
+    line: '^\\s*(PASS|FAIL)\\s+(.*?)\\s*$', pass: 'PASS', fail: 'FAIL',
+    normalize: '\\s*(\\([^()]*?\\d+(\\.\\d+)?\\s*(ms|x)\\b[^()]*\\))?(\\s{2}→.*)?$',
+  },
+  parallel: 3,
+
+  targets: [],
+  requiredPass: [
+    'the disclaimer says the volunteers are not health professionals and the plan is not medical advice',
+    'the precautions cover medicine, screening, pregnancy and illness, herb interactions, warning signs, emergencies and children',
+    'every app plan screen shows the disclaimer and the precautions',
+    'a church plan screen shows them too',
+    'the WhatsApp message carries the disclaimer and every precaution',
+    'the WhatsApp preview carries the disclaimer',
+    'the printed card says the advice comes from volunteers, not health professionals, and what to do in an emergency',
+    'the Results screen says the readings are screening only, not a diagnosis',
+    'the Food screen carries the disclaimer',
+    'take-home card keeps the clinic warning',
+    'WhatsApp message still carries the do-not-stop-pills warning',
+  ],
+  obsoleteNames: [],
+  unrelatedFails: [],
+  flaky: ['first full pull finished in a sensible time', 'saving to the device is fast', 'Care with 600 urgent + 1000 call-backs draws a capped set',
+    'the whole backlog uploads on reconnect', '500 live inserts from other desks are applied'],
+
+  anchors: [
+    { file: 'index.html', needle: 'const PROTOCOLS={' },
+    { file: 'index.html', needle: 'function viewPlan(){' },
+    { file: 'index.html', needle: 'function viewChurchPlan(a,cp){' },
+    { file: 'index.html', needle: 'function waMessage(a){' },
+    { file: 'index.html', needle: 'function buildPrintCard(){' },
+  ],
+  invariants: [
+    { id: 'plans', desc: 'the nine built-in plans (PROTOCOLS) are untouched', file: 'index.html', regex: '(const PROTOCOLS=\\{[\\s\\S]*?\\n\\};)' },
+    { id: 'actions', desc: 'the built-in actions are untouched', file: 'index.html', regex: '(const ACTIONS=\\{[\\s\\S]*?\\n\\};)' },
+    { id: 'help-line', desc: 'the crisis help line is untouched', file: 'index.html', regex: "(const HELP_LINE='[^']*';)" },
+  ],
+  checks: [{ id: 'harness-syntax', desc: 'the harness is valid JavaScript', cmd: 'node', args: ['--check', '.smoke/harness.js'] }],
+
+  mutations: [
+    { id: 'WM1', what: 'the app plan screen drops the warnings box', file: 'index.html',
+      find: "  ${precautionsHTML()}\n\n  ${p.items.length?`<button class=\"pl-food\"", replace: "\n  ${p.items.length?`<button class=\"pl-food\"",
+      mustFail: ['every app plan screen shows the disclaimer and the precautions'] },
+    { id: 'WM2', what: 'the church plan screen drops the warnings box', file: 'index.html',
+      find: "  ${precautionsHTML()}\n </section>`;\n}\n\n/* --- the Church screen", replace: " </section>`;\n}\n\n/* --- the Church screen",
+      mustFail: ['a church plan screen shows them too'] },
+    { id: 'WM3', what: 'the disclaimer no longer says the volunteers are not health professionals', file: 'index.html',
+      find: 'The volunteers at this expo are not doctors, nurses or other health professionals unless they tell you so.', replace: 'The volunteers at this expo are trained helpers.',
+      mustFail: ['the disclaimer says the volunteers are not health professionals and the plan is not medical advice'] },
+    { id: 'WM4', what: 'the emergency precaution is dropped', file: 'index.html',
+      find: " 'In an emergency, call an ambulance or go to the nearest emergency unit straight away. Do not wait to try home remedies.',\n", replace: '',
+      mustFail: ['the precautions cover medicine, screening, pregnancy and illness, herb interactions, warning signs, emergencies and children'] },
+    { id: 'WM5', what: 'the WhatsApp message leaves the precautions out', file: 'index.html',
+      find: '  ...PRECAUTIONS.map(t=>`• ${t}`),\n', replace: '',
+      mustFail: ['the WhatsApp message carries the disclaimer and every precaution'] },
+    { id: 'WM6', what: 'the card no longer says who gave the advice', file: 'index.html',
+      find: 'given by volunteers, not health professionals, as general information, not medical advice. ', replace: '',
+      mustFail: ['the printed card says the advice comes from volunteers, not health professionals, and what to do in an emergency'] },
+    { id: 'WM7', what: 'the Results screen no longer says the readings are screening only', file: 'index.html',
+      find: 'Expo readings are a quick screening, not a diagnosis, and the volunteers are not health professionals. ', replace: '',
+      mustFail: ['the Results screen says the readings are screening only, not a diagnosis'] },
+    { id: 'WM8', what: 'the Food screen drops the disclaimer', file: 'index.html',
+      find: '<b>Safety:</b> ${esc(DISCLAIMER)} Never stop', replace: '<b>Safety:</b> Never stop',
+      mustFail: ['the Food screen carries the disclaimer'] },
+    { id: 'WM9', what: 'the WhatsApp preview drops the disclaimer', file: 'index.html',
+      find: '  <p class="mt-2 text-[10px] leading-relaxed text-[#6b8187]">${esc(DISCLAIMER)} ${esc(PRECAUTIONS[5])}</p>\n', replace: '',
+      mustFail: ['the WhatsApp preview carries the disclaimer'] },
+  ],
+};
