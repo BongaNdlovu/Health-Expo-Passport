@@ -31,11 +31,11 @@ const EXPORTS = [
   'gateView', 'cloudSignUp', 'cloudResend', 'cloudForgot', 'cloudNewPassword', 'passwordProblem', 'validEmail',
   'waNumber', 'waMessage', 'sendWhatsApp', 'toggleInterest', 'onPrayer', 'reservePouch', 'followUpCard', 'INT',
   'planNeeds', 'bpStage', 'PROTOCOLS', 'BOOK_REF', 'autoProtocol', 'costOf',
-  'BOOK2_REF', 'refLabel', 'planBooks', 'planCredit', 'HELP_LINE',
+  'BOOK2_REF', 'BOOK3_REF', 'BOOK4_REF', 'refLabel', 'planBooks', 'planCredit', 'HELP_LINE',
   'acctGate', 'acctGateHTML', 'loadAccount', 'openAcct', 'closeAcct', 'renderAcct', 'acctTabs', 'acctButtons', 'joinChurch',
   'registerChurch', 'leaveChurch', 'saveMyDetails', 'churchSearch', 'setMember', 'linkMember', 'removeMember', 'setChurchStatus',
   'manageChurch', 'saveChurch', 'inChurch', 'conflictOn', 'dropChurchData', 'adoptChurch', 'healthHTML',
-  'planFor', 'PRICE_DATE',
+  'planFor', 'PRICE_DATE', 'ACTIONS', 'FOOD_WHY',
   'health', 'noteHealth', 'healthReset', 'healthTest', 'statusPanelHTML', 'homeHealthHTML', 'acctHealthHTML', 'qStateBar',
   'SERVE_TABS', 'viewProfile', 'profGate', 'gateBack', 'profPassword', 'profDeleteAsk', 'profDeleteTyped', 'profDeleteGo',
   'profileChanged', 'passwordCheck', 'savePassword',
@@ -2175,10 +2175,10 @@ function makeServer() {
   ok('Android: signing passwords are not in the website files', !fs.existsSync(dist('KEYSTORE-INFO.txt')) && !/store password/.test(fs.readFileSync(dist('index.html'), 'utf8')));
   ok('the host header file sets the manifest content type', /manifest\.webmanifest[\s\S]*Content-Type: application\/manifest\+json/.test(fs.readFileSync(path.join(rootDir, 'tools', 'build.js'), 'utf8')));
 
-  /* ---- 21. plans built from the Natural Remedies Encyclopedia --------- */
+  /* ---- 21. plans built from public-domain Adventist books ------------- */
   console.log('\n21. Book-based plans');
   const PL = g.PROTOCOLS;
-  const PART = '(?:\\d{3}(?:[–-]\\d{3})?|N:\\d{1,2}(?:[–-]\\d{1,2})?)', PAGE = new RegExp('^' + PART + '(?: · ' + PART + ')*$');
+  const PART = '(?:MH:\\d{1,2}|K:\\d{3}(?:[–-]\\d{3})?|KD:[A-Z][a-z]+|GR:[A-Z][a-z]+|G|S)', PAGE = new RegExp('^' + PART + '(?: · ' + PART + ')*$');
   const plans = Object.keys(PL);
   ok('all five plans are there (blood pressure, sugar, weight & cholesterol, sleep, stress & mood)', ['bp', 'sugar', 'bmi', 'sleep', 'mind'].every(k => PL[k]) && plans.length === 5, plans.join());
   ok('every plan names its book chapters and pages', plans.every(k => /(pp?\. \d{3}|chs?\. \d)/.test(PL[k].src)), plans.map(k => PL[k].src).join(' | '));
@@ -2187,43 +2187,64 @@ function makeServer() {
   ok('every plan has three habits for the message and card', plans.every(k => PL[k].habits.length === 3));
   ok('every plan has a safety note and priced items', plans.every(k => PL[k].note.length > 20 && PL[k].items.length >= 3 && PL[k].items.every(i => i.daily > 0 && i.store && i.dose && /checked \d+ \w+ \d{4}/.test(i.store))));
   const allRefs = k => [...PL[k].steps.map(s => s[2]), ...PL[k].facts.map(f => f[1])].join(' · ').split(' · ');
-  ok('cited Encyclopedia pages sit inside the chapters used (256–259, 480–482, 526–528, 531–532, 547–548, 656–658)',
-    plans.every(k => allRefs(k).filter(r => !r.startsWith('N:')).every(pg => pg.match(/\d{3}/g).every(n => [[256, 259], [480, 482], [526, 528], [531, 532], [547, 548], [656, 658]].some(([a, b]) => +n >= a && +n <= b)))));
-  ok('cited Nedley chapters are real lifestyle or thinking chapters (1–19)',
-    plans.every(k => allRefs(k).filter(r => r.startsWith('N:')).every(r => r.slice(2).split(/[–-]/).every(n => +n >= 1 && +n <= 19))));
-  ok('Nedley references are chapters, never invented page numbers', plans.every(k => allRefs(k).filter(r => r.startsWith('N:')).every(r => !/\d{3}/.test(r))));
-  const oldWords = /hibiscus|beetroot|stock cube|Aromat|apple-cider|cinnamon|pumpkin seed|oat milk|chamomile/i;
+  const everyRef = [...plans.flatMap(allRefs), ...plans.flatMap(k => g.ACTIONS[k].map(x => x.ref)), ...Object.values(g.FOOD_WHY).flat().map(w => w.ref)].join(' · ').split(' · ');
+  ok('every reference in the plans, actions and foods is a Ministry of Healing chapter, a Kellogg page, general advice or an expo safety rule',
+    everyRef.every(r => PAGE.test(r)), everyRef.filter(r => !PAGE.test(r)).join());
+  ok('cited Ministry of Healing chapters are its health chapters (8, 17–20, 23–26)',
+    everyRef.filter(r => r.startsWith('MH:')).every(r => [8, 17, 18, 19, 20, 23, 24, 25, 26].includes(+r.slice(3))), everyRef.filter(r => r.startsWith('MH:')).join());
+  ok('cited Kellogg pages are the pages checked for these plans (197, 372, 377, 383–384, 395–396)',
+    everyRef.filter(r => r.startsWith('K:')).every(r => ['197', '372', '377', '383–384', '395–396'].includes(r.slice(2))), everyRef.filter(r => r.startsWith('K:')).join());
+  ok('"general advice" lines (no book) appear only in the sleep plan',
+    plans.filter(k => k !== 'sleep').every(k => !allRefs(k).some(r => r === 'G') && !g.ACTIONS[k].some(x => x.ref.split(' · ').includes('G'))));
+  const oldBooks = /Nedley|Encyclopedia|Harvestime|Ferrell|Cherne|Pamplona|Lost Art of Thinking/i;
+  ok('nothing in the plans, actions or foods names the old books',
+    !oldBooks.test(JSON.stringify(PL) + JSON.stringify(g.ACTIONS) + JSON.stringify(g.FOOD_WHY) + g.BOOK_REF + g.BOOK2_REF));
+  const herbRefs = everyRef.filter(r => /^(KD|GR):/.test(r));
+  ok('cited herbal entries are the ones checked (King’s: Matricaria, Tilia, Nepeta, Humulus; Grieve: Hops)',
+    herbRefs.length > 0 && herbRefs.every(r => ['KD:Matricaria', 'KD:Tilia', 'KD:Nepeta', 'KD:Humulus', 'GR:Hops'].includes(r)), herbRefs.join());
+  const planText = k => JSON.stringify(PL[k]) + JSON.stringify(g.ACTIONS[k]);
+  ok('herb teas: only chamomile, linden flower, catnip and hops, with hops in the sleep plan only',
+    plans.every(k => !/valerian|passion ?flower|skullcap|scullcap|lemon balm|hawthorn|kava/i.test(planText(k))) && ['bp', 'sugar', 'bmi', 'mind'].every(k => !/hops/i.test(planText(k)))
+    && ['catnip', 'linden', 'hops', 'chamomile'].every(w => new RegExp(w, 'i').test(planText('sleep'))) && ['chamomile', 'linden'].every(w => new RegExp(w, 'i').test(planText('mind'))));
+  ok('every herb tea comes with its hazard note',
+    /sleeping or anxiety pills/.test(PL.sleep.note) && /catnip tea in pregnancy/.test(PL.sleep.note) && /ragweed/.test(PL.sleep.note) && /fresh linden/.test(PL.sleep.note)
+    && /ragweed/.test(PL.mind.note) && /fresh linden/.test(PL.mind.note));
+  ok('herb teas are water teas, never tinctures, extracts or capsules', !/tincture|extract|capsule/i.test(JSON.stringify(PL) + JSON.stringify(g.ACTIONS)));
+  const oldWords = /hibiscus|beetroot|stock cube|Aromat|apple-cider|cinnamon|pumpkin seed|oat milk/i;
   ok('the old, non-book content is gone from the plans', !oldWords.test(JSON.stringify(PL)), (JSON.stringify(PL).match(oldWords) || [])[0]);
-  ok('no plan tells people to take a HOT foot bath (the book cautions against it for diabetes and numb feet)',
-    plans.every(k => !PL[k].steps.some(s => /foot bath/i.test(s[1]))) && /do not use hot tub baths/i.test(PL.bp.hydro) && /extremes/i.test(PL.sugar.hydro));
-  ok('every bath named in a plan is the neutral bath (34–36°C)', plans.filter(k => PL[k].hydro).every(k => /34–36°C/.test(PL[k].hydro)));
+  ok('no plan tells people to take a HOT foot bath, and the hot-bath cautions stay (Kellogg pp. 197, 372, 377)',
+    plans.every(k => !PL[k].steps.some(s => /foot bath/i.test(s[1]))) && /never a hot bath/i.test(PL.bp.hydro) && /extremes/i.test(PL.sugar.hydro));
+  ok('every bath named in a plan is the neutral bath (33–35°C, Kellogg p. 395)', plans.filter(k => PL[k].hydro).every(k => /33–35°C/.test(PL[k].hydro)));
   ok('no plan recommends high-dose supplements or fasting', !/\bmg\b|fast(ing)? (one|two|1|2) days|poke root|cayenne|senna/i.test(JSON.stringify(PL.bp.steps) + JSON.stringify(PL.sleep.steps) + JSON.stringify(PL.sugar.steps)));
   ok('no plan tells anyone to stop medicine', plans.every(k => !/stop (taking )?(your )?(pills|medic)/i.test(PL[k].steps.map(s => s[1]).join(' '))) && plans.every(k => /clinic|doctor/i.test(PL[k].note) || k === 'bmi'));
-  ok('the Encyclopedia is credited in full', /Natural Remedies Encyclopedia/.test(g.BOOK_REF) && /Ferrell/.test(g.BOOK_REF) && /Cherne/.test(g.BOOK_REF));
-  ok('The Lost Art of Thinking is credited in full', /Lost Art of Thinking/.test(g.BOOK2_REF) && /Nedley/.test(g.BOOK2_REF) && /2011/.test(g.BOOK2_REF));
-  ok('reference labels read naturally', g.refLabel('527') === 'p. 527' && g.refLabel('526–528') === 'p. 526–528' && g.refLabel('N:16') === 'Nedley ch. 16'
-    && g.refLabel('N:1–10') === 'Nedley chs. 1–10' && g.refLabel('548 · N:14 · N:16') === 'p. 548 · Nedley ch. 14 · Nedley ch. 16');
-  ok('every plan credits the books it really uses', plans.every(k => g.planBooks(PL[k]).length >= 1) && g.planBooks(PL.bp).length === 2 && g.planBooks(PL.mind).length === 2
-    && g.planCredit(PL.sleep).includes('Natural Remedies Encyclopedia') && g.planCredit(PL.sleep).includes('The Lost Art of Thinking'));
-  ok('the stress & mood plan teaches all ten thinking traps in order, each tied to its chapter',
-    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].every(n => PL.mind.facts.some(([t, r]) => t.startsWith('Thinking trap ' + n + ',') && r === 'N:' + n)));
+  ok('The Ministry of Healing is credited in full, as public domain', /The Ministry of Healing/.test(g.BOOK_REF) && /Ellen G\. White/.test(g.BOOK_REF) && /1905/.test(g.BOOK_REF) && /public domain/.test(g.BOOK_REF));
+  ok('Rational Hydrotherapy is credited in full, as public domain', /Rational Hydrotherapy/.test(g.BOOK2_REF) && /Kellogg/.test(g.BOOK2_REF) && /1901/.test(g.BOOK2_REF) && /public domain/.test(g.BOOK2_REF));
+  ok('the two herbals are credited: King’s (1898, public domain) and Grieve (1931)', /King’s American Dispensatory/.test(g.BOOK3_REF) && /1898/.test(g.BOOK3_REF) && /public domain/.test(g.BOOK3_REF)
+    && /A Modern Herbal/.test(g.BOOK4_REF) && /Grieve/.test(g.BOOK4_REF) && /1931/.test(g.BOOK4_REF));
+  ok('reference labels read naturally', g.refLabel('MH:23') === 'Ministry of Healing ch. 23' && g.refLabel('K:377') === 'Kellogg p. 377' && g.refLabel('K:395–396') === 'Kellogg pp. 395–396'
+    && g.refLabel('S') === 'expo safety rule' && g.refLabel('G · MH:20') === 'general advice · Ministry of Healing ch. 20'
+    && g.refLabel('KD:Tilia') === 'King’s Dispensatory: Tilia' && g.refLabel('GR:Hops') === 'Grieve: Hops');
+  ok('every plan credits the books it really uses', plans.every(k => g.planBooks(PL[k]).length >= 1) && g.planBooks(PL.bp).length === 2 && g.planBooks(PL.bmi).length === 1 && g.planBooks(PL.sleep).length === 4 && g.planBooks(PL.mind).length === 3
+    && g.planCredit(PL.sleep).includes('The Ministry of Healing') && g.planCredit(PL.sleep).includes('Rational Hydrotherapy'));
+  ok('the stress & mood plan rests on gratitude, kindness, song and time outdoors, not on thinking traps',
+    ['thankful spirit', 'helping those in need', 'Singing', 'Time outdoors'].every(w => PL.mind.facts.some(([t]) => t.includes(w))) && !/Thinking trap/.test(JSON.stringify(PL.mind)));
   ok('the sleep and stress plans carry the get-help line with both South African crisis numbers',
     ['sleep', 'mind'].every(k => /0800 567 567/.test(PL[k].help) && /0861 322 322/.test(PL[k].help) && /emergency service/.test(PL[k].help)));
   ok('plans without a mental-health focus carry no help line', ['bp', 'sugar', 'bmi'].every(k => !PL[k].help));
   ok('the sleep plan no longer forbids tomatoes and potatoes (the two books disagree, so neither is imposed)', !/tomato|potato/i.test(JSON.stringify(PL.sleep.steps)));
 
-  /* the book's blood-pressure bands (p. 532) */
-  ok('book BP bands: normal / pre / stage 1 / stage 2', g.bpStage(118, 76) === 'normal' && g.bpStage(125, 70) === 'pre-hypertension' && g.bpStage(135, 85) === 'pre-hypertension'
+  /* the expo's blood-pressure screening bands */
+  ok('BP bands: normal / pre / stage 1 / stage 2', g.bpStage(118, 76) === 'normal' && g.bpStage(125, 70) === 'pre-hypertension' && g.bpStage(135, 85) === 'pre-hypertension'
     && g.bpStage(142, 90) === 'stage 1 high blood pressure' && g.bpStage(150, 95) === 'stage 1 high blood pressure' && g.bpStage(162, 98) === 'stage 2 high blood pressure' && g.bpStage(130, 100) === 'stage 2 high blood pressure');
-  ok('book BP bands: missing numbers give nothing', g.bpStage(null, 80) === '' && g.bpStage(120, null) === '');
+  ok('BP bands: missing numbers give nothing', g.bpStage(null, 80) === '' && g.bpStage(120, null) === '');
 
   /* choosing what each person needs */
   g.resetDemo();
   const dav = g.attendees.find(a => a.id === 'EXPO-042'), mar = g.attendees.find(a => a.id === 'EXPO-117'), sip = g.attendees.find(a => a.id === 'EXPO-088');
   const nDav = g.planNeeds(dav);
   ok('David (142/90, sugar 6.4, BMI 31, cholesterol 6.2) needs BP, sugar and weight/cholesterol', ['bp', 'sugar', 'bmi'].every(k => nDav.some(n => n.k === k)), nDav.map(n => n.k).join());
-  ok('…each with a reason in plain words and the book page', nDav.every(n => n.why.length > 20 && /p\. \d{3}/.test(n.why)));
-  ok('…the BP reason uses the book band and the sugar reason shows mg/dL', /stage 1 high blood pressure/.test(nDav.find(n => n.k === 'bp').why) && /115 mg\/dL/.test(nDav.find(n => n.k === 'sugar').why));
+  ok('…each with a reason in plain words, citing no book page', nDav.every(n => n.why.length > 20 && !/p\. \d{3}|book|Nedley|Encyclopedia/i.test(n.why)));
+  ok('…the BP reason uses the screening band and the sugar reason shows mg/dL', /stage 1 high blood pressure/.test(nDav.find(n => n.k === 'bp').why) && /115 mg\/dL/.test(nDav.find(n => n.k === 'sugar').why));
   ok('…the weight reason names both BMI and cholesterol', /BMI 31/.test(nDav.find(n => n.k === 'bmi').why) && /cholesterol 6\.2/.test(nDav.find(n => n.k === 'bmi').why));
   ok('David is given the blood-pressure plan first', g.autoProtocol(dav) === 'bp');
   ok('…and it is the top of his list even though his sleep (5.5 h) is a red flag too', nDav[0].k === 'bp' && nDav.some(n => n.k === 'sleep' && n.sev === 3) && nDav.findIndex(n => n.k === 'sleep') > nDav.findIndex(n => n.k === 'bmi'), nDav.map(n => n.k + n.sev).join());
@@ -2244,19 +2265,19 @@ function makeServer() {
   g.state.activeId = 'EXPO-042'; g.state.sugFor = null; g.state.tab = 'plan'; g.render();
   ok('Plan screen leads with David\'s main problem, with his other needs as tappable choices', $main.innerHTML.includes('Blood pressure 142/90: high (stage 1). Healthy is under 120/80.')
     && $main.innerHTML.includes('Also needs attention') && /selectProtocol\('sugar'\)/.test($main.innerHTML));
-  ok('…shows the plan steps with book page numbers', /p\. 526/.test($main.innerHTML) && $main.innerHTML.includes('Source: ' + PL.bp.src));
-  ok('…lists what the books advise, and credits both books', $main.innerHTML.includes('Everything the books say') && $main.innerHTML.includes('Natural Remedies Encyclopedia') && $main.innerHTML.includes('The Lost Art of Thinking'));
-  ok('…labels Nedley references as chapters', /Nedley ch\. 17/.test($main.innerHTML));
+  ok('…shows the plan steps with their sources', /Ministry of Healing ch\. 23/.test($main.innerHTML) && $main.innerHTML.includes('Source: ' + PL.bp.src));
+  ok('…lists what the plan is based on, and credits both public-domain books', $main.innerHTML.includes('What this plan is based on') && $main.innerHTML.includes('The Ministry of Healing (Ellen G. White, 1905') && $main.innerHTML.includes('Rational Hydrotherapy (J. H. Kellogg'));
+  ok('…labels Kellogg references as pages', /Kellogg pp\. 395–396/.test($main.innerHTML));
   ok('…no help box on the blood-pressure plan', !/Need help now\?/.test($main.innerHTML));
   ok('…labels prices as dated store prices that vary by branch', new RegExp('≈ R[\\d.]+ a day[\\s\\S]{0,120}Store prices checked ' + g.PRICE_DATE + '; they vary by branch').test($main.innerHTML) && !/Cheapest places/.test($main.innerHTML));
   ok('…no longer claims "Doctor-reviewed"', !/Doctor-reviewed/.test($main.innerHTML));
-  ok('…shows the plan-specific safety note and the do-not-stop-pills rule', /Never stop prescribed pills suddenly/.test($main.innerHTML) && /Hawthorn/.test($main.innerHTML));
+  ok('…shows the plan-specific safety note and the do-not-stop-pills rule', /Never stop prescribed pills suddenly/.test($main.innerHTML) && /kidney disease/.test($main.innerHTML));
   for (const k of ['sugar', 'bmi', 'sleep', 'mind']) {
     g.state.protocol = k; g.render();
     ok('Plan screen renders the ' + k + ' plan with its source and facts', $main.innerHTML.includes('Source: ' + PL[k].src) && PL[k].facts.every(([t]) => $main.innerHTML.includes(t.slice(0, 25))), k);
   }
   g.state.protocol = 'bmi'; g.render();
-  ok('weight plan shows the book\'s calorie rule of thumb for David (94 kg → about 2700 kcal)', /2700 kcal a day/.test($main.innerHTML) && /p\. 481/.test($main.innerHTML), ($main.innerHTML.match(/about <b>[^<]+/) || [])[0]);
+  ok('the weight plan shows no calorie rule of thumb (it came only from the old book)', !/kcal/.test($main.innerHTML));
   g.state.protocol = 'bp'; g.render();
   ok('the calorie line only appears on the weight plan', !/kcal a day/.test($main.innerHTML));
   for (const k of ['sleep', 'mind']) {
@@ -2264,7 +2285,7 @@ function makeServer() {
     ok('the ' + k + ' plan screen shows a prominent "Need help now?" box with both crisis numbers', /Need help now\?/.test($main.innerHTML) && /0800 567 567/.test($main.innerHTML) && /0861 322 322/.test($main.innerHTML));
   }
   g.state.protocol = 'mind'; g.render();
-  ok('the stress plan shows all ten thinking traps and Nedley chapter labels', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].every(n => $main.innerHTML.includes('Thinking trap ' + n + ',')) && /Nedley chs\. 1–10/.test($main.innerHTML));
+  ok('the stress plan screen shows its gratitude habit and Ministry of Healing chapter labels', $main.innerHTML.includes('Write down three good things each evening') && /Ministry of Healing ch\. 18/.test($main.innerHTML));
   g.state.protocol = 'bp';
 
   /* who is offered the stress & mood plan */
@@ -2287,21 +2308,21 @@ function makeServer() {
   const msg2 = g.waMessage(g.attendees.find(a => a.id === 'EXPO-042'));
   /* since the plans became "do these 3 things" (PLANS.md), the message, preview and card carry the plan's top three actions */
   const top3 = g.planFor(g.attendees.find(a => a.id === 'EXPO-042')).top.map(x => x.do);
-  ok('WhatsApp message carries the plan\'s three actions and its book source', top3.length === 3 && top3.every(d => msg2.includes(d)) && msg2.includes('Hypertension, pp. 526–528') && msg2.includes('Natural Remedies Encyclopedia'), top3.join(' | '));
+  ok('WhatsApp message carries the plan\'s three actions and its book source', top3.length === 3 && top3.every(d => msg2.includes(d)) && msg2.includes(PL.bp.src) && msg2.includes('The Ministry of Healing'), top3.join(' | '));
   /* the old plan suggested these; "No stock cubes" (advice to avoid them) is fine */
   ok('WhatsApp message no longer suggests hibiscus, beetroot, foot baths or stock cubes', !/hibiscus|beetroot|foot bath/i.test(msg2) && !/(?<!No )stock cube/i.test(msg2));
   ok('WhatsApp message still carries the do-not-stop-pills warning', /do not stop them suddenly/.test(msg2));
   g.openWhatsApp();
-  ok('WhatsApp preview shows the same actions and source', top3.every(d => $el('waBody').innerHTML.includes(g.esc(d))) && $el('waBody').innerHTML.includes('Hypertension, pp. 526–528'));
+  ok('WhatsApp preview shows the same actions and source', top3.every(d => $el('waBody').innerHTML.includes(g.esc(d))) && $el('waBody').innerHTML.includes(PL.bp.src));
   g.buildPrintCard();
-  ok('take-home card shows the plan\'s actions, the dated store-price note and the book credit', top3.every(d => $el('printArea').innerHTML.includes(g.esc(d))) && /store prices checked \d+ \w+ \d{4}; may vary by branch/.test($el('printArea').innerHTML) && /Natural Remedies Encyclopedia/.test($el('printArea').innerHTML));
+  ok('take-home card shows the plan\'s actions, the dated store-price note and the book credit', top3.every(d => $el('printArea').innerHTML.includes(g.esc(d))) && /store prices checked \d+ \w+ \d{4}; may vary by branch/.test($el('printArea').innerHTML) && /The Ministry of Healing/.test($el('printArea').innerHTML));
   g.attendees.find(a => a.id === 'EXPO-042').interests.stress = true; g.attendees.find(a => a.id === 'EXPO-042').s.sys = 118; g.attendees.find(a => a.id === 'EXPO-042').s.dia = 76;
   g.attendees.find(a => a.id === 'EXPO-042').s.sugar = 5; g.attendees.find(a => a.id === 'EXPO-042').s.chol = 4.5; g.attendees.find(a => a.id === 'EXPO-042').s.weight = 70; g.attendees.find(a => a.id === 'EXPO-042').s.sleep = 8;
   const mindMsg = g.waMessage(g.attendees.find(a => a.id === 'EXPO-042'));
   const mindTop = g.planFor(g.attendees.find(a => a.id === 'EXPO-042')).top.map(x => x.do);
-  ok('the WhatsApp message for the stress plan carries its actions, both books and the help line', g.autoProtocol(g.attendees.find(a => a.id === 'EXPO-042')) === 'mind' && mindTop.length === 3 && mindTop.every(d => mindMsg.includes(d)) && mindMsg.includes('The Lost Art of Thinking') && /0800 567 567/.test(mindMsg));
+  ok('the WhatsApp message for the stress plan carries its actions, both books and the help line', g.autoProtocol(g.attendees.find(a => a.id === 'EXPO-042')) === 'mind' && mindTop.length === 3 && mindTop.every(d => mindMsg.includes(d)) && mindMsg.includes('The Ministry of Healing') && /0800 567 567/.test(mindMsg));
   g.buildPrintCard();
-  ok('the take-home card for the stress plan carries the help line too', /0800 567 567/.test($el('printArea').innerHTML) && /The Lost Art of Thinking/.test($el('printArea').innerHTML));
+  ok('the take-home card for the stress plan carries the help line too', /0800 567 567/.test($el('printArea').innerHTML) && /The Ministry of Healing/.test($el('printArea').innerHTML));
   g.resetDemo(); g.state.activeId = 'EXPO-042'; g.state.sugFor = null;
   ok('take-home card keeps the clinic warning', /Never stop prescribed pills suddenly/.test($el('printArea').innerHTML) && /Not a replacement for your clinic/.test($el('printArea').innerHTML));
   g.state.tab = 'results'; g.render();
