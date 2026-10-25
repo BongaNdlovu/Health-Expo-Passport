@@ -999,6 +999,86 @@ begin
 end;
 $$;
 
+-- ================================================================ CHURCH PLANS
+-- A church's own home plans, for any health problem (one of the app's nine, or its own, such as "arthritis").
+-- The church's admins write them; its staff send one to a visitor, whose record keeps the plan's id in
+-- interests.churchPlan. The app shows them as written by the church, never as its own, and always adds its safety rules.
+create table if not exists public.church_plans (
+  id         uuid primary key default gen_random_uuid(),
+  church_id  uuid not null references public.churches (id) on delete cascade,
+  problem    text not null check (length(btrim(problem)) between 1 and 60),
+  title      text not null check (length(btrim(title)) between 2 and 120),
+  actions    jsonb not null check (jsonb_typeof(actions) = 'array' and jsonb_array_length(actions) between 1 and 8),
+  note       text not null default '' check (length(note) <= 600),
+  created_by uuid references auth.users (id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table public.church_plans enable row level security;         -- no policies: only the functions below reach it
+revoke all on public.church_plans from anon, authenticated;
+create index if not exists church_plans_church_idx on public.church_plans (church_id);
+
+-- the church's plans, for its staff and admins (and the platform admin)
+create or replace function public.church_plans(p_church uuid)
+returns setof public.church_plans
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select p.* from public.church_plans p
+  where p.church_id = p_church and (p_church = public.staff_church() or public.church_admin_of(p_church))
+  order by p.problem, p.title;
+$$;
+
+-- add (p_id null) or change a plan; church admins only. Each action is {do, why, how: [..]}.
+create or replace function public.save_church_plan(p_church uuid, p_id uuid, p_problem text, p_title text, p_actions jsonb, p_note text default '')
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_id uuid;
+begin
+  if not public.church_admin_of(p_church) then raise exception 'church admins only' using errcode = '42501'; end if;
+  if length(btrim(coalesce(p_problem, ''))) = 0 then raise exception 'Choose the problem this plan is for.'; end if;
+  if length(btrim(coalesce(p_title, ''))) < 2 then raise exception 'Give the plan a title.'; end if;
+  if jsonb_typeof(p_actions) is distinct from 'array' or jsonb_array_length(p_actions) = 0 then raise exception 'Add at least one thing to do.'; end if;
+  if jsonb_array_length(p_actions) > 8 then raise exception 'A plan can have at most 8 things to do.'; end if;
+  if exists (select 1 from jsonb_array_elements(p_actions) x
+             where jsonb_typeof(x) <> 'object' or length(btrim(coalesce(x->>'do', ''))) = 0) then
+    raise exception 'Every thing to do needs a short instruction.';
+  end if;
+  if p_id is null then
+    insert into public.church_plans (church_id, problem, title, actions, note, created_by)
+    values (p_church, btrim(p_problem), btrim(p_title), p_actions, btrim(coalesce(p_note, '')), (select auth.uid()))
+    returning id into v_id;
+  else
+    update public.church_plans p
+    set problem = btrim(p_problem), title = btrim(p_title), actions = p_actions, note = btrim(coalesce(p_note, '')), updated_at = now()
+    where p.id = p_id and p.church_id = p_church
+    returning p.id into v_id;
+    if v_id is null then raise exception 'That plan is not in this church.'; end if;
+  end if;
+  return v_id;
+end;
+$$;
+
+create or replace function public.delete_church_plan(p_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_church uuid;
+begin
+  select p.church_id into v_church from public.church_plans p where p.id = p_id;
+  if v_church is null then raise exception 'That plan no longer exists.'; end if;
+  if not public.church_admin_of(v_church) then raise exception 'church admins only' using errcode = '42501'; end if;
+  delete from public.church_plans p where p.id = p_id;
+end;
+$$;
+
 do $$
 declare f text;
 begin
@@ -1007,7 +1087,8 @@ begin
     'join_church(uuid, text, text)', 'register_church(text, text, text, text)', 'update_my_details(text, text, text, date)',
     'leave_church()', 'delete_my_account()', 'my_health()', 'update_church(uuid, text, text, text, text)', 'church_members(uuid)',
     'set_member(uuid, text, text)', 'link_member(uuid, text)', 'remove_member(uuid)', 'admin_churches()',
-    'admin_set_church_status(uuid, text)', 'admin_audit(integer)'] loop
+    'admin_set_church_status(uuid, text)', 'admin_audit(integer)',
+    'church_plans(uuid)', 'save_church_plan(uuid, uuid, text, text, jsonb, text)', 'delete_church_plan(uuid)'] loop
     execute format('revoke all on function public.%s from public, anon', f);
     execute format('grant execute on function public.%s to authenticated', f);
   end loop;

@@ -33,11 +33,12 @@ const EXPORTS = [
   'queue', 'qs', 'queueJoin', 'queueCallNext', 'queueServe', 'queueDone', 'queueBack', 'queueRemove', 'qStats', 'qList', 'qMode', 'qCan', 'viewQueue',
   'cheapDay', 'cheapLine', 'foodPriceOf', 'foodKeyOf', 'FOOD_PRICES', 'money', 'closeWhatsApp',
   'planNeeds', 'bpStage', 'PROTOCOLS', 'BOOK_REF', 'autoProtocol', 'costOf',
-  'BOOK2_REF', 'refLabel', 'planBooks', 'planCredit', 'HELP_LINE',
+  'BOOK2_REF', 'BOOK3_REF', 'BOOK4_REF', 'refLabel', 'planBooks', 'planCredit', 'HELP_LINE',
   'acctGate', 'acctGateHTML', 'loadAccount', 'openAcct', 'closeAcct', 'renderAcct', 'acctTabs', 'acctButtons', 'joinChurch',
   'registerChurch', 'leaveChurch', 'saveMyDetails', 'churchSearch', 'setMember', 'linkMember', 'removeMember', 'setChurchStatus',
   'manageChurch', 'saveChurch', 'inChurch', 'conflictOn', 'dropChurchData', 'adoptChurch', 'healthHTML',
-  'planFor', 'PRICE_DATE',
+  'planFor', 'PRICE_DATE', 'ACTIONS', 'FOOD_WHY', 'urgentOf', 'DISCLAIMER', 'PRECAUTIONS', 'openFood', 'closeFood',
+  'churchPlanList', 'chooseChurchPlan', 'editChurchPlan', 'saveChurchPlan', 'deleteChurchPlan', 'DEMO_CHURCH_PLANS',
   'health', 'noteHealth', 'healthReset', 'healthTest', 'statusPanelHTML', 'homeHealthHTML', 'acctHealthHTML', 'qStateBar',
   'SERVE_TABS', 'viewProfile', 'profGate', 'gateBack', 'profPassword', 'profDeleteAsk', 'profDeleteTyped', 'profDeleteGo',
   'profileChanged', 'passwordCheck', 'savePassword',
@@ -1428,6 +1429,7 @@ function makeServer() {
   {
     const noCloudWas = sandbox.NEWSTART_NO_CLOUD;
     const A = { id: 'ch-a', name: 'Grace Chapel', city: 'Durban', phone: '', email: '', status: 'active' };
+    let cplans = [];
     const B = { id: 'ch-b', name: 'Hope Church', city: 'Pinetown', phone: '', email: '', status: 'pending' };
     const member = over => Object.assign({ church_id: A.id, role: 'member', status: 'pending', full_name: '', phone: '', area: '', birth_date: null, attendee_id: null }, over);
     const person = over => Object.assign({ user_id: 'user-1', email: 'staff@example.org', platform_admin: false, membership: null, church: null }, over);
@@ -1451,6 +1453,13 @@ function makeServer() {
         link_member: a => { rc.push('link:' + a.p_user + ':' + a.p_attendee); return done(); },
         remove_member: a => { rc.push('remove:' + a.p_user); return done(); },
         update_church: a => { rc.push('church:' + a.p_church + ':' + a.p_name); return done(); },
+        church_plans: a => { rc.push('plans:' + a.p_church); return done(JSON.parse(JSON.stringify(cplans.filter(p => p.church_id === a.p_church)))); },
+        save_church_plan: a => {
+          rc.push(['saveplan', a.p_church, a.p_problem, a.p_title, a.p_actions.length].join(':'));
+          const id = a.p_id || 'cp-' + (cplans.length + 1), row = { id, church_id: a.p_church, problem: a.p_problem, title: a.p_title, actions: a.p_actions, note: a.p_note };
+          cplans = cplans.filter(p => p.id !== id).concat([row]); return done(id);
+        },
+        delete_church_plan: a => { rc.push('delplan:' + a.p_id); cplans = cplans.filter(p => p.id !== a.p_id); return done(); },
         admin_churches: () => { rc.push('admin_churches'); return done([{ ...B, members: 1, staff: 0, pending: 0, visitors: 0, volunteers: 0 }, { ...A, members: 2, staff: 1, pending: 1, visitors: 5, volunteers: 2 }]); },
         admin_set_church_status: a => { rc.push('status:' + a.p_church + ':' + a.p_status); return done(); },
         admin_audit: () => done([{ at: '2026-10-20T09:15:00Z', church: A.name, actor: 'st@example.org', tbl: 'attendees', op: 'UPDATE', row_id: 'EXPO-042' }]),
@@ -1567,6 +1576,30 @@ function makeServer() {
     await g.saveChurch({ preventDefault() {} }, 'ch-a');
     ok('a church admin saves the church\'s details', rc.includes('church:ch-a:Grace Chapel Durban'), rc.join());
     g.closeAcct();
+    g.openAcct('church'); await sleep(30);
+    ok('the Church screen has a Church plans box with + Write a new plan', sheet().includes('Church plans') && /editChurchPlan\('ch-a',''\)/.test(sheet()) && rc.includes('plans:ch-a'), rc.join());
+    g.editChurchPlan('ch-a', ''); sheet();
+    $el('cpProblem').value = 'own'; $el('cpOwn').value = 'Joint pain'; $el('cpTitle').value = 'Easing stiff joints'; $el('cpNote').value = '';
+    $el('cpDo0').value = 'Move every joint gently'; $el('cpWhy0').value = 'Keeps joints supple'; $el('cpHow0').value = '5 minutes\nEvery morning';
+    for (let i = 1; i < 8; i++) { $el('cpDo' + i).value = ''; $el('cpWhy' + i).value = ''; $el('cpHow' + i).value = ''; }
+    await g.saveChurchPlan({ preventDefault() {} }, 'ch-a'); await sleep(20);
+    ok('a church admin writes a plan for a problem of their own', rc.includes('saveplan:ch-a:Joint pain:Easing stiff joints:1') && sheet().includes('Easing stiff joints'), rc.join());
+    $el('cpProblem').value = 'bp'; $el('cpDo0').value = '';
+    await g.saveChurchPlan({ preventDefault() {} }, 'ch-a');
+    ok('…a plan with nothing to do is refused before any request', !rc.some(x => x.startsWith('saveplan:ch-a:bp')) && /at least one thing to do/.test($el('toastMsg').textContent));
+    g.closeAcct();
+    g.attendees.push(g.migrateAttendee({ id: 'EXPO-901', name: 'Plan Visitor', age: 40, sex: 'Female', s: { sys: 150, dia: 95 }, heightCm: 165 }));
+    const cpVisitor = g.attendees.find(a => a.id === 'EXPO-901');
+    g.state.activeId = cpVisitor.id; g.state.sugFor = null; g.state.tab = 'plan'; g.render();
+    ok('church staff see the church\'s plans on the Plan tab', /Send a plan from Grace Chapel/.test($main.innerHTML) && /chooseChurchPlan\('cp-1'\)/.test($main.innerHTML));
+    g.chooseChurchPlan('cp-1');
+    ok('…sending one shows it in place of the app\'s plan, as the church\'s own, with the pills rule', cpVisitor.interests.churchPlan === 'cp-1' && $main.innerHTML.includes('Easing stiff joints')
+      && /Written by Grace Chapel/.test($main.innerHTML) && /not reviewed by the app/.test($main.innerHTML) && /Never stop prescribed pills suddenly/.test($main.innerHTML));
+    ok('…and the WhatsApp message carries it', /EASING STIFF JOINTS/.test(g.waMessage(cpVisitor)) && /Move every joint gently/.test(g.waMessage(cpVisitor)) && /Grace Chapel/.test(g.waMessage(cpVisitor)));
+    sandbox.confirm = () => true;
+    await g.deleteChurchPlan('ch-a', 'cp-1'); await sleep(20); g.render();
+    ok('a church admin deletes a plan, and the visitor it was sent to falls back to the app\'s plan', rc.includes('delplan:cp-1') && /Do these 3 things/.test($main.innerHTML) && !/Easing stiff joints/.test($main.innerHTML), rc.join());
+    g.chooseChurchPlan('');
 
     /* the platform admin */
     me.platform_admin = true;
@@ -1943,6 +1976,44 @@ function makeServer() {
     r = await as(null, `select public.my_account() a`);
     const r14 = await as(null, `select * from public.church_directory('')`);
     ok('signed-out callers can use none of the account functions', !!r.error && !!r14.error);
+
+    /* ---- church plans ---- */
+    const PU = { adm: '00000000-0000-4000-8000-0000000000a1', stf: '00000000-0000-4000-8000-0000000000a2', mem: '00000000-0000-4000-8000-0000000000a3', oth: '00000000-0000-4000-8000-0000000000a4' };
+    for (const [n, id] of Object.entries(PU)) await sys(`insert into auth.users (id, email, email_confirmed_at) values ($1, $2, now())`, [id, 'plan-' + n + '@example.org']);
+    const PA = (await sys(`insert into public.churches (name, status) values ('Plan Church A', 'active') returning id`))[0].id;
+    const PB = (await sys(`insert into public.churches (name, status) values ('Plan Church B', 'active') returning id`))[0].id;
+    await sys(`insert into public.memberships (user_id, church_id, role, status) values ($1, $5, 'admin', 'approved'), ($2, $5, 'staff', 'approved'), ($3, $5, 'member', 'approved'), ($4, $6, 'admin', 'approved')`,
+      [PU.adm, PU.stf, PU.mem, PU.oth, PA, PB]);
+    const acts = JSON.stringify([{ do: 'Move every joint gently', why: 'Keeps joints supple', how: ['5 minutes'] }]);
+    r = await as(PU.adm, `select public.save_church_plan($1, null, 'Joint pain', 'Easing stiff joints', $2::jsonb, '') id`, [PA, acts]);
+    const planId = r.rows && r.rows[0].id;
+    ok('a church admin saves a church plan for a problem of their own', !r.error && !!planId, r.error && r.error.message);
+    r = await as(PU.stf, `select id, title, problem from public.church_plans($1)`, [PA]);
+    ok('the church\'s staff list its plans', !r.error && r.rows.length === 1 && r.rows[0].title === 'Easing stiff joints' && r.rows[0].problem === 'Joint pain', r.error ? r.error.message : JSON.stringify(r.rows));
+    r = await as(PU.stf, `select public.save_church_plan($1, null, 'bp', 'Staff plan', $2::jsonb, '')`, [PA, acts]);
+    ok('church staff cannot write plans; only admins can', !!r.error);
+    r = await as(PU.mem, `select count(*)::int n from public.church_plans($1)`, [PA]);
+    ok('a member sees no church plans', !r.error && r.rows[0].n === 0, r.error && r.error.message);
+    const o1 = await as(PU.oth, `select count(*)::int n from public.church_plans($1)`, [PA]);
+    const o2 = await as(PU.oth, `select public.save_church_plan($1, null, 'bp', 'Not mine', $2::jsonb, '')`, [PA, acts]);
+    const o3 = await as(PU.oth, `select public.delete_church_plan($1)`, [planId]);
+    ok('another church\'s admin can neither see, write nor delete them', !o1.error && o1.rows[0].n === 0 && !!o2.error && !!o3.error);
+    r = await as(PU.adm, `select count(*)::int n from public.church_plans`);
+    ok('the church_plans table cannot be read directly', !!r.error);
+    const e1p = await as(PU.adm, `select public.save_church_plan($1, null, 'bp', 'Empty', '[]'::jsonb, '')`, [PA]);
+    const e2p = await as(PU.adm, `select public.save_church_plan($1, null, 'bp', 'Blank', '[{"do":"  "}]'::jsonb, '')`, [PA]);
+    ok('a plan needs at least one thing to do, each with an instruction', !!e1p.error && !!e2p.error);
+    r = await as(PU.adm, `select public.save_church_plan($1, $2, 'bp', 'Walking club', $3::jsonb, 'Bring water')`, [PA, planId, acts]);
+    const edited = await sys(`select problem, title, note from public.church_plans where id = $1`, [planId]);
+    ok('a church admin edits a plan', !r.error && edited[0].problem === 'bp' && edited[0].title === 'Walking club' && edited[0].note === 'Bring water', r.error ? r.error.message : JSON.stringify(edited));
+    r = await as(null, `select * from public.church_plans($1)`, [PA]);
+    ok('signed-out callers cannot use the church plan functions', !!r.error);
+    await sys(`update public.churches set status = 'suspended' where id = $1`, [PA]);
+    r = await as(PU.stf, `select count(*)::int n from public.church_plans($1)`, [PA]);
+    ok('a suspended church\'s staff see no plans', !r.error && r.rows[0].n === 0, r.error && r.error.message);
+    await sys(`update public.churches set status = 'active' where id = $1`, [PA]);
+    r = await as(PU.adm, `select public.delete_church_plan($1)`, [planId]);
+    ok('a church admin deletes a plan', !r.error && (await sys(`select count(*)::int n from public.church_plans where id = $1`, [planId]))[0].n === 0, r.error && r.error.message);
 
     /* ---- a brand-new project ---- */
     const fresh = new PGlite();
@@ -2490,55 +2561,78 @@ function makeServer() {
   ok('Android: signing passwords are not in the website files', !fs.existsSync(dist('KEYSTORE-INFO.txt')) && !/store password/.test(fs.readFileSync(dist('index.html'), 'utf8')));
   ok('the host header file sets the manifest content type', /manifest\.webmanifest[\s\S]*Content-Type: application\/manifest\+json/.test(fs.readFileSync(path.join(rootDir, 'tools', 'build.js'), 'utf8')));
 
-  /* ---- 21. plans built from the Natural Remedies Encyclopedia --------- */
+  /* ---- 21. plans built on Ellen White's health writings ----------------- */
   console.log('\n21. Book-based plans');
   const PL = g.PROTOCOLS;
-  const PART = '(?:\\d{3}(?:[–-]\\d{3})?|N:\\d{1,2}(?:[–-]\\d{1,2})?)', PAGE = new RegExp('^' + PART + '(?: · ' + PART + ')*$');
+  const PART = '(?:MH:\\d{1,2}|CD:\\d{1,3}|HL:\\d{1,3}|PH:\\d{1,2}|G|S)', PAGE = new RegExp('^' + PART + '(?: · ' + PART + ')*$');
   const plans = Object.keys(PL);
-  ok('all five plans are there (blood pressure, sugar, weight & cholesterol, sleep, stress & mood)', ['bp', 'sugar', 'bmi', 'sleep', 'mind'].every(k => PL[k]) && plans.length === 5, plans.join());
-  ok('every plan names its book chapters and pages', plans.every(k => /(pp?\. \d{3}|chs?\. \d)/.test(PL[k].src)), plans.map(k => PL[k].src).join(' | '));
+  ok('all nine plans are there (blood pressure, sugar, weight & cholesterol, underweight, fruit & veg, exercise, water, sleep, stress & mood)',
+    ['bp', 'sugar', 'bmi', 'thin', 'veg', 'move', 'water', 'sleep', 'mind'].every(k => PL[k]) && plans.length === 9, plans.join());
+  ok('every plan names its book chapters and pages', plans.every(k => /(chs?\. \d|§)/.test(PL[k].src)), plans.map(k => PL[k].src).join(' | '));
   ok('every step has a time, text and a page in the book', plans.every(k => PL[k].steps.length >= 5 && PL[k].steps.every(([t, txt, pg]) => /^\d\d:\d\d$/.test(t) && txt.length > 20 && PAGE.test(pg))));
   ok('every plan has a list of what the book advises, each with a page', plans.every(k => PL[k].facts.length >= 8 && PL[k].facts.every(([txt, pg]) => txt.length > 20 && PAGE.test(pg))));
   ok('every plan has three habits for the message and card', plans.every(k => PL[k].habits.length === 3));
-  ok('every plan has a safety note and priced items', plans.every(k => PL[k].note.length > 20 && PL[k].items.length >= 3 && PL[k].items.every(i => i.daily > 0 && i.store && i.dose && /checked \d+ \w+ \d{4}/.test(i.store))));
+  ok('every plan has a safety note, and every food plan has priced items (exercise and water have none)',
+    plans.every(k => PL[k].note.length > 20) && plans.every(k => ['move', 'water'].includes(k) ? PL[k].items.length === 0
+      : PL[k].items.length >= 3 && PL[k].items.every(i => i.daily > 0 && i.store && i.dose && /checked \d+ \w+ \d{4}/.test(i.store))));
   const allRefs = k => [...PL[k].steps.map(s => s[2]), ...PL[k].facts.map(f => f[1])].join(' · ').split(' · ');
-  ok('cited Encyclopedia pages sit inside the chapters used (256–259, 480–482, 526–528, 531–532, 547–548, 656–658)',
-    plans.every(k => allRefs(k).filter(r => !r.startsWith('N:')).every(pg => pg.match(/\d{3}/g).every(n => [[256, 259], [480, 482], [526, 528], [531, 532], [547, 548], [656, 658]].some(([a, b]) => +n >= a && +n <= b)))));
-  ok('cited Nedley chapters are real lifestyle or thinking chapters (1–19)',
-    plans.every(k => allRefs(k).filter(r => r.startsWith('N:')).every(r => r.slice(2).split(/[–-]/).every(n => +n >= 1 && +n <= 19))));
-  ok('Nedley references are chapters, never invented page numbers', plans.every(k => allRefs(k).filter(r => r.startsWith('N:')).every(r => !/\d{3}/.test(r))));
-  const oldWords = /hibiscus|beetroot|stock cube|Aromat|apple-cider|cinnamon|pumpkin seed|oat milk|chamomile/i;
+  const everyRef = [...plans.flatMap(allRefs), ...plans.flatMap(k => g.ACTIONS[k].map(x => x.ref)), ...Object.values(g.FOOD_WHY).flat().map(w => w.ref)].join(' · ').split(' · ');
+  ok('every reference in the plans, actions and foods is an Ellen White book, general advice or an expo safety rule',
+    everyRef.every(r => PAGE.test(r)), everyRef.filter(r => !PAGE.test(r)).join());
+  ok('cited Ministry of Healing chapters are its health chapters (8, 17–20, 23–26)',
+    everyRef.filter(r => r.startsWith('MH:')).every(r => [8, 17, 18, 19, 20, 23, 24, 25, 26].includes(+r.slice(3))), everyRef.filter(r => r.startsWith('MH:')).join());
+  const CD_READ = [111, 137, 138, 146, 168, 191, 201, 245, 267, 268, 269, 270, 320, 326, 464, 475, 504, 509, 514, 518, 726, 727, 728, 731];
+  const HL_READ = [185, 189, 313, 570, 571, 578, 618, 717, 780, 786];
+  ok('cited Counsels on Diet, Healthful Living and Place of Herbs passages are the ones checked',
+    everyRef.filter(r => /^(CD|HL|PH):/.test(r)).every(r => r.startsWith('CD:') ? CD_READ.includes(+r.slice(3)) : r.startsWith('HL:') ? HL_READ.includes(+r.slice(3)) : r === 'PH:6'),
+    everyRef.filter(r => /^(CD|HL|PH):/.test(r)).join());
+  ok('every plan cites Ellen White in most of its steps and facts',
+    plans.every(k => { const lines = [...PL[k].steps.map(s => s[2]), ...PL[k].facts.map(f => f[1])]; return lines.filter(r => /(MH|CD|HL|PH):/.test(r)).length * 2 > lines.length; }),
+    plans.map(k => k + ':' + [...PL[k].steps.map(s => s[2]), ...PL[k].facts.map(f => f[1])].filter(r => /(MH|CD|HL|PH):/.test(r)).length).join());
+  const otherBooks = /Nedley|Encyclopedia|Harvestime|Ferrell|Cherne|Pamplona|Lost Art of Thinking|Kellogg|Rational Hydrotherapy|King’s|Dispensatory|Grieve|Modern Herbal/i;
+  ok('nothing in the plans, actions, foods or credits names an author other than Ellen White',
+    !otherBooks.test(JSON.stringify(PL) + JSON.stringify(g.ACTIONS) + JSON.stringify(g.FOOD_WHY) + g.BOOK_REF + g.BOOK2_REF + g.BOOK3_REF + g.BOOK4_REF));
+  const planText = k => JSON.stringify(PL[k]) + JSON.stringify(g.ACTIONS[k]);
+  ok('herb teas: only chamomile, linden flower, catnip and hops, with hops in the sleep plan only',
+    plans.every(k => !/valerian|passion ?flower|skullcap|scullcap|lemon balm|hawthorn|kava/i.test(planText(k))) && plans.filter(k => k !== 'sleep').every(k => !/hops/i.test(planText(k)))
+    && ['catnip', 'linden', 'hops', 'chamomile'].every(w => new RegExp(w, 'i').test(planText('sleep'))) && ['chamomile', 'linden'].every(w => new RegExp(w, 'i').test(planText('mind'))));
+  ok('hop and catnip tea cite Ellen White’s letter (Place of Herbs p. 6)', PL.sleep.facts.some(([t, r]) => /Hop tea/.test(t) && /catnip/.test(t) && r === 'PH:6'));
+  ok('every herb tea comes with its hazard note',
+    /sleeping or anxiety pills/.test(PL.sleep.note) && /catnip tea in pregnancy/.test(PL.sleep.note) && /ragweed/.test(PL.sleep.note) && /fresh linden/.test(PL.sleep.note)
+    && /ragweed/.test(PL.mind.note) && /fresh linden/.test(PL.mind.note));
+  ok('herb teas are water teas, never tinctures, extracts or capsules', !/tincture|extract|capsule/i.test(JSON.stringify(PL) + JSON.stringify(g.ACTIONS)));
+  const oldWords = /hibiscus|beetroot|stock cube|Aromat|apple-cider|cinnamon|pumpkin seed|oat milk/i;
   ok('the old, non-book content is gone from the plans', !oldWords.test(JSON.stringify(PL)), (JSON.stringify(PL).match(oldWords) || [])[0]);
-  ok('no plan tells people to take a HOT foot bath (the book cautions against it for diabetes and numb feet)',
-    plans.every(k => !PL[k].steps.some(s => /foot bath/i.test(s[1]))) && /do not use hot tub baths/i.test(PL.bp.hydro) && /extremes/i.test(PL.sugar.hydro));
-  ok('every bath named in a plan is the neutral bath (34–36°C)', plans.filter(k => PL[k].hydro).every(k => /34–36°C/.test(PL[k].hydro)));
-  ok('no plan recommends high-dose supplements or fasting', !/\bmg\b|fast(ing)? (one|two|1|2) days|poke root|cayenne|senna/i.test(JSON.stringify(PL.bp.steps) + JSON.stringify(PL.sleep.steps) + JSON.stringify(PL.sugar.steps)));
+  ok('no plan tells people to take a HOT foot bath, and the hot-bath cautions stay',
+    plans.every(k => !PL[k].steps.some(s => /foot bath/i.test(s[1]))) && /never a hot bath/i.test(PL.bp.hydro) && /extremes/i.test(PL.sugar.hydro));
+  ok('every bath named in a plan is the warm, neutral bath (33–35°C)', plans.filter(k => PL[k].hydro).every(k => /33–35°C/.test(PL[k].hydro)));
+  ok('no plan recommends high-dose supplements or fasting', !/\bmg\b|fast(ing)? (one|two|1|2) days|poke root|cayenne|senna/i.test(plans.map(k => JSON.stringify(PL[k].steps)).join('')));
   ok('no plan tells anyone to stop medicine', plans.every(k => !/stop (taking )?(your )?(pills|medic)/i.test(PL[k].steps.map(s => s[1]).join(' '))) && plans.every(k => /clinic|doctor/i.test(PL[k].note) || k === 'bmi'));
-  ok('the Encyclopedia is credited in full', /Natural Remedies Encyclopedia/.test(g.BOOK_REF) && /Ferrell/.test(g.BOOK_REF) && /Cherne/.test(g.BOOK_REF));
-  ok('The Lost Art of Thinking is credited in full', /Lost Art of Thinking/.test(g.BOOK2_REF) && /Nedley/.test(g.BOOK2_REF) && /2011/.test(g.BOOK2_REF));
-  ok('reference labels read naturally', g.refLabel('527') === 'p. 527' && g.refLabel('526–528') === 'p. 526–528' && g.refLabel('N:16') === 'Nedley ch. 16'
-    && g.refLabel('N:1–10') === 'Nedley chs. 1–10' && g.refLabel('548 · N:14 · N:16') === 'p. 548 · Nedley ch. 14 · Nedley ch. 16');
-  ok('every plan credits the books it really uses', plans.every(k => g.planBooks(PL[k]).length >= 1) && g.planBooks(PL.bp).length === 2 && g.planBooks(PL.mind).length === 2
-    && g.planCredit(PL.sleep).includes('Natural Remedies Encyclopedia') && g.planCredit(PL.sleep).includes('The Lost Art of Thinking'));
-  ok('the stress & mood plan teaches all ten thinking traps in order, each tied to its chapter',
-    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].every(n => PL.mind.facts.some(([t, r]) => t.startsWith('Thinking trap ' + n + ',') && r === 'N:' + n)));
+  ok('every credit is an Ellen White book', [g.BOOK_REF, g.BOOK2_REF, g.BOOK3_REF, g.BOOK4_REF].every(b => /Ellen G\. White/.test(b))
+    && /The Ministry of Healing/.test(g.BOOK_REF) && /Counsels on Diet and Foods/.test(g.BOOK2_REF) && /Healthful Living/.test(g.BOOK3_REF) && /The Place of Herbs in Rational Therapy/.test(g.BOOK4_REF));
+  ok('reference labels read naturally', g.refLabel('MH:23') === 'Ministry of Healing ch. 23' && g.refLabel('CD:731') === 'Counsels on Diet §731' && g.refLabel('HL:571') === 'Healthful Living §571'
+    && g.refLabel('PH:6') === 'Place of Herbs p. 6' && g.refLabel('S') === 'expo safety rule' && g.refLabel('G · MH:20') === 'general advice · Ministry of Healing ch. 20');
+  ok('every plan credits the books it really uses', plans.every(k => g.planBooks(PL[k]).length >= 1) && g.planBooks(PL.veg).length === 1 && g.planBooks(PL.sleep).length === 4
+    && g.planCredit(PL.sleep).includes('The Ministry of Healing') && g.planCredit(PL.sleep).includes('The Place of Herbs'));
+  ok('the stress & mood plan rests on gratitude, kindness, song, time outdoors and a thought check',
+    ['thankful spirit', 'Helping others', 'Singing', 'Time outdoors', 'thinking traps'].every(w => PL.mind.facts.some(([t]) => t.includes(w))));
   ok('the sleep and stress plans carry the get-help line with both South African crisis numbers',
     ['sleep', 'mind'].every(k => /0800 567 567/.test(PL[k].help) && /0861 322 322/.test(PL[k].help) && /emergency service/.test(PL[k].help)));
   ok('plans without a mental-health focus carry no help line', ['bp', 'sugar', 'bmi'].every(k => !PL[k].help));
   ok('the sleep plan no longer forbids tomatoes and potatoes (the two books disagree, so neither is imposed)', !/tomato|potato/i.test(JSON.stringify(PL.sleep.steps)));
 
-  /* the book's blood-pressure bands (p. 532) */
-  ok('book BP bands: normal / pre / stage 1 / stage 2', g.bpStage(118, 76) === 'normal' && g.bpStage(125, 70) === 'pre-hypertension' && g.bpStage(135, 85) === 'pre-hypertension'
+  /* the expo's blood-pressure screening bands */
+  ok('BP bands: normal / pre / stage 1 / stage 2', g.bpStage(118, 76) === 'normal' && g.bpStage(125, 70) === 'pre-hypertension' && g.bpStage(135, 85) === 'pre-hypertension'
     && g.bpStage(142, 90) === 'stage 1 high blood pressure' && g.bpStage(150, 95) === 'stage 1 high blood pressure' && g.bpStage(162, 98) === 'stage 2 high blood pressure' && g.bpStage(130, 100) === 'stage 2 high blood pressure');
-  ok('book BP bands: missing numbers give nothing', g.bpStage(null, 80) === '' && g.bpStage(120, null) === '');
+  ok('BP bands: missing numbers give nothing', g.bpStage(null, 80) === '' && g.bpStage(120, null) === '');
 
   /* choosing what each person needs */
   g.resetDemo();
   const dav = g.attendees.find(a => a.id === 'EXPO-042'), mar = g.attendees.find(a => a.id === 'EXPO-117'), sip = g.attendees.find(a => a.id === 'EXPO-088');
   const nDav = g.planNeeds(dav);
   ok('David (142/90, sugar 6.4, BMI 31, cholesterol 6.2) needs BP, sugar and weight/cholesterol', ['bp', 'sugar', 'bmi'].every(k => nDav.some(n => n.k === k)), nDav.map(n => n.k).join());
-  ok('…each with a reason in plain words and the book page', nDav.every(n => n.why.length > 20 && /p\. \d{3}/.test(n.why)));
-  ok('…the BP reason uses the book band and the sugar reason shows mg/dL', /stage 1 high blood pressure/.test(nDav.find(n => n.k === 'bp').why) && /115 mg\/dL/.test(nDav.find(n => n.k === 'sugar').why));
+  ok('…each with a reason in plain words, citing no book page', nDav.every(n => n.why.length > 20 && !/p\. \d{3}|book|Nedley|Encyclopedia/i.test(n.why)));
+  ok('…the BP reason uses the screening band and the sugar reason shows mg/dL', /stage 1 high blood pressure/.test(nDav.find(n => n.k === 'bp').why) && /115 mg\/dL/.test(nDav.find(n => n.k === 'sugar').why));
   ok('…the weight reason names both BMI and cholesterol', /BMI 31/.test(nDav.find(n => n.k === 'bmi').why) && /cholesterol 6\.2/.test(nDav.find(n => n.k === 'bmi').why));
   ok('David is given the blood-pressure plan first', g.autoProtocol(dav) === 'bp');
   ok('…and it is the top of his list even though his sleep (5.5 h) is a red flag too', nDav[0].k === 'bp' && nDav.some(n => n.k === 'sleep' && n.sev === 3) && nDav.findIndex(n => n.k === 'sleep') > nDav.findIndex(n => n.k === 'bmi'), nDav.map(n => n.k + n.sev).join());
@@ -2550,6 +2644,10 @@ function makeServer() {
   ok('nothing flagged → no needs listed', g.planNeeds(calm).length === 0);
   const thin = { s: { sys: 112, dia: 72, sugar: 5.0, chol: 4.2, weight: 45, veg: 5, walk: 40, water: 8, sleep: 8 }, heightCm: 170 };
   ok('an underweight person is NOT given the weight-loss plan', g.autoProtocol(thin) !== 'bmi' && !g.planNeeds(thin).some(n => n.k === 'bmi'), g.autoProtocol(thin));
+  ok('…they get the underweight plan instead, with the reason', g.autoProtocol(thin) === 'thin' && /below the healthy range/.test(g.planNeeds(thin)[0].why), g.autoProtocol(thin));
+  const habits = { s: { sys: 112, dia: 72, sugar: 5.0, chol: 4.2, weight: 65, veg: 2, walk: 5, water: 3, sleep: 8 }, heightCm: 170 };
+  ok('low fruit & veg, exercise and water readings each get their plan, in that order', g.planNeeds(habits).map(n => n.k).join() === 'veg,move,water', g.planNeeds(habits).map(n => n.k).join());
+  ok('…and a medical flag still comes first', g.planNeeds({ ...habits, s: { ...habits.s, sys: 150, dia: 95 } })[0].k === 'bp');
   const tired = { s: { sys: 112, dia: 72, sugar: 5.0, chol: 4.2, weight: 65, veg: 5, walk: 40, water: 8, sleep: 5 }, heightCm: 170 };
   ok('short sleep → the sleep plan', g.autoProtocol(tired) === 'sleep' && g.planNeeds(tired)[0].k === 'sleep');
   const chol = { s: { sys: 112, dia: 72, sugar: 5.0, chol: 6.8, weight: 65, veg: 5, walk: 40, water: 8, sleep: 8 }, heightCm: 170 };
@@ -2559,19 +2657,63 @@ function makeServer() {
   g.state.activeId = 'EXPO-042'; g.state.sugFor = null; g.state.tab = 'plan'; g.render();
   ok('Plan screen leads with David\'s main problem, with his other needs as tappable choices', $main.innerHTML.includes('Blood pressure 142/90: high (stage 1). Healthy is under 120/80.')
     && $main.innerHTML.includes('Also needs attention') && /selectProtocol\('sugar'\)/.test($main.innerHTML));
-  ok('…shows the plan steps with book page numbers', /p\. 526/.test($main.innerHTML) && $main.innerHTML.includes('Source: ' + PL.bp.src));
-  ok('…lists what the books advise, and credits both books', $main.innerHTML.includes('Everything the books say') && $main.innerHTML.includes('Natural Remedies Encyclopedia') && $main.innerHTML.includes('The Lost Art of Thinking'));
-  ok('…labels Nedley references as chapters', /Nedley ch\. 17/.test($main.innerHTML));
+  ok('…shows the plan steps with their sources', /Counsels on Diet §\d+/.test($main.innerHTML) && $main.innerHTML.includes('Source: ' + PL.bp.src));
+  ok('…lists what the plan is based on, and credits the Ellen White books it uses', $main.innerHTML.includes('What this plan is based on') && $main.innerHTML.includes('The Ministry of Healing (Ellen G. White, 1905') && $main.innerHTML.includes('Healthful Living (Ellen G. White'));
+  ok('…labels Healthful Living references by paragraph', /Healthful Living §\d+/.test($main.innerHTML));
   ok('…no help box on the blood-pressure plan', !/Need help now\?/.test($main.innerHTML));
   ok('…labels prices as dated store prices that vary by branch', new RegExp('≈ R[\\d.]+ a day[\\s\\S]{0,120}Store prices checked ' + g.PRICE_DATE + '; they vary by branch').test($main.innerHTML) && !/Cheapest places/.test($main.innerHTML));
   ok('…no longer claims "Doctor-reviewed"', !/Doctor-reviewed/.test($main.innerHTML));
-  ok('…shows the plan-specific safety note and the do-not-stop-pills rule', /Never stop prescribed pills suddenly/.test($main.innerHTML) && /Hawthorn/.test($main.innerHTML));
+  ok('…shows the plan-specific safety note and the do-not-stop-pills rule', /Never stop prescribed pills suddenly/.test($main.innerHTML) && /kidney disease/.test($main.innerHTML));
   for (const k of ['sugar', 'bmi', 'sleep', 'mind']) {
     g.state.protocol = k; g.render();
     ok('Plan screen renders the ' + k + ' plan with its source and facts', $main.innerHTML.includes('Source: ' + PL[k].src) && PL[k].facts.every(([t]) => $main.innerHTML.includes(t.slice(0, 25))), k);
   }
+  for (const k of ['thin', 'veg', 'move', 'water']) {
+    g.state.protocol = k; g.render();
+    ok('Plan screen renders the new ' + k + ' plan with its source and facts', $main.innerHTML.includes('Source: ' + PL[k].src) && PL[k].facts.every(([t]) => $main.innerHTML.includes(t.slice(0, 25))), k);
+  }
+  g.state.protocol = 'water'; g.render();
+  ok('a plan with no shopping list shows no food button', !/openFood\(\)/.test($main.innerHTML));
+  g.state.protocol = 'veg'; g.render();
+  ok('a plan with a shopping list still shows the food button', /openFood\(\)/.test($main.innerHTML));
   g.state.protocol = 'bmi'; g.render();
-  ok('weight plan shows the book\'s calorie rule of thumb for David (94 kg → about 2700 kcal)', /2700 kcal a day/.test($main.innerHTML) && /p\. 481/.test($main.innerHTML), ($main.innerHTML.match(/about <b>[^<]+/) || [])[0]);
+  ok('the weight plan shows no calorie rule of thumb (it came only from the old book)', !/kcal/.test($main.innerHTML));
+  g.state.protocol = 'bp'; g.render();
+  ok('in practice mode the Plan tab offers the example church plans', /Send a plan from Practice church/.test($main.innerHTML) && /chooseChurchPlan\('demo-joints'\)/.test($main.innerHTML));
+  const cpDav = g.attendees.find(a => a.id === 'EXPO-042');
+  g.chooseChurchPlan('demo-joints');
+  ok('a chosen church plan replaces the app\'s plan, labelled as the church\'s own, with the pills rule', cpDav.interests.churchPlan === 'demo-joints'
+    && $main.innerHTML.includes('Easing stiff, painful joints') && /Written by Practice church/.test($main.innerHTML) && /not reviewed by the app/.test($main.innerHTML)
+    && /Never stop prescribed pills suddenly/.test($main.innerHTML) && /chooseChurchPlan\(''\)/.test($main.innerHTML));
+  ok('…a red-range reading still shows the warning first', /See the triage nurse now|Book a clinic visit this week/.test($main.innerHTML) === !!g.urgentOf(cpDav, 'bp'));
+  const cpMsg = g.waMessage(cpDav);
+  ok('the WhatsApp message carries the church plan, its church and the pills rule, and no book credit', cpMsg.includes('EASING STIFF, PAINFUL JOINTS') && cpMsg.includes('Move every joint gently each morning') && cpMsg.includes('Practice church')
+    && /do not stop them suddenly/.test(cpMsg) && !/Ministry of Healing/.test(cpMsg), cpMsg.slice(0, 300));
+  g.buildPrintCard();
+  ok('the take-home card carries the church plan and credits the church', $el('printArea').innerHTML.includes(g.esc('Move every joint gently each morning')) && /From: Practice church/.test($el('printArea').innerHTML)
+    && /Never stop prescribed pills suddenly/.test($el('printArea').innerHTML));
+  g.chooseChurchPlan('');
+  ok('“Use the app’s plan instead” goes back to the app\'s plan', !cpDav.interests.churchPlan && /Do these 3 things/.test($main.innerHTML) && /Counsels on Diet §/.test($main.innerHTML));
+  const showsWarnings = h => h.includes('Warnings and precautions') && h.includes(g.DISCLAIMER) && g.PRECAUTIONS.every(t => h.includes(t));
+  ok('the disclaimer says the volunteers are not health professionals and the plan is not medical advice', /not doctors, nurses or other health professionals/.test(g.DISCLAIMER) && /not medical advice/.test(g.DISCLAIMER));
+  ok('the precautions cover medicine, screening, pregnancy and illness, herb interactions, warning signs, emergencies and children',
+    [/Never stop or change it/, /not a diagnosis/, /pregnant or breastfeeding/, /interact with medicines/, /chest pain/, /emergency unit/, /Children/].every(re => g.PRECAUTIONS.some(t => re.test(t))));
+  ok('every app plan screen shows the disclaimer and the precautions', Object.keys(PL).every(k => { g.state.protocol = k; g.render(); return showsWarnings($main.innerHTML); }));
+  g.chooseChurchPlan('demo-joints');
+  ok('a church plan screen shows them too', showsWarnings($main.innerHTML));
+  g.chooseChurchPlan(''); g.state.protocol = 'bp';
+  const wMsg = g.waMessage(cpDav);
+  ok('the WhatsApp message carries the disclaimer and every precaution', wMsg.includes(g.DISCLAIMER) && g.PRECAUTIONS.every(t => wMsg.includes('• ' + t)));
+  g.openWhatsApp();
+  ok('the WhatsApp preview carries the disclaimer', $el('waBody').innerHTML.includes(g.DISCLAIMER));
+  g.buildPrintCard();
+  ok('the printed card says the advice comes from volunteers, not health professionals, and what to do in an emergency',
+    /not health professionals/.test($el('printArea').innerHTML) && /nearest emergency unit/.test($el('printArea').innerHTML) && /Not a replacement for your clinic/.test($el('printArea').innerHTML));
+  g.state.tab = 'results'; g.render();
+  ok('the Results screen says the readings are screening only, not a diagnosis', /quick screening, not a diagnosis/.test($main.innerHTML) && /not health professionals/.test($main.innerHTML));
+  g.state.tab = 'plan'; g.render(); g.openFood();
+  ok('the Food screen carries the disclaimer', $main.innerHTML.includes(g.DISCLAIMER));
+  g.closeFood();
   g.state.protocol = 'bp'; g.render();
   ok('the calorie line only appears on the weight plan', !/kcal a day/.test($main.innerHTML));
   for (const k of ['sleep', 'mind']) {
@@ -2579,7 +2721,7 @@ function makeServer() {
     ok('the ' + k + ' plan screen shows a prominent "Need help now?" box with both crisis numbers', /Need help now\?/.test($main.innerHTML) && /0800 567 567/.test($main.innerHTML) && /0861 322 322/.test($main.innerHTML));
   }
   g.state.protocol = 'mind'; g.render();
-  ok('the stress plan shows all ten thinking traps and Nedley chapter labels', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].every(n => $main.innerHTML.includes('Thinking trap ' + n + ',')) && /Nedley chs\. 1–10/.test($main.innerHTML));
+  ok('the stress plan screen shows its gratitude habit and Ministry of Healing chapter labels', $main.innerHTML.includes('Write down three good things each evening') && /Ministry of Healing ch\. 18/.test($main.innerHTML));
   g.state.protocol = 'bp';
 
   /* who is offered the stress & mood plan */
@@ -2602,21 +2744,21 @@ function makeServer() {
   const msg2 = g.waMessage(g.attendees.find(a => a.id === 'EXPO-042'));
   /* since the plans became "do these 3 things" (PLANS.md), the message, preview and card carry the plan's top three actions */
   const top3 = g.planFor(g.attendees.find(a => a.id === 'EXPO-042')).top.map(x => x.do);
-  ok('WhatsApp message carries the plan\'s three actions and its book source', top3.length === 3 && top3.every(d => msg2.includes(d)) && msg2.includes('Hypertension, pp. 526–528') && msg2.includes('Natural Remedies Encyclopedia'), top3.join(' | '));
+  ok('WhatsApp message carries the plan\'s three actions and its book source', top3.length === 3 && top3.every(d => msg2.includes(d)) && msg2.includes(PL.bp.src) && msg2.includes('The Ministry of Healing'), top3.join(' | '));
   /* the old plan suggested these; "No stock cubes" (advice to avoid them) is fine */
   ok('WhatsApp message no longer suggests hibiscus, beetroot, foot baths or stock cubes', !/hibiscus|beetroot|foot bath/i.test(msg2) && !/(?<!No )stock cube/i.test(msg2));
   ok('WhatsApp message still carries the do-not-stop-pills warning', /do not stop them suddenly/.test(msg2));
   g.openWhatsApp();
-  ok('WhatsApp preview shows the same actions and source', top3.every(d => $el('waBody').innerHTML.includes(g.esc(d))) && $el('waBody').innerHTML.includes('Hypertension, pp. 526–528'));
+  ok('WhatsApp preview shows the same actions and source', top3.every(d => $el('waBody').innerHTML.includes(g.esc(d))) && $el('waBody').innerHTML.includes(PL.bp.src));
   g.buildPrintCard();
-  ok('take-home card shows the plan\'s actions, the dated store-price note and the book credit', top3.every(d => $el('printArea').innerHTML.includes(g.esc(d))) && /store prices checked \d+ \w+ \d{4}; may vary by branch/.test($el('printArea').innerHTML) && /Natural Remedies Encyclopedia/.test($el('printArea').innerHTML));
+  ok('take-home card shows the plan\'s actions, the dated store-price note and the book credit', top3.every(d => $el('printArea').innerHTML.includes(g.esc(d))) && /store prices checked \d+ \w+ \d{4}; may vary by branch/.test($el('printArea').innerHTML) && /The Ministry of Healing/.test($el('printArea').innerHTML));
   g.attendees.find(a => a.id === 'EXPO-042').interests.stress = true; g.attendees.find(a => a.id === 'EXPO-042').s.sys = 118; g.attendees.find(a => a.id === 'EXPO-042').s.dia = 76;
   g.attendees.find(a => a.id === 'EXPO-042').s.sugar = 5; g.attendees.find(a => a.id === 'EXPO-042').s.chol = 4.5; g.attendees.find(a => a.id === 'EXPO-042').s.weight = 70; g.attendees.find(a => a.id === 'EXPO-042').s.sleep = 8;
   const mindMsg = g.waMessage(g.attendees.find(a => a.id === 'EXPO-042'));
   const mindTop = g.planFor(g.attendees.find(a => a.id === 'EXPO-042')).top.map(x => x.do);
-  ok('the WhatsApp message for the stress plan carries its actions, both books and the help line', g.autoProtocol(g.attendees.find(a => a.id === 'EXPO-042')) === 'mind' && mindTop.length === 3 && mindTop.every(d => mindMsg.includes(d)) && mindMsg.includes('The Lost Art of Thinking') && /0800 567 567/.test(mindMsg));
+  ok('the WhatsApp message for the stress plan carries its actions, both books and the help line', g.autoProtocol(g.attendees.find(a => a.id === 'EXPO-042')) === 'mind' && mindTop.length === 3 && mindTop.every(d => mindMsg.includes(d)) && mindMsg.includes('The Ministry of Healing') && /0800 567 567/.test(mindMsg));
   g.buildPrintCard();
-  ok('the take-home card for the stress plan carries the help line too', /0800 567 567/.test($el('printArea').innerHTML) && /The Lost Art of Thinking/.test($el('printArea').innerHTML));
+  ok('the take-home card for the stress plan carries the help line too', /0800 567 567/.test($el('printArea').innerHTML) && /The Ministry of Healing/.test($el('printArea').innerHTML));
   g.resetDemo(); g.state.activeId = 'EXPO-042'; g.state.sugFor = null;
   ok('take-home card keeps the clinic warning', /Never stop prescribed pills suddenly/.test($el('printArea').innerHTML) && /Not a replacement for your clinic/.test($el('printArea').innerHTML));
   g.state.tab = 'results'; g.render();

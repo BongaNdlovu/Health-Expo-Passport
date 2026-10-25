@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
+<!-- Same policy as dist/_headers (tools/build.js checks the two stay identical). The header needs a host that reads
+     _headers (Cloudflare); this meta travels with the page, so the packaged Android app keeps the same protections. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.supabase.in wss://*.supabase.in; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <meta name="theme-color" content="#f6f8f6"/>
 <link rel="manifest" href="manifest.webmanifest">
@@ -1217,368 +1220,709 @@ const SEED_VOL=[
 ];
 
 /* ---------------------------------------------------------------------------------------------------------
-   The five plans are built from two books. A reference is either a printed PAGE of the Natural Remedies
-   Encyclopedia ("527", "526–528") or a CHAPTER of The Lost Art of Thinking ("N:16", "N:1–10"; that book's
-   page numbers are not reliable in the text, so it is cited by chapter). Several can be joined with " · ".
-   Everything here is paraphrased advice, not quotation.
+   The plans are written in our own words. The only author cited is Ellen G. White (1827–1915):
+     "MH:23"  = chapter 23 of The Ministry of Healing (1905)
+     "CD:731" = numbered paragraph 731 of Counsels on Diet and Foods (compiled 1938)
+     "HL:571" = numbered paragraph 571 of Healthful Living (compiled 1897)
+     "PH:6"   = page 6 of The Place of Herbs in Rational Therapy (compiled 1931)
+   Two tags name lines no book is cited for: "G" = general natural-health advice, "S" = the expo's own safety rule.
+   Several references can be joined with " · ". See PLANS.md for what each one supports.
    "steps"  = the day, in order (each with its reference)
-   "facts"  = what the books advise, with references
-   "items"  = shopping list with APPROXIMATE South African prices (neither book has prices; check locally)
+   "facts"  = what the plan is based on, with references
+   "items"  = shopping list with APPROXIMATE South African prices (no book has prices; check locally); [] = none
    "habits" = the three-line summary used on the WhatsApp message and the take-home card
    "note"   = a plan-specific safety note;  "help" = a get-help line shown prominently (mind and sleep plans)  */
-const BOOK_REF='Natural Remedies Encyclopedia, 7th ed. (Vance Ferrell & Harold M. Cherne, M.D., Harvestime Books)';
-const BOOK2_REF='The Lost Art of Thinking (Neil Nedley, M.D., Nedley Publishing, 2011)';
-/* used on the Food screen only (FOOD_WHY entries with src:'ef'); references "F:76" = Volume 1, printed page 76 */
-const BOOK3_REF='Encyclopedia of Foods and Their Healing Power, Vol. 1 (George D. Pamplona-Roger, M.D., Education and Health Library)';
+const BOOK_REF='The Ministry of Healing (Ellen G. White, 1905)';
+const BOOK2_REF='Counsels on Diet and Foods (Ellen G. White, compiled 1938)';
+const BOOK3_REF='Healthful Living (Ellen G. White, compiled 1897)';
+const BOOK4_REF='The Place of Herbs in Rational Therapy (Ellen G. White, compiled 1931)';
 const HELP_LINE='If you feel hopeless, or have thoughts of harming yourself, tell someone you trust today and call the SADAG suicide crisis line (0800 567 567) or Lifeline (0861 322 322), or go to the nearest clinic or emergency service. Do not wait.';
+/* Shown with every plan (the app's and a church's), on the Results and Food screens, in the WhatsApp message and on
+   the printed card: who is giving the advice, what it is not, and the precautions that always apply. */
+const DISCLAIMER='The volunteers at this expo are not doctors, nurses or other health professionals unless they tell you so. This plan is general healthy-living information, not medical advice, a diagnosis or treatment.';
+const PRECAUTIONS=[
+ 'Keep taking any medicine your clinic or doctor gave you. Never stop or change it without asking them.',
+ 'Expo readings are a quick screening, not a diagnosis. Have any high or low reading checked at a clinic.',
+ 'Ask your clinic before big changes in food, exercise or herb teas if you are pregnant or breastfeeding, have diabetes or heart, kidney or liver disease, or take regular medicine.',
+ 'Herbs and foods can interact with medicines. Ask your clinic or pharmacist before using herb teas with medicine.',
+ 'Stop and get help at once if you have chest pain, faintness, severe breathlessness, confusion, or a new or worsening symptom.',
+ 'In an emergency, call an ambulance or go to the nearest emergency unit straight away. Do not wait to try home remedies.',
+ 'Children, older people and anyone who is unwell may need different advice. Ask your clinic.'];
+const precautionsHTML=()=>`<div class="glass p-4"><div class="microlabel">Warnings and precautions</div>
+  <p class="mt-1.5 text-[11.5px] font-semibold leading-relaxed text-[#33504f]">${esc(DISCLAIMER)}</p>
+  <ul class="mt-2 space-y-1.5">${PRECAUTIONS.map(t=>`<li class="flex items-start gap-2.5"><span class="mt-1.5 h-1.5 w-1.5 flex-none rounded-full bg-brand-500"></span>
+   <span class="min-w-0 flex-1 text-[11.5px] leading-snug text-[#3d5c5e]">${esc(t)}</span></li>`).join('')}</ul></div>`;
+/* shopping-list entries shared by several plans (prices from prices/prices.csv, written by tools/update-prices.js) */
+const ITEM_FLAX={name:'Ground flaxseed',dose:'1–2 tbsp',store:'R150–R160 per kg (median R150) at Checkers, Pick n Pay, Woolworths (checked 19 Oct 2026)',daily:2.25};
+const ITEM_FRUIT={name:'Seasonal fruit (bananas, berries)',dose:'1–2 servings',store:'R33–R38 per kg (median R35) at Checkers, Pick n Pay, SPAR, Shoprite, Woolworths (checked 19 Oct 2026)',daily:6.92};
+const ITEM_DATES={name:'Figs or dates',dose:'2–3 pieces',store:'R82–R111 per kg (median R96) at Checkers, Makro, Pick n Pay, SPAR, Shoprite, Woolworths — priced as dates; no dried figs were found priced online (checked 19 Oct 2026)',daily:2.40};
+const ITEM_NUTS={name:'Walnuts or mixed nuts',dose:'1 small handful (30g)',store:'R430–R520 per kg (median R450) at Checkers, Game, Makro, Pick n Pay, Woolworths (checked 19 Oct 2026)',daily:13.49};
+const ITEM_LENTILS={name:'Brown lentils / beans',dose:'½ cup cooked',store:'R49–R68 per kg (median R52) at Checkers, Game, Makro, Pick n Pay, Shoprite, Woolworths (checked 19 Oct 2026)',daily:2.34};
+const ITEM_SLAW={name:'Cabbage & carrots (raw salad)',dose:'300g a day',store:'Carrots R15–R17 per kg (median R15), cabbage R16–R25 a head (median R17) at Checkers, Pick n Pay, SPAR, Shoprite, Woolworths (checked 19 Oct 2026)',daily:3.95};
+const ITEM_TOMATO={name:'Tomatoes',dose:'2 medium',store:'R24–R35 per kg (median R33) at Checkers, Pick n Pay, SPAR, Shoprite, Woolworths (checked 19 Oct 2026)',daily:4.95};
+const HOT_BATH_CARE='Never a hot bath with high blood pressure, heart trouble or diabetes, and test the water with your elbow if your feet have lost feeling.';
 const PROTOCOLS={
  bp:{tag:'Blood pressure',tagline:'21-day blood-pressure plan',title:'High Blood Pressure — Home Plan',
-  src:'Natural Remedies Encyclopedia: Hypertension, pp. 526–528; neutral bath, p. 259 · The Lost Art of Thinking: chs. 13, 15, 17',
-  mech:'Follows the Hypertension chapter: plenty of water, a salt-free whole-food plant diet rich in potassium, daily outdoor exercise, slow deep breathing, rest, and a healthy weight.',
+  src:'Ellen G. White — The Ministry of Healing: chs. 8, 17, 20, 26 · Counsels on Diet and Foods: §§ 111, 138, 245, 267, 268, 475, 514, 518, 726, 731 · Healthful Living: §§ 570, 571, 717',
+  mech:'Built on Ellen White’s counsel: plain water, little salt, simple plant foods with plenty of fruit and vegetables, daily walks in the open air, deep breathing and rest.',
   steps:[
-   ['06:30','A full glass of water, then breakfast of oat bran or whole grains with fruit. The book also suggests flaxseed oil (2 tbsp a day); ground flaxseed is a cheaper alternative. No salt.','526'],
-   ['10:00','Drink water: about eight cups a day, starting when you get up. Optional hawthorn tea: 1 tsp herb per cup, up to 2 cups a day.','527 · N:17'],
-   ['13:00','Big raw-vegetable lunch with celery, carrot, tomato and raw garlic. Unsalted potato soup (with the skin) is a good potassium source.','526–527'],
-   ['14:00','Outdoors after lunch: 10–20 slow, deep belly breaths. Repeat just before bed.','N:15'],
-   ['16:30','Walk outdoors in daylight for about 30 minutes. Start gently and build up slowly.','528 · N:13'],
-   ['19:00','Light supper, finished several hours before bed. No salty or processed food.','527'],
-   ['21:00','Warm neutral bath (34–36°C) before bed, then lights out by 22:00.','259']],
-  hydro:'<b>Neutral bath (34–36°C / 94–97°F), just before bed:</b> soak until relaxed, about 15–20 minutes. The Encyclopedia says it relaxes the nerves and helps sleep by evening out the circulation (p. 259). <em>Do not use hot tub baths with high blood pressure (p. 259), and no hot foot bath if the feet have hardened arteries or lost feeling (p. 257).</em>',
+   ['06:30','A glass of water when you get up, then a good breakfast of oats or another whole grain with fruit and a spoon of ground flaxseed. Go easy on salt.','CD:268 · CD:475 · G'],
+   ['10:00','Water between meals rather than with them: about 8 glasses across the day. No tea, coffee or sweet drinks.','CD:731 · MH:26 · G'],
+   ['13:00','A big lunch of vegetables: a raw salad with tomato, celery, carrot, onion and raw garlic, with beans or lentils. Unsalted potato soup with the skin on is good too.','CD:514 · CD:518 · G'],
+   ['13:30','A short walk after lunch, head up and shoulders back, then 10–20 slow, deep breaths that fill the belly.','MH:17 · HL:717 · G'],
+   ['16:30','A brisk walk outdoors, building up to 30 minutes. Start gently.','HL:571 · G'],
+   ['18:00','A light supper, eaten early, with nothing salty or processed. Nothing more after it.','CD:245'],
+   ['21:00','A warm (never hot) bath of about 33–35°C before bed, then lights out by 22:00.','MH:17 · G']],
+  hydro:'<b>Warm, neutral bath before bed:</b> water at about body temperature (33–35°C) for 15–30 minutes. Ellen White wrote that warm and neutral baths soothe the nerves and even out the circulation (Ministry of Healing ch. 17). <em>'+HOT_BATH_CARE+'</em>',
   facts:[
-   ['Drink plenty of water through the day.','526'],
-   ['About eight cups of water a day can help lower blood pressure in people who are chronically dehydrated, because water keeps the blood thinner and the heart does not have to pump so hard.','N:17'],
-   ['Eat lots of high-fibre plant foods: vegetables, fruit, nuts and whole grains. Oat bran is singled out.','526'],
-   ['Potassium-rich fresh fruit and vegetables help the body get rid of extra sodium.','526'],
-   ['Leave out added salt. Read labels for sodium, MSG, soy sauce and preservatives.','527'],
-   ['Foods named for blood pressure: raw garlic, celery (about 4 stalks), tomatoes, broccoli and carrots.','526–527'],
-   ['Aim for at least five servings of fruit and vegetables every day.','527'],
-   ['Avoid habitual overeating, sweets and rich pastry, animal fat, alcohol, tobacco, loud noise and late meals.','527–528'],
-   ['Daily outdoor exercise, enough rest at night, and losing weight if overweight all help lower pressure.','528'],
-   ['Slow, deep belly breathing (10–20 breaths after each meal and before bed) lowered heart rate and blood pressure in a study. Wear loose clothing and sit upright.','N:15'],
-   ['Brisk walking for about 30 minutes is a good start. See a doctor before vigorous exercise if you have heart disease or several heart-disease risk factors.','N:13'],
-   ['Have your blood pressure checked regularly.','528'],
-   ['Severe cases: rest, gentle walking and neutral baths. No vigorous hydrotherapy.','528']],
-  note:'Hawthorn tea and potassium-rich foods can interact with blood-pressure pills or kidney disease. Mention them to your clinic first.',
-  habits:['Water, no added salt, raw garlic and plenty of fruit and vegetables','A daily outdoor walk, slow deep breaths and enough rest','A neutral bath and an early night'],
+   ['The true remedies: pure air, sunlight, moderation, rest, exercise, good food, water and trust in God.','MH:8'],
+   ['Drink plain water freely, but between meals rather than with them.','CD:726 · CD:731'],
+   ['Go easy on salt, pickles and spicy food, and eat plenty of fruit.','CD:475'],
+   ['Grains, fruit, nuts and vegetables give the body all it needs.','CD:111 · CD:138'],
+   ['Fresh fruit and vegetables bring potassium, which helps the body let go of extra salt. Aim for at least five servings a day.','G'],
+   ['Raw garlic, celery, tomatoes, carrots and onions are traditional favourites for blood pressure; oats and ground flaxseed add fibre.','G'],
+   ['Tea, coffee, alcohol and tobacco stimulate and then exhaust the heart and nerves; leave them out.','MH:26'],
+   ['Walking is the best exercise: it improves the circulation and uses the whole body. Walk outdoors every day.','HL:570 · HL:571'],
+   ['Deep, full breaths of fresh air refresh the blood and calm the nerves.','HL:717 · MH:20'],
+   ['Losing extra weight slowly helps blood pressure come down.','G'],
+   ['People worn out by overwork need rest and freedom from worry.','MH:17'],
+   ['Have your blood pressure checked regularly. A very high reading needs the clinic, not only home care.','S']],
+  note:'Potassium-rich foods such as potatoes and tomatoes can matter with some blood-pressure pills or kidney disease. Mention them to your clinic first.',
+  habits:['Water, little salt, and plenty of vegetables, fruit and whole grains','A daily outdoor walk and slow deep breaths in fresh air','A warm bath and an early night'],
   items:[
    {name:'Rolled oats / oat bran',dose:'60g breakfast',store:'R41–R49 per kg (median R45) at Checkers, Makro, Pick n Pay, SPAR, Shoprite, Woolworths (checked 19 Oct 2026)',daily:2.70},
-   {name:'Ground flaxseed',dose:'1–2 tbsp',store:'R150–R160 per kg (median R150) at Checkers, Pick n Pay, Woolworths (checked 19 Oct 2026)',daily:2.25},
+   ITEM_FLAX,
    {name:'Raw garlic',dose:'2 cloves',store:'R200–R317 per kg (median R247) at Checkers, SPAR, Woolworths (checked 19 Oct 2026)',daily:2.47},
    {name:'Celery',dose:'2–4 stalks',store:'R26–R30 a bunch (median R29) at Pick n Pay, Woolworths (checked 19 Oct 2026)',daily:7.25},
-   {name:'Tomatoes',dose:'2 medium',store:'R24–R35 per kg (median R33) at Checkers, Pick n Pay, SPAR, Shoprite, Woolworths (checked 19 Oct 2026)',daily:4.95},
+   ITEM_TOMATO,
    {name:'Potatoes (with skin)',dose:'250g for soup',store:'R11–R15 per kg (median R12) at Checkers, Pick n Pay, SPAR, Shoprite, Woolworths (checked 19 Oct 2026)',daily:3.12}]},
 
  sugar:{tag:'Blood sugar',tagline:'21-day blood-sugar plan',title:'High Blood Sugar — Home Plan',
-  src:'Natural Remedies Encyclopedia: Diabetes, pp. 656–658; hydrotherapy cautions, pp. 256–259 · The Lost Art of Thinking: chs. 11, 13, 17',
-  mech:'Follows the Diabetes chapter: smaller meals at regular times, whole plant foods rich in fibre, no sugar or white flour, raw garlic and onions, daily exercise, and a healthy weight.',
+  src:'Ellen G. White — The Ministry of Healing: chs. 17, 26 · Counsels on Diet and Foods: §§ 146, 168, 191, 245, 267, 268, 504, 518, 726, 731 · Healthful Living: § 571',
+  mech:'Built on Ellen White’s counsel on eating: simple whole plant foods at set times with nothing in between, little sugar, a light early supper, and a walk every day.',
   steps:[
-   ['06:30','Water, then breakfast at a regular time: whole-grain porridge (brown rice or maize meal) with vegetables or beans. No sugar.','657–658'],
-   ['10:00','Water or unsweetened herbal tea. If you need a snack: raw vegetables or cooked green beans (never raw).','657 · N:17'],
-   ['13:00','Lunch: raw salad with onion and raw garlic, plus beans or lentils. Chew slowly, because eating fast pushes sugar up.','657–658'],
-   ['16:30','Brisk walk outdoors. The book calls exercise “insulin’s best friend” and suggests twice a day. If you are unfit, alternate 60 seconds brisk with 30 seconds easy.','658 · N:13'],
-   ['18:00','Small, early supper eaten slowly. Nothing more to eat late in the evening.','657'],
-   ['21:00','Check both feet for cuts, blisters or sores, then bed.','658']],
-  hydro:'<b>Avoid hot and cold extremes.</b> The Encyclopedia warns against extreme hot or cold treatments in diabetes (p. 256) and says a hot full bath is not for people with diabetes (p. 259). A neutral bath (34–36°C / 94–97°F) is the safe choice (p. 259). <em>If your feet have lost feeling, test water with your elbow, never your foot.</em>',
+   ['06:30','Water, then breakfast at a set time: whole-grain porridge (brown rice, oats or whole maize meal) with beans or fruit. No added sugar.','CD:146 · CD:268'],
+   ['10:00','Water between meals, and nothing to eat until lunch.','CD:267 · CD:731'],
+   ['13:00','Lunch at a set time: a raw salad with onion and garlic, cooked green beans, and beans or lentils. Eat slowly and chew well.','CD:168 · CD:518 · G'],
+   ['13:30','A short walk after lunch, head up and shoulders back.','MH:17'],
+   ['16:30','A brisk walk outdoors. If you are unfit, walk briskly for a minute, then easily for half a minute, and repeat.','HL:571 · G'],
+   ['18:00','A small, early supper of plain food, several hours before bed. Nothing more in the evening.','CD:245'],
+   ['21:00','Check both feet for cuts, blisters or sores, then bed.','S']],
+  hydro:'<b>Avoid both extremes: very hot and very cold baths.</b> A warm, neutral bath (33–35°C) is the gentle choice, and Ellen White wrote that such baths soothe the nerves (Ministry of Healing ch. 17). <em>If your feet have lost feeling, test the water with your elbow, never your foot.</em>',
   facts:[
-   ['Goals for people with diabetes: fasting 90–130 mg/dL (5.0–7.2 mmol/L); two hours after a meal under 160 mg/dL (8.9 mmol/L); A1c about 7%.','657'],
-   ['Eat smaller meals, chew well, keep regular times and stop eating late at night. Overeating can bring diabetes on or make it worse.','657'],
-   ['A high-fibre whole-food diet with plant protein lowers the need for insulin. A low-fibre diet can bring diabetes on.','657'],
-   ['Onions, green beans and raw garlic every day are named as lowering blood sugar; fenugreek helps regulate it.','657–658'],
-   ['Stop sugar, white-flour foods, greasy food and tobacco. Coffee can push blood sugar very high.','657'],
-   ['Blood sugar above 140 mg/dL (7.8 mmol/L) an hour after a meal can cause tiredness and sluggish thinking.','N:11'],
-   ['Exercise (twice a day if you can) moves sugar out of the blood. Keep a healthy weight.','657–658'],
-   ['Good hydration keeps the blood thinner, which helps people with diabetes: complications get worse when the blood is thick.','N:17'],
-   ['Beginners can use interval walking: 60 seconds brisk, 30 seconds easy, repeated. Warm up with 3–5 minutes of slow walking first.','N:13'],
-   ['Take good care of your feet; infections start more easily.','658'],
-   ['A high-sugar attack needs an emergency room. For low sugar, drink something sweet at once; insulin users should carry a glucagon kit.','658']],
+   ['Eat at set times and nothing in between; leave at least five hours between meals.','CD:267'],
+   ['Make breakfast a good meal: the stomach handles food best in the morning.','CD:268'],
+   ['If a third meal is eaten, keep it light and several hours before bed.','CD:245'],
+   ['Far too much sugar is eaten: sweets, cakes and pastries are best left out.','CD:191'],
+   ['Choose whole grains over white flour: whole-wheat bread nourishes far better.','CD:504'],
+   ['Rice, maize, oats, beans, peas and lentils are good everyday staples.','CD:146'],
+   ['Eat slowly and chew well; if time is short, eat less rather than bolt your food.','CD:168'],
+   ['Onions, garlic and cooked green beans are traditional everyday foods for steadier blood sugar.','G'],
+   ['Walk outdoors every day; a short walk after meals helps digestion.','MH:17 · HL:571'],
+   ['Tea, coffee and tobacco are stimulants; coffee can push blood sugar up, so leave it out.','MH:26 · G'],
+   ['Drink plenty of water; good hydration helps people with high blood sugar.','CD:726 · G'],
+   ['Check your feet every day: with high blood sugar, small sores can become infected.','S'],
+   ['Very high or very low sugar is an emergency: go to the clinic or emergency room. If you take insulin, follow your clinic’s plan for low sugar.','S']],
   note:'If you take diabetes pills or insulin, never change the dose yourself. Talk to your clinic first.',
-  habits:['Small regular meals of whole foods, with no sugar or white flour','A brisk outdoor walk every day and plenty of water','Check your feet every evening'],
+  habits:['Meals of whole foods at set times, nothing in between, and little sugar','A brisk outdoor walk every day and plenty of water','Check your feet every evening'],
   items:[
    {name:'Brown rice / whole maize meal',dose:'60g dry',store:'R21–R38 per kg (median R23) at Checkers, Game, Makro, Pick n Pay, Shoprite, Woolworths; unsifted maize meal was not found online, STAND-IN super (sifted) maize meal R11–R13 per kg at Game, Makro, SPAR (checked 19 Oct 2026)',daily:1.35},
    {name:'Onions',dose:'1 medium',store:'R28–R39 per kg (median R30) at Checkers, Pick n Pay, SPAR, Shoprite, Woolworths (checked 19 Oct 2026)',daily:4.50},
    {name:'Raw garlic',dose:'2 cloves',store:'R200–R317 per kg (median R247) at Checkers, SPAR, Woolworths (checked 19 Oct 2026)',daily:2.47},
    {name:'Green beans',dose:'100g',store:'R68–R86 per kg (median R83) at Checkers, Pick n Pay, SPAR, Shoprite, Woolworths (checked 19 Oct 2026)',daily:8.33},
-   {name:'Brown lentils / beans',dose:'½ cup cooked',store:'R49–R68 per kg (median R52) at Checkers, Game, Makro, Pick n Pay, Shoprite, Woolworths (checked 19 Oct 2026)',daily:2.34}]},
+   ITEM_LENTILS]},
 
  bmi:{tag:'Weight & cholesterol',tagline:'Steady weight & cholesterol plan',title:'Weight & Cholesterol — Home Plan',
-  src:'Natural Remedies Encyclopedia: Overweight, pp. 480–482; High cholesterol, pp. 531–532 · The Lost Art of Thinking: chs. 11, 13, 17',
-  mech:'Follows the Overweight and High Cholesterol chapters and Dr Nedley’s weight-loss program: steady, nourishing whole-food eating (no crash diets), no snacking, plenty of raw vegetables, healthy oils, water, and daily outdoor exercise.',
+  src:'Ellen G. White — The Ministry of Healing: chs. 17, 23, 25 · Counsels on Diet and Foods: §§ 137, 168, 191, 245, 267, 268, 269, 326, 504, 514, 731 · Healthful Living: §§ 571, 578',
+  mech:'Built on Ellen White’s counsel: a hearty breakfast, a light early supper or none, nothing between meals, simple plant food free of grease, and daily exercise in the open air.',
   steps:[
-   ['06:30','Never skip breakfast, and make it the biggest meal: a whole grain (brown rice, barley, millet or buckwheat) with fruit and a few nuts. The book adds 2 tsp flaxseed oil; ground flaxseed is a cheaper alternative.','481 · N:11'],
-   ['10:00','Water only between meals, 8–10 glasses across the day. No juice, pop or coffee. Hunger between meals is a sign the meals are not nourishing enough.','481 · N:11'],
-   ['13:00','Moderate lunch: as many raw vegetables as you like, with beans, nuts or seeds. Nothing fried.','481'],
-   ['16:30','Walk 30 minutes or more outdoors; a pedometer goal of 10,000 steps a day helps. Build up slowly.','481–482 · N:13'],
-   ['17:30','Lightest meal of the day, early, or just whole fruit. Then nothing more to eat before bed.','481 · N:11']],
+   ['06:30','Make breakfast the biggest meal: oats or another whole grain, with fruit, a few nuts and a spoon of ground flaxseed.','CD:268 · G'],
+   ['10:00','Water only between meals: no snacks, juice, cold drinks or coffee.','CD:267 · CD:731'],
+   ['13:00','Lunch at a set time: plenty of vegetables, with beans or lentils and a whole grain. Nothing fried.','CD:514 · CD:137'],
+   ['13:30','A short walk after lunch, head up and shoulders back.','MH:17'],
+   ['16:30','A brisk outdoor walk; build up slowly to 30 minutes or more, or about 10,000 steps a day.','HL:571 · G'],
+   ['17:30','A light, early supper, or just fruit and a cracker. Then nothing more before bed.','CD:245 · MH:25']],
   hydro:null,
   facts:[
-   ['Overweight means about 20% or more above the average weight for your height.','480'],
-   ['Crash diets do not last; steady, nourishing eating beats losing and regaining. A rule of thumb for a gradual-loss programme: body weight in lb × 10, plus 30%, is the calories you can eat daily without regaining.','480–481'],
-   ['Nedley’s five-part programme: cut out snacks; drink only water between meals; eat a good breakfast, a moderate lunch and little or no evening meal; cut sugar and fat and eat plenty of fibre; exercise every day.','N:11'],
-   ['Refined carbohydrates are out: sugar, alcohol, white flour, quick oats and packaged cereals. Cook whole grains and eat them in their natural state.','481'],
-   ['Eat as many raw vegetables as you like. Avoid fried, frozen and canned vegetables.','481'],
-   ['Biggest meal at breakfast, lightest at supper, and nothing before bed. Finishing a meal slightly hungry does no harm. Calories shifted from evening to morning are less likely to be stored as fat.','481 · N:11'],
-   ['Drink at least 8–10 glasses of water a day, starting when you get up. Do not wait until you are thirsty.','481 · N:17'],
-   ['Losing even 5 pounds can raise energy and lift mood right away.','N:11'],
-   ['Every plant food is free of cholesterol; animal foods (meat, milk, eggs, cheese, butter, fish) contain it, except egg whites.','N:11'],
-   ['Cholesterol: avoid saturated fat (meat, butter, cheese), fried food and hydrogenated oil. Use only cold-pressed vegetable oils such as flaxseed or wheat germ.','532'],
-   ['Large meals push the liver to make more cholesterol, so eat smaller meals.','532'],
-   ['Good levels: total cholesterol under 200 mg/dL (5.2 mmol/L), LDL under 130, triglycerides under 150 (1.7 mmol/L).','532'],
-   ['Exercise lowers triglycerides even without weight loss, and losing even 10 lb helps.','531–532'],
-   ['Exercise: about 30 minutes of brisk walking uses around 150 calories. See a doctor before vigorous exercise if you have heart disease or several heart-disease risk factors.','N:13']],
+   ['Eat at set times and nothing in between; many find two good meals a day better than three.','CD:267'],
+   ['Make breakfast the heartiest meal of the day, not supper.','CD:268'],
+   ['A third meal, if eaten, should be light and several hours before bed.','CD:245'],
+   ['Late suppers are especially harmful for people who sit most of the day.','CD:269'],
+   ['Prepare food simply and free of grease. Plant foods carry no cholesterol.','CD:137 · G'],
+   ['Oats, beans, lentils and ground flaxseed bring the kind of fibre that helps lower cholesterol.','G'],
+   ['Far too much sugar is eaten: leave out cakes, sweet puddings and pastries.','CD:191'],
+   ['Choose whole-grain bread over white.','CD:504'],
+   ['Eat slowly; even plain, healthy food can be overeaten.','CD:168 · MH:23'],
+   ['Active exercise in the open air every day strengthens the liver, kidneys and lungs.','HL:578'],
+   ['Losing even a few kilograms can lift energy and mood.','G'],
+   ['The body still needs enough nourishing food: no crash diets or starving.','CD:326 · S'],
+   ['Heart disease or several heart risks? See a doctor before hard exercise.','S']],
   note:'Avoid starving or very fast weight loss. If you have diabetes or take medicine, ask your clinic before changing your eating.',
-  habits:['Whole grains, raw vegetables and water, with no snacks or crash diets','Walk 30 minutes or more outdoors every day','A light early supper and nothing before bed'],
+  habits:['Whole-food meals at set times, with nothing in between','A brisk outdoor walk every day','A light early supper and nothing before bed'],
   items:[
    {name:'Rolled oats / whole grains',dose:'60g breakfast',store:'R41–R49 per kg (median R45) at Checkers, Makro, Pick n Pay, SPAR, Shoprite, Woolworths (checked 19 Oct 2026)',daily:2.70},
-   {name:'Brown lentils / beans',dose:'½ cup cooked',store:'R49–R68 per kg (median R52) at Checkers, Game, Makro, Pick n Pay, Shoprite, Woolworths (checked 19 Oct 2026)',daily:2.34},
-   {name:'Ground flaxseed',dose:'1–2 tbsp',store:'R150–R160 per kg (median R150) at Checkers, Pick n Pay, Woolworths (checked 19 Oct 2026)',daily:2.25},
-   {name:'Cabbage & carrots (raw salad)',dose:'300g a day',store:'Carrots R15–R17 per kg (median R15), cabbage R16–R25 a head (median R17) at Checkers, Pick n Pay, SPAR, Shoprite, Woolworths (checked 19 Oct 2026)',daily:3.95}]},
+   ITEM_LENTILS,ITEM_FLAX,ITEM_SLAW]},
+
+ thin:{tag:'Underweight',tagline:'Healthy weight-gain plan',title:'Underweight — Home Plan',
+  src:'Ellen G. White — The Ministry of Healing: ch. 23 · Counsels on Diet and Foods: §§ 138, 146, 168, 245, 267, 268, 320, 326, 518, 731 · Healthful Living: §§ 185, 578',
+  mech:'Built on Ellen White’s counsel that the body must have enough nourishing food: good meals of whole grains, beans, nuts, fruit and vegetables at set times, a hearty breakfast, and daily exercise outdoors.',
+  steps:[
+   ['07:00','A hearty breakfast: oats or whole-grain porridge with milk or soy milk, fruit, a handful of nuts and a few dates.','CD:268 · CD:146'],
+   ['10:00','Water between meals. If the meals leave you hungry, make them bigger rather than snacking.','CD:731 · CD:267'],
+   ['13:00','A full lunch: beans or lentils with brown rice or maize meal, cooked vegetables and a salad. Eat slowly and enjoy it.','CD:146 · CD:518 · CD:168'],
+   ['16:30','A walk outdoors or light work in the garden, to build appetite and muscle.','HL:578 · G'],
+   ['18:00','A good third meal, early: whole-grain bread with peanut butter or beans, and fruit.','CD:245 · G'],
+   ['21:30','Lights out in good time: the body restores its strength in sleep.','HL:185']],
+  hydro:null,
+  facts:[
+   ['The body must have enough nourishing food; health cannot be kept on a meagre diet.','CD:326'],
+   ['A diet made too plain or poorly prepared can leave people weaker. Food should be nourishing and tasty.','CD:320 · CD:326'],
+   ['Grains, fruit, nuts and vegetables give the body all it needs.','CD:138'],
+   ['Rice, maize, oats, beans, peas and lentils, with dried fruit, are good, filling staples.','CD:146'],
+   ['Nuts can take the place of meat, and a handful a day adds energy.','MH:23 · G'],
+   ['Eat at set times, and make breakfast a hearty meal.','CD:267 · CD:268'],
+   ['Eat slowly and calmly: food eaten in a hurry or while anxious does less good.','CD:168'],
+   ['Active exercise in the open air strengthens the body, and builds muscle when the meals are good.','HL:578 · G'],
+   ['The body restores its strength during sleep.','HL:185'],
+   ['Weight loss you cannot explain, or a poor appetite that lasts, is a reason to see your clinic.','S']],
+  note:'Being underweight can come from illness, worry or not having enough food. If you have lost weight without trying, see your clinic. If food money is short, ask the Health Ministries team about the co-op starter pouch.',
+  habits:['Three good meals at set times, with a hearty breakfast','Beans, nuts, whole grains and dried fruit every day','A walk outdoors and a good night’s sleep'],
+  items:[
+   {name:'Rolled oats',dose:'60g breakfast',store:'R41–R49 per kg (median R45) at Checkers, Makro, Pick n Pay, SPAR, Shoprite, Woolworths (checked 19 Oct 2026)',daily:2.70},
+   ITEM_NUTS,ITEM_LENTILS,ITEM_DATES]},
+
+ veg:{tag:'Fruit & veg',tagline:'More fruit & vegetables plan',title:'Too Little Fruit & Veg — Home Plan',
+  src:'Ellen G. White — Counsels on Diet and Foods: §§ 111, 137, 146, 245, 267, 464, 475, 509, 514, 518',
+  mech:'Built on Ellen White’s counsel that grains, fruit, nuts and vegetables are the diet God chose: fruit at every meal and plenty of vegetables, simply prepared.',
+  steps:[
+   ['07:00','Fruit with breakfast: a banana or seasonal fruit on your porridge.','CD:475 · CD:464'],
+   ['10:00','Water between meals; fresh or dried fruit belongs with the meals.','CD:267 · CD:146'],
+   ['13:00','Half the plate vegetables: a raw salad of cabbage, carrot and tomato, plus a cooked vegetable.','CD:514 · CD:509'],
+   ['13:30','Beans or lentils with lunch a few times a week.','CD:518'],
+   ['17:00','Plan tomorrow’s fruit and vegetables: buy what is in season, or plant a few in a pot or garden.','CD:509 · G'],
+   ['18:00','A light supper of fruit, or a vegetable soup.','CD:245 · G']],
+  hydro:null,
+  facts:[
+   ['Grains, fruit, nuts and vegetables are the diet the Creator chose.','CD:111'],
+   ['Everyone should know the special value of fruit and vegetables fresh from the orchard and garden.','CD:509'],
+   ['Eat plenty of fruit; it eases the craving for salty, spicy food.','CD:475'],
+   ['Fruit is a gift to be thankful for.','CD:464'],
+   ['Hearty workers need plenty of vegetables, fruit and grains.','CD:514'],
+   ['Dried fruit such as raisins and dates can be used freely as everyday food.','CD:146'],
+   ['Beans, boiled or baked, are a simple, wholesome dish.','CD:518'],
+   ['Prepare vegetables simply, without much grease or spice.','CD:137'],
+   ['Aim for at least five servings of fruit and vegetables a day: a serving is a fist-sized fruit or half a cup of vegetables.','G'],
+   ['Brightly coloured fruit and vegetables, and dark leafy greens, bring the widest range of goodness.','G']],
+  note:'Wash fruit and vegetables well, and always cook green beans. If you take a blood-thinning pill such as warfarin, keep the amount of leafy greens steady from day to day and tell your clinic.',
+  habits:['Fruit with every breakfast','Half the plate vegetables at lunch','At least five servings of fruit and vegetables a day'],
+  items:[ITEM_FRUIT,ITEM_SLAW,ITEM_TOMATO,ITEM_DATES]},
+
+ move:{tag:'Exercise',tagline:'Daily walking plan',title:'Too Little Exercise — Home Plan',
+  src:'Ellen G. White — The Ministry of Healing: chs. 17, 20 · Healthful Living: §§ 570, 571, 578, 717, 780',
+  mech:'Built on Ellen White’s counsel that walking in the open air is the best exercise: some every day, summer and winter, brisk but not violent, and a short walk after meals.',
+  steps:[
+   ['06:30','Open the windows and take 10 slow, deep breaths.','HL:717 · MH:20'],
+   ['07:30','A 10-minute walk outdoors before or after breakfast.','HL:571 · G'],
+   ['13:30','A short walk after lunch, head up and shoulders back.','MH:17'],
+   ['16:30','Your main walk, brisk but not violent. Week 1: 10 minutes; add 5 minutes each week until you reach 30.','HL:780 · G'],
+   ['18:30','Useful work with your hands: garden, sweep, carry, or help a neighbour.','MH:17'],
+   ['21:00','Write down your minutes for the day.','G']],
+  hydro:null,
+  facts:[
+   ['No exercise can take the place of walking: it improves the circulation and uses the whole body.','HL:570'],
+   ['Walk in the open air every day the weather allows, summer and winter.','HL:571'],
+   ['Brisk but not violent exercise in the open air, with a cheerful spirit, sends fresh blood to the whole body.','HL:780'],
+   ['Active exercise outdoors every day strengthens the liver, kidneys and lungs.','HL:578'],
+   ['Lack of exercise is a common cause of disease.','MH:17'],
+   ['A short walk after meals helps digestion; hard work straight after eating hinders it.','MH:17'],
+   ['Useful work with the hands lifts the mind as well as the body.','MH:17'],
+   ['Deep, full breaths of fresh air refresh the blood.','HL:717'],
+   ['Aim for at least 30 minutes of brisk walking a day, built up slowly.','G'],
+   ['Heart disease, chest pain or several heart risks? See a doctor before hard exercise.','S']],
+  note:'Stop and rest if you feel chest pain, faintness or severe breathlessness, and see your clinic. Start slowly if you have not exercised for a long time.',
+  habits:['A walk outdoors every day, summer and winter','A short walk after every meal','Add 5 minutes a week until you reach 30 minutes a day'],
+  items:[]},
+
+ water:{tag:'Water',tagline:'Daily water plan',title:'Too Little Water — Home Plan',
+  src:'Ellen G. White — The Ministry of Healing: ch. 26 · Counsels on Diet and Foods: §§ 475, 726, 727, 728, 731 · Healthful Living: § 786',
+  mech:'Built on Ellen White’s counsel that pure water, drunk freely, is one of Heaven’s best gifts: a hot drink of water before breakfast, water between meals, and water in place of tea, coffee and sweet drinks.',
+  steps:[
+   ['06:30','A glass or two of hot (never scalding) water as soon as you get up, before breakfast.','CD:728'],
+   ['10:00','Two glasses of water mid-morning.','CD:727 · G'],
+   ['12:00','A glass of water about half an hour before lunch; little or no drink with the meal itself.','CD:731'],
+   ['15:00','Two glasses of water mid-afternoon. Keep a bottle with you.','G'],
+   ['17:00','A glass of water before supper.','CD:731'],
+   ['20:00','A last glass in the early evening, not right at bedtime.','G']],
+  hydro:null,
+  facts:[
+   ['Pure water, drunk freely, helps the body do its work and resist disease.','CD:726'],
+   ['Drink freely of pure water every day.','CD:727'],
+   ['A drink of clear, hot water before eating does no harm and may do good.','CD:728'],
+   ['Little or no drink with meals: drink water a while before or after eating instead.','CD:731'],
+   ['Salty and spicy food makes people thirsty at meals; fruit eases that thirst.','CD:731 · CD:475'],
+   ['Pure water to drink and fresh air to breathe refresh the whole body.','HL:786'],
+   ['Tea, coffee and sweet drinks do not take the place of water.','MH:26 · G'],
+   ['Aim for about 8 glasses of water a day; pale yellow urine is a good sign you are drinking enough.','G'],
+   ['If your clinic has told you to limit fluids, for example with heart or kidney failure, keep to their limit.','S']],
+  note:'People with heart or kidney failure may need to limit fluids. Ask your clinic how much is right for you.',
+  habits:['A glass of hot water as soon as you get up','Water between meals, about 8 glasses a day','Water instead of tea, coffee and sweet drinks'],
+  items:[]},
 
  sleep:{tag:'Sleep',tagline:'Better-sleep plan',title:'Restless Nights — Home Plan',
-  src:'Natural Remedies Encyclopedia: Insomnia, pp. 547–548; neutral bath, p. 259 · The Lost Art of Thinking: ch. 16 “Rewind in Your Sleep”, chs. 14–15',
-  mech:'Follows the Insomnia chapter and Dr Nedley’s six sleep steps: regular hours, morning daylight, no sleep robbers, a light early supper, calm evenings, and a cool, dark, quiet room.',
+  src:'Ellen G. White — The Ministry of Healing: chs. 17, 18, 20, 26 · Counsels on Diet and Foods: §§ 201, 245, 268, 270 · Healthful Living: §§ 185, 189, 313, 571, 618, 717 · The Place of Herbs in Rational Therapy: p. 6',
+  mech:'Built on Ellen White’s counsel: regular hours, no late suppers, no stimulants, daily outdoor exercise, fresh air and sunshine in the bedroom, a thankful mind, and a cup of hop or catnip tea.',
   steps:[
-   ['07:00','Get up at the same time every day. You should wake without an alarm; needing one means you are short of sleep. Get 30 minutes of daylight within 10 minutes of waking and have breakfast near a sunny window.','548 · N:14 · N:16'],
-   ['12:30','Make breakfast and lunch your main meals. No caffeine, alcohol or smoking in the day: caffeine can halve melatonin for about 6 hours and alcohol cuts deep sleep.','547 · N:16'],
-   ['17:00','A gentle outdoor walk or exercise in the late afternoon, not right before bed.','548 · N:16'],
-   ['18:30','Light supper, finished 3–4 hours before bed. A simple fruit meal is an excellent choice. Leave out meat, sugar and fatty food at night.','547 · N:16'],
-   ['20:00','Dim the lights and switch off the TV and phone. Set worries aside: read something calming or listen to soothing music for 15–30 minutes, with a short prayer of thanks.','N:16'],
-   ['20:30','Warm neutral bath (34–36°C) just before bed, or 10–20 slow deep breaths in the fresh air.','259 · N:15'],
-   ['21:00','In bed by 21:00–22:00; the book notes a 9 pm bedtime gives the most melatonin. Cool, dark, quiet, tidy room with fresh air. Valerian tea about 30 minutes before bed if you like.','548 · N:16']],
-  hydro:'<b>Neutral bath (34–36°C / 94–97°F), just before bed.</b> The Encyclopedia says it relaxes people and helps them sleep by evening out the circulation (p. 259). <em>Skip hot baths and hot foot baths if you have diabetes, high blood pressure or numb feet (pp. 256–257, 259).</em>',
+   ['07:00','Get up at the same time every day; you should wake without an alarm. Open the curtains and windows, and spend the first half hour in daylight if you can.','CD:201 · HL:618 · G'],
+   ['07:30','Start the day thankful: a short prayer of thanks, and breakfast near a sunny window.','MH:18 · G'],
+   ['12:30','Make breakfast and lunch the main meals. No tea, coffee, cola, alcohol or tobacco.','CD:268 · MH:26'],
+   ['16:30','A walk or outdoor work in the late afternoon, not right before bed.','HL:571 · G'],
+   ['18:00','A light supper at least 3 hours before bed: fruit, or a few dates and whole-grain crackers.','CD:245 · CD:270'],
+   ['20:00','Dim the lights and switch off the TV and phone. Set the day’s worries aside, and read or sing something calming.','G · MH:18'],
+   ['20:15','A cup of warm hop or catnip tea, or chamomile or linden flower tea, unsweetened.','PH:6 · G'],
+   ['20:30','A warm (never hot) bath of about 33–35°C, or 10–20 slow, deep breaths by an open window.','MH:17 · HL:717'],
+   ['21:00','Lights out by 21:00–22:00, in a cool, dark, quiet room with a window open a little.','HL:313 · G']],
+  hydro:'<b>Warm, neutral bath just before bed:</b> water at about body temperature (33–35°C) for 15–30 minutes. Ellen White wrote that warm and neutral baths soothe the nerves (Ministry of Healing ch. 17). <em>'+HOT_BATH_CARE+'</em>',
   facts:[
-   ['Most adults need 7–8 hours of sleep and some need 9. If you need an alarm to wake up, you are probably short of sleep.','N:16'],
-   ['Go to bed and get up at the same time every day, weekends too. Sleeping in disrupts the body clock. A regular weekly day of rest helps too.','548 · N:16'],
-   ['Morning daylight sets the body clock. Avoid bright light in the evening, and use only a dim light if you wake at night.','548 · N:14'],
-   ['Let breakfast and lunch be the main meals, and eat lightly in the evening, 3–4 hours before bed. Hunger at night: try a glass of cool water.','547 · N:16'],
-   ['Foods that support sleep: figs, dates, whole-grain crackers, oats, rice, corn, bananas, barley and ginger. Fatty food, sugar, white flour, salt and MSG keep people awake.','547 · N:16'],
-   ['Sleep robbers: caffeine (halves melatonin for about 6 hours), alcohol (about 41% less deep sleep), tobacco, aspartame, and late TV and internet.','547 · N:16'],
-   ['Keep the bedroom cool (about 15–18°C / 60–65°F), dark, quiet and tidy, with a little fresh air moving.','548 · N:16'],
-   ['Exercise in the day helps you sleep and wake less often at night, but not right before bed.','548 · N:16'],
-   ['Calm the mind before bed: soothing music or spiritual reading for 15–30 minutes, and set worries aside. Guilt and stress keep people awake.','N:16'],
-   ['Teas that promote sleep: hops, valerian, catnip, skullcap, passionflower, lemon balm. Do not use hops with valerian for more than 2 weeks without a break.','548'],
-   ['Sleeping pills do not fix the problem and stop working after a few weeks; herb teas are the easier way off them.','548'],
-   ['Poor sleep and stress feed each other. Ongoing insomnia can by itself trigger depression, so treat sleep as a priority.','N:16'],
-   ['If you cannot sleep, lying still and relaxing is nearly as good as sleep, or get up quietly for a short time and go back to bed.','548']],
-  note:'Some medicines (including some for blood pressure, anxiety and depression) can disturb sleep. Ask your clinic, and never stop them yourself. Do not stop sleeping tablets suddenly. If sleep has been poor for weeks, or you feel low or anxious, see your clinic.',
+   ['Irregular hours for eating and sleeping wear down the mind. Keep the same bed and wake times every day, weekends too.','CD:201 · G'],
+   ['Keeping late hours lays the foundation for weakness.','HL:189'],
+   ['The body restores its strength during sleep. Most adults need 7–8 hours; needing an alarm to wake is a sign of too little.','HL:185 · G'],
+   ['Eating just before bed keeps the stomach working, so sleep is restless and you wake unrefreshed.','CD:270'],
+   ['A third meal, if eaten, should be light and several hours before bed.','CD:245'],
+   ['Tea and coffee give short-lived energy and then sleeplessness. Caffeine late in the day is a common thief of sleep, and alcohol spoils deep sleep.','MH:26 · G'],
+   ['Bedrooms need fresh air day and night, and daily sunshine and airing.','HL:313 · HL:618'],
+   ['Morning daylight sets the body clock; bright lights and screens late at night upset it. A cool room, about 15–18°C, helps.','G'],
+   ['Walk outdoors every day; exercise helps sleep, but not right before bed.','HL:571 · G'],
+   ['Hop tea helps bring on sleep, and catnip tea quiets the nerves.','PH:6'],
+   ['Chamomile and linden flower teas are traditional calming teas for the evening.','G'],
+   ['Deep breathing of fresh air calms the nerves and helps sound sleep.','HL:717 · MH:20'],
+   ['A cheerful, thankful mind is good for the body; worry and guilt keep people awake.','MH:18'],
+   ['If you cannot sleep, lie still and rest, or get up quietly for a short while and go back to bed.','G'],
+   ['Sleeping pills do not cure poor sleep and stop working after a few weeks. Never stop them suddenly; ask your clinic.','S'],
+   ['Poor sleep for weeks, or feeling low or anxious, is a reason to see your clinic.','S']],
+  note:'Some medicines (including some for blood pressure, anxiety and depression) can disturb sleep. Ask your clinic, and never stop them yourself. Do not stop sleeping tablets suddenly. If sleep has been poor for weeks, or you feel low or anxious, see your clinic. Herb teas: hops adds to the effect of sleeping or anxiety pills and alcohol, so ask your clinic first if you take them, or if you are pregnant or breastfeeding. No catnip tea in pregnancy. Chamomile can affect people allergic to ragweed. Use fresh linden flowers, not old stock.',
   help:HELP_LINE,
-  habits:['The same bed and wake time every day, with morning daylight','A light early supper, no caffeine or alcohol, and a calm evening','A neutral bath, a cool dark quiet room and lights out by 22:00'],
-  items:[
-   {name:'Valerian / hops tea',dose:'1 cup, 30 min before bed',store:'R124.99 per 100 g at Dis-Chem — STAND-IN: loose dried valerian root, as no valerian teabags were found priced online (checked 19 Oct 2026)',daily:3.12},
-   {name:'Figs or dates',dose:'2–3 pieces',store:'R82–R111 per kg (median R96) at Checkers, Makro, Pick n Pay, SPAR, Shoprite, Woolworths — priced as dates; no dried figs were found priced online (checked 19 Oct 2026)',daily:2.40},
-   {name:'Whole-grain crackers',dose:'2–3',store:'R180–R188 per kg (median R184) at Checkers, Game, Pick n Pay, Shoprite, Woolworths (checked 19 Oct 2026)',daily:4.60}]},
+  habits:['The same bed and wake time every day, with morning light and fresh air','A light early supper, and no tea, coffee or tobacco','A cup of hop or catnip tea, and lights out by 22:00'],
+  items:[ITEM_DATES,
+   {name:'Whole-grain crackers',dose:'2–3',store:'R180–R188 per kg (median R184) at Checkers, Game, Pick n Pay, Shoprite, Woolworths (checked 19 Oct 2026)',daily:4.60},
+   ITEM_FRUIT]},
 
  mind:{tag:'Stress & mood',tagline:'Calm-mind plan',title:'Stress, Worry & Low Mood — Home Plan',
-  src:'The Lost Art of Thinking: chs. 1–10 (thinking habits) and 11, 13–19 (lifestyle) · Natural Remedies Encyclopedia: neutral bath, p. 259',
-  mech:'Follows Dr Nedley’s book: steady lifestyle habits (morning daylight, movement, water, plant foods, deep breathing, friends, calm music and sleep) together with ten thinking habits that change how a worry feels.',
+  src:'Ellen G. White — The Ministry of Healing: chs. 8, 17, 18, 19, 20, 26 · Counsels on Diet and Foods: §§ 111, 201, 268, 727 · Healthful Living: §§ 313, 717, 780',
+  mech:'Built on Ellen White’s counsel on the mind: mind and body affect each other, so time outdoors, walking, deep breathing, simple food, gratitude, song, helping others, sound thinking and trust in God all lift the spirits.',
   steps:[
-   ['06:30','Get up at the same time. Within 10 minutes of waking, get 30 minutes of daylight, outdoors if you can. Drink water as soon as you are out of bed.','N:14 · N:17'],
-   ['07:30','A good plant-based breakfast: fruit, whole grains and a few nuts. A sprinkle of ground flaxseed and walnuts adds omega-3.','N:11'],
-   ['10:00','Water again: 8–10 glasses across the day. Do not wait until you are thirsty.','N:17'],
-   ['12:30','Midday movement: 30 minutes of brisk walking, gardening or another activity you enjoy, outdoors. Regular exercise lowers anxiety and low mood.','N:13'],
-   ['13:30','After lunch: 10–20 slow, deep belly breaths in fresh air. Do the same just before bed.','N:15'],
-   ['16:00','Connect with people: call or visit a friend or family member, or join a church or community activity. Close relationships protect the mind.','N:18'],
-   ['19:30','Thinking practice (5 minutes): write down the worry. Ask which of the ten thinking traps below it might be, then write a more balanced version and one good thing that really counts.','N:1–10'],
-   ['20:30','Calm evening: soothing music or spiritual reading for 15–30 minutes, worries set aside, a short prayer. A warm neutral bath (34–36°C) also eases nervous tension.','N:16 · N:19 · 259'],
-   ['21:30','Lights out in a cool, dark, quiet room. Aim for 7–8 hours; the book notes a 9 pm bedtime gives the most melatonin.','N:16']],
-  hydro:'<b>Neutral bath (34–36°C / 94–97°F):</b> the Encyclopedia lists it for anxiety, nervous exhaustion and irritability, and says it relaxes nervous tension (p. 259). Give it just before bed. <em>Skip hot baths if you have diabetes or high blood pressure (p. 259).</em>',
+   ['06:30','Get up and thank God for the night and the new day. Drink a glass of water.','MH:18 · CD:727'],
+   ['07:00','Half an hour outdoors in the morning light: walk, garden, or sit among trees and flowers.','MH:19 · G'],
+   ['07:30','A simple plant breakfast: oats with fruit, a few walnuts and a spoon of ground flaxseed.','CD:268 · G'],
+   ['12:30','Midday: a brisk walk or useful work outdoors. Work with the hands lifts a heavy mind.','HL:780 · MH:17'],
+   ['13:30','After lunch: 10–20 slow, deep breaths in fresh air, sitting up straight.','HL:717 · MH:20'],
+   ['16:00','Do one kind thing for someone else: a visit, a call or a helping hand.','MH:18'],
+   ['16:30','A cup of chamomile or linden flower tea in a quiet moment.','G'],
+   ['19:30','Check one worrying thought: write it down, ask whether it is all-or-nothing, a jump to the worst, or a feeling taken as fact, then write a fairer version and three good things from today.','G · MH:18'],
+   ['20:30','A calm evening: sing or listen to hymns, set worries aside, and pray. A warm, neutral bath eases tension.','MH:18 · MH:17'],
+   ['21:30','Lights out in a room with fresh air.','HL:313']],
+  hydro:'<b>Warm, neutral bath (33–35°C), just before bed:</b> Ellen White wrote that warm and neutral baths soothe the nerves (Ministry of Healing ch. 17). <em>'+HOT_BATH_CARE+'</em>',
   facts:[
-   ['Thinking trap 1, all-or-nothing: seeing things as perfect or a failure. Life is more like a dimmer switch than an on/off switch. Live between the lines.','N:1'],
-   ['Thinking trap 2, overgeneralizing: one bad event does not make a rule. Generalize with care.','N:2'],
-   ['Thinking trap 3, the negative mental filter: noticing only the bad. Spring-clean your filters.','N:3'],
-   ['Thinking trap 4, jumping to conclusions and mind-reading: cross-check your conclusions against the facts.','N:4'],
-   ['Thinking trap 5, fortune telling: predicting the worst before it happens. Steer clear of it.','N:5'],
-   ['Thinking trap 6, magnifying problems and shrinking good things (catastrophizing). Balance your view.','N:6'],
-   ['Thinking trap 7, taking things personally: not everything is about you or your fault.','N:7'],
-   ['Thinking trap 8, emotional reasoning: a feeling is not a fact. Let your head do the thinking.','N:8'],
-   ['Thinking trap 9, harsh labels such as “I am a failure”: label an event or action accurately, not a whole person.','N:9'],
-   ['Thinking trap 10, discounting the positive: waving good things away with “that doesn’t count”. Count the positive.','N:10'],
-   ['People who exercise regularly have less depression and anxiety; in one study, highly stressed students who exercised less reported 21% more anxiety.','N:13'],
-   ['Morning light sets the body clock and helps tiredness, poor sleep and low mood. Avoid bright light in the evening.','N:14'],
-   ['Slow deep belly breathing relaxes the body, improves mood and helps you sleep. Loose clothing and good posture make it easier.','N:15'],
-   ['Poor sleep and stress feed each other, and ongoing insomnia can on its own trigger depression. Treat sleep as a priority.','N:16'],
-   ['Eat plenty of fruit, vegetables and grains; berries, cruciferous vegetables, garlic and leafy greens are named as especially good for the brain.','N:11'],
-   ['Drink water from the moment you wake. Good hydration helps thinking, concentration and headaches.','N:17'],
-   ['Close family and friends protect mental health: get involved in a community or church project and be the kind of friend you want to have.','N:18'],
-   ['Soothing (sedative) music is linked to less anxiety and more relaxation.','N:19'],
-   ['The neutral bath is used for anxiety, nervous exhaustion and irritability.','259']],
-  note:'This plan supports good care; it does not replace a clinic. Low mood or worry that lasts more than a couple of weeks, or that stops you working or sleeping, is a reason to see your clinic.',
+   ['Mind and body are closely linked: worry, grief and discontent wear down health, while courage, hope and a cheerful spirit build it up.','MH:18'],
+   ['Nothing does more for health of body and soul than a thankful spirit.','MH:18'],
+   ['Thoughts follow words: speaking of the good things you have makes faith and joy grow.','MH:18'],
+   ['Worries often grow from thinking traps: seeing things as all good or all bad, expecting the worst, or treating a feeling as a fact. Writing a fairer version of the thought takes away much of its sting.','G'],
+   ['Singing is a help that is always at hand against discouragement.','MH:18'],
+   ['Helping others brings healing to the helper too; close friends and church family protect the mind.','MH:18 · G'],
+   ['Time outdoors among trees and flowers is one of nature’s best remedies.','MH:19'],
+   ['Brisk walking in the open air with a cheerful spirit refreshes the whole body; regular exercise eases anxiety and low mood.','HL:780 · G'],
+   ['Deep breathing of fresh air calms the nerves.','HL:717 · MH:20'],
+   ['Irregular hours for eating and sleeping wear down the mind.','CD:201'],
+   ['Simple plant meals at set times feed the brain well: fruit, vegetables, whole grains, walnuts and flaxseed.','CD:111 · G'],
+   ['Tea, coffee and tobacco only stimulate, and leave people more tired and on edge afterwards.','MH:26'],
+   ['Chamomile and linden flower teas are traditional calming teas.','G'],
+   ['Trust in God is one of the true remedies.','MH:8']],
+  note:'This plan supports good care; it does not replace a clinic. Low mood or worry that lasts more than a couple of weeks, or that stops you working or sleeping, is a reason to see your clinic. Herb teas: chamomile can affect people allergic to ragweed. Use fresh linden flowers, not old stock.',
   help:HELP_LINE,
-  habits:['30 minutes of morning daylight and an outdoor walk, with plenty of water','Slow deep breaths after meals and before bed, and time with people you trust','Check a worrying thought against the ten thinking traps, then a calm evening and lights out by 21:30'],
-  items:[
-   {name:'Ground flaxseed',dose:'1–2 tbsp',store:'R150–R160 per kg (median R150) at Checkers, Pick n Pay, Woolworths (checked 19 Oct 2026)',daily:2.25},
-   {name:'Walnuts or mixed nuts',dose:'1 small handful (30g)',store:'R430–R520 per kg (median R450) at Checkers, Game, Makro, Pick n Pay, Woolworths (checked 19 Oct 2026)',daily:13.49},
+  habits:['Morning light, an outdoor walk and plenty of water','Slow deep breaths, and one kind act for someone every day','Check one worrying thought and count three good things each evening'],
+  items:[ITEM_NUTS,
    {name:'Rolled oats',dose:'60g breakfast',store:'R41–R49 per kg (median R45) at Checkers, Makro, Pick n Pay, SPAR, Shoprite, Woolworths (checked 19 Oct 2026)',daily:2.70},
-   {name:'Seasonal fruit (bananas, berries)',dose:'1–2 servings',store:'R33–R38 per kg (median R35) at Checkers, Pick n Pay, SPAR, Shoprite, Woolworths (checked 19 Oct 2026)',daily:6.92}]},
+   ITEM_FRUIT,ITEM_FLAX]},
 };
 
-/* Why each shopping-list food is there, for the Food screen.
-   `plan` lines restate something the plans above already say, with the same reference (printed page of the Natural
-   Remedies Encyclopedia, or "N:" = Nedley chapter): to add one, put it in the plan's steps/facts first.
-   `src:'ef'` lines paraphrase the Encyclopedia of Foods and Their Healing Power, Vol. 1 (BOOK3_REF), "F:76" = its
-   printed page 76. Only what that page says about the food; its cancer claims are deliberately left out.
-   `care` = a caution to show with the food. */
+/* Why each shopping-list food is there, for the Food screen. Every line restates something the plans above already
+   say, with the same reference: to add one, put it in the plan's steps or facts first. `care` = a caution to show. */
 const FOOD_WHY={
- oats:[{plan:'bp',txt:'High-fibre plant foods help lower blood pressure, and oat bran is singled out.',ref:'526'},
-  {plan:'bmi',txt:'Whole grains belong at breakfast, the biggest meal of the day. Choose rolled oats: quick oats and packaged cereals count as refined.',ref:'481 · N:11'},
-  {plan:'mind',txt:'Part of a good plant-based breakfast of fruit, whole grains and a few nuts.',ref:'N:11'},
-  {plan:'sleep',txt:'Oats are on the list of foods that support sleep.',ref:'547 · N:16'},
-  {src:'ef',txt:'The grain richest in protein, calcium and iron. People with diabetes tolerate it very well, and oat bran lowers cholesterol.',ref:'F:64 · F:76'}],
- flax:[{plan:'bp',txt:'The Encyclopedia suggests flaxseed oil, 2 tbsp a day. Ground flaxseed is the cheaper way to get it.',ref:'526'},
-  {plan:'bmi',txt:'Use only cold-pressed oils such as flaxseed. The book adds 2 tsp flaxseed oil at breakfast; ground flaxseed is cheaper.',ref:'532 · 481'},
-  {plan:'mind',txt:'A sprinkle of ground flaxseed (with walnuts) adds omega-3 to breakfast.',ref:'N:11'},
-  {src:'ef',txt:'Rich in soluble fibre that soothes the bowel and helps its healthy bacteria, and it also gives useful protein and fats. Whole seeds must be chewed well, so ground flaxseed is easier.',ref:'F:354'}],
- garlic:[{plan:'bp',txt:'Named for blood pressure, together with celery, tomatoes, broccoli and carrots.',ref:'526–527'},
-  {plan:'sugar',txt:'Raw garlic, onions and green beans every day are named as lowering blood sugar.',ref:'657–658'},
-  {plan:'mind',txt:'Garlic is among the foods named as especially good for the brain.',ref:'N:11'},
-  {src:'ef',txt:'Lowers cholesterol and keeps the blood flowing freely. Its strong taste lets you use less salt, which helps people with high blood pressure.',ref:'F:109 · F:338'}],
- celery:[{plan:'bp',txt:'Named for blood pressure: about 4 stalks a day, raw, in the lunch salad.',ref:'526–527'},
-  {src:'ef',txt:'Described as cleansing the blood and lowering cholesterol.',ref:'F:111'}],
- tomato:[{plan:'bp',txt:'Named for blood pressure, and potassium-rich fresh vegetables help the body get rid of extra sodium.',ref:'526–527'},
-  {src:'ef',txt:'Protects the prostate and supports the immune system.',ref:'F:111'}],
- potato:[{plan:'bp',txt:'Unsalted potato soup with the skin is a good potassium source; potassium helps the body get rid of extra sodium.',ref:'526–527',
-  care:'Potassium-rich foods can interact with blood-pressure pills or kidney disease. Mention them to your clinic first.'},
-  {src:'ef',txt:'An almost complete, balanced food that settles excess stomach acid.',ref:'F:111'}],
- rice:[{plan:'sugar',txt:'Whole-grain porridge at a regular time. A high-fibre whole-food diet lowers the need for insulin.',ref:'657–658'},
-  {plan:'sleep',txt:'Rice and corn are on the list of foods that support sleep.',ref:'547 · N:16'},
-  {src:'ef',txt:'Whole grains release their sugar slowly, so people with diabetes tolerate them better than refined grains. Rice suits a diet for heart disease and high blood pressure, and maize (corn) lowers cholesterol.',ref:'F:65 · F:76–77'}],
- onion:[{plan:'sugar',txt:'Onions every day are named as lowering blood sugar.',ref:'657–658'},
-  {src:'ef',txt:'Helps prevent hardening of the arteries; the onion family lowers cholesterol.',ref:'F:109'}],
- beans:[{plan:'sugar',txt:'Green beans every day are named as lowering blood sugar, and, cooked, they make a good snack instead of sweets.',ref:'657–658'},
-  {src:'ef',txt:'Also described as lowering blood glucose and strengthening the heart.',ref:'F:109',
-  care:'Always cook green beans. Raw green beans contain a natural toxin that cooking destroys.'}],
- lentils:[{plan:'sugar',txt:'Beans or lentils at lunch: plant protein with fibre lowers the need for insulin.',ref:'657–658'},
-  {plan:'bmi',txt:'Beans with raw vegetables make a filling lunch, and every plant food is free of cholesterol.',ref:'481 · N:11'},
-  {src:'ef',txt:'Lentils are very rich in iron and fibre, and useful with anaemia, constipation, diabetes and high cholesterol. Beans also lower cholesterol.',ref:'F:90–91'}],
- slaw:[{plan:'bmi',txt:'Eat as many raw vegetables as you like; avoid fried, frozen and canned ones.',ref:'481'},
-  {plan:'bp',txt:'Carrots are among the foods named for blood pressure.',ref:'526–527'},
-  {src:'ef',txt:'Cabbage is rich in calcium, which helps prevent weak bones, and helps heal stomach ulcers. Carrots protect the eyes and the skin.',ref:'F:106 · F:111'}],
- valerian:[{plan:'sleep',txt:'Valerian and hops are among the teas named for sleep, and herb teas are the easier way off sleeping pills.',ref:'548',
-  care:'Do not use hops with valerian for more than 2 weeks without a break. Never stop sleeping tablets suddenly.'},
-  {src:'ef',txt:'Valerian is noted for its calming (sedative) effect.',ref:'F:111'}],
- dates:[{plan:'sleep',txt:'Figs and dates are on the list of foods that support sleep, and a simple fruit meal makes an excellent light supper.',ref:'547 · N:16'},
-  {src:'ef',txt:'Dates give vitamins, minerals and fibre; figs help digestion. Both soothe the airways.',ref:'F:46 · F:48'}],
- crackers:[{plan:'sleep',txt:'Whole-grain crackers are on the list of foods that support sleep.',ref:'547 · N:16'},
-  {src:'ef',txt:'Choose whole grain: white flour, and bakery products made with white flour, fat and sugar, promote hardening of the arteries, diabetes and tooth decay.',ref:'F:72–73'}],
- nuts:[{plan:'mind',txt:'A few nuts at breakfast; walnuts add omega-3.',ref:'N:11'},
-  {plan:'bmi',txt:'A whole-grain breakfast with fruit and a few nuts.',ref:'481 · N:11'},
-  {src:'ef',txt:'Walnuts are recommended for people with heart disease: they lower cholesterol and steady the nerves.',ref:'F:58'}],
- fruit:[{plan:'mind',txt:'Plenty of fruit; berries are named as especially good for the brain.',ref:'N:11'},
-  {plan:'sleep',txt:'Bananas are on the list of foods that support sleep.',ref:'547 · N:16'},
-  {plan:'bp',txt:'Aim for at least five servings of fruit and vegetables every day.',ref:'527'},
-  {src:'ef',txt:'Bananas are rich in potassium, which is good for the heart. Strawberries are a strong antioxidant that helps against hardening of the arteries.',ref:'F:46 · F:48'}],
+ oats:[{plan:'bp',txt:'A good breakfast of oats or another whole grain, with fruit.',ref:'CD:268'},
+  {plan:'bmi',txt:'Breakfast is the biggest meal: oats or another whole grain, with fruit and a few nuts. Oats bring fibre that helps lower cholesterol.',ref:'CD:268 · G'},
+  {plan:'thin',txt:'The base of a hearty breakfast.',ref:'CD:268'},
+  {plan:'mind',txt:'Part of a simple plant breakfast.',ref:'CD:268'}],
+ flax:[{plan:'bp',txt:'A spoon of ground flaxseed on breakfast adds fibre.',ref:'G'},
+  {plan:'bmi',txt:'Ground flaxseed brings fibre that helps lower cholesterol.',ref:'G'},
+  {plan:'mind',txt:'Walnuts and flaxseed feed the brain well.',ref:'G'}],
+ garlic:[{plan:'bp',txt:'Raw garlic is a traditional favourite for blood pressure, in the big vegetable lunch.',ref:'G'},
+  {plan:'sugar',txt:'Onion and garlic are traditional everyday foods for steadier blood sugar.',ref:'G'}],
+ celery:[{plan:'bp',txt:'A traditional favourite for blood pressure, in the big vegetable lunch.',ref:'G'}],
+ tomato:[{plan:'bp',txt:'A traditional favourite for blood pressure, and it brings potassium.',ref:'G'},
+  {plan:'veg',txt:'Part of the raw salad at lunch.',ref:'CD:514'}],
+ potato:[{plan:'bp',txt:'Unsalted potato soup, with the skin, is a simple vegetable dish for lunch.',ref:'CD:514',
+  care:'Potassium-rich foods can matter with some blood-pressure pills or kidney disease. Mention them to your clinic first.'}],
+ rice:[{plan:'sugar',txt:'Rice, maize and oats are good everyday staples; whole-grain porridge at a set time makes breakfast.',ref:'CD:146'}],
+ onion:[{plan:'sugar',txt:'Onion and garlic are traditional everyday foods for steadier blood sugar.',ref:'G'}],
+ beans:[{plan:'sugar',txt:'Cooked green beans are a traditional everyday food for steadier blood sugar.',ref:'G',
+  care:'Always cook green beans. Do not eat them raw.'}],
+ lentils:[{plan:'sugar',txt:'Rice, maize, oats, beans, peas and lentils are good everyday staples.',ref:'CD:146'},
+  {plan:'bmi',txt:'Beans or lentils with vegetables and a whole grain make a filling lunch, and bring fibre.',ref:'CD:514 · G'},
+  {plan:'thin',txt:'Beans and lentils with grains are good, filling staples.',ref:'CD:146'}],
+ slaw:[{plan:'bmi',txt:'Plenty of vegetables at lunch.',ref:'CD:514'},
+  {plan:'veg',txt:'Half the plate vegetables, starting with a raw salad.',ref:'CD:514'}],
+ dates:[{plan:'sleep',txt:'Fruit, fresh or dried, makes a light early supper.',ref:'CD:245'},
+  {plan:'thin',txt:'Dried fruit is a good, filling staple.',ref:'CD:146'},
+  {plan:'veg',txt:'Dried fruit can be used freely as everyday food.',ref:'CD:146'}],
+ crackers:[{plan:'sleep',txt:'A few crackers with fruit make a light supper several hours before bed.',ref:'CD:245'}],
+ nuts:[{plan:'mind',txt:'A few walnuts with breakfast feed the brain well.',ref:'G'},
+  {plan:'thin',txt:'Nuts can take the place of meat, and a handful a day adds energy.',ref:'MH:23'}],
+ fruit:[{plan:'veg',txt:'Fruit with every breakfast; eat plenty of it.',ref:'CD:475'},
+  {plan:'sleep',txt:'Fruit makes a light early supper.',ref:'CD:245'},
+  {plan:'mind',txt:'Fruit is part of a simple plant breakfast.',ref:'CD:268'}],
 };
 
 /* ---------------------------------------------------------------------------------------------------------
-   DIRECTIVE PLAN: what the visitor must DO, WHY (the book's reason) and HOW (concrete steps), most important first.
-   The plan screen shows the first 3; the rest appear under "When these feel easy, add". WhatsApp and the printed
-   card carry the same 3. Every `why`/`how` restates the plan's own steps and facts above, with the same reference;
-   nothing new is claimed ("F:" = Encyclopedia of Foods, vol. 1). Optional per action:
+   DIRECTIVE PLAN: what the visitor must DO, WHY (the reason, with its reference) and HOW (concrete steps), most
+   important first. The plan screen shows the first 3; the rest appear under "When these feel easy, add". WhatsApp
+   and the printed card carry the same 3. Every `why`/`how` restates the plan's own steps and facts above, with the
+   same reference; nothing new is claimed. Optional per action:
      foods: food keys whose daily cost is shown       when(a): only for visitors it fits
      first(a): move to the top for this visitor      how items may be functions of the visitor (return '' to skip) */
 const heavy=a=>{const b=bmi(a);return b!=null&&b>=25;};
 const cholUp=a=>a.s.chol!=null&&a.s.chol>=5;
 const PLAN_GOAL={bp:'Bring your blood pressure down',sugar:'Bring your blood sugar down',bmi:'Reach a healthy weight and cholesterol',
+ thin:'Reach a healthy weight',veg:'Eat more fruit and vegetables',move:'Move more every day',water:'Drink enough water',
  sleep:'Sleep deeply again',mind:'Calm your mind'};
 const ACTIONS={
  bp:[
-  {do:'Stop adding salt, from today',why:'Leaving out added salt is the book’s first rule for high blood pressure.',ref:'527',
+  {do:'Cut right down on salt, from today',why:'Go easy on salt, pickles and spicy food, and eat plenty of fruit instead.',ref:'CD:475',
    how:['No salt in cooking or at the table','No stock cubes, soy sauce, MSG or salty processed food','Read labels: avoid sodium and preservatives']},
-  {do:'Walk 30 minutes outdoors every day',why:'Daily outdoor exercise, enough rest and losing extra weight all lower blood pressure.',ref:'528 · N:13',
-   how:['In daylight, for example at 16:30','Start gently and build up slowly','Heart disease or several heart risks? See a doctor before hard exercise']},
-  {do:'Eat raw garlic, celery and tomato every day',why:'These are the foods the book names for blood pressure, and potassium-rich vegetables help the body get rid of extra sodium.',ref:'526–527',
-   foods:['garlic','celery','tomato'],how:['A big raw salad at lunch: 2 cloves garlic, 2–4 celery stalks, 2 tomatoes','Unsalted potato soup, with the skin, is good too']},
-  {do:'Drink about 8 cups of water a day',why:'Water keeps the blood thinner, so the heart does not have to pump so hard.',ref:'526 · N:17',
-   how:['A full glass as soon as you get up','Spread the rest through the day']},
-  {do:'Lose extra weight slowly',why:'Losing weight if you are overweight helps lower blood pressure.',ref:'528 · 480–481',when:heavy,
-   how:['No crash diets: steady, nourishing meals','Biggest meal at breakfast, lightest at supper']},
-  {do:'Take 10–20 slow, deep breaths after meals and before bed',why:'Slow belly breathing lowered heart rate and blood pressure in a study.',ref:'N:15',
+  {do:'Walk outdoors every day',why:'Walking is the best exercise: it improves the circulation and uses the whole body.',ref:'HL:570 · HL:571',
+   how:['In daylight, for example at 16:30','Start gently and build up to 30 minutes','Heart disease or several heart risks? See a doctor before hard exercise']},
+  {do:'Eat a big raw-vegetable lunch every day',why:'Plenty of vegetables, fruit and grains; tomato, celery, garlic and carrots are traditional favourites for blood pressure.',ref:'CD:514 · G',
+   foods:['garlic','celery','tomato'],how:['A big raw salad at lunch: garlic, celery and tomato','Unsalted potato soup, with the skin, is good too']},
+  {do:'Drink about 8 glasses of water, between meals',why:'Water drunk freely helps the body resist disease; drink it between meals rather than with them.',ref:'CD:726 · CD:731 · G',
+   how:['A full glass as soon as you get up','Water through the day, not tea, coffee or sweet drinks']},
+  {do:'Lose extra weight slowly',why:'Meals at set times, a good breakfast and a light early supper bring weight down steadily.',ref:'CD:267 · CD:268',when:heavy,
+   how:['No crash diets: steady, regular meals','A light, early supper']},
+  {do:'Take 10–20 slow, deep breaths after meals and before bed',why:'Deep, full breaths refresh the blood and calm the nerves.',ref:'HL:717',
    how:['Sit upright, in loose clothing','Outdoors in fresh air if you can']},
-  {do:'End the day with a warm neutral bath and lights out by 22:00',why:'A neutral bath relaxes the nerves and helps sleep, and rest at night lowers pressure.',ref:'259 · 528',
-   how:['34–36°C for 15–20 minutes, never hot','Lights out by 22:00']}],
+  {do:'Add ground flaxseed to breakfast',why:'Oats and ground flaxseed add fibre.',ref:'G',foods:['flax'],
+   how:['1–2 tablespoons on your porridge']},
+  {do:'End the day with a warm bath and an early night',why:'Warm and neutral baths soothe the nerves and even out the circulation.',ref:'MH:17',
+   how:['33–35°C for 15–30 minutes, never hot','Lights out by 22:00']}],
  sugar:[
-  {do:'Stop sugar and white flour, from today',why:'Sugar, white-flour foods and greasy food push blood sugar up, and coffee can push it very high.',ref:'657',
-   how:['No sugar in drinks, no sweets, cakes or cold drinks','Swap white bread for whole grains: brown rice or whole maize meal','No coffee and no tobacco']},
-  {do:'Walk briskly every day, twice if you can',why:'Exercise moves sugar out of the blood. The book calls it “insulin’s best friend”.',ref:'657–658 · N:13',
-   how:['Warm up with 3–5 minutes of slow walking','Unfit? Repeat 60 seconds brisk, 30 seconds easy']},
-  {do:'Eat raw onion, raw garlic and cooked green beans every day',why:'These three are named as lowering blood sugar.',ref:'657–658 · F:109',foods:['onion','garlic','beans'],
-   how:['Raw onion and garlic in the lunch salad','Green beans always cooked, never raw','Cooked green beans make a good snack instead of sweets']},
-  {do:'Eat small meals at regular times, and nothing late',why:'Overeating can bring diabetes on or make it worse; smaller meals at set times help.',ref:'657',
-   how:['Breakfast, lunch and a small, early supper','Chew slowly: eating fast pushes sugar up','Nothing more to eat in the evening']},
-  {do:'Build meals on whole grains, beans and lentils',why:'A high-fibre whole-food diet with plant protein lowers the need for insulin.',ref:'657',foods:['rice','lentils'],
-   how:['Brown rice or whole maize meal porridge for breakfast','Beans or lentils at lunch']},
-  {do:'Check both feet every evening',why:'Infections start more easily with high blood sugar.',ref:'658',
-   how:['Look for cuts, blisters or sores','Avoid hot and cold extremes: a neutral bath (34–36°C) is the safe choice']},
-  {do:'Drink water through the day',why:'Good hydration keeps the blood thinner; complications get worse when the blood is thick.',ref:'N:17',
-   how:['Water or unsweetened herbal tea, not juice']}],
+  {do:'Cut out sugar and sweets, from today',why:'Far too much sugar is eaten; sweets, cakes and pastries are best left out.',ref:'CD:191',
+   how:['No sugar in drinks, no sweets, cakes or cold drinks','Swap white bread for whole grains: brown rice, oats or whole maize meal','No coffee and no tobacco']},
+  {do:'Walk briskly every day',why:'Walk outdoors every day; a short walk after meals helps digestion.',ref:'MH:17 · HL:571',
+   how:['A short walk after lunch','A brisk outdoor walk later in the day','Unfit? Walk briskly for a minute, easily for half a minute, and repeat']},
+  {do:'Eat at set times, with nothing in between',why:'Leave at least five hours between meals with nothing in between, and keep any third meal light and early.',ref:'CD:267 · CD:245',
+   how:['Breakfast, lunch and a small, early supper','Chew slowly and eat calmly','Nothing more to eat in the evening']},
+  {do:'Build meals on whole grains, beans and vegetables',why:'Rice, maize, oats, beans and lentils are good staples, and whole grains nourish better than white flour.',ref:'CD:146 · CD:504',
+   foods:['rice','lentils'],how:['Brown rice or whole maize meal porridge for breakfast','Beans or lentils at lunch']},
+  {do:'Eat onion, garlic and cooked green beans every day',why:'They are traditional everyday foods for steadier blood sugar.',ref:'G',foods:['onion','garlic','beans'],
+   how:['Raw onion and garlic in the lunch salad','Green beans always cooked, never raw']},
+  {do:'Check both feet every evening',why:'With high blood sugar, small sores can become infected.',ref:'S',
+   how:['Look for cuts, blisters or sores','Avoid very hot and very cold baths: a warm bath (33–35°C) is the gentle choice']},
+  {do:'Drink water through the day',why:'Water drunk freely helps the body do its work and resist disease.',ref:'CD:726',
+   how:['Water, not juice or sweet drinks']}],
  bmi:[
-  {do:'Make breakfast your biggest meal and supper the lightest',why:'Calories eaten in the morning are less likely to be stored as fat, and finishing a meal slightly hungry does no harm.',ref:'481 · N:11',
-   foods:['oats'],how:['Breakfast: oats or another whole grain, with fruit and a few nuts','Supper early and light, or just fruit','Nothing to eat before bed',
-    a=>a.s.weight?`About ${Math.round(a.s.weight*2.2046*13/50)*50} kcal a day keeps your weight steady; a little under that loses it gradually (p. 481)`:'']},
-  {do:'Cut out fried food and animal fat',why:'Saturated fat, fried food and hydrogenated oil raise cholesterol, and every plant food is free of it.',ref:'532 · N:11',
-   first:a=>cholUp(a)&&!heavy(a),foods:['flax'],how:['No meat fat, butter, cheese or fried food','Use only cold-pressed oils such as flaxseed','Smaller meals: large meals push the liver to make more cholesterol']},
-  {do:'Stop snacking: only water between meals',why:'Cutting out snacks and drinking only water between meals is the first part of Dr Nedley’s weight programme.',ref:'N:11 · 481',
-   how:['8–10 glasses of water a day','No juice, cold drinks or coffee','Hungry between meals? Make the meals more nourishing']},
-  {do:'Walk 30 minutes or more outdoors every day',why:'Exercise lowers triglycerides even without weight loss; 30 minutes of brisk walking uses about 150 calories.',ref:'531–532 · N:13',
-   how:['Aim for 10,000 steps a day','Build up slowly; heart disease? See a doctor first']},
-  {do:'Fill up on raw vegetables',why:'You may eat as many raw vegetables as you like; avoid fried, frozen and canned ones.',ref:'481',foods:['slaw'],
+  {do:'Make breakfast your biggest meal and supper the lightest',why:'Make breakfast the heartiest meal; a third meal should be light and several hours before bed.',ref:'CD:268 · CD:245',
+   foods:['oats'],how:['Breakfast: oats or another whole grain, with fruit and a few nuts','Supper early and light, or just fruit and a cracker','Nothing to eat before bed']},
+  {do:'Cut out fried food and animal fat',why:'Prepare food simply and free of grease; plant foods carry no cholesterol, and flaxseed and oats bring fibre that helps lower it.',ref:'CD:137 · G',
+   first:a=>cholUp(a)&&!heavy(a),foods:['flax'],how:['No meat fat, butter, cheese or fried food','A spoon of ground flaxseed on breakfast','Smaller meals: even simple food can be overeaten']},
+  {do:'Stop snacking: only water between meals',why:'Eat at set times, and take nothing until the next meal.',ref:'CD:267',
+   how:['Plenty of water through the day','No juice, cold drinks or coffee','Hungry between meals? Make the meals themselves more filling']},
+  {do:'Walk outdoors every day',why:'Active exercise in the open air every day strengthens the liver, kidneys and lungs.',ref:'HL:578 · HL:571',
+   how:['Build up slowly to 30 minutes or more','Heart disease? See a doctor first']},
+  {do:'Fill up on vegetables',why:'Plenty of vegetables, fruit and grains.',ref:'CD:514',foods:['slaw'],
    how:['Raw cabbage and carrot salad, about 300 g a day']},
-  {do:'Choose whole grains, never refined',why:'Sugar, white flour, quick oats and packaged cereals are refined carbohydrates; cook whole grains instead.',ref:'481',
-   how:['Rolled oats, brown rice, barley','No sugar, sweets or white bread']}],
+  {do:'Choose whole grains and beans, with little sugar',why:'Whole grains nourish better than white flour, and far too much sugar is eaten.',ref:'CD:504 · CD:191',foods:['lentils'],
+   how:['Rolled oats, brown rice, beans, lentils','No sugar, sweets or white bread']}],
+ thin:[
+  {do:'Eat three good meals at set times',why:'The body must have enough nourishing food, eaten at set times.',ref:'CD:326 · CD:267',
+   how:['Breakfast, lunch and an early supper, every day','Make the meals bigger rather than snacking']},
+  {do:'Make breakfast hearty',why:'The stomach handles food best in the morning, so breakfast should be the heartiest meal.',ref:'CD:268',foods:['oats','nuts'],
+   how:['Porridge with milk or soy milk, fruit, a handful of nuts and a few dates']},
+  {do:'Add beans, nuts and dried fruit every day',why:'Grains, beans, lentils and dried fruit are good, filling staples, and nuts can take the place of meat.',ref:'CD:146 · MH:23',
+   foods:['lentils','dates'],how:['Beans or lentils at lunch','A few dates or raisins with breakfast']},
+  {do:'Walk or work outdoors every day',why:'Active exercise in the open air strengthens the body and builds appetite.',ref:'HL:578',
+   how:['A walk or light garden work in the afternoon']},
+  {do:'Eat slowly and calmly',why:'Food eaten in a hurry or while anxious does less good.',ref:'CD:168',
+   how:['Sit down for meals and chew well']},
+  {do:'See the clinic if you lost weight without trying',why:'Weight loss you cannot explain needs a check.',ref:'S',
+   how:['Ask the triage nurse today if you are worried']}],
+ veg:[
+  {do:'Fruit with every breakfast',why:'Eat plenty of fruit; fruit is a gift to be thankful for.',ref:'CD:475 · CD:464',foods:['fruit'],
+   how:['A banana or seasonal fruit on your porridge']},
+  {do:'Half the plate vegetables at lunch',why:'Plenty of vegetables, fruit and grains, simply prepared.',ref:'CD:514 · CD:137',foods:['slaw','tomato'],
+   how:['A raw salad of cabbage, carrot and tomato','Plus one cooked vegetable']},
+  {do:'Reach five servings of fruit and vegetables a day',why:'At least five servings a day is the goal; colourful fruit and vegetables and dark greens bring the widest range of goodness.',ref:'G',
+   how:['A serving is a fist-sized fruit or half a cup of vegetables','Count them for a week']},
+  {do:'Keep dried fruit for everyday use',why:'Dried fruit such as raisins and dates can be used freely as everyday food.',ref:'CD:146',foods:['dates'],
+   how:['A few dates or raisins with breakfast']},
+  {do:'Beans or lentils a few times a week',why:'Beans, boiled or baked, are a simple, wholesome dish.',ref:'CD:518',
+   how:['Bean soup, or lentils with rice']}],
+ move:[
+  {do:'Walk outdoors every day',why:'No exercise can take the place of walking, and it should be done in the open air every day the weather allows.',ref:'HL:570 · HL:571',
+   how:['Week 1: 10 minutes a day','Summer and winter']},
+  {do:'Walk a little after every meal',why:'A short walk after meals helps digestion.',ref:'MH:17',
+   how:['Head up, shoulders back','Even 5 minutes counts']},
+  {do:'Add 5 minutes a week until you reach 30',why:'Brisk but not violent exercise refreshes the whole body; 30 minutes a day is the goal.',ref:'HL:780 · G',
+   how:['Write down your minutes each day','Heart disease, chest pain or several heart risks? See a doctor first']},
+  {do:'Do useful work with your hands',why:'Useful work lifts the mind as well as the body.',ref:'MH:17',
+   how:['Garden, sweep, carry, or help a neighbour']},
+  {do:'Breathe deeply in fresh air',why:'Deep, full breaths of fresh air refresh the blood.',ref:'HL:717',
+   how:['10 slow breaths by an open window each morning']}],
+ water:[
+  {do:'Drink hot water as soon as you get up',why:'A drink of clear, hot water before eating does no harm and may do good.',ref:'CD:728',
+   how:['A glass or two before breakfast, hot but never scalding']},
+  {do:'Drink between meals, not with them',why:'Little or no drink with meals; drink water a while before or after eating.',ref:'CD:731',
+   how:['A glass half an hour before each meal','Two glasses mid-morning and mid-afternoon']},
+  {do:'About 8 glasses a day',why:'Drink freely of pure water every day; about 8 glasses is the goal.',ref:'CD:727 · G',
+   how:['Keep a bottle with you','Pale yellow urine means you are drinking enough']},
+  {do:'Water instead of tea, coffee and sweet drinks',why:'Tea, coffee and sweet drinks do not take the place of water.',ref:'MH:26 · G',
+   how:['Swap one drink a day, then another']},
+  {do:'Eat plenty of fruit',why:'Fruit eases thirst and the craving for salty, spicy food.',ref:'CD:475',
+   how:['Fruit with every breakfast']}],
  sleep:[
-  {do:'Go to bed and get up at the same time every day',why:'Regular hours set the body clock, and a 9 pm bedtime gives the most melatonin.',ref:'548 · N:16',
-   how:['In bed by 21:00–22:00, weekends too','You should wake without an alarm']},
-  {do:'Get 30 minutes of daylight within 10 minutes of waking',why:'Morning daylight sets the body clock; bright light in the evening upsets it.',ref:'548 · N:14',
-   how:['Outdoors, or breakfast near a sunny window','Dim the lights in the evening']},
-  {do:'No caffeine or alcohol, and a light supper 3–4 hours before bed',why:'Caffeine can halve melatonin for about 6 hours, alcohol cuts deep sleep, and fatty or sugary food at night keeps you awake.',ref:'547 · N:16',
-   foods:['dates','crackers'],how:['No coffee, strong tea, cola or alcohol','Supper: fruit, or a few dates or figs and whole-grain crackers','No meat, sugar or fatty food at night']},
-  {do:'Make the last hour calm',why:'Guilt and stress keep people awake; a calm mind and a neutral bath help sleep.',ref:'N:16 · 259',
-   how:['TV and phone off; calming reading or music for 15–30 minutes','A warm neutral bath (34–36°C), or slow deep breaths in fresh air']},
-  {do:'Keep the bedroom cool, dark and quiet',why:'A cool (about 15–18°C), dark, quiet, tidy room with fresh air helps sleep.',ref:'548 · N:16',
-   how:['Only a dim light if you wake at night']},
-  {do:'Valerian tea 30 minutes before bed, if you like',why:'Valerian and hops are teas named for sleep, and the easier way off sleeping pills.',ref:'548',foods:['valerian'],
-   how:['Not hops with valerian for more than 2 weeks without a break','Never stop sleeping tablets suddenly']}],
+  {do:'Go to bed and get up at the same time every day',why:'Irregular hours for eating and sleeping wear down the mind; a steady rhythm helps the body know when to sleep.',ref:'CD:201 · G',
+   how:['In bed by 21:00–22:00, weekends too','Morning light and fresh air as soon as you are up']},
+  {do:'No tea, coffee or tobacco, and a light early supper',why:'Stimulants bring sleeplessness, and eating just before bed keeps the stomach working through the night.',ref:'MH:26 · CD:270',
+   foods:['dates','crackers','fruit'],how:['No coffee, strong tea, cola or tobacco','Supper: fruit, or a few dates and whole-grain crackers','Nothing more to eat after supper']},
+  {do:'A cup of hop or catnip tea in the evening',why:'Hop tea helps bring on sleep and catnip tea quiets the nerves; chamomile and linden flower are gentle alternatives.',ref:'PH:6 · G',
+   how:['One cup, warm and unsweetened','Taking sleeping or anxiety pills, pregnant or breastfeeding? Ask your clinic before hops','No catnip in pregnancy']},
+  {do:'Take a warm bath just before bed',why:'Warm and neutral baths soothe the nerves.',ref:'MH:17',
+   how:['33–35°C for 15–30 minutes, never hot','Skip very hot baths with diabetes or heart trouble']},
+  {do:'Breathe deeply in fresh air before bed',why:'Deep breathing of fresh air calms the nerves and helps sound sleep.',ref:'HL:717',
+   how:['Sit upright, in loose clothing','A few minutes by an open window']},
+  {do:'Keep the bedroom aired and sunlit',why:'Bedrooms need fresh air day and night, and daily sunshine and airing.',ref:'HL:313 · HL:618',
+   how:['Open the window a little at night','Open curtains and windows every morning']},
+  {do:'Walk or work outdoors every day',why:'Walk outdoors every day; exercise helps sleep, but not right before bed.',ref:'HL:571 · G',
+   how:['Late afternoon is a good time']},
+  {do:'End the day thankful',why:'A cheerful, thankful mind is good for the body; worry keeps people awake.',ref:'MH:18',
+   how:['Set the day’s worries aside','A short prayer of thanks']}],
  mind:[
-  {do:'Get outside: morning daylight and a 30-minute walk',why:'Morning light helps tiredness, poor sleep and low mood, and regular exercise lowers anxiety and low mood.',ref:'N:14 · N:13',
-   how:['30 minutes of daylight within 10 minutes of waking','Walk, garden or any activity you enjoy']},
-  {do:'Catch one worrying thought a day and check it',why:'Ten common thinking traps make worries feel worse; checking a thought against them changes how it feels.',ref:'N:1–10',
-   how:['Evening, 5 minutes: write the worry down','Ask which trap it is, e.g. all-or-nothing or fortune telling','Write a more balanced version, and one good thing that really counts']},
-  {do:'Connect with someone every day',why:'Close family and friends protect mental health.',ref:'N:18',
-   how:['Call or visit a friend or family member','Join a church or community activity']},
-  {do:'Take 10–20 slow, deep breaths after meals and before bed',why:'Slow belly breathing relaxes the body, improves mood and helps sleep.',ref:'N:15',
+  {do:'Get outside every day: morning light and a walk',why:'Time outdoors among trees and flowers is one of nature’s best remedies, and brisk walking with a cheerful spirit refreshes the whole body.',ref:'MH:19 · HL:780',
+   how:['Half an hour of morning light','Walk, garden or do useful work outdoors']},
+  {do:'Check one worrying thought each evening',why:'Worries often grow from thinking traps; writing a fairer version of the thought takes away much of its sting.',ref:'G',
+   how:['Evening, 5 minutes: write the worry down','Is it all-or-nothing, a jump to the worst, or a feeling taken as fact?','Write a fairer version of it']},
+  {do:'Write down three good things each evening',why:'Nothing does more for health than a thankful spirit, and speaking of good things makes joy grow.',ref:'MH:18',
+   how:['Three good things from today','Thank God for each one','Read them out loud']},
+  {do:'Do one kind thing for someone every day',why:'Helping others brings healing to the helper too.',ref:'MH:18',
+   how:['Call or visit a friend, neighbour or family member','Join a church or community project']},
+  {do:'Take slow, deep breaths after meals and before bed',why:'Deep breathing of fresh air calms the nerves.',ref:'HL:717',
    how:['Sit upright, in loose clothing, in fresh air']},
-  {do:'Drink water from the moment you wake',why:'Good hydration helps thinking, concentration and headaches.',ref:'N:17',how:['8–10 glasses across the day']},
-  {do:'A plant breakfast with flaxseed and walnuts',why:'Fruit, whole grains and nuts are good for the brain; flaxseed and walnuts add omega-3.',ref:'N:11',foods:['oats','flax','nuts'],
-   how:['Oats with fruit, ground flaxseed and a few walnuts']},
-  {do:'A calm evening and lights out by 21:30',why:'Poor sleep and stress feed each other; soothing music or spiritual reading helps.',ref:'N:16 · N:19',
-   how:['15–30 minutes of calm music or reading, and a short prayer','Cool, dark, quiet room']}],
+  {do:'Sing, even when you do not feel like it',why:'Singing is a help that is always at hand against discouragement.',ref:'MH:18',
+   how:['A hymn in the morning or evening','Calm music instead of TV before bed']},
+  {do:'Drink water from the moment you wake',why:'Drink freely of pure water every day.',ref:'CD:727',how:['A glass as soon as you are up','Plenty through the day']},
+  {do:'A simple plant breakfast, eaten calmly',why:'Simple plant meals feed the brain well: fruit, whole grains, walnuts and flaxseed.',ref:'CD:268 · G',foods:['oats','nuts','fruit','flax'],
+   how:['Oats with fruit, a few walnuts and a spoon of ground flaxseed']},
+  {do:'A cup of chamomile or linden tea in a quiet moment',why:'Chamomile and linden flower teas are traditional calming teas.',ref:'G',
+   how:['Warm and unsweetened, sitting down','Allergic to ragweed? Choose linden instead']}],
 };
 /* When to check again: the step that closes the 21 days. */
-const RECHECK={bp:['Have your blood pressure checked again in 3 weeks, at a clinic or pharmacy.','528'],
+const RECHECK={bp:['Have your blood pressure checked again in 3 weeks, at a clinic or pharmacy.','S'],
  sugar:['Have your blood sugar checked again in 3 weeks, at your clinic.',''],
  bmi:['Check your weight again in 3 weeks, on the same scale.',''],
+ thin:['Check your weight again in 3 weeks, on the same scale.',''],
+ veg:['Count your servings of fruit and vegetables each day for the 3 weeks.',''],
+ move:['Write down your walking minutes each day for the 3 weeks.',''],
+ water:['Count your glasses of water each day for the 3 weeks.',''],
  sleep:['Write down your hours of sleep each night for the 3 weeks.',''],
  mind:['Low mood or worry lasting more than 2 weeks, or stopping you working or sleeping? See your clinic.','']};
 
 const HUES=['mint','sky','lilac','sage','blush','sand','aqua','peach'];
 const hueOf=id=>HUES[[...String(id)].reduce((t,c)=>t+c.charCodeAt(0),0)%HUES.length];
-const HUE_P={bp:'blush',sugar:'sand',bmi:'sky',sleep:'lilac',mind:'aqua'};
-/* "527" → "p. 527"; "N:16" → "Nedley ch. 16"; "N:1–10" → "Nedley chs. 1–10"; joined with " · " */
-/* "F:76" → "vol. 1, p. 76" = Encyclopedia of Foods and Their Healing Power (Food screen only) */
+const HUE_P={bp:'blush',sugar:'sand',bmi:'sky',thin:'peach',veg:'sage',move:'mint',water:'aqua',sleep:'lilac',mind:'aqua'};
+/* "MH:23" → "Ministry of Healing ch. 23"; "CD:731" → "Counsels on Diet §731"; "HL:571" → "Healthful Living §571";
+   "PH:6" → "Place of Herbs p. 6"; "G" / "S" → what the line rests on */
+const REF_TAG={G:'general advice',S:'expo safety rule'};
+const REF_BOOK={MH:'Ministry of Healing ch. ',CD:'Counsels on Diet §',HL:'Healthful Living §',PH:'Place of Herbs p. '};
 function refLabel(pg){
  return String(pg).split(' · ').map(x=>{
-  const f=x.match(/^F:(.+)$/);if(f)return (/[–-]/.test(f[1])?'vol. 1, pp. ':'vol. 1, p. ')+f[1];
-  const m=x.match(/^N:(.+)$/);return m?(/[–-]/.test(m[1])?'Nedley chs. ':'Nedley ch. ')+m[1]:'p. '+x;}).join(' · ');
+  if(REF_TAG[x])return REF_TAG[x];
+  const m=x.match(/^(MH|CD|HL|PH):(.+)$/);return m?REF_BOOK[m[1]]+m[2]:x;}).join(' · ');
 }
 /* which books a plan actually draws on, so the credit line only names those */
 function planBooks(p,extra){
  const refs=[...p.steps.map(s=>s[2]),...p.facts.map(f=>f[1]),...(extra||[])].join(' · ');
  const out=[];
- if(/(^|\s)\d{3}/.test(refs.replace(/[NF]:[\d–-]+/g,'')))out.push(BOOK_REF);
- if(/N:/.test(refs))out.push(BOOK2_REF);
- if(/F:/.test(refs))out.push(BOOK3_REF);
+ if(/(^|\s)MH:/.test(refs))out.push(BOOK_REF);
+ if(/(^|\s)CD:/.test(refs))out.push(BOOK2_REF);
+ if(/(^|\s)HL:/.test(refs))out.push(BOOK3_REF);
+ if(/(^|\s)PH:/.test(refs))out.push(BOOK4_REF);
  return out;
 }
-const planCredit=p=>planBooks(p).join(' and ');
+const planCredit=p=>p.credit||planBooks(p).join('; ');
+
+/* ================= CHURCH PLANS =================
+   A church's own home plans, for one of the nine problems or one of its own (e.g. "Joint pain"). Its admins write
+   them on the Church screen; its staff send one to a visitor from the Plan tab, and the visitor's record keeps the
+   plan's id in interests.churchPlan (so it syncs with the rest of the record). A church plan is always shown as the
+   church's own, never as the app's, and the app's safety rules (red-range warning, keep taking your pills, the help
+   line for sleep and stress) always come with it. In practice mode DEMO_CHURCH_PLANS stand in. */
+const CHURCH_PLANS_KEY='newstart.churchplans.v1';
+const DEMO_CHURCH_PLANS=[
+ {id:'demo-joints',church_id:'demo',problem:'Joint pain',title:'Easing stiff, painful joints',
+  note:'This is an example from a practice church. Real plans are written by your church’s admin.',
+  actions:[{do:'Move every joint gently each morning',why:'Gentle movement keeps joints from stiffening.',how:['5 minutes of slow stretches after you get up','Stop if a joint is hot or swollen']},
+   {do:'Use a warm, never hot, compress on stiff joints',why:'Warmth eases stiffness.',how:['A warm, wet towel on the joint for 10 minutes','Test the heat on your wrist first']},
+   {do:'Walk a little every day',why:'Walking keeps the muscles round the joints strong.',how:['Start with 10 minutes on flat ground']},
+   {do:'See the clinic if a joint is red, hot or swollen',why:'That needs a check, not only home care.',how:['Ask the triage nurse today']}]},
+ {id:'demo-bp',church_id:'demo',problem:'bp',title:'Our church’s blood-pressure walking club',
+  note:'This is an example from a practice church.',
+  actions:[{do:'Join the Sunday walking group',why:'Walking with others keeps you going.',how:['Meet at the church gate at 07:00 on Sundays']},
+   {do:'Cut right down on salt',why:'Less salt helps blood pressure come down.',how:['No salt at the table']},
+   {do:'Have your blood pressure checked at church each month',why:'Seeing the numbers keeps you on track.',how:['At the health desk after the service']}]}];
+const inPractice=()=>!cloud.mode&&!cloud.user;
+const myChurchId=()=>cloud.acct&&cloud.acct.church?cloud.acct.church.id:'';
+const churchNameOf=cp=>cp.church_id==='demo'?'Practice church':(cloud.acct&&cloud.acct.church&&cloud.acct.church.id===cp.church_id?cloud.acct.church.name:'your church');
+const churchPlanLabel=cp=>PROTOCOLS[cp.problem]?PROTOCOLS[cp.problem].tag:cp.problem;
+const cleanHow=x=>(Array.isArray(x.how)?x.how:String(x.how||'').split('\n')).map(h=>String(h).trim()).filter(Boolean);
+/* the plans this device can send: the demo set in practice mode, otherwise the signed-in church's (cached for offline) */
+function churchPlanList(){
+ if(inPractice())return DEMO_CHURCH_PLANS;
+ if(!cloud.plans){try{const s=JSON.parse(localStorage.getItem(CHURCH_PLANS_KEY)||'null');if(s&&Array.isArray(s.list))cloud.plans=s;}catch(e){}}
+ const cid=myChurchId();
+ if(cid&&cloud.client&&(!cloud.plans||cloud.plans.cid!==cid)&&cloud.plansBusy!==cid)loadChurchPlans(cid);
+ return cloud.plans&&(!cid||cloud.plans.cid===cid)?cloud.plans.list:[];
+}
+/* `key` keeps the platform admin's view of another church apart from this device's own church */
+async function loadChurchPlans(cid,key){
+ key=key||'plans';
+ if(!cid||!cloud.client)return;
+ if(key==='plans')cloud.plansBusy=cid;
+ let r;try{r=await cloud.client.rpc('church_plans',{p_church:cid});}catch(e){r={error:e};}
+ if(key==='plans')cloud.plansBusy='';
+ const list=!r.error&&Array.isArray(r.data)?r.data:null;
+ if(!list&&cloud[key]&&cloud[key].cid===cid)return;      /* offline or an older database: keep what we have */
+ cloud[key]={cid,list:list||[]};
+ if(key==='plans'&&list){try{localStorage.setItem(CHURCH_PLANS_KEY,JSON.stringify(cloud.plans));}catch(e){}}
+ if(state.tab==='plan'&&A())renderMain();
+ renderAcct();
+}
+function chosenChurchPlan(a){
+ const id=a&&a.interests&&a.interests.churchPlan;
+ return id?churchPlanList().find(p=>p.id===id)||null:null;
+}
+/* a church plan in the same shape as planFor(), so the WhatsApp message and the card carry it unchanged */
+function churchPlanFor(a,cp){
+ const base=PROTOCOLS[cp.problem]?cp.problem:autoProtocol(a),name=churchNameOf(cp);
+ const list=(cp.actions||[]).map(x=>({do:String(x.do||''),why:String(x.why||''),how:cleanHow(x),ref:'',cost:0}));
+ const p={tag:churchPlanLabel(cp),title:cp.title,credit:name,src:'its own plan, not reviewed by the app',steps:[],facts:[],items:[],
+  habits:list.slice(0,3).map(x=>x.do),note:cp.note||'',help:['sleep','mind'].includes(cp.problem)?HELP_LINE:'',hydro:null};
+ return {pk:base,church:cp,p,goal:cp.title,problem:PROTOCOLS[cp.problem]?problemOf(a,cp.problem):`A plan from ${name} for: ${cp.problem}.`,
+  urgent:urgentOf(a,base),top:list.slice(0,3),more:list.slice(3),recheck:['Check in with your church’s health team in 3 weeks.','']};
+}
+function chooseChurchPlan(id){
+ const a=A();if(!a)return;
+ a.interests=a.interests||{};
+ if(id)a.interests.churchPlan=id;else delete a.interests.churchPlan;
+ persist();renderMain();
+ toast(id?`Church plan chosen for ${firstName(a.name)} ✓`:'Back to the app’s plan');
+}
+/* on the app's plan: the church's plans, the ones for today's readings first */
+function churchPlanPicker(a){
+ const L=churchPlanList();if(!L.length)return '';
+ const needs=new Set(planNeeds(a).map(n=>n.k));
+ const sorted=[...L].sort((x,y)=>(needs.has(y.problem)-needs.has(x.problem))||String(x.title).localeCompare(String(y.title)));
+ return `<details class="pl-switch"><summary>Send a plan from ${esc(churchNameOf(sorted[0]))} ▾</summary>
+  <div class="mt-2 grid gap-2">${sorted.map(cp=>`<button onclick="chooseChurchPlan('${qSafe(cp.id)}')" class="btn btn-glass py-2.5 text-left text-[11px]"><b>${esc(cp.title)}</b> · ${esc(churchPlanLabel(cp))}${needs.has(cp.problem)?' · fits today’s readings':''}</button>`).join('')}</div>
+ </details>`;
+}
+function viewChurchPlan(a,cp){
+ const P=churchPlanFor(a,cp),p=P.p,first=esc(firstName(a.name)),hue='sage';
+ const card=(x,i)=>`<li class="ac-card hue-${hue}">
+   <div class="ac-top"><span class="ac-n">${i+1}</span><div class="ac-do">${esc(x.do)}</div></div>
+   ${x.why?`<p class="ac-why"><b>Why</b>${esc(x.why)}</p>`:''}
+   ${x.how.length?`<div class="ac-how"><b>How</b><ul>${x.how.map(h=>`<li>${esc(h)}</li>`).join('')}</ul></div>`:''}
+  </li>`;
+ return `<section class="stagger space-y-3.5">
+  <div class="glass hue-tint hue-${hue} p-4">
+   <div class="microlabel">${first}’s plan · from ${esc(p.credit)}</div>
+   <div class="display mt-0.5 text-[19px] leading-tight font-extrabold text-[#0f2a2c]">${esc(P.goal)}</div>
+   <p class="pl-problem">${esc(P.problem)}</p>
+   <p class="mt-2 text-[11px] leading-snug text-[#4f6870]">Written by ${esc(p.credit)} for ${esc(p.tag)}: the church’s own plan, not reviewed by the app.</p>
+   <button class="tap-link mt-1" onclick="chooseChurchPlan('')">Use the app’s plan instead</button>
+  </div>
+
+  ${P.urgent?`<div class="pl-urgent" role="alert"><b>⚠ ${esc(P.urgent.t)}</b><span>${esc(P.urgent.w)}</span></div>`:''}
+
+  <div>
+   <div class="pl-h">Do ${P.top.length===1?'this':`these ${P.top.length} things`}</div>
+   <ol class="ac-list">${P.top.map(card).join('')}</ol>
+  </div>
+
+  ${P.more.length?`<div class="glass p-4">
+   <div class="microlabel">When these feel easy, add</div>
+   <ul class="pl-more">${P.more.map(x=>`<li><b>${esc(x.do)}</b><span>${esc(x.why)}</span></li>`).join('')}</ul>
+  </div>`:''}
+
+  <div class="glass p-4">
+   <div class="pl-row"><span class="pl-ic" aria-hidden="true">📅</span><div><b>Check again</b><span>${esc(P.recheck[0])}</span></div></div>
+   <div class="pl-row"><span class="pl-ic" aria-hidden="true">💊</span><div><b>Keep taking your pills</b><span>Never stop prescribed pills suddenly; your clinic will adjust them. This plan is healthy-living advice, not a replacement for the clinic.${p.note?` ${esc(p.note)}`:''}</span></div></div>
+  </div>
+  ${p.help?`<div class="pl-urgent"><b>Need help now?</b><span>${esc(p.help)}</span></div>`:''}
+  ${precautionsHTML()}
+ </section>`;
+}
+
+/* --- the Church screen: writing the church's plans (admins) --- */
+const CP_SLOTS=5;            /* things to do shown in the form; a plan may hold up to 8 */
+function churchPlansBox(cid){
+ const own=cid===myChurchId(),key=own?'plans':'adminPlans',S=cloud[key];
+ if(!S||S.cid!==cid){if(!(own&&cloud.plansBusy===cid))loadChurchPlans(cid,key);return acctNote('Loading…');}
+ const ed=cloud.planEdit&&cloud.planEdit.cid===cid?cloud.planEdit:null;
+ return (S.list.length?S.list.map(cp=>`<div class="border-t border-[#123033]/[.07] py-2.5"><div class="flex items-center gap-2">
+   <div class="min-w-0 flex-1"><div class="truncate text-[13px] font-bold text-[#123033]">${esc(cp.title)}</div>
+    <div class="truncate text-[11px] text-[#4f6870]">${esc(churchPlanLabel(cp))} · ${nOf((cp.actions||[]).length,'thing')} to do</div></div>
+   <button class="tap-link" onclick="editChurchPlan('${qSafe(cid)}','${qSafe(cp.id)}')">Edit</button>
+   <button class="tap-link text-rose-700" onclick="deleteChurchPlan('${qSafe(cid)}','${qSafe(cp.id)}')">Delete</button></div></div>`).join('')
+   :acctNote('No church plans yet.'))
+  +(ed?churchPlanForm(cid,ed):`<button class="btn btn-primary mt-3 w-full py-2.5 text-xs" onclick="editChurchPlan('${qSafe(cid)}','')">+ Write a new plan</button>`)
+  +acctNote('Your staff can send these plans to visitors from the Plan tab. They show as your church’s own plan, together with the app’s safety rules. Write them in your own words; do not copy from books.');
+}
+function churchPlanForm(cid,ed){
+ const keys=Object.keys(PROTOCOLS),own=!keys.includes(ed.problem),acts=ed.actions||[];
+ const slots=Math.min(8,Math.max(CP_SLOTS,acts.length));
+ const field=(id,ph,v,max)=>`<input id="${id}" value="${esc(v||'')}" placeholder="${ph}" maxlength="${max}" class="field mt-1.5 text-xs">`;
+ return `<form onsubmit="saveChurchPlan(event,'${qSafe(cid)}')" class="mt-3 space-y-2.5">
+  <label class="block"><span class="microlabel">Problem</span>
+   <select id="cpProblem" class="field mt-1 text-xs">${keys.map(k=>`<option value="${k}" ${k===ed.problem?'selected':''}>${PROTOCOLS[k].tag}</option>`).join('')}<option value="own" ${own?'selected':''}>Another problem (type it below)</option></select></label>
+  ${field('cpOwn','Another problem, e.g. Joint pain',own?ed.problem:'',60)}
+  <label class="block"><span class="microlabel">Title</span>${field('cpTitle','e.g. Easing stiff, painful joints',ed.title,120)}</label>
+  ${Array.from({length:slots},(_,i)=>{const x=acts[i]||{};return `<div class="rounded-[14px] border border-[#123033]/[.07] p-2.5"><div class="microlabel">Thing to do ${i+1}${i?' (optional)':''}</div>
+   ${field('cpDo'+i,'What to do',x.do,140)}${field('cpWhy'+i,'Why it helps',x.why,240)}
+   <textarea id="cpHow${i}" rows="2" maxlength="400" placeholder="How: one step per line" class="field mt-1.5 text-xs">${esc(cleanHow(x).join('\n'))}</textarea></div>`;}).join('')}
+  <label class="block"><span class="microlabel">Safety note (optional)</span><textarea id="cpNote" rows="2" maxlength="600" class="field mt-1 text-xs">${esc(ed.note||'')}</textarea></label>
+  <div class="flex gap-2"><button id="cpGo" class="btn btn-primary flex-1 py-2.5 text-xs">Save plan</button>
+   <button type="button" class="btn btn-glass flex-1 py-2.5 text-xs" onclick="cloud.planEdit=null;renderAcct()">Cancel</button></div>
+ </form>`;
+}
+function editChurchPlan(cid,id){
+ const S=cloud[cid===myChurchId()?'plans':'adminPlans'],cp=id&&S?S.list.find(p=>p.id===id):null;
+ cloud.planEdit=cp?{...cp,cid}:{cid,id:null,problem:'bp',title:'',actions:[],note:''};
+ renderAcct();
+}
+async function saveChurchPlan(e,cid){
+ e.preventDefault();
+ const v=id=>(($('#'+id)||{}).value||'').trim(),ed=cloud.planEdit||{};
+ const problem=v('cpProblem')==='own'?v('cpOwn'):v('cpProblem');
+ const actions=[];
+ for(let i=0;i<8;i++){const d=v('cpDo'+i);if(d)actions.push({do:d,why:v('cpWhy'+i),how:v('cpHow'+i).split('\n').map(h=>h.trim()).filter(Boolean)});}
+ if(!problem){toast('Choose the problem this plan is for.');return;}
+ if(!actions.length){toast('Add at least one thing to do.');return;}
+ const r=await acctRpc('save_church_plan',{p_church:cid,p_id:ed.id||null,p_problem:problem,p_title:v('cpTitle'),p_actions:actions,p_note:v('cpNote')},'Plan saved ✓');
+ if(!r)return;
+ cloud.planEdit=null;
+ await loadChurchPlans(cid,cid===myChurchId()?'plans':'adminPlans');
+}
+async function deleteChurchPlan(cid,id){
+ const S=cloud[cid===myChurchId()?'plans':'adminPlans'],cp=S&&S.list.find(p=>p.id===id);
+ if(!confirm(`Delete the plan “${cp?cp.title:''}”? Visitors it was sent to go back to the app’s plan.`))return;
+ if(await acctRpc('delete_church_plan',{p_id:id},'Plan deleted'))await loadChurchPlans(cid,cid===myChurchId()?'plans':'adminPlans');
+}
 /* HUE_N (per-tab hue) now lives next to SERVE_TABS in the shell section below */
 /* ================= ICONS ================= */
 const svgW=p=>`<svg class="h-[21px] w-[21px]" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">${p}</svg>`;
@@ -2371,11 +2715,11 @@ function viewResults(){
     </div>
    </div>
    <div class="mt-3 space-y-2.5">
-    ${simSlider('simK','kitchen','1 · Food: salt-free whole foods','simKBadge',0,3,1,state.sim.kitchen,'No added salt; oats or whole grains, raw vegetables, garlic, celery and plenty of water (book, pp. 526–527).')}
-    ${simSlider('simW','walk','2 · Brisk sunlight walk','simWBadge',0,45,5,state.sim.walk,'A daily outdoor walk in daylight, with 8–10 glasses of water through the day (book, pp. 481, 528).')}
-    ${simSlider('simH','hydro','3 · Neutral bath + early night','simHBadge',0,2,1,state.sim.hydro,'A warm (not hot) neutral bath before bed and lights out before 22:00 (book, pp. 259, 528).')}
+    ${simSlider('simK','kitchen','1 · Food: salt-free whole foods','simKBadge',0,3,1,state.sim.kitchen,'Little salt; oats or whole grains, plenty of vegetables and fruit, and plain water (Ministry of Healing chs. 17, 23).')}
+    ${simSlider('simW','walk','2 · Brisk sunlight walk','simWBadge',0,45,5,state.sim.walk,'A brisk walk outdoors in daylight every day, with plenty of plain water (Ministry of Healing ch. 17).')}
+    ${simSlider('simH','hydro','3 · Neutral bath + early night','simHBadge',0,2,1,state.sim.hydro,'A warm, neutral bath (33–35°C, never hot) before bed and lights out before 22:00 (Ministry of Healing ch. 17).')}
    </div>
-   <p class="mt-3 text-center text-[10px] leading-snug text-[#8a9aa0]">The blood-pressure and health-age figures are illustrative estimates for counselling, not a prediction. The plans come from the ${BOOK_REF} and ${BOOK2_REF}. The full plan’s food costs about ${money(costOf(pk))} a day (store prices checked ${PRICE_DATE}; they change and vary by branch).</p>
+   <p class="mt-3 text-center text-[10px] leading-snug text-[#8a9aa0]">Expo readings are a quick screening, not a diagnosis, and the volunteers are not health professionals. The blood-pressure and health-age figures are illustrative estimates for counselling, not a prediction. The plans draw, in our own words, on the health writings of Ellen G. White.${costOf(pk)?` The full plan’s food costs about ${money(costOf(pk))} a day (store prices checked ${PRICE_DATE}; they change and vary by branch).`:''}</p>
   </div></details>
  </section>`;
 }
@@ -2409,7 +2753,7 @@ function updateSimUI(){syncRanges();
 }
 
 /* ================= VIEW: PLAN ================= */
-/* The reading in the book's own terms (blood pressure bands: High Cholesterol chapter, p. 532). */
+/* The reading in the expo's screening bands: normal, pre-hypertension, stage 1, stage 2. */
 function bpStage(sys,dia){
  if(!sys||!dia)return '';
  if(sys>=160||dia>=100)return 'stage 2 high blood pressure';
@@ -2417,23 +2761,29 @@ function bpStage(sys,dia){
  if(sys>=120||dia>=80)return 'pre-hypertension';
  return 'normal';
 }
-/* Which of the four plans this person's numbers point to, most urgent first, with the reason in plain words. */
+/* Which plans this person's numbers point to, most urgent first, with the reason in plain words. */
 function planNeeds(a){
  const out=[],sev=c=>c==='flag'?3:c==='watch'?2:0;
  const bp=cat('bp',{sys:a.s.sys,dia:a.s.dia});
  /* order: red-flag blood pressure, red-flag sugar, amber blood pressure, amber sugar, then weight/cholesterol, then sleep */
- if(sev(bp[0]))out.push({k:'bp',sev:sev(bp[0]),rank:sev(bp[0])===3?0:2,why:`${a.s.sys}/${a.s.dia} is ${bpStage(a.s.sys,a.s.dia)} (book, p. 532)`});
+ if(sev(bp[0]))out.push({k:'bp',sev:sev(bp[0]),rank:sev(bp[0])===3?0:2,why:`${a.s.sys}/${a.s.dia} is ${bpStage(a.s.sys,a.s.dia)}`});
  const sg=cat('sugar',a.s.sugar);
- if(sev(sg[0]))out.push({k:'sugar',sev:sev(sg[0]),rank:sev(sg[0])===3?1:3,why:`${a.s.sugar} mmol/L (${Math.round(a.s.sugar*18)} mg/dL). The book’s limit without diabetes is 110 mg/dL (p. 657)`});
+ if(sev(sg[0]))out.push({k:'sugar',sev:sev(sg[0]),rank:sev(sg[0])===3?1:3,why:`${a.s.sugar} mmol/L (${Math.round(a.s.sugar*18)} mg/dL) is above the expo’s healthy range`});
  const b=bmi(a),bm=cat('bmi',b),ch=cat('chol',a.s.chol),why=[];
  const heavy=b!=null&&b>=25;
- if(heavy)why.push(`BMI ${fmt1(b)} is above the healthy range (the book counts about 20% over average weight as overweight, p. 480)`);
- if(sev(ch[0]))why.push(`cholesterol ${a.s.chol} mmol/L (${Math.round(a.s.chol*38.67)} mg/dL); the book’s good level is under 200 (p. 532)`);
+ if(heavy)why.push(`BMI ${fmt1(b)} is above the healthy range`);
+ if(sev(ch[0]))why.push(`cholesterol ${a.s.chol} mmol/L (${Math.round(a.s.chol*38.67)} mg/dL) is above the expo’s healthy range`);
  if(why.length)out.push({k:'bmi',sev:Math.max(heavy?sev(bm[0])||2:0,sev(ch[0])),rank:4,why:why.join('; ')});
+ if(b!=null&&b<18.5)out.push({k:'thin',sev:sev(bm[0])||2,rank:4.2,why:`BMI ${fmt1(b)} is below the healthy range`});
  const sl=cat('sleep',a.s.sleep);
- if(sev(sl[0]))out.push({k:'sleep',sev:sev(sl[0]),rank:5,why:`${a.s.sleep} hours a night. The books ask for regular hours and a calm, light evening (Encyclopedia p. 547; Nedley ch. 16)`});
+ if(sev(sl[0]))out.push({k:'sleep',sev:sev(sl[0]),rank:5,why:`${a.s.sleep} hours a night. The plan builds regular hours, fresh air and a calm, light evening`});
  /* the visitor ticked "Stress & peace" at the screening desk */
- if(a.interests&&a.interests.stress)out.push({k:'mind',sev:2,rank:4.5,why:'Asked for stress and peace support. The calm-mind plan pairs daily habits with ten thinking habits (Nedley, chs. 1–19)'});
+ if(a.interests&&a.interests.stress)out.push({k:'mind',sev:2,rank:4.5,why:'Asked for stress and peace support. The calm-mind plan pairs time outdoors with gratitude, kindness and rest'});
+ /* the habit checks, after every medical flag */
+ const vg=cat('veg',a.s.veg),wk=cat('walk',a.s.walk),wt=cat('water',a.s.water);
+ if(sev(vg[0]))out.push({k:'veg',sev:sev(vg[0]),rank:6,why:`${a.s.veg} servings of fruit and vegetables a day; the goal is 5 or more`});
+ if(sev(wk[0]))out.push({k:'move',sev:sev(wk[0]),rank:6.5,why:`${a.s.walk} minutes of exercise a day; the goal is 30`});
+ if(sev(wt[0]))out.push({k:'water',sev:sev(wt[0]),rank:7,why:`${a.s.water} glasses of water a day; the goal is 8`});
  return out.sort((x,y)=>x.rank-y.rank);
 }
 /* The plan actually shown for this visitor: the one picked on the Plan step, else the one their numbers point to.
@@ -2456,6 +2806,10 @@ function problemOf(a,pk){
  }
  if(pk==='sleep'&&s.sleep!=null&&s.sleep<7)return `Sleep ${s.sleep} hours a night: too little. Most adults need 7–8.`;
  if(pk==='mind'&&a.interests&&a.interests.stress)return 'You asked for help with stress and worry.';
+ if(pk==='thin'&&bmi(a)!=null&&bmi(a)<18.5)return `BMI ${fmt1(bmi(a))}: underweight. Healthy is 18.5–25.`;
+ if(pk==='veg'&&s.veg!=null&&s.veg<5)return `Fruit and vegetables: ${s.veg} servings a day. The goal is 5 or more.`;
+ if(pk==='move'&&s.walk!=null&&s.walk<30)return `Exercise: ${s.walk} minutes a day. The goal is 30.`;
+ if(pk==='water'&&s.water!=null&&s.water<8)return `Water: ${s.water} glasses a day. The goal is 8.`;
  return planNeeds(a).length?'Not your main need today, but these habits help everyone.'
   :'Your numbers look fine today. This plan helps keep them that way.';
 }
@@ -2467,6 +2821,7 @@ function urgentOf(a,pk){
  return red?{t:'Book a clinic visit this week',w:'This reading is in the red range. The plan below helps, but a clinic must check it.'}:null;
 }
 function planFor(a,pk){
+ if(!pk){const cp=chosenChurchPlan(a);if(cp)return churchPlanFor(a,cp);}
  pk=pk||pkOf(a);
  const all=(ACTIONS[pk]||[]).filter(x=>!x.when||x.when(a)),isFirst=x=>!!(x.first&&x.first(a));
  const fix=x=>({...x,how:x.how.map(h=>typeof h==='function'?h(a):h).filter(Boolean),
@@ -2478,9 +2833,9 @@ function planFor(a,pk){
 function viewPlan(){
  const a=A(),sug=autoProtocol(a);
  if(state.sugFor!==a.id||state.sugVal!==sug){state.protocol=sug;state.sugFor=a.id;state.sugVal=sug;}
+ const cp=chosenChurchPlan(a);if(cp)return viewChurchPlan(a,cp);
  const P=planFor(a,state.protocol),p=P.p,hue=HUE_P[P.pk],first=esc(firstName(a.name));
  const others=planNeeds(a).filter(n=>n.k!==P.pk);
- const kcal=P.pk==='bmi'&&a.s.weight?Math.round(a.s.weight*2.2046*13/50)*50:0;
  const ref=r=>r?` <span class="ac-ref">${refLabel(r)}</span>`:'';
  const card=(x,i)=>`<li class="ac-card hue-${hue}">
    <div class="ac-top"><span class="ac-n">${i+1}</span><div class="ac-do">${esc(x.do)}</div></div>
@@ -2497,6 +2852,7 @@ function viewPlan(){
    <details class="pl-switch"><summary>Show a different plan ▾</summary>
     <div class="mt-2 grid grid-cols-2 gap-2">${Object.keys(PROTOCOLS).map(k=>`<button onclick="selectProtocol('${k}')" class="btn py-2.5 text-[11px] ${k===P.pk?'btn-hue hue-'+HUE_P[k]:'btn-glass'}">${PROTOCOLS[k].tag}</button>`).join('')}</div>
    </details>
+   ${churchPlanPicker(a)}
   </div>
 
   ${P.urgent?`<div class="pl-urgent" role="alert"><b>⚠ ${esc(P.urgent.t)}</b><span>${esc(P.urgent.w)}</span></div>`:''}
@@ -2516,24 +2872,24 @@ function viewPlan(){
    <div class="pl-row"><span class="pl-ic" aria-hidden="true">💊</span><div><b>Keep taking your pills</b><span>Never stop prescribed pills suddenly; your clinic will adjust them. This plan is healthy-living advice, not a replacement for the clinic.${p.note?` ${esc(p.note)}`:''}</span></div></div>
   </div>
   ${p.help?`<div class="pl-urgent"><b>Need help now?</b><span>${esc(p.help)}</span></div>`:''}
+  ${precautionsHTML()}
 
-  <button class="pl-food" onclick="openFood()">
+  ${p.items.length?`<button class="pl-food" onclick="openFood()">
    <span class="min-w-0 flex-1"><b>Food for this plan · ≈ ${money(costOf(P.pk))} a day</b>
-   <span>Store prices checked ${PRICE_DATE}; they vary by branch. What each food costs, and why the books include it.</span></span><span aria-hidden="true">→</span></button>
+   <span>Store prices checked ${PRICE_DATE}; they vary by branch. What each food costs, and why it is in the plan.</span></span><span aria-hidden="true">→</span></button>`:''}
 
   <details class="glass pl-det"><summary>The full day, step by step</summary><div>
    <div class="space-y-2.5">${p.steps.map(([t,txt,pg])=>`<div class="flex gap-2.5">
      <span class="mono flex-none rounded-[10px] px-2 py-1 text-[10px] font-bold tint hue-${hue}">${t}</span>
      <span class="min-w-0 flex-1 text-[12px] leading-snug text-[#3d5c5e]">${txt}${ref(pg)}</span></div>`).join('')}</div>
-   ${kcal?`<div class="mt-3 rounded-[14px] bg-white/60 px-3 py-2 text-[11px] leading-snug text-[#33504f]">The book’s rule of thumb (p. 481): about <b>${kcal} kcal a day</b> keeps weight steady. Eating a little under that loses weight gradually. Avoid crash diets.</div>`:''}
   </div></details>
   ${p.hydro?`<details class="glass pl-det"><summary>Home hydrotherapy (free)</summary><div><p class="text-[11.5px] leading-relaxed text-[#3d5c5e]">${p.hydro}</p></div></details>`:''}
-  <details class="glass pl-det"><summary>Everything the books say</summary><div>
+  <details class="glass pl-det"><summary>What this plan is based on</summary><div>
    <p class="text-[11.5px] leading-relaxed text-[#3d5c5e]">${p.mech}</p>
    <ul class="mt-2.5 space-y-2">${p.facts.map(([txt,pg])=>`<li class="flex items-start gap-2.5">
      <span class="mt-1.5 h-1.5 w-1.5 flex-none rounded-full bg-brand-500"></span>
      <span class="min-w-0 flex-1 text-[11.5px] leading-snug text-[#3d5c5e]">${txt}${ref(pg)}</span></li>`).join('')}</ul>
-   <p class="mt-3 text-[10px] leading-relaxed text-[#8a9aa0]">Source: ${p.src}. ${planBooks(p,P.top.concat(P.more).map(x=>x.ref)).join('. ')}. “p.” = the Natural Remedies Encyclopedia’s printed pages; “Nedley ch.” = chapters of The Lost Art of Thinking; “vol. 1, p.” = the Encyclopedia of Foods. Paraphrased: open the book at the same place for the full text.</p>
+   <p class="mt-3 text-[10px] leading-relaxed text-[#8a9aa0]">Source: ${p.src}. ${planBooks(p,P.top.concat(P.more).map(x=>x.ref)).join('. ')}. All books are by Ellen G. White. “Ministry of Healing ch.” = a chapter of The Ministry of Healing; “Counsels on Diet §” and “Healthful Living §” = a numbered paragraph of those books; “Place of Herbs p.” = a page of The Place of Herbs in Rational Therapy. The advice is in our own words. Lines marked “general advice” or “expo safety rule”, and the herb hazard notes, rest on no book.</p>
   </div></details>
  </section>`;
 }
@@ -2545,7 +2901,7 @@ function selectProtocol(k){
 
 /* ================= VIEW: FOOD (opened from the Plan tab) =================
    Every shopping-list food once, with an animated bar for what it costs (a day, over the 21 days, or across the
-   stores) and, on tap, why the books include it and how its price was worked out. Prices: FOOD_PRICES (written by
+   stores) and, on tap, why it is in the plan and how its price was worked out. Prices: FOOD_PRICES (written by
    tools/update-prices.js) and each item's `daily`; reasons: FOOD_WHY. */
 const FOOD_METRICS=[['day','Per day'],['21','21 days'],['store','Store prices']];
 const shortFood=n=>n.split(/ \(| \/ /)[0];
@@ -2563,7 +2919,8 @@ function foodList(){
  return _foods=[...m.values()];
 }
 function openFood(){
- state.food={open:true,plan:state.protocol||'bp',metric:(state.food&&state.food.metric)||'day'};
+ const pk=state.protocol&&PROTOCOLS[state.protocol]&&PROTOCOLS[state.protocol].items.length?state.protocol:'all';
+ state.food={open:true,plan:pk,metric:(state.food&&state.food.metric)||'day'};
  state._foodAnim=true;renderMain();window.scrollTo(0,0);
 }
 function closeFood(){if(state.food)state.food.open=false;renderMain();window.scrollTo(0,0);}
@@ -2582,18 +2939,17 @@ function foodMiniBars(part,i0){
   ${row('fd-lo','Cheapest · '+esc(part.cheap),part.min,i0)}${row('','Typical',part.med,i0+1)}${row('fd-hi','Dearest · '+esc(part.dear),part.max,i0+2)}`;
 }
 function foodDetail(f,plan){
- /* this plan's reasons first, then the Encyclopedia of Foods, then the other plans */
- const rank=w=>w.plan===plan?0:w.src==='ef'?1:2;
+ /* this plan's reasons first, then the other plans */
+ const rank=w=>w.plan===plan?0:1;
  const why=[...f.why].sort((a,b)=>rank(a)-rank(b));
  const cares=why.filter(w=>w.care).map(w=>w.care);
  const P=f.price,parts=P?P.parts:[];
  const amount=parts.length?parts.map(p=>(p.label&&!p.amount.includes(p.label)?p.label+' ':'')+p.amount).join(' + '):f.dose;
  const stores=[...new Set(parts.flatMap(p=>p.stores))].sort();
  return `<div class="fd-h">Why this food</div>
-  ${why.length?why.map(w=>`<div class="fd-why">${w.src==='ef'?'<span class="fd-tag hue-sage">Encyclopedia of Foods</span>'
-    :`<span class="fd-tag hue-${HUE_P[w.plan]}">${esc(PROTOCOLS[w.plan].tag)}</span>`}
+  ${why.length?why.map(w=>`<div class="fd-why"><span class="fd-tag hue-${HUE_P[w.plan]}">${esc(PROTOCOLS[w.plan].tag)}</span>
     <span>${esc(w.txt)} <span class="fd-ref">${refLabel(w.ref)}</span></span></div>`).join('')
-   :'<div class="fd-why"><span>No reason from the books is recorded for this food yet. A reviewer should add one.</span></div>'}
+   :'<div class="fd-why"><span>No reason is recorded for this food yet. A reviewer should add one.</span></div>'}
   ${cares.map(c=>`<div class="fd-care">⚠ ${esc(c)}</div>`).join('')}
   <div class="fd-money"><b>How much:</b> ${amount.toLowerCase().startsWith(f.dose.toLowerCase())?esc(amount):esc(f.dose)+(amount!==f.dose?` (priced as ${esc(amount)})`:'')}.<br>
    <b>Cost:</b> about ${money(f.daily)} a day, ${money(f.daily*21)} for 21 days, at the typical (median) store price.<br>
@@ -2631,9 +2987,9 @@ function viewFood(){
    <div class="q-head"><div><div class="microlabel">Kitchen Pharmacy</div>
     <div class="display text-base font-extrabold">The food behind the plan</div></div>
     <button class="btn btn-glass q-tvbtn" onclick="closeFood()">← Plan</button></div>
-   <p class="mt-1 text-[11px] leading-snug text-[#5c747a]">What each food costs at the amount in the plan, and why the books include it. Tap a food to see why.</p>
+   <p class="mt-1 text-[11px] leading-snug text-[#5c747a]">What each food costs at the amount in the plan, and why it is in the plan. Tap a food to see why.</p>
    <div class="fd-chips mt-3" role="group" aria-label="Which plan">
-    ${Object.keys(PROTOCOLS).map(k=>`<button class="fd-chip hue-${HUE_P[k]}" aria-pressed="${k===plan}" onclick="setFoodPlan('${k}')">${esc(PROTOCOLS[k].tag)}</button>`).join('')}
+    ${Object.keys(PROTOCOLS).filter(k=>PROTOCOLS[k].items.length).map(k=>`<button class="fd-chip hue-${HUE_P[k]}" aria-pressed="${k===plan}" onclick="setFoodPlan('${k}')">${esc(PROTOCOLS[k].tag)}</button>`).join('')}
     <button class="fd-chip hue-mint" aria-pressed="${plan==='all'}" onclick="setFoodPlan('all')">All foods</button>
    </div>
    <div class="fd-seg mt-2.5" role="group" aria-label="What the bars show">
@@ -2647,12 +3003,12 @@ function viewFood(){
    <p class="fd-foot">${metric==='store'
     ?'Each food’s own prices per unit: the cheapest, the middle (median) and the dearest verified price found online, and the store. The dearest is often a different brand or pack size. '
     :'Bars compare the foods at the amount in the plan, at the middle (median) store price. '}Store prices were checked online on ${PRICE_DATE}; they change and vary by branch, so check your own shop. The books give no prices.</p>
-   <p class="fd-foot">Why each food — from three books: ${esc(BOOK_REF)} (“p.”); ${esc(BOOK2_REF)} (“Nedley ch.”); and ${esc(BOOK3_REF)} (“vol. 1, p.”). Paraphrased: open the book at the same place for the full text.</p>
+   <p class="fd-foot">Why each food — in our own words, from the health writings of Ellen G. White, or marked “general advice”.</p>
   </div>
 
   ${p?`<div class="fd-pouch"><div style="flex:1"><b>Tight budget? Church co-op starter pouch — R25</b><span>Bulk staples pre-packed for 21 days, ready at the exit table.</span></div></div>
   <div class="rounded-[22px] border border-amber-200/70 bg-amber-50/80 p-3.5 text-[11px] leading-relaxed text-amber-900">
-   <b>Safety:</b> this is healthy-living advice, not a replacement for the clinic. Never stop prescribed pills suddenly.${p.note?` <b>This plan:</b> ${esc(p.note)}`:''}</div>`:''}
+   <b>Safety:</b> ${esc(DISCLAIMER)} Never stop prescribed pills suddenly, and ask your clinic before big changes in food if you take regular medicine.${p.note?` <b>This plan:</b> ${esc(p.note)}`:''}</div>`:''}
  </section>`;
 }
 
@@ -3681,13 +4037,14 @@ function waPreviewHTML(a){
     ${P.top.map((x,i)=>`<li><b class="text-[#33504f]">${i+1}. ${esc(x.do)}</b><br>How: ${esc(x.how.join('; '))}.<br><i>Why: ${esc(x.why)}</i></li>`).join('')}
    </ol>
    <p class="mt-2 text-[11px] font-semibold leading-relaxed text-[#33504f]">📅 ${esc(P.recheck[0])}</p></div>
-  <div class="mt-3 rounded-[14px] border border-amber-200/70 bg-amber-50/80 p-2.5 text-[10px] leading-relaxed text-amber-900">
+  ${p.items.length?`<div class="mt-3 rounded-[14px] border border-amber-200/70 bg-amber-50/80 p-2.5 text-[10px] leading-relaxed text-amber-900">
    <b>Shopping list (store prices checked ${PRICE_DATE}; may vary by branch):</b> ${p.items.map(it=>`${it.name} (${it.dose})`).join('; ')}.
    <br><b>Where to buy it cheapest:</b> ${p.items.map(it=>{const Pr=foodPriceOf(it.name);return Pr?`${esc(shortFood(it.name))} at ${Pr.parts.map(pp=>esc(pp.cheap)).join(' & ')}`:'';}).filter(Boolean).join(' · ')} —
    about <b>${money(p.items.reduce((t,it)=>t+cheapDay(it),0))} a day</b> at those stores instead of ${money(costOf(pk))} typical.
-  </div>
+  </div>`:''}
   <p class="mt-3 text-[10px] leading-relaxed text-[#8a9aa0]">From ${planCredit(p)} — ${p.src}.</p>
   ${p.help?`<p class="mt-2 text-[10px] font-bold leading-relaxed text-rose-700">${esc(p.help)}</p>`:''}
+  <p class="mt-2 text-[10px] leading-relaxed text-[#6b8187]">${esc(DISCLAIMER)} ${esc(PRECAUTIONS[5])}</p>
   <p class="mt-3 text-[10px] italic text-[#6b8187]">“Beloved, I pray that you may prosper in all things and be in health, just as your soul prospers.” — 3 John 1:2</p>
  </div>`;
 }
@@ -3760,15 +4117,19 @@ function waMessage(a){
   '',
   ...P.top.flatMap((x,i)=>[`${i+1}. ${x.do}`,`   How: ${x.how.join('; ')}.`,`   Why: ${x.why}`,'']),
   `📅 ${P.recheck[0]}`,
-  `Food for this plan: about ${money(costOf(pk))} a day at typical store prices — about ${money(p.items.reduce((t,it)=>t+cheapDay(it),0))} if you buy each food where it is cheapest.`,
-  '',
-  `WHERE TO BUY IT CHEAPEST (store prices checked ${PRICE_DATE}):`,
-  ...p.items.map(cheapLine),
-  '',
+  ...(p.items.length?[`Food for this plan: about ${money(costOf(pk))} a day at typical store prices — about ${money(p.items.reduce((t,it)=>t+cheapDay(it),0))} if you buy each food where it is cheapest.`,
+   '',
+   `WHERE TO BUY IT CHEAPEST (store prices checked ${PRICE_DATE}):`,
+   ...p.items.map(cheapLine),
+   '']:[]),
   `Plan source: ${planCredit(p)}, ${p.src}.`,
   '',
   ...(p.help?[p.help,'']:[]),
   `These are home remedies and healthy-living advice, not a replacement for your clinic. If you take blood-pressure or diabetes pills, do not stop them suddenly — your clinic will adjust the doses safely.`,
+  '',
+  DISCLAIMER,
+  'Warnings and precautions:',
+  ...PRECAUTIONS.map(t=>`• ${t}`),
   '',
   `“Beloved, I pray that you may prosper in all things and be in health, just as your soul prospers.” — 3 John 1:2`,
  ].join('\n');
@@ -3845,7 +4206,7 @@ function buildPrintCard(){
  const date=new Date().toLocaleDateString('en-ZA',{day:'numeric',month:'short',year:'numeric'});
  /* An A6 card is small: the 3 actions with their first "how", food on one line, short book names. (The old card,
     with four long store lines, ran past the bottom edge and cut the safety note off.) */
- const books=planBooks(p,P.top.map(x=>x.ref)).map(b=>b.split(' (')[0].split(', 7th')[0]).join('; ');
+ const books=p.credit||planBooks(p,P.top.map(x=>x.ref)).map(b=>b.split(' (')[0]).join('; ');
  $('#printArea').innerHTML=`<div class="pc-card">
   <div class="pc-head">
    <div class="pc-head-row">
@@ -3867,9 +4228,9 @@ function buildPrintCard(){
    <div class="pc-problem">${esc(P.problem)}${P.urgent?` <b>${esc(P.urgent.t)}.</b>`:''}</div>
    <div>${P.top.map((x,i)=>`<div class="pc-habit"><span class="pc-box"></span><span><b>${i+1}. ${esc(x.do)}.</b> ${esc(x.how[0]||'')}.</span></div>`).join('')}</div>
    <div class="pc-line">📅 ${esc(P.recheck[0])}</div>
-   ${p.help?'':`<div class="pc-line">🛒 About ${money(costOf(pk))} a day (store prices checked ${PRICE_DATE}; may vary by branch): ${p.items.map(i=>esc(shortFood(i.name))).join(', ')}.</div>`}   <!-- plans with the crisis line need the room -->
+   ${p.help||!p.items.length?'':`<div class="pc-line">🛒 About ${money(costOf(pk))} a day (store prices checked ${PRICE_DATE}; may vary by branch): ${p.items.map(i=>esc(shortFood(i.name))).join(', ')}.</div>`}   <!-- plans with the crisis line need the room -->
    <div class="pc-foot">
-    <div class="pc-safety">Not a replacement for your clinic. <b>Never stop prescribed pills suddenly</b>; your clinic will adjust them.${p.help?` ${esc(p.help)}`:''}</div>
+    <div class="pc-safety">Not a replacement for your clinic: given by volunteers, not health professionals, as general information, not medical advice. <b>Never stop prescribed pills suddenly</b>; your clinic will adjust them. In an emergency, go to the nearest emergency unit.${p.help?` ${esc(p.help)}`:''}</div>
     <div class="pc-verse">“Beloved, I pray that you may prosper in all things and be in health.” — 3 John 1:2 · From: ${esc(books)}.</div>
     <div class="pc-bottom"><span>${a.interests.nurse?'☎ A nurse will call you within 48 hours':'Questions? Speak to the Health Ministries team'}</span><span>Badge ${esc(a.id)}</span></div>
    </div>
@@ -4792,7 +5153,7 @@ function acctTabs(){
 function openAcct(tab){
  cloud.acctTab=tab||'me';
  if(cloud.acctTab==='admin'){cloud.plat=null;cloud.audit=null;}
- if(cloud.acctTab==='church')cloud.members=null;
+ if(cloud.acctTab==='church'){cloud.members=null;cloud.adminPlans=null;cloud.planEdit=null;}
  showModal('#acctSheet');renderAcct();
 }
 function closeAcct(){hideModal('#acctSheet');}
@@ -4978,6 +5339,7 @@ function churchAdminHTML(){
   <div class="mt-1 text-[13px] font-bold text-[#123033]">${esc(c.name)}</div>
   ${acctBox('Members'+(waiting?` · ${waiting} waiting`:''),!L?acctNote('Loading…'):!L.length?acctNote('Nobody has joined yet.'):L.map(memberRow).join('')
    +acctNote('Members see only their own details and results. Staff and church admins see this church’s visitors and volunteers, so only give those roles to people you know.'))}
+  ${acctBox('Church plans',churchPlansBox(cid))}
   ${acctBox('Church details',churchFormHTML(c))}`;
 }
 function memberRow(u){
@@ -5142,6 +5504,7 @@ async function cloudSignOut(force){
  cloud.signingOut=false;cloud.ready=false;cloud.demo=false;cloud.gateKey='';cloud.isAdmin=undefined;cloud.pendingUsers=null;
  cloud.acct=null;cloud.churchId='';cloud.health=undefined;cloud.dir=null;cloud.regChurch=false;cloud.members=null;cloud.plat=null;cloud.audit=null;cloud.adminChurch='';closeAcct();
  cloud.view='login';cloud.viewEmail='';cloud.pending=false;cloud.recovery=false;cloud.formErr='';cloud.gateForce=false;cloud.delOpen=false;
+ cloud.plans=null;cloud.adminPlans=null;cloud.planEdit=null;try{localStorage.removeItem(CHURCH_PLANS_KEY);}catch(e){}
  cloud.user=null;cloud.mode=false;cloud.blocked=false;cloud.synced={att:{},vol:{}};cloud.rejected={};cloud.lastFull=0;cloud.since={att:'',vol:''};
  try{localStorage.removeItem(SYNC_KEY);localStorage.removeItem(CHURCH_KEY);}catch(e){}
  _ledgerSig='';
