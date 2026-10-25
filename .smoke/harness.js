@@ -35,7 +35,7 @@ const EXPORTS = [
   'acctGate', 'acctGateHTML', 'loadAccount', 'openAcct', 'closeAcct', 'renderAcct', 'acctTabs', 'acctButtons', 'joinChurch',
   'registerChurch', 'leaveChurch', 'saveMyDetails', 'churchSearch', 'setMember', 'linkMember', 'removeMember', 'setChurchStatus',
   'manageChurch', 'saveChurch', 'inChurch', 'conflictOn', 'dropChurchData', 'adoptChurch', 'healthHTML',
-  'planFor', 'PRICE_DATE', 'ACTIONS', 'FOOD_WHY', 'urgentOf',
+  'planFor', 'PRICE_DATE', 'ACTIONS', 'FOOD_WHY', 'urgentOf', 'DISCLAIMER', 'PRECAUTIONS', 'openFood', 'closeFood',
   'churchPlanList', 'chooseChurchPlan', 'editChurchPlan', 'saveChurchPlan', 'deleteChurchPlan', 'DEMO_CHURCH_PLANS',
   'health', 'noteHealth', 'healthReset', 'healthTest', 'statusPanelHTML', 'homeHealthHTML', 'acctHealthHTML', 'qStateBar',
   'SERVE_TABS', 'viewProfile', 'profGate', 'gateBack', 'profPassword', 'profDeleteAsk', 'profDeleteTyped', 'profDeleteGo',
@@ -2379,6 +2379,26 @@ function makeServer() {
     && /Never stop prescribed pills suddenly/.test($el('printArea').innerHTML));
   g.chooseChurchPlan('');
   ok('“Use the app’s plan instead” goes back to the app\'s plan', !cpDav.interests.churchPlan && /Do these 3 things/.test($main.innerHTML) && /Counsels on Diet §/.test($main.innerHTML));
+  const showsWarnings = h => h.includes('Warnings and precautions') && h.includes(g.DISCLAIMER) && g.PRECAUTIONS.every(t => h.includes(t));
+  ok('the disclaimer says the volunteers are not health professionals and the plan is not medical advice', /not doctors, nurses or other health professionals/.test(g.DISCLAIMER) && /not medical advice/.test(g.DISCLAIMER));
+  ok('the precautions cover medicine, screening, pregnancy and illness, herb interactions, warning signs, emergencies and children',
+    [/Never stop or change it/, /not a diagnosis/, /pregnant or breastfeeding/, /interact with medicines/, /chest pain/, /emergency unit/, /Children/].every(re => g.PRECAUTIONS.some(t => re.test(t))));
+  ok('every app plan screen shows the disclaimer and the precautions', Object.keys(PL).every(k => { g.state.protocol = k; g.render(); return showsWarnings($main.innerHTML); }));
+  g.chooseChurchPlan('demo-joints');
+  ok('a church plan screen shows them too', showsWarnings($main.innerHTML));
+  g.chooseChurchPlan(''); g.state.protocol = 'bp';
+  const wMsg = g.waMessage(cpDav);
+  ok('the WhatsApp message carries the disclaimer and every precaution', wMsg.includes(g.DISCLAIMER) && g.PRECAUTIONS.every(t => wMsg.includes('• ' + t)));
+  g.openWhatsApp();
+  ok('the WhatsApp preview carries the disclaimer', $el('waBody').innerHTML.includes(g.DISCLAIMER));
+  g.buildPrintCard();
+  ok('the printed card says the advice comes from volunteers, not health professionals, and what to do in an emergency',
+    /not health professionals/.test($el('printArea').innerHTML) && /nearest emergency unit/.test($el('printArea').innerHTML) && /Not a replacement for your clinic/.test($el('printArea').innerHTML));
+  g.state.tab = 'results'; g.render();
+  ok('the Results screen says the readings are screening only, not a diagnosis', /quick screening, not a diagnosis/.test($main.innerHTML) && /not health professionals/.test($main.innerHTML));
+  g.state.tab = 'plan'; g.render(); g.openFood();
+  ok('the Food screen carries the disclaimer', $main.innerHTML.includes(g.DISCLAIMER));
+  g.closeFood();
   g.state.protocol = 'bp'; g.render();
   ok('the calorie line only appears on the weight plan', !/kcal a day/.test($main.innerHTML));
   for (const k of ['sleep', 'mind']) {

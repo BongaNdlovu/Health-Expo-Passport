@@ -1224,6 +1224,21 @@ const BOOK2_REF='Counsels on Diet and Foods (Ellen G. White, compiled 1938)';
 const BOOK3_REF='Healthful Living (Ellen G. White, compiled 1897)';
 const BOOK4_REF='The Place of Herbs in Rational Therapy (Ellen G. White, compiled 1931)';
 const HELP_LINE='If you feel hopeless, or have thoughts of harming yourself, tell someone you trust today and call the SADAG suicide crisis line (0800 567 567) or Lifeline (0861 322 322), or go to the nearest clinic or emergency service. Do not wait.';
+/* Shown with every plan (the app's and a church's), on the Results and Food screens, in the WhatsApp message and on
+   the printed card: who is giving the advice, what it is not, and the precautions that always apply. */
+const DISCLAIMER='The volunteers at this expo are not doctors, nurses or other health professionals unless they tell you so. This plan is general healthy-living information, not medical advice, a diagnosis or treatment.';
+const PRECAUTIONS=[
+ 'Keep taking any medicine your clinic or doctor gave you. Never stop or change it without asking them.',
+ 'Expo readings are a quick screening, not a diagnosis. Have any high or low reading checked at a clinic.',
+ 'Ask your clinic before big changes in food, exercise or herb teas if you are pregnant or breastfeeding, have diabetes or heart, kidney or liver disease, or take regular medicine.',
+ 'Herbs and foods can interact with medicines. Ask your clinic or pharmacist before using herb teas with medicine.',
+ 'Stop and get help at once if you have chest pain, faintness, severe breathlessness, confusion, or a new or worsening symptom.',
+ 'In an emergency, call an ambulance or go to the nearest emergency unit straight away. Do not wait to try home remedies.',
+ 'Children, older people and anyone who is unwell may need different advice. Ask your clinic.'];
+const precautionsHTML=()=>`<div class="glass p-4"><div class="microlabel">Warnings and precautions</div>
+  <p class="mt-1.5 text-[11.5px] font-semibold leading-relaxed text-[#33504f]">${esc(DISCLAIMER)}</p>
+  <ul class="mt-2 space-y-1.5">${PRECAUTIONS.map(t=>`<li class="flex items-start gap-2.5"><span class="mt-1.5 h-1.5 w-1.5 flex-none rounded-full bg-brand-500"></span>
+   <span class="min-w-0 flex-1 text-[11.5px] leading-snug text-[#3d5c5e]">${esc(t)}</span></li>`).join('')}</ul></div>`;
 /* shopping-list entries shared by several plans (prices from prices/prices.csv, written by tools/update-prices.js) */
 const ITEM_FLAX={name:'Ground flaxseed',dose:'1–2 tbsp',store:'R150–R160 per kg (median R150) at Checkers, Pick n Pay, Woolworths (checked 19 Oct 2026)',daily:2.25};
 const ITEM_FRUIT={name:'Seasonal fruit (bananas, berries)',dose:'1–2 servings',store:'R33–R38 per kg (median R35) at Checkers, Pick n Pay, SPAR, Shoprite, Woolworths (checked 19 Oct 2026)',daily:6.92};
@@ -1836,6 +1851,7 @@ function viewChurchPlan(a,cp){
    <div class="pl-row"><span class="pl-ic" aria-hidden="true">💊</span><div><b>Keep taking your pills</b><span>Never stop prescribed pills suddenly; your clinic will adjust them. This plan is healthy-living advice, not a replacement for the clinic.${p.note?` ${esc(p.note)}`:''}</span></div></div>
   </div>
   ${p.help?`<div class="pl-urgent"><b>Need help now?</b><span>${esc(p.help)}</span></div>`:''}
+  ${precautionsHTML()}
  </section>`;
 }
 
@@ -2695,7 +2711,7 @@ function viewResults(){
     ${simSlider('simW','walk','2 · Brisk sunlight walk','simWBadge',0,45,5,state.sim.walk,'A brisk walk outdoors in daylight every day, with plenty of plain water (Ministry of Healing ch. 17).')}
     ${simSlider('simH','hydro','3 · Neutral bath + early night','simHBadge',0,2,1,state.sim.hydro,'A warm, neutral bath (33–35°C, never hot) before bed and lights out before 22:00 (Ministry of Healing ch. 17).')}
    </div>
-   <p class="mt-3 text-center text-[10px] leading-snug text-[#8a9aa0]">The blood-pressure and health-age figures are illustrative estimates for counselling, not a prediction. The plans draw, in our own words, on the health writings of Ellen G. White.${costOf(pk)?` The full plan’s food costs about ${money(costOf(pk))} a day (store prices checked ${PRICE_DATE}; they change and vary by branch).`:''}</p>
+   <p class="mt-3 text-center text-[10px] leading-snug text-[#8a9aa0]">Expo readings are a quick screening, not a diagnosis, and the volunteers are not health professionals. The blood-pressure and health-age figures are illustrative estimates for counselling, not a prediction. The plans draw, in our own words, on the health writings of Ellen G. White.${costOf(pk)?` The full plan’s food costs about ${money(costOf(pk))} a day (store prices checked ${PRICE_DATE}; they change and vary by branch).`:''}</p>
   </div></details>
  </section>`;
 }
@@ -2848,6 +2864,7 @@ function viewPlan(){
    <div class="pl-row"><span class="pl-ic" aria-hidden="true">💊</span><div><b>Keep taking your pills</b><span>Never stop prescribed pills suddenly; your clinic will adjust them. This plan is healthy-living advice, not a replacement for the clinic.${p.note?` ${esc(p.note)}`:''}</span></div></div>
   </div>
   ${p.help?`<div class="pl-urgent"><b>Need help now?</b><span>${esc(p.help)}</span></div>`:''}
+  ${precautionsHTML()}
 
   ${p.items.length?`<button class="pl-food" onclick="openFood()">
    <span class="min-w-0 flex-1"><b>Food for this plan · ≈ ${money(costOf(P.pk))} a day</b>
@@ -2983,7 +3000,7 @@ function viewFood(){
 
   ${p?`<div class="fd-pouch"><div style="flex:1"><b>Tight budget? Church co-op starter pouch — R25</b><span>Bulk staples pre-packed for 21 days, ready at the exit table.</span></div></div>
   <div class="rounded-[22px] border border-amber-200/70 bg-amber-50/80 p-3.5 text-[11px] leading-relaxed text-amber-900">
-   <b>Safety:</b> this is healthy-living advice, not a replacement for the clinic. Never stop prescribed pills suddenly.${p.note?` <b>This plan:</b> ${esc(p.note)}`:''}</div>`:''}
+   <b>Safety:</b> ${esc(DISCLAIMER)} Never stop prescribed pills suddenly, and ask your clinic before big changes in food if you take regular medicine.${p.note?` <b>This plan:</b> ${esc(p.note)}`:''}</div>`:''}
  </section>`;
 }
 
@@ -4017,6 +4034,7 @@ function openWhatsApp(){
   </div>`:''}
   <p class="mt-3 text-[10px] leading-relaxed text-[#8a9aa0]">From ${planCredit(p)} — ${p.src}.</p>
   ${p.help?`<p class="mt-2 text-[10px] font-bold leading-relaxed text-rose-700">${esc(p.help)}</p>`:''}
+  <p class="mt-2 text-[10px] leading-relaxed text-[#6b8187]">${esc(DISCLAIMER)} ${esc(PRECAUTIONS[5])}</p>
   <p class="mt-3 text-[10px] italic text-[#6b8187]">“Beloved, I pray that you may prosper in all things and be in health, just as your soul prospers.” — 3 John 1:2</p>
  </div>`;
  showModal('#waModal');
@@ -4052,6 +4070,10 @@ function waMessage(a){
   '',
   ...(p.help?[p.help,'']:[]),
   `These are home remedies and healthy-living advice, not a replacement for your clinic. If you take blood-pressure or diabetes pills, do not stop them suddenly — your clinic will adjust the doses safely.`,
+  '',
+  DISCLAIMER,
+  'Warnings and precautions:',
+  ...PRECAUTIONS.map(t=>`• ${t}`),
   '',
   `“Beloved, I pray that you may prosper in all things and be in health, just as your soul prospers.” — 3 John 1:2`,
  ].join('\n');
@@ -4108,7 +4130,7 @@ function buildPrintCard(){
    <div class="pc-line">📅 ${esc(P.recheck[0])}</div>
    ${p.help||!p.items.length?'':`<div class="pc-line">🛒 About ${money(costOf(pk))} a day (store prices checked ${PRICE_DATE}; may vary by branch): ${p.items.map(i=>esc(shortFood(i.name))).join(', ')}.</div>`}   <!-- plans with the crisis line need the room -->
    <div class="pc-foot">
-    <div class="pc-safety">Not a replacement for your clinic. <b>Never stop prescribed pills suddenly</b>; your clinic will adjust them.${p.help?` ${esc(p.help)}`:''}</div>
+    <div class="pc-safety">Not a replacement for your clinic: given by volunteers, not health professionals, as general information, not medical advice. <b>Never stop prescribed pills suddenly</b>; your clinic will adjust them. In an emergency, go to the nearest emergency unit.${p.help?` ${esc(p.help)}`:''}</div>
     <div class="pc-verse">“Beloved, I pray that you may prosper in all things and be in health.” — 3 John 1:2 · From: ${esc(books)}.</div>
     <div class="pc-bottom"><span>${a.interests.nurse?'☎ A nurse will call you within 48 hours':'Questions? Speak to the Health Ministries team'}</span><span>Badge ${esc(a.id)}</span></div>
    </div>

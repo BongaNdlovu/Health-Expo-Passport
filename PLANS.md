@@ -60,6 +60,24 @@ line explains the reading against the expo's screening ranges; no book is cited 
 **Stress & mood** is offered only when the volunteer ticks *Stress & peace* on the Screen tab (the follow-up card). The
 app does not diagnose anyone's mood. A real medical flag (blood pressure, sugar) always comes first.
 
+## Warnings and precautions
+
+Every plan, the app's and a church's, shows a **Warnings and precautions** box, and the same words go out in the
+WhatsApp message (`DISCLAIMER` and `PRECAUTIONS` in `index.html`). The Results screen, the Food screen and the printed
+card carry the short form.
+
+- **Who is speaking:** the volunteers are not doctors, nurses or other health professionals unless they say so. The
+  plans are general healthy-living information, not medical advice, a diagnosis or treatment.
+- **Always:** keep taking prescribed medicine and never stop or change it without the clinic; expo readings are a
+  screening, not a diagnosis, so have high or low readings checked; ask the clinic before big changes when pregnant or
+  breastfeeding, with diabetes or heart, kidney or liver disease, or on regular medicine; herbs and foods can interact
+  with medicines; stop and get help at once with chest pain, faintness, severe breathlessness, confusion or a new or
+  worsening symptom; in an emergency go to the nearest emergency unit and do not wait for home remedies; children, older
+  people and anyone unwell may need different advice.
+
+These are the app's own safety words, not a substitute for legal advice. Before charging for the app, have a lawyer
+read them together with the terms of use and privacy policy.
+
 ## Get-help line
 
 The sleep and stress & mood plans show a prominent "Need help now?" box, and include the same words in the WhatsApp message
