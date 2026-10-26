@@ -1,0 +1,27 @@
+---
+description: Keep new functions at cyclomatic complexity 20 or under
+globs: "**/*.{js,html}"
+alwaysApply: false
+---
+
+# Function complexity
+
+A new or rewritten function stays at cyclomatic complexity 20 or under. That is 1, plus one for each `if`, loop, `case`, `catch`, ternary, and `&&`, `||`, or `??`. Nested functions are counted on their own.
+
+Do not split an existing function only to lower its score. Threshold tables such as `cat`, `problemOf`, and `planNeeds` stay in one function: the score is the medical rules.
+
+When a function you are already editing mixes two jobs, split the jobs. A sign-in screen template and the decision of which queue error to show are separate functions. A list of blood-pressure cutoffs is one function.
+
+```javascript
+// Two jobs in one function. Split them.
+async function queueSync(manual) {
+  const rows = await loadQueuePages(manual);
+  applyQueueRows(rows);
+}
+
+function queueSyncError(err) {
+  if (isMissingTable(err)) return 'The live queue is not set up yet.';
+  if (!navigator.onLine) return 'Could not reach the server yet — retrying.';
+  return 'The queue could not load.';
+}
+```
