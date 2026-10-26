@@ -2470,7 +2470,7 @@ function viewHome(){
     <div><label class="microlabel" for="rgEmail">Email (optional)</label><input id="rgEmail" type="email" inputmode="email" autocomplete="off" placeholder="for sending the plan by email" class="field mt-1"></div>
     <div><label class="microlabel" for="rgBadge">Lanyard badge</label>
      <div class="mt-1 flex gap-2">
-      <input id="rgBadge" value="${state.pendingBadge||''}" placeholder="Scan, type, or leave empty: ${nextBadge()}" autocomplete="off"
+      <input id="rgBadge" value="${state.pendingBadge||''}" placeholder="${nextBadge()}" autocomplete="off"
         class="field mono min-w-0 flex-1 font-bold uppercase text-brand-900"
         style="background:rgba(58,165,151,.09);border-color:rgba(58,165,151,.3)">
       <button type="button" onclick="openScanner()" class="btn btn-soft flex-none px-4 text-xs" aria-label="Scan the lanyard badge">Scan</button>
