@@ -21,7 +21,7 @@ const EXPORTS = [
   'switchToVol', 'activateBadge', 'onScanText', 'toggleReg', 'viewHome', 'viewCare', 'buildPrintCard', 'openWhatsApp',
   'openScanner', 'viewResults', 'viewPlan', 'viewScreen', 'migrateAttendee', 'migrateVolunteer', 'onStep',
   'onStationInput', 'onStationCommit', 'cat', 'healthAge', 'exportCSV', 'redFlag', 'doneCount', 'bmi',
-  'firstName', 'initials',
+  'firstName', 'initials', 'careNotes',
   'cloud', 'cloudInit', 'cloudSync', 'cloudPush', 'cloudDirtyList', 'cloudPending', 'cloudSignOut', 'cloudAuthEvent',
   'cloudSignIn', 'onRemoteChange', 'KINDS', 'sigOf', 'isSeedRow', 'mergeRemote', 'renderCloudBody', 'setCloud',
   'startRealtime', 'stopRealtime', 'saveSynced', 'loadSynced', 'viewNoVisitor', 'CLOUD_UI', 'attToRow', 'volToRow',
@@ -376,9 +376,38 @@ console.log('\n11. Visitor registration');
 const submitReg = (o) => {
   g.state.tab = 'home'; g.state.regOpen = true;
   $el('rgName').value = o.name; $el('rgAge').value = o.age ?? '46'; $el('rgSex').value = 'Male';
-  $el('rgPhone').value = o.phone ?? ''; $el('rgEmail').value = o.email ?? ''; $el('rgHeight').value = '170'; $el('rgBadge').value = o.badge;
+  $el('rgPhone').value = o.phone ?? ''; $el('rgEmail').value = o.email ?? ''; $el('rgHeight').value = '170'; $el('rgBadge').value = o.badge; $el('rgConsent').checked = o.consent ?? true; $el('rgOptin').checked = !!o.optin;
+  $el('rgGuardian').checked = !!o.guardian; $el('rgGuardianName').value = o.guardianName ?? '';
   g.registerSubmit({ preventDefault() {} });
 };
+/* POPIA: consent at registration */
+g.resetDemo();
+{
+  const n = g.attendees.length, by = nm => g.attendees.find(a => a.name === nm);
+  submitReg({ name: 'No Consent', badge: 'EXPO-701', consent: false });
+  ok('POPIA: a visitor cannot be registered without the health-information consent', g.attendees.length === n && /consent/i.test($el('rgErr').innerHTML));
+  submitReg({ name: 'Young One', age: '15', badge: 'EXPO-702' });
+  ok('POPIA: under 18 needs a parent or guardian', !by('Young One') && /guardian/i.test($el('rgErr').innerHTML));
+  submitReg({ name: 'Young Two', age: '15', badge: 'EXPO-703', guardian: true, guardianName: 'Ma Dlamini' });
+  const y = by('Young Two');
+  ok('POPIA: with the guardian named and ticked, the child is registered and the guardian kept', !!y && y.interests.guardian === true && y.interests.guardianName === 'Ma Dlamini'
+    && y.interests.consent === true && y.interests.optin === true && y.interests.consentV === '2026-10-26' && /^\d{4}-\d{2}-\d{2}$/.test(y.interests.consentOn));
+  ok('POPIA: the consent record survives loading and syncing', (() => { const m = g.rowToAtt(g.attToRow(y)).interests;
+    return m.consent === true && m.guardianName === 'Ma Dlamini' && m.consentOn === y.interests.consentOn && m.consentV === '2026-10-26'; })());
+  submitReg({ name: 'Adult Optin', badge: 'EXPO-704', optin: true, phone: '082 555 0704' });
+  ok('POPIA: one question covers the screening and the health follow-up, and the notice is kept, not read out', by('Adult Optin') && by('Adult Optin').interests.optin === true
+    && (() => { g.state.tab = 'home'; g.state.regOpen = true; g.render(); const h = $main.innerHTML;
+      return h.includes('Do you consent to the health screening and beneficial health follow-ups?') && !h.includes('rgOptin') && /kept with the record/.test(h) && /Kept for 2 years after your last visit/.test(h); })());
+  y.phone = '082 555 0703'; y.interests.optin = false;   /* they later asked the church to stop the follow-up */
+  let out = ''; const keep = sandbox.Blob; sandbox.Blob = function (p) { out = p.join(''); }; g.exportCSV(); sandbox.Blob = keep;
+  { const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'schema.sql'), 'utf8'), yrs = (html.match(/const RETENTION_YEARS=([0-9]+);/) || [])[1];
+    ok('POPIA: the retention the notice promises is the one the database purge applies', !!yrs && sql.includes("delete from public.attendees where updated_at < now() - interval '" + yrs + " years'")
+      && sql.includes('revoke all on function public.purge_expired_visitors() from public, anon;'), yrs); }
+  ok('POPIA: the follow-up CSV leaves out contact details of anyone who did not opt in', !out.includes('555 0703') && out.includes('555 0704') && out.includes('"Follow-up allowed"'));
+  const old = g.migrateAttendee({ id: 'EXPO-705', name: 'Old Record', age: 40, s: {}, interests: {} });
+  g.attendees.push(old); g.state.activeId = old.id; g.state.tab = 'screen'; g.render();
+  ok('POPIA: a passport with no consent on record keeps its checks closed and asks first', !$main.innerHTML.includes('id="in-sugar"') && /recordConsent\('EXPO-705'\)/.test($main.innerHTML));
+}
 g.resetDemo();
 const n0 = g.attendees.length;
 submitReg({ name: 'Dup Visitor', badge: 'EXPO-042' });
@@ -1362,7 +1391,7 @@ function makeServer() {
   g.state.activeId = 'EXPO-1000'; g.render();
   ok('the open visitor stays reachable in the short list even when old', $main.innerHTML.includes('Visitor 0<'));
 
-  for (let i = 0; i < 600; i++) { const a = g.attendees[i]; a.s.sys = 175; a.s.dia = 105; }
+  for (let i = 0; i < 600; i++) { const a = g.attendees[i]; a.s.sys = 175; a.s.dia = 105; a.interests.optin = true; }
   g.state.tab = 'care'; g.state.careAll = {};
   const careT = Date.now(); g.render(); const careMs = Date.now() - careT;
   const cards = ($main.innerHTML.match(/openWAFor\('/g) || []).length;
@@ -1623,7 +1652,11 @@ function makeServer() {
     await g.cancelInvites('ch-a');
     ok('…and can cancel every invite link', rc.includes('cancelinv:ch-a') && !sheet().includes('?join='));
     g.closeAcct();
-    g.state.activeId = cpVisitor.id; g.state.tab = 'send'; g.render(); await sleep(10);
+    cpVisitor.interests.optin = false; g.state.activeId = cpVisitor.id; g.state.tab = 'send'; g.render(); await sleep(10);
+    ok('POPIA: no follow-up person can be given to a visitor who did not agree to be contacted', !/chooseFollowup('u-staff')/.test($main.innerHTML) && /did not agree to be contacted/.test($main.innerHTML));
+    g.chooseFollowup('u-staff');
+    ok('…not even by calling it directly', !cpVisitor.interests.followUp);
+    cpVisitor.interests.optin = true; g.render(); await sleep(10);
     ok('staff give a visitor one of the church\'s follow-up people on Send home', /chooseFollowup\('u-staff'\)/.test($main.innerHTML) && $main.innerHTML.includes('Staff Person'));
     g.chooseFollowup('u-staff');
     ok('…the visitor\'s record keeps who it is, and the message names them', cpVisitor.interests.followUp === 'u-staff' && cpVisitor.interests.followUpName === 'Staff Person'
@@ -2739,11 +2772,44 @@ function makeServer() {
   g.resetDemo();
   const dav = g.attendees.find(a => a.id === 'EXPO-042'), mar = g.attendees.find(a => a.id === 'EXPO-117'), sip = g.attendees.find(a => a.id === 'EXPO-088');
   const nDav = g.planNeeds(dav);
-  ok('David (142/90, sugar 6.4, BMI 31, cholesterol 6.2) needs BP, sugar and weight/cholesterol', ['bp', 'sugar', 'bmi'].every(k => nDav.some(n => n.k === k)), nDav.map(n => n.k).join());
+  ok('David (142/90, sugar 6.4, BMI 31, cholesterol 6.2) needs BP and weight/cholesterol; 6.4 is inside the paper form\'s random range of 4–8', ['bp', 'bmi'].every(k => nDav.some(n => n.k === k)) && !nDav.some(n => n.k === 'sugar'), nDav.map(n => n.k).join());
   ok('…each with a reason in plain words, citing no book page', nDav.every(n => n.why.length > 20 && !/p\. \d{3}|book|Nedley|Encyclopedia/i.test(n.why)));
-  ok('…the BP reason uses the screening band and the sugar reason shows mg/dL', /stage 1 high blood pressure/.test(nDav.find(n => n.k === 'bp').why) && /115 mg\/dL/.test(nDav.find(n => n.k === 'sugar').why));
+  ok('…the BP reason uses the screening band and the sugar reason shows mg/dL', /stage 1 high blood pressure/.test(nDav.find(n => n.k === 'bp').why) && /176 mg\/dL/.test((g.planNeeds(mar).find(n => n.k === 'sugar') || {}).why));
   ok('…the weight reason names both BMI and cholesterol', /BMI 31/.test(nDav.find(n => n.k === 'bmi').why) && /cholesterol 6\.2/.test(nDav.find(n => n.k === 'bmi').why));
   ok('David is given the blood-pressure plan first', g.autoProtocol(dav) === 'bp');
+  /* the paper Personal Health Record and survey, as filled in for Khehla on 6-9-2026 */
+  const kh = g.migrateAttendee({ id: 'EXPO-901', name: 'Khehla', age: 60, sex: 'Male', heightCm: 167,
+    s: { sys: 136, dia: 75, sugar: 3.7, weight: 67.7, waist: 93, fat: 18.9, tbw: 58.5, pef: 430, pefExp: 572, pulseRest: 71, pulseEx: 108, pulseRec: 84,
+      bpMed: 0, preg: 0, ops: 0, chronic: 0, smoke: 1, junk: 5, chronicList: 'asthma' }, interests: { lifestyle: true, heardword: true } });
+  ok('paper record: the new readings survive the migration, unknown keys do not', kh.s.waist === 93 && kh.s.pefExp === 572 && kh.s.pulseRec === 84 && kh.s.bpMed === 0 && kh.s.smoke === 1 && !('junk' in kh.s));
+  ok('the chronic illnesses text moves out of the readings, which the database keeps to numbers only', kh.chronicList === 'asthma' && !('chronicList' in kh.s)
+    && Object.values(kh.s).every(v => v === null || typeof v === 'number') && g.attToRow(kh).chronic_list === 'asthma' && g.rowToAtt(g.attToRow(kh)).chronicList === 'asthma'
+    && !('chronic_list' in g.attToRow(Object.assign({}, kh, { chronicList: '' }))));
+  ok('a fully filled visitor stays inside the database size limits (s 1000 bytes, interests 1000)', (() => {
+    const s = {}; for (const k of Object.keys(kh.s).concat(['snack', 'breakfast', 'exFreq', 'alcohol', 'preg', 'ops', 'chronic', 'bpMed'])) s[k] = 888.8;
+    const it = { nurse: true, cook: true, stress: true, pouch: true, coaching: true, habits: true, lifestyle: true, marriage: true, parenting: true, financial: true, spiritual: true,
+      heardsocial: true, heardpaper: true, heardflyer: true, heardword: true, heardother: true, churchPlan: '00000000-0000-0000-0000-000000000000', followUp: '00000000-0000-0000-0000-000000000000' };
+    return Buffer.byteLength(JSON.stringify(s)) <= 1000 && Buffer.byteLength(JSON.stringify(Object.assign(it, { followUpName: 'x'.repeat(80) }))) <= 1000; })());
+  ok('the chosen church plan and the follow-up person survive loading and syncing', (() => {
+    const m = g.rowToAtt(g.attToRow(g.migrateAttendee({ id: 'EXPO-904', name: 'F', s: {}, interests: { nurse: true, churchPlan: 'c0ffee00-1111-2222-3333-444455556666',
+      followUp: 'abcd-1234', followUpName: 'Sis Thandi', evil: '<b>', followUpX: 'x' } })));
+    return m.interests.churchPlan === 'c0ffee00-1111-2222-3333-444455556666' && m.interests.followUp === 'abcd-1234' && m.interests.followUpName === 'Sis Thandi'
+      && m.interests.nurse === true && m.interests.evil === true && !('followUpX' in m.interests)
+      && !('churchPlan' in g.migrateAttendee({ id: 'EXPO-905', name: 'F', interests: { churchPlan: "x');alert(1)//" } }).interests); })());
+  ok('paper record: seminars and how they heard survive as ticks', kh.interests.lifestyle === true && kh.interests.heardword === true);
+  ok('sugar 3.7 is Low (paper range 4–8), under 3 is a red flag', g.cat('sugar', 3.7)[1] === 'Low' && g.cat('sugar', 2.9)[0] === 'flag' && g.redFlag({ s: { sugar: 2.9 } }) && !g.redFlag(kh));
+  ok('a low sugar does not open the blood-sugar plan, it goes to the nurse', !g.planNeeds(kh).some(n => n.k === 'sugar') && /low/.test(g.careNotes(kh)[0]));
+  ok('body fat, body water and waist use the paper form\'s male ranges', g.cat('fat', { v: 18.9, sex: 'Male' })[0] === 'ok' && g.cat('tbw', { v: 58.5, sex: 'Male' })[0] === 'ok'
+    && g.cat('waist', { v: 93, sex: 'Male' })[0] === 'ok' && g.cat('waist', { v: 94, sex: 'Male' })[0] === 'watch' && g.cat('fat', { v: 25, sex: '' })[0] === null);
+  ok('peak flow 430 of 572 is 75%: reduced, and a counsellor note', g.cat('pef', 75)[1] === 'Reduced' && g.careNotes(kh).some(n => /75%/.test(n)));
+  const visitorWith = s => g.migrateAttendee({ id: 'EXPO-902', name: 'B', age: 40, sex: 'Female', heightCm: 160, s });
+  ok('a large waist or high body fat opens the weight plan, with the reason', g.planNeeds(visitorWith({ waist: 90 })).some(n => n.k === 'bmi' && /waist 90/.test(n.why))
+    && g.planNeeds(visitorWith({ fat: 33 })).some(n => n.k === 'bmi' && /body fat 33/.test(n.why)) && /Waist 90 cm/.test(g.problemOf(visitorWith({ waist: 90 }), 'bmi')));
+  ok('low body water opens the water plan; a fast resting pulse is a counsellor note', g.planNeeds(visitorWith({ tbw: 40 })).some(n => n.k === 'water' && /body water 40/.test(n.why))
+    && g.careNotes(visitorWith({ pulseRest: 110 })).some(n => /fast/.test(n)));
+  ok('more than 9 hours of sleep reads Long, not Short', g.cat('sleep', 10)[1] === 'Long' && g.cat('sleep', 6)[1] === 'Short');
+  ok('the CSV has a column for every paper field', (() => { let out = ''; const keep = sandbox.Blob; sandbox.Blob = function (p) { out = p.join(''); }; g.exportCSV(); sandbox.Blob = keep; const head = out.split('\n')[0];
+    return ['Waist cm', 'Body fat %', 'Body water %', 'PEF', 'Recovery pulse', 'Pregnant', 'Chronic illnesses', 'Smoking', 'Seminars', 'Heard via'].every(h => head.includes('"' + h + '"')); })());
   ok('…and it is the top of his list even though his sleep (5.5 h) is a red flag too', nDav[0].k === 'bp' && nDav.some(n => n.k === 'sleep' && n.sev === 3) && nDav.findIndex(n => n.k === 'sleep') > nDav.findIndex(n => n.k === 'bmi'), nDav.map(n => n.k + n.sev).join());
   ok('the plan opened automatically is always the first item of the list', g.attendees.every(a => g.planNeeds(a).length ? g.autoProtocol(a) === g.planNeeds(a)[0].k : g.autoProtocol(a) === 'sleep'));
   const nMar = g.planNeeds(mar);
@@ -2822,7 +2888,7 @@ function makeServer() {
   const nextNo = g.nextBadge(), countWas = g.attendees.length;
   g.state.tab = 'home'; g.state.regOpen = true;
   $el('rgName').value = 'No Badge Visitor'; $el('rgAge').value = '52'; $el('rgSex').value = 'Female';
-  $el('rgPhone').value = ''; $el('rgEmail').value = ''; $el('rgHeight').value = ''; $el('rgBadge').value = '';
+  $el('rgPhone').value = ''; $el('rgEmail').value = ''; $el('rgHeight').value = ''; $el('rgBadge').value = ''; $el('rgConsent').checked = true;
   g.registerSubmit({ preventDefault() {} });
   const noBadge = g.attendees.find(a => a.name === 'No Badge Visitor');
   ok('a visitor registered with no badge gets the next free number at once', !!noBadge && noBadge.id === nextNo && g.attendees.length === countWas + 1, nextNo + ' ' + (noBadge && noBadge.id));

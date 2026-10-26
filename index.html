@@ -1094,13 +1094,13 @@ const APP_SITE='https://winter-bonus-626a.ndlovufanelesibonge8.workers.dev/';
 const SEED=[
  {id:'EXPO-042',name:'David Mokoena',age:50,sex:'Male',phone:'+27 82 555 0142',heightCm:174,
   s:{sys:142,dia:90,sugar:6.4,chol:6.2,weight:94,veg:1,walk:10,water:3,sleep:5.5},
-  interests:{nurse:true,cook:true,stress:false,pouch:true},prayer:'Prayed for work stress, better sleep and lower blood pressure.',done:false},
+  interests:{nurse:true,cook:true,stress:false,pouch:true,consent:true,optin:true,consentOn:'2026-03-13'},prayer:'Prayed for work stress, better sleep and lower blood pressure.',done:false},
  {id:'EXPO-088',name:'Sipho Ndlovu',age:46,sex:'Male',phone:'+27 71 220 4477',heightCm:170,
   s:{sys:128,dia:84,sugar:5.2,chol:4.8,weight:78,veg:3,walk:25,water:6,sleep:7},
-  interests:{nurse:false,cook:true,stress:false,pouch:false},prayer:'',done:false},
+  interests:{nurse:false,cook:true,stress:false,pouch:false,consent:true,optin:false,consentOn:'2026-03-13'},prayer:'',done:false},
  {id:'EXPO-117',name:'Maria van Wyk',age:58,sex:'Female',phone:'+27 83 900 1122',heightCm:160,
   s:{sys:162,dia:98,sugar:9.8,chol:5.6,weight:86,veg:2,walk:0,water:2,sleep:6},
-  interests:{nurse:true,cook:false,stress:true,pouch:true},prayer:'Asked for prayer about family worries and her health.',done:false},
+  interests:{nurse:true,cook:false,stress:true,pouch:true,consent:true,optin:true,consentOn:'2026-03-13'},prayer:'Asked for prayer about family worries and her health.',done:false},
 ];
 const attendees=JSON.parse(JSON.stringify(SEED));
 /* filled from SEED_VOL below — the volunteer tables are declared further down */
@@ -1113,7 +1113,7 @@ const state={activeId:'EXPO-042',tab:'home',protocol:'bp',sim:{kitchen:3,walk:30
   _volSeq:1008};
 
 const STATION_DEFS=[
- {k:'sugar', label:'Blood Sugar', hint:'mmol/L · fasting', letter:'SU',hue:'sand', step:0.1, def:5.5, min:1,  max:30},
+ {k:'sugar', label:'Blood Sugar', hint:'mmol/L · random', letter:'SU',hue:'sand', step:0.1, def:5.5, min:1,  max:30},
  {k:'chol',  label:'Cholesterol', hint:'mmol/L',            letter:'CH',hue:'peach', step:0.1, def:5.0, min:1,  max:15},
  {k:'weight',label:'Weight',      hint:'kg → BMI auto',     letter:'WT',hue:'sky', step:0.5, def:70,  min:30, max:250},
  {k:'veg',   label:'Fruit & Veg', hint:'servings / day',    letter:'NU',hue:'sage', step:1,   def:3,   min:0,  max:12},
@@ -1121,7 +1121,32 @@ const STATION_DEFS=[
  {k:'water', label:'Water',       hint:'glasses / day',     letter:'WA',hue:'aqua', step:1,   def:5,   min:0,  max:15},
  {k:'sleep', label:'Sleep',       hint:'hours / night',     letter:'SL',hue:'lilac', step:0.5, def:7,   min:0,  max:14},
 ];
+/* The rest of the paper Personal Health Record. These do not count toward the 8 checks or the health age.
+   more: extra fields on the same card, as [key, label, min, max, step, start]. */
+const EXTRA_DEFS=[
+ {k:'waist',    label:'Waist',              hint:'cm · at the navel',   letter:'WC',hue:'sky',  step:1,   def:90,  min:40, max:200},
+ {k:'fat',      label:'Body fat (BIA)',     hint:'% · from the scale',  letter:'BF',hue:'peach',step:0.1, def:25,  min:3,  max:70},
+ {k:'tbw',      label:'Body water (TBW)',   hint:'% · from the scale',  letter:'TW',hue:'aqua', step:0.1, def:55,  min:20, max:80},
+ {k:'pef',      label:'Lung function (PEF)',hint:'L/min · best of 3',   letter:'LF',hue:'mint', step:10,  def:400, min:50, max:900,
+  more:[['pefExp','Recommended (from the chart)',50,900,10,450]]},
+ {k:'pulseRest',label:'Fitness',            hint:'pulse · beats/min',   letter:'FT',hue:'blush',step:1,   def:72,  min:30, max:200,
+  more:[['pulseEx','After exercise',40,220,1,110],['pulseRec','After 3 min recovery',30,220,1,90]]},
+];
+/* The Health Age Survey on the paper form: the answer number is the box ticked (1 is the first box). */
+const SURVEY=[
+ {k:'exFreq',   q:'Aerobic exercise (20–30 min)', a:['5 or more times a week','Less than 3 times a week','Rarely']},
+ {k:'breakfast',q:'A good breakfast (fruit or veg with a whole grain)',a:['Almost every day','Sometimes','Rarely']},
+ {k:'snack',    q:'Snacking on junk food between meals',a:['Several times each day','Sometimes','Rarely']},
+ {k:'smoke',    q:'Smoking',                      a:['Never smoked','Have quit smoking','Less than 1 pack a day','More than 1 pack a day']},
+ {k:'alcohol',  q:'Alcohol drinks a week',        a:['None','1–2 a week','3–10 a week','More than 10 a week']},
+];
+/* yes/no on the paper form, kept as 1 or 0 */
+const MED_YN=[['preg','Pregnant'],['ops','Major operations'],['chronic','Chronic illnesses'],['bpMed','On BP medication']];
 const INT={nurse:'Nurse call',cook:'Cooking school',stress:'Stress & peace',pouch:'R25 pouch'};
+/* the free seminars and "how did you hear" on the paper survey; Healthy Cooking Classes is the existing Cooking school */
+const SEMINARS={coaching:'Wellness & weight-loss coaching (6 weeks)',habits:'21 Days of Healthy Habits (WhatsApp)',lifestyle:'Lifestyle diseases seminar',
+ marriage:'Marriage seminar',parenting:'Parenting seminar',financial:'Financial health seminar',spiritual:'Spiritual health (Bible study)'};
+const HEARD={heardsocial:'Social media',heardpaper:'Newspaper',heardflyer:'Flyer',heardword:'Word of mouth',heardother:'Other'};
 
 /* ================= VOLUNTEER DATA ================= */
 /* The incoming expo every volunteer is pledging toward. Swap this each season. */
@@ -1971,6 +1996,7 @@ async function setFollowup(uid,on){
 function chooseFollowup(uid){
  const a=A();if(!a)return;
  a.interests=a.interests||{};
+ if(uid&&!optedIn(a)){toast(`${firstName(a.name)} did not agree to follow-up contact`);return;}
  const p=uid&&followupList().find(x=>x.user_id===uid);
  if(p){a.interests.followUp=p.user_id;a.interests.followUpName=p.full_name;}
  else{delete a.interests.followUp;delete a.interests.followUpName;}
@@ -1980,6 +2006,8 @@ function chooseFollowup(uid){
 /* on Send home: who from the church will contact this visitor after the expo */
 function followupPicker(a){
  const L=followupList(),cur=a.interests&&a.interests.followUp;
+ if(!optedIn(a))return `<div class="glass p-4"><div class="microlabel">Follow-up person</div>
+  ${acctNote(`${esc(firstName(a.name))} did not agree to be contacted after the expo, so no follow-up person is given.`)}</div>`;
  if(!L.length)return myChurchId()?`<div class="glass p-4"><div class="microlabel">Follow-up person</div>
   ${acctNote(`Your church has not named any follow-up people yet. A church admin can name up to ${FOLLOWUP_MAX} on the Church screen.`)}</div>`:'';
  return `<div class="glass p-4"><div class="microlabel">Follow-up person</div>
@@ -2087,7 +2115,7 @@ const initials=n=>n.split(' ').filter(Boolean).map(w=>w[0]).slice(0,2).join('').
 const firstName=n=>{const w=String(n||'').trim().split(/\s+/);return (/^(dr|mr|mrs|ms|miss|prof|pastor|ps|rev|elder)\.?$/i.test(w[0])&&w[1])?w[1]:w[0];};
 /* no height, no BMI: a guessed height would give a confident but wrong number */
 const bmi=a=>{const w=a.s.weight,h=a.heightCm/100;return (w&&a.heightCm)?w/(h*h):null};
-const redFlag=a=>(a.s.sys&&a.s.sys>=160)||(a.s.dia&&a.s.dia>=100)||(a.s.sugar&&a.s.sugar>=15);
+const redFlag=a=>(a.s.sys&&a.s.sys>=160)||(a.s.dia&&a.s.dia>=100)||(a.s.sugar&&(a.s.sugar>=15||a.s.sugar<3));
 const doneCount=a=>['bp','sugar','chol','weight','veg','walk','water','sleep'].filter(k=>k==='bp'?(a.s.sys&&a.s.dia):(a.s[k]!=null)).length;
 const costOf=k=>PROTOCOLS[k].items.reduce((t,i)=>t+i.daily,0);
 
@@ -2095,14 +2123,44 @@ function cat(key,v){
  const F='flag',W='watch',OK='ok';
  switch(key){
   case 'bp': if(!v||!v.sys||!v.dia)return[null,'—']; if(v.sys>=160||v.dia>=100)return[F,'Crisis']; if(v.sys>=140||v.dia>=90)return[W,'High']; if(v.sys>=130||v.dia>=85)return[W,'Elevated']; return[OK,'Normal'];
-  case 'sugar': if(v==null)return[null,'—']; if(v>=15)return[F,'Very high']; if(v>=11)return[F,'High']; if(v>=6.1)return[W,'Above range']; return[OK,'Normal'];
+  /* a random reading; the paper form's range is 4–8. Under 3.0 is ADA level-2 hypoglycaemia. */
+  case 'sugar': if(v==null)return[null,'—']; if(v>=15)return[F,'Very high']; if(v>=11)return[F,'High']; if(v>8)return[W,'Above range'];
+   if(v<3)return[F,'Very low']; if(v<4)return[W,'Low']; return[OK,'Normal'];
+  /* the paper form's ranges: body fat 15–20% men, 22–28% women; body water 55–65% men, 45–60% women */
+  case 'fat': case 'tbw':{ const r=SEX_RANGE[key][v&&v.sex]; if(!v||v.v==null||!r)return[null,'—'];
+   if(v.v<r[0])return[W,'Below range']; if(v.v>r[1])return[W,'Above range']; return[OK,'In range'];}
+  /* WHO 2008 waist report: men 94 cm increased risk, 102 substantially increased; women 80 and 88 */
+  case 'waist':{ const r=SEX_RANGE.waist[v&&v.sex]; if(!v||v.v==null||!r)return[null,'—'];
+   if(v.v>=r[1])return[F,'High risk']; if(v.v>=r[0])return[W,'Raised']; return[OK,'Healthy'];}
+  /* peak flow as % of the recommended value: the asthma zones, green 80%+, yellow 50–79%, red under 50% (NHLBI) */
+  case 'pef': if(v==null)return[null,'—']; if(v<50)return[F,'Low']; if(v<80)return[W,'Reduced']; return[OK,'Good'];
+  /* resting pulse: 60–100 is normal for adults (AHA); a fit person can sit lower, so only a fast one is marked */
+  case 'pulse': if(v==null)return[null,'—']; if(v>100)return[W,'Fast']; return[OK,'Normal'];
   case 'chol': if(v==null)return[null,'—']; if(v>=7.5)return[F,'High']; if(v>=5)return[W,'Above range']; return[OK,'Healthy'];
   case 'bmi': if(v==null)return[null,'—']; if(v>=35)return[F,'Obese II']; if(v>=30)return[W,'Obese']; if(v>=25)return[W,'Overweight']; if(v<18.5)return[W,'Under']; return[OK,'Healthy'];
   case 'veg': if(v==null)return[null,'—']; if(v>=5)return[OK,'On target']; if(v>=3)return[W,'Low']; return[F,'Very low'];
   case 'walk': if(v==null)return[null,'—']; if(v>=30)return[OK,'Active']; if(v>=10)return[W,'Light']; return[F,'Sedentary'];
   case 'water': if(v==null)return[null,'—']; if(v>=8)return[OK,'Good']; if(v>=5)return[W,'Low']; return[F,'Dehydrated'];
-  case 'sleep': if(v==null)return[null,'—']; if(v>=7&&v<=9)return[OK,'Restful']; if(v>=6)return[W,'Short']; return[F,'Deprived'];
+  case 'sleep': if(v==null)return[null,'—']; if(v>=7&&v<=9)return[OK,'Restful']; if(v>9)return[W,'Long']; if(v>=6)return[W,'Short']; return[F,'Deprived'];
  }}
+const SEX_RANGE={fat:{Male:[15,20],Female:[22,28]},tbw:{Male:[55,65],Female:[45,60]},waist:{Male:[94,102],Female:[80,88]}};
+/* peak flow as a whole % of the recommended value from the chart */
+const pefPct=a=>a.s.pef!=null&&a.s.pefExp?Math.round(a.s.pef/a.s.pefExp*100):null;
+/* the chip a station card shows */
+function chipOf(a,k){
+ if(k==='weight')return cat('bmi',bmi(a));
+ if(k==='fat'||k==='tbw'||k==='waist')return cat(k,{v:a.s[k],sex:a.sex});
+ if(k==='pef')return cat('pef',pefPct(a));
+ if(k==='pulseRest')return cat('pulse',a.s.pulseRest);
+ return cat(k,a.s[k]);
+}
+/* the small line under a chip: BMI, % of expected peak flow, how far the pulse came down in 3 minutes */
+function chipNote(a,k){
+ if(k==='weight')return bmi(a)?'BMI '+fmt1(bmi(a)):'';
+ if(k==='pef')return pefPct(a)!=null?pefPct(a)+'% of recommended':'';
+ if(k==='pulseRest'&&a.s.pulseEx!=null&&a.s.pulseRec!=null){const d=a.s.pulseEx-a.s.pulseRec;return d>=0?`down ${d} in 3 min`:`up ${-d} in 3 min`;}
+ return '';
+}
 const chipClass=c=>c==='flag'?'chip chip-flag':c==='watch'?'chip chip-watch':c==='ok'?'chip chip-ok':'chip chip-none';
 
 /* Health-age engine */
@@ -2205,13 +2263,26 @@ addEventListener('pagehide',persistNow);document.addEventListener('visibilitycha
 /* Rows arrive from the shared database, where a staff account can write anything into a JSON column. Readings are numbers
    or nothing, so a reading can never carry markup into the many places that print it. */
 const numOrNull=v=>{if(v===null||v===undefined||v===''||typeof v==='boolean')return null;const n=typeof v==='number'?v:Number(v);return Number.isFinite(n)?n:null;};
-const READ_KEYS=['sys','dia','sugar','chol','weight','veg','walk','water','sleep'];
+const READ_KEYS=['sys','dia','sugar','chol','weight','veg','walk','water','sleep',
+ ...EXTRA_DEFS.flatMap(x=>[x.k,...(x.more||[]).map(m=>m[0])]),...SURVEY.map(x=>x.k),...MED_YN.map(x=>x[0])];
 function migrateAttendee(a){
  const s=Object.assign({sys:null,dia:null,sugar:null,chol:null,weight:null,veg:null,walk:null,water:null,sleep:null},a.s||{});
+ /* the chronic illnesses written on the form are text, so they live beside the readings (the database takes only numbers in s) */
+ const cl=a.chronicList!=null?a.chronicList:s.chronicList;
+ a=Object.assign({},a,{chronicList:String(cl==null?'':cl).slice(0,200)});
  for(const k of Object.keys(s)){if(READ_KEYS.includes(k))s[k]=numOrNull(s[k]);else delete s[k];}
  if(a.age!==undefined)a=Object.assign({},a,{age:numOrNull(a.age)==null?0:numOrNull(a.age)});
  if(a.heightCm!==undefined&&a.heightCm!==null)a=Object.assign({},a,{heightCm:numOrNull(a.heightCm)});
- if(a.interests&&typeof a.interests==='object')a=Object.assign({},a,{interests:Object.fromEntries(Object.keys(a.interests).filter(k=>/^[a-z]{1,12}$/.test(k)).map(k=>[k,!!a.interests[k]]))});
+ if(a.interests&&typeof a.interests==='object'){
+  const it=a.interests,keep=Object.fromEntries(Object.keys(it).filter(k=>/^[a-z]{1,12}$/.test(k)).map(k=>[k,!!it[k]]));
+  /* the three text entries: the chosen church plan, and the follow-up person's id and name. Ids stay plain, names short. */
+  for(const k of ['churchPlan','followUp'])if(typeof it[k]==='string'&&/^[A-Za-z0-9-]{1,64}$/.test(it[k]))keep[k]=it[k];
+  if(keep.followUp&&typeof it.followUpName==='string')keep.followUpName=it.followUpName.slice(0,80);
+  /* the POPIA consent record: the date it was given, and the guardian who gave it for a child */
+  for(const k of ['consentOn','consentV'])if(typeof it[k]==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(it[k]))keep[k]=it[k];
+  if(keep.guardian&&typeof it.guardianName==='string')keep.guardianName=it.guardianName.slice(0,80);
+  a=Object.assign({},a,{interests:keep});
+ }
  /* ids are interpolated into onclick handlers, so keep them to letters, digits and dashes */
  const id=String(a.id==null?'':a.id).replace(/[^A-Za-z0-9-]/g,'');
  return Object.assign({heightCm:165,interests:{},email:'',prayer:'',done:false},a,{id,s,email:String(a.email==null?'':a.email).trim().slice(0,200)});
@@ -2459,7 +2530,7 @@ function viewHome(){
    <form onsubmit="registerSubmit(event)" novalidate class="pop-in mt-4 space-y-3">
     <input id="rgName" required placeholder="Full name e.g. Sipho Ndlovu" class="field">
     <div class="grid grid-cols-2 gap-3">
-     <div><label class="microlabel" for="rgAge">Age</label><input id="rgAge" type="text" inputmode="numeric" required placeholder="e.g. 46" class="field mono mt-1"></div>
+     <div><label class="microlabel" for="rgAge">Age</label><input id="rgAge" type="text" inputmode="numeric" required placeholder="e.g. 46" class="field mono mt-1" oninput="showGuardian('rg',this.value)"></div>
      <div><span class="microlabel">Sex</span><input type="hidden" id="rgSex" value="">
       <div class="mt-1 grid grid-cols-2 gap-1.5" role="group" aria-label="Sex">${['Male','Female'].map(s=>`<button type="button" data-sex="${s}" aria-pressed="false" onclick="pickSex(this)" class="btn btn-glass py-2.5 text-[12px]">${s}</button>`).join('')}</div></div>
     </div>
@@ -2476,6 +2547,7 @@ function viewHome(){
       <button type="button" onclick="openScanner()" class="btn btn-soft flex-none px-4 text-xs" aria-label="Scan the lanyard badge">Scan</button>
      </div>
      <p class="mt-1 text-[10.5px] text-[#6b8187]">No badge to scan? Leave it empty and they get the next free number, ${nextBadge()}.</p></div>
+    ${consentFields('rg',false)}
     <div id="rgErr" class="st-warn" role="alert" hidden></div>
     <button class="btn btn-primary w-full py-3 text-sm">Register & start the checks →</button>
    </form>
@@ -2552,6 +2624,83 @@ function pickSex(btn){
  btn.parentElement.querySelectorAll('[data-sex]').forEach(b=>{const on=b.dataset.sex===s;
   b.classList.toggle('btn-primary',on);b.classList.toggle('btn-glass',!on);b.setAttribute('aria-pressed',String(on));});
 }
+/* ================= POPIA CONSENT =================
+   Health readings and prayer requests are special personal information (POPIA s26–27): they are processed only with
+   the visitor's explicit consent. The volunteer asks one question, CONSENT_Q, which covers the screening and health
+   follow-up. The yes is kept in interests (consent, optin) with the date and NOTICE_VERSION: the notice below is what
+   that yes covers, kept as proof, not read aloud. Follow-up can be stopped later (optin off). Under 18, a parent or
+   guardian consents (s34–35), named in guardianName. Change NOTICE_VERSION whenever the notice text changes. */
+const CONSENT_Q='Do you consent to the health screening and beneficial health follow-ups?';
+const NOTICE_VERSION='2026-10-26';
+/* POPIA s14: kept no longer than needed. A record not updated for this long is deleted (purge_expired_visitors in schema.sql). */
+const RETENTION_YEARS=2;
+const PRIVACY_NOTICE=[
+ ['Who','The church running this health expo, through its approved health team.'],
+ ['What','Name, age, sex, contact details, your health checks and survey answers, and any prayer request.'],
+ ['Why','To screen your health today, give you a home plan, and contact you afterwards by WhatsApp, email or phone about your results and health follow-up.'],
+ ['Who sees it','Only the church’s approved health team. It is never sold. If you ask for your plan on WhatsApp or by email, it is sent through that service.'],
+ ['How long',`Kept for ${RETENTION_YEARS} years after your last visit, then deleted.`],
+ ['Your choice','Taking part is voluntary. Without this consent we cannot record your checks. You may ask us to stop the follow-up at any time.'],
+ ['Your rights','You may see, correct or ask us to delete your information at any time, and object to its use. Complaints: the Information Regulator, www.inforegulator.org.za.'],
+];
+const noticeHTML=()=>`<dl class="mt-2 space-y-1.5 text-[11px] leading-snug text-[#33504f]">${PRIVACY_NOTICE.map(([t,d])=>`<div><dt class="inline font-bold">${t}: </dt><dd class="inline">${d}</dd></div>`).join('')}</dl>`;
+const hasConsent=a=>!!(a&&a.interests&&a.interests.consent);
+const optedIn=a=>!!(a&&a.interests&&a.interests.optin);
+const isMinor=age=>Number(age)>0&&Number(age)<18;
+/* the notice and ticks; p is the id prefix ('rg' on the registration form, 'cs' on a passport with no consent yet) */
+function consentFields(p,minor){
+ return `<div class="rounded-2xl border border-[#123033]/[.07] bg-white/60 p-3">
+  <div class="microlabel">Consent (POPIA) · ask the visitor</div>
+  <p class="mt-1 text-[13px] font-bold leading-snug text-[#123033]">“${CONSENT_Q}”</p>
+  <label class="mt-2 flex items-start gap-2 text-[12px] leading-snug text-[#123033]"><input id="${p}Consent" type="checkbox" class="mt-0.5 h-4 w-4 flex-none">
+   <span><b>Yes, they consent.</b> Required to record the checks.</span></label>
+  <details class="mt-2"><summary class="text-[11px] font-semibold text-brand-800">What this consent covers (kept with the record) ▾</summary>${noticeHTML()}</details>
+  <div id="${p}GuardianBox" class="mt-2.5 space-y-2 rounded-[14px] bg-amber-50/80 p-2.5" ${minor?'':'hidden'}>
+   <div class="text-[11.5px] font-bold text-amber-800">Under 18: a parent or guardian must agree</div>
+   <input id="${p}GuardianName" maxlength="80" placeholder="Parent or guardian’s full name" class="field">
+   <label class="flex items-start gap-2 text-[12px] leading-snug text-[#123033]"><input id="${p}Guardian" type="checkbox" class="mt-0.5 h-4 w-4 flex-none">
+    <span>This parent or guardian was asked and gives the consent above.</span></label>
+  </div>
+ </div>`;
+}
+function showGuardian(p,age){const b=document.getElementById(p+'GuardianBox');if(b)b.hidden=!isMinor(Math.round(+String(age).trim()));}
+/* reads the ticks: an error message, or the consent entries to keep in interests */
+function readConsent(p,age){
+ const on=id=>{const el=document.getElementById(p+id);return !!(el&&el.checked);};
+ if(!on('Consent'))return {err:'Ask the consent question and tick Yes: without it the checks cannot be recorded (POPIA).'};
+ /* one yes covers the screening and the health follow-up; the notice version is the proof of what it covered */
+ const out={consent:true,optin:true,consentOn:todayStr(),consentV:NOTICE_VERSION};
+ if(isMinor(age)){
+  const el=document.getElementById(p+'GuardianName'),gn=el?String(el.value||'').trim().replace(/\s+/g,' ').slice(0,80):'';
+  if(!gn||!on('Guardian'))return {err:'Under 18: type the parent or guardian’s name and tick their consent.'};
+  out.guardian=true;out.guardianName=gn;
+ }
+ return {it:out};
+}
+/* a passport with no consent on record (registered before this step, or from an older device): ask before any check */
+function consentCard(a){
+ return `<div class="glass hue-tint hue-blush p-4">
+  <div class="microlabel">Consent needed</div>
+  <div class="display text-base font-extrabold">Ask ${esc(firstName(a.name))} first</div>
+  <p class="mt-1 text-[11px] leading-snug text-[#5c747a]">No consent is recorded for this passport, so its checks stay closed.</p>
+  <div class="mt-3">${consentFields('cs',isMinor(a.age))}</div>
+  <div id="csErr" class="st-warn mt-2" role="alert" hidden></div>
+  <button class="btn btn-primary mt-3 w-full py-3 text-sm" onclick="recordConsent('${a.id}')">Record consent & open the checks</button>
+ </div>`;
+}
+function recordConsent(id){
+ const a=attendees.find(x=>x.id===id);if(!a)return;
+ const r=readConsent('cs',a.age),el=document.getElementById('csErr');
+ if(r.err){if(el){el.textContent=r.err;el.hidden=false;}else toast(r.err);return;}
+ a.interests=Object.assign({},a.interests,r.it);persist();renderMain();toast('Consent recorded ✓');
+}
+/* the follow-up yes can be changed later, or withdrawn (POPIA s11(2)) */
+function toggleOptin(id){
+ const a=attendees.find(x=>x.id===id);if(!a)return;
+ a.interests=a.interests||{};a.interests.optin=!a.interests.optin;
+ if(!a.interests.optin){delete a.interests.followUp;delete a.interests.followUpName;}
+ persist();renderMain();toast(a.interests.optin?'Follow-up allowed ✓':'No follow-up contact');
+}
 /* problems are shown inside the form (not a passing toast), so nothing typed is lost */
 function regError(html){const el=$('#rgErr');if(!el){toast(html.replace(/<[^>]+>/g,''));return;}el.innerHTML=html;el.hidden=!html;}
 const normName=n=>String(n||'').toLowerCase().replace(/[^a-z]/g,'');
@@ -2569,6 +2718,8 @@ function registerSubmit(e,force){
  if(h!=null&&!(h>=100&&h<=220))return regError(`Height ${esc(hRaw)} cm cannot be right (100–220). Leave it empty if not measured.`);
  if(phone&&!waNumber(phone))return regError('That WhatsApp number looks incomplete. Check it (for example 082 123 4567), or leave it empty.');
  if(email&&!validEmail(email))return regError('That email address does not look right. Check it, or leave it empty.');
+ const cons=readConsent('rg',age);
+ if(cons.err)return regError(cons.err);
  /* the id is used in handlers and matched against scanned QR codes, so it must be a clean EXPO-nnn */
  const raw=$('#rgBadge').value.trim()||nextBadge();   /* no badge scanned or typed: the next free number */
  const id=parseBadge(raw);
@@ -2583,7 +2734,7 @@ function registerSubmit(e,force){
  if(dup)return regError(`${esc(dup.name)} may already be registered as <b>${esc(dup.id)}</b>.
    <span class="mt-2 flex gap-2"><button type="button" class="st-fix" style="background:#2b8074" onclick="state.regOpen=false;switchTo('${dup.id}')">Open ${esc(dup.id)}</button>
    <button type="button" class="st-fix" style="background:#6b8187" onclick="registerSubmit(null,true)">Register a new passport</button></span>`);
- const a=migrateAttendee({id,name,age,sex,phone:phone||'+27 —',email,heightCm:h,s:{},interests:{},prayer:'',done:false});
+ const a=migrateAttendee({id,name,age,sex,phone:phone||'+27 —',email,heightCm:h,s:{},interests:cons.it,prayer:'',done:false});
  attendees.push(a);state.activeId=a.id;state.regOpen=false;state.pendingBadge=null;state.sugFor=null;state._goal=null;
  switchTab('screen');toast(`${a.id} linked to ${firstName(a.name)} ✓ Start the checks`);
 }
@@ -2622,10 +2773,11 @@ function viewScreen(){
   <div class="mt-3.5 st-bp">
    ${stepperHTML(a,'sys','Top (systolic)',70,210,1,120)}
    ${stepperHTML(a,'dia','Bottom (diastolic)',40,130,1,80)}
-  </div></div>`;
+  </div>
+  <div class="mt-3">${ynHTML(a,'bpMed','On BP medication')}</div></div>`;
  const cardOf=x=>{
-  const chip=x.k==='weight'?cat('bmi',bmi(a)):cat(x.k,a.s[x.k]);
-  const extra=x.k==='weight'?`<span id="bmiTxt" class="mono text-[10px] text-[#6b8187]">${bmi(a)?'BMI '+fmt1(bmi(a)):''}</span>`:'';
+  const chip=chipOf(a,x.k);
+  const extra=`<span id="note-${x.k}" class="mono text-[10px] text-[#6b8187]">${chipNote(a,x.k)}</span>`;
   return `<div class="glass hue-tint hue-${x.hue} flex flex-col gap-3 p-4">
    <div class="flex items-center gap-2.5">
     <span class="flex h-8 w-8 flex-none items-center justify-center rounded-[12px] text-[10px] font-extrabold ico">${x.letter}</span>
@@ -2635,13 +2787,17 @@ function viewScreen(){
    ${stepperHTML(a,x.k,'',x.min,x.max,x.step,x.def)}
    ${x.k==='weight'?`<label class="st-height"><span>Height</span><input id="in-height" type="text" inputmode="numeric" autocomplete="off" value="${a.heightCm||''}" placeholder="—" onchange="onHeight('${a.id}',this)"><span>cm</span></label>
     <p id="warn-height" class="st-warn" role="alert" ${a.heightCm?'hidden':''}>${a.heightCm?'':'Add their height for the BMI.'}</p>`:''}
+   ${(x.more||[]).map(m=>stepperHTML(a,m[0],m[1],m[2],m[3],m[4],m[5])).join('')}
+   ${x.k==='fat'||x.k==='tbw'||x.k==='waist'?(SEX_RANGE[x.k][a.sex]?'':'<p class="st-warn">Choose Male or Female at registration for the range.</p>'):''}
   </div>`};
- const ms=myStation(),one=ms&&ms!=='bp'?STATION_DEFS.find(x=>x.k===ms):null;
+ const ms=myStation(),one=ms&&ms!=='bp'?STATION_DEFS.concat(EXTRA_DEFS).find(x=>x.k===ms):null;
+ /* POPIA: no consent on record, no checks */
+ if(attendees.some(x=>x.id===a.id)&&!hasConsent(a))return `<section class="stagger space-y-3">${consentCard(a)}</section>`;
  return `<section class="stagger space-y-3">
   <div id="redBanner" class="${redFlag(a)?'':'hidden'} flex items-start gap-2.5 rounded-2xl border border-rose-200/70 bg-rose-50/90 p-4 text-rose-700">
    <span class="flex h-8 w-8 flex-none items-center justify-center rounded-[12px] bg-rose-500/15 font-extrabold">!</span>
    <div><div class="text-[11px] font-extrabold uppercase tracking-wider">Clinical red flag</div>
-   <p class="mt-1 text-[11px] leading-relaxed text-rose-600/90">BP ≥ 160/100 or sugar ≥ 15: do NOT run the step test. Send the visitor to the triage nurse now.</p></div>
+   <p class="mt-1 text-[11px] leading-relaxed text-rose-600/90">BP ≥ 160/100, or sugar ≥ 15 or under 3: do NOT run the step test. Send the visitor to the triage nurse now.</p></div>
   </div>
 
   <div class="glass p-4">
@@ -2657,7 +2813,13 @@ function viewScreen(){
 
   ${stationPicker()}
   ${!ms||ms==='bp'?bpCard:''}
-  ${one?`<div class="st-one">${cardOf(one)}</div>`:ms?'':`<div class="st-grid">${STATION_DEFS.map(cardOf).join('')}</div>`}
+  ${one?`<div class="st-one">${cardOf(one)}</div>`:ms?'':`<div class="st-grid">${STATION_DEFS.map(cardOf).join('')}</div>
+  <div class="glass p-4"><div class="microlabel">Personal Health Record</div>
+   <div class="display text-base font-extrabold">The rest of the paper record</div>
+   <p class="mt-1 text-[11px] leading-snug text-[#5c747a]">Not part of the 8 checks. Fill in what was measured.</p></div>
+  ${historyCard(a)}
+  <div class="st-grid">${EXTRA_DEFS.map(cardOf).join('')}</div>
+  ${surveyCard(a)}`}
   ${ms?`<p class="text-center text-[12px] text-[#4f6870]">Saved automatically ✓ Only your station is shown. <button class="tap-link" onclick="setMyStation('')">Show all 8 checks</button></p>`
    :followUpCard(a)}
  </section>`;
@@ -2667,10 +2829,41 @@ const MS_KEY='newstart.myStation';
 function myStation(){if(state.myStation===undefined){try{state.myStation=localStorage.getItem(MS_KEY)||'';}catch(e){state.myStation='';}}return state.myStation;}
 function setMyStation(k){state.myStation=k;try{k?localStorage.setItem(MS_KEY,k):localStorage.removeItem(MS_KEY);}catch(e){}renderMain();}
 function stationPicker(){
- const ms=myStation(),opts=[['','All 8 checks'],['bp','Blood pressure'],...STATION_DEFS.map(x=>[x.k,x.label])];
+ const ms=myStation(),opts=[['','All 8 checks'],['bp','Blood pressure'],...STATION_DEFS.concat(EXTRA_DEFS).map(x=>[x.k,x.label])];
  return `<div class="glass p-3.5"><div class="microlabel">Your station</div>
   <div class="fd-chips mt-2" role="group" aria-label="Your station">${opts.map(([k,l])=>`<button class="fd-chip hue-mint" aria-pressed="${k===ms}" onclick="setMyStation('${k}')">${l}</button>`).join('')}</div></div>`;
 }
+/* A Yes / No pair, as circled on the paper form. Tapping the chosen answer again clears it. */
+function ynHTML(a,k,label){
+ const v=a.s[k],b=(val,l)=>`<button type="button" class="availpill hue-mint ${v===val?'availpill-on':''}" aria-pressed="${v===val}" onclick="setAnswer('${a.id}','${k}',${val})">${l}</button>`;
+ return `<div class="flex flex-wrap items-center justify-between gap-2"><span class="text-[12px] font-semibold text-[#33504f]">${label}</span>
+  <span class="flex gap-1.5">${b(1,'Yes')}${b(0,'No')}</span></div>`;
+}
+/* top right of the paper record: pregnant, major operations, chronic illnesses (and which) */
+function historyCard(a){
+ return `<div class="glass hue-tint hue-lilac space-y-2.5 p-4">
+  <div class="text-[13px] font-bold leading-tight">Medical history</div>
+  ${MED_YN.filter(([k])=>k!=='bpMed'&&(k!=='preg'||a.sex!=='Male')).map(([k,l])=>ynHTML(a,k,l)).join('')}
+  ${a.s.chronic===1?`<label class="block"><span class="microlabel">Which chronic illnesses?</span>
+   <input type="text" maxlength="200" class="field mt-1" value="${esc(a.chronicList||'')}" placeholder="For example diabetes, asthma"
+    oninput="onChronicList('${a.id}',this.value)"></label>`:''}
+ </div>`;
+}
+/* the Health Age Survey; sleep is the Sleep check above, so it is not asked twice */
+function surveyCard(a){
+ return `<div class="glass p-4">
+  <div class="microlabel">Health age survey</div>
+  <div class="display text-base font-extrabold">How does ${esc(firstName(a.name))} live?</div>
+  ${SURVEY.map(x=>`<div class="mt-3"><div class="text-[12px] font-semibold text-[#33504f]">${x.q}</div>
+   <div class="mt-1.5 flex flex-wrap gap-1.5">${x.a.map((l,i)=>`<button type="button" class="availpill hue-sand ${a.s[x.k]===i+1?'availpill-on':''}" aria-pressed="${a.s[x.k]===i+1}" onclick="setAnswer('${a.id}','${x.k}',${i+1})">${l}</button>`).join('')}</div></div>`).join('')}
+ </div>`;
+}
+function setAnswer(id,k,v){
+ const a=attendees.find(x=>x.id===id);if(!a)return;
+ a.s[k]=a.s[k]===v?null:v;
+ persist();renderMain();
+}
+function onChronicList(id,v){const a=attendees.find(x=>x.id===id);if(!a)return;a.chronicList=String(v||'').slice(0,200);persist();}
 /* What the visitor asked for and their prayer request. These are what fill the Care lists for the ministry team. */
 const INT_HUE={nurse:'blush',cook:'sage',stress:'lilac',pouch:'peach'};
 function followUpCard(a){
@@ -2684,6 +2877,17 @@ function followUpCard(a){
    ${Object.keys(INT).map(k=>{const on=!!(a.interests&&a.interests[k]);
     return `<button type="button" onclick="toggleInterest(this,'${a.id}','${k}')" class="availpill hue-${INT_HUE[k]} ${on?'availpill-on':''}" aria-pressed="${on}">${on?'✓ ':''}${INT[k]}</button>`;}).join('')}
   </div>
+  <div class="mt-3 rounded-[14px] bg-white/60 p-2.5">
+   <div class="flex items-center justify-between gap-2"><span class="text-[12px] font-semibold text-[#33504f]">May the church contact them after the expo?</span>
+    <button type="button" onclick="toggleOptin('${a.id}')" class="availpill hue-mint ${optedIn(a)?'availpill-on':''}" aria-pressed="${optedIn(a)}">${optedIn(a)?'✓ Yes':'No'}</button></div>
+   <p class="mt-1 text-[10.5px] text-[#6b8187]">Consent given ${esc(a.interests.consentOn||'(date not recorded)')}${a.interests.guardianName?` by ${esc(a.interests.guardianName)} (parent or guardian)`:''}. To withdraw it, a church admin deletes the record.</p>
+   <details class="mt-1"><summary class="text-[10.5px] font-semibold text-brand-800">What they agreed to${a.interests.consentV?` (notice of ${esc(a.interests.consentV)})`:''} ▾</summary>
+    ${!a.interests.consentV||a.interests.consentV===NOTICE_VERSION?noticeHTML():'<p class="mt-1 text-[10.5px] text-[#6b8187]">An older version of the notice; this app now shows the '+NOTICE_VERSION+' version.</p>'}</details>
+  </div>
+  <div class="microlabel mt-3">Free seminars they would attend</div>
+  <div class="mt-1.5 flex flex-wrap gap-1.5">${pillsHTML(a,SEMINARS,'sage')}</div>
+  <div class="microlabel mt-3">How did they hear about the expo?</div>
+  <div class="mt-1.5 flex flex-wrap gap-1.5">${pillsHTML(a,HEARD,'sky')}</div>
   <label class="mt-3 block"><span class="microlabel">Prayer request (optional)</span>
    <textarea id="prayerNote" rows="3" maxlength="500" class="field mt-1" placeholder="Anything they would like us to pray for"
     oninput="onPrayer('${a.id}',this.value)">${esc(a.prayer||'')}</textarea></label>
@@ -2694,6 +2898,16 @@ function toggleInterest(btn,id,k){
  a.interests=a.interests||{};a.interests[k]=!a.interests[k];
  const on=!!a.interests[k];
  if(btn){btn.classList.toggle('availpill-on',on);btn.textContent=(on?'✓ ':'')+INT[k];btn.setAttribute&&btn.setAttribute('aria-pressed',String(on));}
+ persist();
+}
+/* tick boxes kept in interests, like the follow-up asks: SEMINARS and HEARD */
+const pillsHTML=(a,set,hue)=>Object.keys(set).map(k=>{const on=!!(a.interests&&a.interests[k]);
+ return `<button type="button" onclick="toggleTick(this,'${a.id}','${k}')" class="availpill hue-${hue} ${on?'availpill-on':''}" aria-pressed="${on}">${on?'✓ ':''}${set[k]}</button>`;}).join('');
+function toggleTick(btn,id,k){
+ const a=attendees.find(x=>x.id===id);if(!a)return;
+ a.interests=a.interests||{};a.interests[k]=!a.interests[k];
+ const on=a.interests[k],l=SEMINARS[k]||HEARD[k];
+ btn.classList.toggle('availpill-on',on);btn.textContent=(on?'✓ ':'')+l;btn.setAttribute('aria-pressed',String(on));
  persist();
 }
 function onPrayer(id,v){const a=attendees.find(x=>x.id===id);if(!a)return;a.prayer=String(v||'').slice(0,500);persist();}
@@ -2767,8 +2981,8 @@ function updateScreenMeta(){
  const a=A(); if(!a)return;
  const setChip=(idc,c)=>{const el=document.getElementById(idc);if(el){if(el.textContent!==c[1])jelly(el);el.textContent=c[1];el.className=chipClass(c[0]);}};
  setChip('chip-bp',cat('bp',{sys:a.s.sys,dia:a.s.dia}));
- STATION_DEFS.forEach(x=>setChip('chip-'+x.k,x.k==='weight'?cat('bmi',bmi(a)):cat(x.k,a.s[x.k])));
- const bt=document.getElementById('bmiTxt');if(bt)bt.textContent=bmi(a)?'BMI '+fmt1(bmi(a)):'';
+ STATION_DEFS.concat(EXTRA_DEFS).forEach(x=>{setChip('chip-'+x.k,chipOf(a,x.k));
+  const n=document.getElementById('note-'+x.k);if(n)n.textContent=chipNote(a,x.k);});
  const d=doneCount(a);
  const t=document.getElementById('stProgTxt');if(t)t.textContent=d+'/8';
  const b=document.getElementById('stProgBar');if(b)b.style.width=(d/8*100)+'%';
@@ -2903,13 +3117,18 @@ function planNeeds(a){
  const bp=cat('bp',{sys:a.s.sys,dia:a.s.dia});
  /* order: red-flag blood pressure, red-flag sugar, amber blood pressure, amber sugar, then weight/cholesterol, then sleep */
  if(sev(bp[0]))out.push({k:'bp',sev:sev(bp[0]),rank:sev(bp[0])===3?0:2,why:`${a.s.sys}/${a.s.dia} is ${bpStage(a.s.sys,a.s.dia)}`});
+ /* only a high reading: the blood-sugar plan lowers sugar, so a low one goes to the nurse instead (careNotes) */
  const sg=cat('sugar',a.s.sugar);
- if(sev(sg[0]))out.push({k:'sugar',sev:sev(sg[0]),rank:sev(sg[0])===3?1:3,why:`${a.s.sugar} mmol/L (${Math.round(a.s.sugar*18)} mg/dL) is above the expo’s healthy range`});
+ if(sev(sg[0])&&a.s.sugar>8)out.push({k:'sugar',sev:sev(sg[0]),rank:sev(sg[0])===3?1:3,why:`${a.s.sugar} mmol/L (${Math.round(a.s.sugar*18)} mg/dL) is above the expo’s healthy range`});
  const b=bmi(a),bm=cat('bmi',b),ch=cat('chol',a.s.chol),why=[];
  const heavy=b!=null&&b>=25;
  if(heavy)why.push(`BMI ${fmt1(b)} is above the healthy range`);
  if(sev(ch[0]))why.push(`cholesterol ${a.s.chol} mmol/L (${Math.round(a.s.chol*38.67)} mg/dL) is above the expo’s healthy range`);
- if(why.length)out.push({k:'bmi',sev:Math.max(heavy?sev(bm[0])||2:0,sev(ch[0])),rank:4,why:why.join('; ')});
+ /* the paper record's body measures point to the same plan: a large waist, or body fat above range */
+ const wc=cat('waist',{v:a.s.waist,sex:a.sex}),bf=cat('fat',{v:a.s.fat,sex:a.sex}),fatUp=bf[0]==='watch'&&a.s.fat>SEX_RANGE.fat[a.sex][1];
+ if(sev(wc[0]))why.push(`waist ${a.s.waist} cm is ${wc[1].toLowerCase()}`);
+ if(fatUp)why.push(`body fat ${a.s.fat}% is above the ${SEX_RANGE.fat[a.sex].join('–')}% range`);
+ if(why.length)out.push({k:'bmi',sev:Math.max(heavy?sev(bm[0])||2:0,sev(ch[0]),sev(wc[0]),fatUp?2:0),rank:4,why:why.join('; ')});
  if(b!=null&&b<18.5)out.push({k:'thin',sev:sev(bm[0])||2,rank:4.2,why:`BMI ${fmt1(b)} is below the healthy range`});
  const sl=cat('sleep',a.s.sleep);
  if(sev(sl[0]))out.push({k:'sleep',sev:sev(sl[0]),rank:5,why:`${a.s.sleep} hours a night. The plan builds regular hours, fresh air and a calm, light evening`});
@@ -2919,7 +3138,12 @@ function planNeeds(a){
  const vg=cat('veg',a.s.veg),wk=cat('walk',a.s.walk),wt=cat('water',a.s.water);
  if(sev(vg[0]))out.push({k:'veg',sev:sev(vg[0]),rank:6,why:`${countOf(a.s.veg,'serving','servings')} of fruit and vegetables a day; the goal is 5 or more`});
  if(sev(wk[0]))out.push({k:'move',sev:sev(wk[0]),rank:6.5,why:`${countOf(a.s.walk,'minute','minutes')} of exercise a day; the goal is 30`});
+ /* no minutes measured: the survey answer stands in for them */
+ else if(a.s.walk==null&&a.s.exFreq>=2)out.push({k:'move',sev:a.s.exFreq,rank:6.5,why:`Aerobic exercise ${SURVEY[0].a[a.s.exFreq-1].toLowerCase()}; the goal is 5 or more times a week`});
  if(sev(wt[0]))out.push({k:'water',sev:sev(wt[0]),rank:7,why:`${countOf(a.s.water,'glass','glasses')} of water a day; the goal is 8`});
+ /* the scale's body water below range points to the water plan too */
+ else if(cat('tbw',{v:a.s.tbw,sex:a.sex})[0]==='watch'&&a.s.tbw<SEX_RANGE.tbw[a.sex][0])
+  out.push({k:'water',sev:2,rank:7,why:`body water ${a.s.tbw}% is below the ${SEX_RANGE.tbw[a.sex].join('–')}% range`});
  return out.sort((x,y)=>x.rank-y.rank);
 }
 /* The plan actually shown for this visitor: the one picked on the Plan step, else the one their numbers point to.
@@ -2933,11 +3157,15 @@ function problemOf(a,pk){
    'pre-hypertension':'a little high (pre-hypertension)','normal':'normal'}[bpStage(s.sys,s.dia)];
   return `Blood pressure ${s.sys}/${s.dia}: ${w}. Healthy is under 120/80.`;
  }
- if(pk==='sugar'&&s.sugar!=null)return `Blood sugar ${s.sugar} mmol/L: ${cat('sugar',s.sugar)[1].toLowerCase()}. Without diabetes it stays under 6.1.`;
+ if(pk==='sugar'&&s.sugar!=null)return `Blood sugar ${s.sugar} mmol/L: ${cat('sugar',s.sugar)[1].toLowerCase()}. The healthy range for a random reading is 4–8.`;
  if(pk==='bmi'){
   const out=[],b=bmi(a);
   if(heavy(a))out.push(`BMI ${fmt1(b)}: ${cat('bmi',b)[1].toLowerCase()}. Healthy is 18.5–25.`);
   if(cholUp(a))out.push(`Cholesterol ${s.chol} mmol/L: ${cat('chol',s.chol)[1].toLowerCase()}. Good is under 5.2.`);
+  const wc=cat('waist',{v:s.waist,sex:a.sex});
+  if(wc[0]&&wc[0]!=='ok')out.push(`Waist ${s.waist} cm: ${wc[1].toLowerCase()}. Healthy is under ${SEX_RANGE.waist[a.sex][0]}.`);
+  const r=SEX_RANGE.fat[a.sex];
+  if(r&&s.fat!=null&&s.fat>r[1])out.push(`Body fat ${s.fat}%: above range. Healthy is ${r.join('–')}%.`);
   if(out.length)return out.join(' ');
  }
  if(pk==='sleep'&&s.sleep!=null&&s.sleep<7)return `Sleep ${s.sleep} hours a night: too little. Most adults need 7–8.`;
@@ -2946,12 +3174,35 @@ function problemOf(a,pk){
  if(pk==='veg'&&s.veg!=null&&s.veg<5)return `Fruit and vegetables: ${countOf(s.veg,'serving','servings')} a day. The goal is 5 or more.`;
  if(pk==='move'&&s.walk!=null&&s.walk<30)return `Exercise: ${countOf(s.walk,'minute','minutes')} a day. The goal is 30.`;
  if(pk==='water'&&s.water!=null&&s.water<8)return `Water: ${countOf(s.water,'glass','glasses')} a day. The goal is 8.`;
+ const tw=SEX_RANGE.tbw[a.sex];
+ if(pk==='water'&&tw&&s.tbw!=null&&s.tbw<tw[0])return `Body water ${s.tbw}%: below range. Healthy is ${tw.join('–')}%.`;
  return planNeeds(a).length?'Not your main need today, but these habits help everyone.'
   :'Your numbers look fine today. This plan helps keep them that way.';
 }
+/* What the counsellor must also raise: things no home plan covers, from the paper record and survey. Plain sentences. */
+function careNotes(a){
+ const s=a.s,out=[];
+ if(s.sugar!=null&&s.sugar<4)out.push(`Blood sugar ${s.sugar} mmol/L is low (healthy is 4–8). Give a sweet drink or fruit now, and the nurse should see them.`);
+ if(s.bpMed===1)out.push('Takes blood-pressure medication: keep taking it. This plan does not replace it; only their doctor changes it.');
+ if(s.preg===1)out.push('Pregnant: the nurse should see her before the step test and before any plan.');
+ if(s.chronic===1)out.push(`Chronic illness${a.chronicList?': '+a.chronicList:''}. Check the plan with their doctor.`);
+ if(s.ops===1)out.push('Has had a major operation: ask the nurse before the step test.');
+ const w=cat('waist',{v:s.waist,sex:a.sex});
+ if(w[0]&&w[0]!=='ok')out.push(`Waist ${s.waist} cm: ${w[1].toLowerCase()} (${a.sex==='Female'?'under 80':'under 94'} is healthy).`);
+ const p=pefPct(a);
+ if(p!=null&&p<80)out.push(`Lung function ${s.pef} is ${p}% of the recommended ${s.pefExp}. ${p<50?'The nurse should see them today.':'Suggest a clinic check.'}`);
+ if(s.pulseRest!=null&&s.pulseRest>100)out.push(`Resting pulse ${s.pulseRest} is fast (normal is 60–100). Skip the step test; the nurse should check it.`);
+ const bf=SEX_RANGE.fat[a.sex];
+ if(bf&&s.fat!=null&&s.fat<bf[0])out.push(`Body fat ${s.fat}% is below the ${bf.join('–')}% range.`);
+ if(s.smoke>=3)out.push(`Smokes (${SURVEY[3].a[s.smoke-1].toLowerCase()}). Offer help to stop.`);
+ if(s.alcohol>=3)out.push(`Drinks alcohol ${SURVEY[4].a[s.alcohol-1].toLowerCase()}. Talk about cutting down.`);
+ if(s.snack===1)out.push('Snacks on junk food several times a day.');
+ if(s.breakfast>=2)out.push(`Has a good breakfast ${SURVEY[1].a[s.breakfast-1].toLowerCase()}.`);
+ return out;
+}
 /* a reading in the red range comes before any home plan (the expo's safety rule, not a book claim) */
 function urgentOf(a,pk){
- if(redFlag(a))return {t:'See the triage nurse now, before anything else',w:'A reading is in the danger range: blood pressure 160/100 or more, or blood sugar 15 or more.'};
+ if(redFlag(a))return {t:'See the triage nurse now, before anything else',w:'A reading is in the danger range: blood pressure 160/100 or more, or blood sugar 15 or more, or under 3.'};
  const red=pk==='bp'?cat('bp',{sys:a.s.sys,dia:a.s.dia})[0]==='flag':pk==='sugar'?cat('sugar',a.s.sugar)[0]==='flag'
   :pk==='bmi'?cat('chol',a.s.chol)[0]==='flag'||cat('bmi',bmi(a))[0]==='flag':false;
  return red?{t:'Book a clinic visit this week',w:'This reading is in the red range. The plan below helps, but a clinic must check it.'}:null;
@@ -2992,6 +3243,8 @@ function viewPlan(){
   </div>
 
   ${P.urgent?`<div class="pl-urgent" role="alert"><b>⚠ ${esc(P.urgent.t)}</b><span>${esc(P.urgent.w)}</span></div>`:''}
+  ${careNotes(a).length?`<div class="glass p-4"><div class="pl-h">Also talk about</div>
+   <ul class="mt-2 list-disc space-y-1.5 pl-4 text-[12px] leading-snug text-[#33504f]">${careNotes(a).map(n=>`<li>${esc(n)}</li>`).join('')}</ul></div>`:''}
 
   <div>
    <div class="pl-h">Do these 3 things</div>
@@ -3197,9 +3450,10 @@ function careCard(a){
    <span class="flex h-9 w-9 flex-none items-center justify-center rounded-[13px] text-[11px] font-extrabold tint hue-${hueOf(a.id)}">${initials(a.name)}</span>
    <div class="min-w-0 flex-1"><div class="truncate text-[13px] font-bold">${esc(a.name)}</div>
    <div class="mono truncate text-[10px] text-[#6b8187]">${esc(a.id)} · ${esc(a.phone)}</div></div>
-   <button onclick="openWAFor('${a.id}')" aria-label="WhatsApp ${esc(a.name)}"
+   ${optedIn(a)?`<button onclick="openWAFor('${a.id}')" aria-label="WhatsApp ${esc(a.name)}"
      class="btn flex-none rounded-[14px] text-[#128C4B] transition active:scale-95"
-     style="width:44px;height:44px;background:rgba(37,211,102,.14)">${I.wa}</button>
+     style="width:44px;height:44px;background:rgba(37,211,102,.14)">${I.wa}</button>`
+    :`<span class="chip chip-none flex-none">No contact</span>`}
   </div>
   ${flags.length?`<div class="mt-2.5 flex flex-wrap gap-1.5">${flags.map(([l,c])=>`<span class="${chipClass(c[0])}">${l} ${c[1]==='—'?'':c[1]}</span>`).join('')}</div>`:''}
   ${tags?`<div class="mt-2 flex flex-wrap gap-1.5">${tags}</div>`:''}
@@ -3207,12 +3461,23 @@ function careCard(a){
  </div>`;
 }
 function exportCSV(){
- const rows=[['Badge','Name','Phone','Email','Age','Sex','BP','Sugar mmol/L','BMI','Health age','Flags','Interests','Prayer note']];
+ const rows=[['Badge','Name','Phone','Email','Age','Sex','Height cm','Weight kg','BP','BP medication','Sugar mmol/L','BMI','Waist cm','Body fat %','Body water %',
+  'PEF','PEF recommended','Resting pulse','Exercise pulse','Recovery pulse','Pregnant','Major operations','Chronic illnesses',
+  ...SURVEY.map(x=>x.q),'Health age','Flags','Also talk about','Interests','Seminars','Heard via','Prayer note',
+  'Health consent','Consent date','Notice version','Parent or guardian','Follow-up allowed']];
+ const yn=v=>v===1?'Yes':v===0?'No':'';
+ const ticked=(a,set)=>Object.keys(set).filter(k=>a.interests[k]).map(k=>set[k]).join('; ');
  attendees.forEach(a=>{
-  const ha=healthAge(a);
-  const fl=[cat('bp',{sys:a.s.sys,dia:a.s.dia}),cat('sugar',a.s.sugar),cat('bmi',bmi(a))].filter(c=>c[0]==='flag'||c[0]==='watch').map(c=>c[1]).join('; ');
-  const it=Object.keys(INT).filter(k=>a.interests[k]).map(k=>INT[k]).join('; ');
-  rows.push([a.id,a.name,a.phone,a.email||'',a.age,a.sex,a.s.sys&&a.s.dia?`${a.s.sys}/${a.s.dia}`:'',a.s.sugar??'',bmi(a)?fmt1(bmi(a)):'',ha.health!=null?fmt1(ha.health):'incomplete',fl,it,a.prayer]);
+  const ha=healthAge(a),s=a.s;
+  const fl=[cat('bp',{sys:s.sys,dia:s.dia}),cat('sugar',s.sugar),cat('bmi',bmi(a))].filter(c=>c[0]==='flag'||c[0]==='watch').map(c=>c[1]).join('; ');
+  /* this is the follow-up sheet: no contact details for anyone who did not agree to be contacted */
+  const ok=optedIn(a);
+  rows.push([a.id,a.name,ok?a.phone:'',ok?a.email||'':'',a.age,a.sex,a.heightCm??'',s.weight??'',s.sys&&s.dia?`${s.sys}/${s.dia}`:'',yn(s.bpMed),s.sugar??'',bmi(a)?fmt1(bmi(a)):'',
+   s.waist??'',s.fat??'',s.tbw??'',s.pef??'',s.pefExp??'',s.pulseRest??'',s.pulseEx??'',s.pulseRec??'',
+   yn(s.preg),yn(s.ops),s.chronic===1?'Yes'+(a.chronicList?': '+a.chronicList:''):yn(s.chronic),
+   ...SURVEY.map(x=>s[x.k]?x.a[s[x.k]-1]:''),ha.health!=null?fmt1(ha.health):'incomplete',fl,careNotes(a).join(' '),
+   ticked(a,INT),ticked(a,SEMINARS),ticked(a,HEARD),a.prayer,
+   hasConsent(a)?'Yes':'Not recorded',a.interests.consentOn||'',a.interests.consentV||'',a.interests.guardianName||'',ok?'Yes':'No']);
  });
  downloadCSV(rows,'newstart-followup.csv');
  toast('Follow-up sheet exported (CSV) ✓');
@@ -4157,6 +4422,16 @@ function renderVolModal(){
 function pickAttendee(id){state.activeId=id;state.sugFor=null;state._goal=null;closeSwitcher();render();toast(`Now serving ${firstName(A().name)} · ${id}`);}
 function registerNew(){closeSwitcher();state.pendingBadge=null;state.regOpen=true;switchTab('home');}
 function openWAFor(id){state.activeId=id;state.sugFor=null;state._goal=null;render();openWhatsApp();}
+/* the paper-record readings that were taken, for the message the visitor keeps */
+function paperLines(a){
+ const s=a.s,out=[],p=pefPct(a);
+ if(s.waist!=null)out.push(`Waist: ${s.waist} cm`);
+ if(s.fat!=null)out.push(`Body fat: ${s.fat}%`);
+ if(s.tbw!=null)out.push(`Body water: ${s.tbw}%`);
+ if(s.pef!=null)out.push(`Lung function: ${s.pef}${p!=null?` (${p}% of the recommended ${s.pefExp})`:''}`);
+ if(s.pulseRest!=null)out.push(`Pulse: ${s.pulseRest} resting${s.pulseEx!=null?`, ${s.pulseEx} after exercise`:''}${s.pulseRec!=null?`, ${s.pulseRec} after 3 min`:''}`);
+ return out;
+}
 /* the scorecard-and-plan preview both sending ways share (the message that goes out is waMessage(a)) */
 function waPreviewHTML(a){
  const ha=healthAge(a),{sys,dia}=simBP(a),proj=projection(a),P=planFor(a),pk=P.pk,p=P.p;
@@ -4170,6 +4445,7 @@ function waPreviewHTML(a){
    <div>Blood pressure: ${a.s.sys??'—'}/${a.s.dia??'—'} → <b class="text-brand-800">${sys}/${dia} mmHg</b></div>
    <div>Blood sugar: ${a.s.sugar??'—'} mmol/L</div>
    <div>BMI: ${bmi(a)?fmt1(bmi(a)):'—'}</div>
+   ${paperLines(a).map(l=>`<div>${esc(l)}</div>`).join('')}
    <div>Health age: ${ha.health!=null?fmt1(ha.health):'—'} → <b class="text-brand-800">${fmt1(proj.age)} yrs in 90 days</b></div>
   </div>
   <div class="mt-3"><div class="text-[10px] font-extrabold uppercase tracking-wider text-brand-900">Your plan: ${esc(P.goal)}</div>
@@ -4251,6 +4527,7 @@ function waMessage(a){
   `• Blood pressure: ${a.s.sys??'—'}/${a.s.dia??'—'} → ${sys}/${dia} mmHg`,
   `• Blood sugar: ${a.s.sugar??'—'} mmol/L`,
   `• BMI: ${bmi(a)?fmt1(bmi(a)):'—'}`,
+  ...paperLines(a).map(l=>'• '+l),
   `• Health age: ${ha.health!=null?fmt1(ha.health):'—'} → ${fmt1(proj.age)} yrs in 90 days`,
   '',
   `YOUR PLAN: ${P.goal.toUpperCase()}`,
@@ -4556,9 +4833,11 @@ const SYNC_KEY='newstart.cloud.v1';
 const nulIfEmpty=v=>v?v:null;
 const attToRow=a=>({id:a.id,name:a.name,age:Number.isFinite(+a.age)&&a.age!=='' ?Math.round(+a.age):null,sex:a.sex||null,
  phone:a.phone||null,email:a.email||null,height_cm:a.heightCm!=null&&a.heightCm!==''&&Number.isFinite(+a.heightCm)?+a.heightCm:null,s:a.s||{},interests:a.interests||{},
- prayer:a.prayer||'',done:!!a.done});
+ prayer:a.prayer||'',done:!!a.done,
+ /* sent only when written, so a database not yet given the chronic_list column still takes every other visitor */
+ ...(a.chronicList?{chronic_list:a.chronicList}:{})});
 const rowToAtt=r=>migrateAttendee({id:r.id,name:r.name,age:r.age==null?0:r.age,sex:r.sex||'',phone:r.phone||'',email:r.email||'',
- heightCm:r.height_cm==null?null:Number(r.height_cm),s:r.s||{},interests:r.interests||{},prayer:r.prayer||'',done:!!r.done});
+ heightCm:r.height_cm==null?null:Number(r.height_cm),s:r.s||{},interests:r.interests||{},prayer:r.prayer||'',done:!!r.done,chronicList:r.chronic_list||''});
 const volToRow=v=>({id:v.id,name:v.name,phone:v.phone||'',email:v.email||'',status:v.status||'prospect',
  pledge_expos:Number(v.pledgeExpos)||1,skills:v.skills||[],pref:v.pref||[],pref2:v.pref2||'',booth:nulIfEmpty(v.booth),
  availability:v.availability||[],shirt:v.shirt||'',emergency:v.emergency||'',since:v.since||'',notes:v.notes||'',

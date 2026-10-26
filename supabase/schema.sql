@@ -116,8 +116,8 @@ create table if not exists public.attendees (
   phone      text,
   height_cm  numeric,
   email      text,                                 -- optional; used to send the plan by email
-  s          jsonb not null default '{}'::jsonb,   -- station readings: sys, dia, sugar, chol, weight, veg, walk, water, sleep
-  interests  jsonb not null default '{}'::jsonb,   -- nurse / cook / stress / pouch
+  s          jsonb not null default '{}'::jsonb,   -- station readings: sys, dia, sugar, chol, weight, veg, walk, water, sleep; paper record: waist, fat, tbw, pef, pefExp, pulseRest, pulseEx, pulseRec, bpMed, preg, ops, chronic, chronicList; survey: exFreq, breakfast, snack, smoke, alcohol
+  interests  jsonb not null default '{}'::jsonb,   -- nurse / cook / stress / pouch, seminars, heard* (how they heard)
   prayer     text not null default '',
   done       boolean not null default false,
   created_at timestamptz not null default now(),
@@ -313,7 +313,7 @@ alter table public.attendees add constraint attendees_limits check (
   length(name) <= 200 and coalesce(length(phone), 0) <= 40 and coalesce(length(email), 0) <= 200
   and coalesce(length(sex), 0) <= 20 and length(prayer) <= 2000
   and public.jsonb_numbers_only(s) and octet_length(s::text) <= 1000
-  and jsonb_typeof(interests) = 'object' and octet_length(interests::text) <= 500
+  and jsonb_typeof(interests) = 'object' and octet_length(interests::text) <= 1000   -- the paper form's seminar and "heard via" ticks, plus the follow-up name
 ) not valid;
 
 alter table public.volunteers drop constraint if exists volunteers_limits;
@@ -1246,6 +1246,56 @@ begin
     execute format('revoke all on function public.%s from public, anon', f);
     execute format('grant execute on function public.%s to authenticated', f);
   end loop;
+end $$;
+
+-- ================================================================ PAPER HEALTH RECORD: CHRONIC ILLNESSES
+-- The chronic illnesses written on the paper form are text, and s takes numbers only, so they get their own column.
+-- The app sends it only when something is written, so the app keeps working before this part has been run.
+alter table public.attendees add column if not exists chronic_list text;
+alter table public.attendees drop constraint if exists attendees_chronic_list_len;
+alter table public.attendees add constraint attendees_chronic_list_len check (coalesce(length(chronic_list), 0) <= 200) not valid;
+
+-- ================================================================ RETENTION (POPIA s14)
+-- A visitor's record is kept for 2 years after their last visit (the last time it was updated), then deleted. The
+-- app's privacy notice says the same (RETENTION_YEARS in index.html): change both together.
+-- Deleting a visitor normally leaves a full copy in audit_log so an admin's mistake can be undone. Those copies are
+-- emptied after 90 days, and a record removed here leaves no copy at all. Queue entries hold only badge numbers and
+-- times, and are kept 30 days. Audit lines themselves (who did what, no health data) are kept 2 years.
+create or replace function public.purge_expired_visitors()
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare n integer;
+begin
+  -- the weekly job runs with no signed-in user; a signed-in caller must be the platform admin
+  if auth.uid() is not null and not public.is_platform_admin() then
+    raise exception 'platform admin only' using errcode = '42501';
+  end if;
+  with gone as (
+    delete from public.attendees where updated_at < now() - interval '2 years' returning id
+  )
+  select count(*) into n from gone;
+  update public.audit_log set old = null
+   where tbl = 'attendees' and op = 'DELETE' and old is not null
+     and (at < now() - interval '90 days' or (old ->> 'updated_at')::timestamptz < now() - interval '2 years');
+  delete from public.audit_log where at < now() - interval '2 years';
+  delete from public.queue_entries where joined_at < now() - interval '30 days';
+  return n;
+end;
+$$;
+revoke all on function public.purge_expired_visitors() from public, anon;
+grant execute on function public.purge_expired_visitors() to authenticated;
+
+-- run it every Sunday at 03:00 when the pg_cron extension is on (Database → Extensions → pg_cron); without it, a
+-- platform admin runs  select public.purge_expired_visitors();  here once a month
+do $$
+begin
+  if exists (select 1 from pg_extension where extname = 'pg_cron') then
+    perform cron.unschedule(jobid) from cron.job where jobname = 'purge-expired-visitors';
+    perform cron.schedule('purge-expired-visitors', '0 3 * * 0', 'select public.purge_expired_visitors()');
+  end if;
 end $$;
 
 -- ================================================================ AFTER RUNNING THE SCRIPT
