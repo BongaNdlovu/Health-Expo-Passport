@@ -430,6 +430,12 @@
   .wave-clip{position:absolute;left:0;right:0;bottom:0;height:66px;overflow:hidden;border-radius:0 0 26px 26px;z-index:-1;pointer-events:none}
   .wave{left:0;right:auto;width:calc(100% + 200px);background-position:0 0}
   .lite .stagger>*,.lite .pour>*{animation-duration:.25s!important}
+  /* phones: screens arrive with a plain .18s fade (opacity only, the cheapest thing a GPU can animate), and the
+     background blobs change colour at once instead of over 1.6s of full-screen repaints */
+  @keyframes fadeIn{from{opacity:0}}
+  .lite .stagger>*,.lite .pour>*{animation-name:fadeIn!important;animation-duration:.18s!important}
+  .lite .stagger>*:nth-child(n),.lite .pour>*:nth-child(n){animation-delay:0s!important}
+  .lite .b1,.lite .b4{transition:none}
 
   /* ============ VOLUNTEER / SERVE ============ */
   .medal{position:relative;flex:none;width:4.9rem;height:4.9rem;border-radius:50%;display:grid;place-items:center;
@@ -1923,6 +1929,125 @@ async function deleteChurchPlan(cid,id){
  if(!confirm(`Delete the plan “${cp?cp.title:''}”? Visitors it was sent to go back to the app’s plan.`))return;
  if(await acctRpc('delete_church_plan',{p_id:id},'Plan deleted'))await loadChurchPlans(cid,cid===myChurchId()?'plans':'adminPlans');
 }
+
+/* ================= FOLLOW-UP PEOPLE =================
+   A church names up to five of its approved members as follow-up people (Church screen). Staff give each visitor one
+   of them on Send home; the visitor's record keeps the id and name in interests.followUp / followUpName, so the choice
+   syncs with the record and still shows offline. A follow-up person sees the visitors given to them under My account.
+   In practice mode DEMO_FOLLOWUPS stand in. */
+const FOLLOWUP_MAX=5;
+const DEMO_FOLLOWUPS=[{user_id:'demo-f1',full_name:'Grace Dlamini',phone:'082 111 2233'},
+ {user_id:'demo-f2',full_name:'Peter Naidoo',phone:'083 444 5566'},{user_id:'demo-f3',full_name:'Lerato Mokoena',phone:'071 777 8899'}];
+function followupList(){
+ if(inPractice())return DEMO_FOLLOWUPS;
+ const cid=myChurchId();
+ if(cid&&cloud.client&&(!cloud.followups||cloud.followups.cid!==cid)&&cloud.followupsBusy!==cid)loadFollowups(cid);
+ return cloud.followups&&cloud.followups.cid===cid?cloud.followups.list:[];
+}
+/* `key` keeps the platform admin's view of another church apart from this device's own church */
+async function loadFollowups(cid,key){
+ key=key||'followups';
+ if(!cid||!cloud.client)return;
+ if(key==='followups')cloud.followupsBusy=cid;
+ let r;try{r=await cloud.client.rpc('church_followups',{p_church:cid});}catch(e){r={error:e};}
+ if(key==='followups')cloud.followupsBusy='';
+ const list=!r.error&&Array.isArray(r.data)?r.data:null;
+ if(!list&&cloud[key]&&cloud[key].cid===cid)return;      /* offline or an older database: keep what we have */
+ cloud[key]={cid,list:list||[]};
+ if(state.tab==='send'&&A())renderMain();
+ renderAcct();
+}
+/* the Church screen's follow-up ids for this church, or null while they load */
+function followupsFor(cid){
+ const own=cid===myChurchId(),key=own?'followups':'adminFollowups',S=cloud[key];
+ if(!S||S.cid!==cid){if(!(own&&cloud.followupsBusy===cid))loadFollowups(cid,key);return null;}
+ return S.list.map(p=>p.user_id);
+}
+async function setFollowup(uid,on){
+ const r=await acctRpc('set_followup',{p_user:uid,p_on:on},on?'Now a follow-up person ✓':'No longer a follow-up person');
+ const cid=cloud.members&&cloud.members.cid;
+ if(r&&cid)await loadFollowups(cid,cid===myChurchId()?'followups':'adminFollowups');
+}
+function chooseFollowup(uid){
+ const a=A();if(!a)return;
+ a.interests=a.interests||{};
+ const p=uid&&followupList().find(x=>x.user_id===uid);
+ if(p){a.interests.followUp=p.user_id;a.interests.followUpName=p.full_name;}
+ else{delete a.interests.followUp;delete a.interests.followUpName;}
+ persist();renderMain();
+ toast(p?`${firstName(p.full_name)} will follow up with ${firstName(a.name)} ✓`:'No follow-up person');
+}
+/* on Send home: who from the church will contact this visitor after the expo */
+function followupPicker(a){
+ const L=followupList(),cur=a.interests&&a.interests.followUp;
+ if(!L.length)return myChurchId()?`<div class="glass p-4"><div class="microlabel">Follow-up person</div>
+  ${acctNote(`Your church has not named any follow-up people yet. A church admin can name up to ${FOLLOWUP_MAX} on the Church screen.`)}</div>`:'';
+ return `<div class="glass p-4"><div class="microlabel">Follow-up person</div>
+  <p class="mt-1 text-[11.5px] leading-snug text-[#5c747a]">Who from the church will contact ${esc(firstName(a.name))} after the expo.</p>
+  <div class="mt-2 flex flex-wrap items-center gap-1.5">${L.map(p=>`<button onclick="chooseFollowup('${qSafe(p.user_id)}')" class="availpill hue-sage ${cur===p.user_id?'availpill-on':''}" aria-pressed="${cur===p.user_id}">${cur===p.user_id?'✓ ':''}${esc(p.full_name||'(no name)')}</button>`).join('')}
+   ${cur?`<button onclick="chooseFollowup('')" class="tap-link">None</button>`:''}</div></div>`;
+}
+/* My account, for a follow-up person: the visitors given to them */
+function myFollowupsHTML(){
+ if(!cloud.myFollow){if(!cloud.myFollowBusy)loadMyFollowups();return acctBox('People to follow up',acctNote('Loading…'));}
+ const L=cloud.myFollow,tel=p=>String(p||'').replace(/[^+\d]/g,'');
+ return acctBox(`People to follow up · ${L.length}`,L.length?L.map(p=>`<div class="border-t border-[#123033]/[.07] py-2">
+   <div class="text-[13px] font-bold text-[#123033]">${esc(p.name)}</div>
+   <div class="text-[11px] text-[#4f6870]">${esc(p.id)}${tel(p.phone).length>5?` · <a class="tap-link" href="tel:${esc(tel(p.phone))}">${esc(p.phone)}</a>`:''}${p.email?' · '+esc(p.email):''}</div></div>`).join('')
+  :acctNote('Nobody has been given to you yet. Visitors appear here when staff choose you on their Send home screen.'));
+}
+async function loadMyFollowups(){
+ cloud.myFollowBusy=true;
+ const r=await acctRpc('my_followups');
+ cloud.myFollowBusy=false;cloud.myFollow=r&&Array.isArray(r.data)?r.data:[];
+ renderAcct();
+}
+
+/* ================= INVITE LINKS =================
+   A church admin shares a link (…/?join=CODE). Whoever opens it and signs in joins that church at once, approved,
+   as a member or as staff: no searching for the church, no waiting for approval. The code waits in localStorage
+   through the sign-up email round trip, and loadAccount() uses it after the next sign-in. */
+const INVITE_KEY='newstart.invite.v1';
+const pendingInvite=()=>{try{return localStorage.getItem(INVITE_KEY)||'';}catch(e){return '';}};
+const clearInvite=()=>{try{localStorage.removeItem(INVITE_KEY);}catch(e){}};
+(function takeInvite(){
+ try{
+  const q=new URLSearchParams(location.search),c=(q.get('join')||'').toLowerCase();
+  if(!/^[0-9a-f]{32}$/.test(c))return;
+  localStorage.setItem(INVITE_KEY,c);
+  q.delete('join');history.replaceState(null,'',location.pathname+(q.toString()?'?'+q:'')+location.hash);
+ }catch(e){}
+})();
+function inviteBox(cid,c){
+ const L=cloud.inviteLink&&cloud.inviteLink.cid===cid?cloud.inviteLink:null;
+ return `${acctNote(`Share a link: whoever opens it and signs in joins ${esc(c.name||'the church')} at once, already approved, with no searching and no waiting. Links last 30 days.`)}
+  <div class="mt-2 flex gap-2"><button class="btn btn-soft flex-1 py-2 text-xs" onclick="makeInvite('${qSafe(cid)}','member')">Member link</button>
+   <button class="btn btn-soft flex-1 py-2 text-xs" onclick="makeInvite('${qSafe(cid)}','staff')">Staff link</button></div>
+  ${L?`<div class="mt-2 rounded-[14px] bg-white/70 p-2.5"><div class="microlabel">${L.role==='staff'?'Staff':'Member'} invite link</div>
+   <input id="invLink" readonly value="${esc(L.link)}" onclick="this.select()" class="field mono mt-1 text-[11px]">
+   <div class="mt-1.5 flex gap-3"><button class="tap-link" onclick="copyInvite()">Copy</button><button class="tap-link" onclick="shareInvite()">Share</button></div></div>`:''}
+  <button class="tap-link mt-2 text-rose-700" onclick="cancelInvites('${qSafe(cid)}')">Cancel all invite links</button>`;
+}
+async function makeInvite(cid,role){
+ const r=await acctRpc('create_church_invite',{p_church:cid,p_role:role});
+ if(!r||!r.data)return;
+ cloud.inviteLink={cid,role,link:(IS_APP?APP_SITE:location.origin+location.pathname)+'?join='+r.data};
+ renderAcct();copyInvite();
+}
+function copyInvite(){
+ const l=cloud.inviteLink&&cloud.inviteLink.link;if(!l)return;
+ const manual=()=>toast('Select the link and copy it');
+ try{navigator.clipboard.writeText(l).then(()=>toast('Invite link copied ✓'),manual);}catch(e){manual();}
+}
+function shareInvite(){
+ const l=cloud.inviteLink&&cloud.inviteLink.link;if(!l)return;
+ const t=`Join us on the Health Expo Passport: ${l}`;
+ if(navigator.share)navigator.share({text:t}).catch(()=>{});else window.open('https://wa.me/?text='+encodeURIComponent(t),'_blank');
+}
+async function cancelInvites(cid){
+ if(!confirm('Cancel every invite link of this church? Anyone who has not used theirs yet will need a new one.'))return;
+ if(await acctRpc('cancel_church_invites',{p_church:cid},'Invite links cancelled')){cloud.inviteLink=null;renderAcct();}
+}
 /* HUE_N (per-tab hue) now lives next to SERVE_TABS in the shell section below */
 /* ================= ICONS ================= */
 const svgW=p=>`<svg class="h-[21px] w-[21px]" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">${p}</svg>`;
@@ -2263,6 +2388,7 @@ function viewSend(){
    <p class="mt-1 text-[11.5px] leading-relaxed text-[#3d5c5e]">${asked.length?`${first} asked for: <b>${asked.map(esc).join(', ')}</b>.`:`${first} did not ask for a call back or classes.`}
     ${a.prayer?` Prayer request noted.`:''} <button class="tap-link" onclick="switchTab('screen')">Change</button></p>
   </div>
+  ${followupPicker(a)}
  </section>`;
 }
 function finishVisit(){
@@ -2280,6 +2406,7 @@ function viewNoVisitor(){
 function switchTab(t){
  if(JOURNEY.includes(t)){state.step=t;state.stepFor=state.activeId;}
  if(state.food)state.food.open=false;   /* tapping a tab (even Plan) leaves the Food screen — at the tap */
+ if(t!=='serve')state._serveKey='';     /* coming back to Team fades in once again */
  state.tab=t;render();window.scrollTo(0,0);
 }
 
@@ -2333,7 +2460,8 @@ function viewHome(){
     <input id="rgName" required placeholder="Full name e.g. Sipho Ndlovu" class="field">
     <div class="grid grid-cols-2 gap-3">
      <div><label class="microlabel" for="rgAge">Age</label><input id="rgAge" type="text" inputmode="numeric" required placeholder="e.g. 46" class="field mono mt-1"></div>
-     <div><label class="microlabel" for="rgSex">Sex</label><select id="rgSex" required class="field mt-1 appearance-none"><option value="" selected disabled>Choose…</option><option>Male</option><option>Female</option></select></div>
+     <div><span class="microlabel">Sex</span><input type="hidden" id="rgSex" value="">
+      <div class="mt-1 grid grid-cols-2 gap-1.5" role="group" aria-label="Sex">${['Male','Female'].map(s=>`<button type="button" data-sex="${s}" aria-pressed="false" onclick="pickSex(this)" class="btn btn-glass py-2.5 text-[12px]">${s}</button>`).join('')}</div></div>
     </div>
     <div class="grid grid-cols-2 gap-3">
      <div><label class="microlabel" for="rgPhone">WhatsApp (optional)</label><input id="rgPhone" type="tel" inputmode="tel" placeholder="082 123 4567" class="field mono mt-1"></div>
@@ -2342,12 +2470,12 @@ function viewHome(){
     <div><label class="microlabel" for="rgEmail">Email (optional)</label><input id="rgEmail" type="email" inputmode="email" autocomplete="off" placeholder="for sending the plan by email" class="field mt-1"></div>
     <div><label class="microlabel" for="rgBadge">Lanyard badge</label>
      <div class="mt-1 flex gap-2">
-      <input id="rgBadge" required value="${state.pendingBadge||''}" placeholder="Scan or type, e.g. EXPO-042" autocomplete="off"
+      <input id="rgBadge" value="${state.pendingBadge||''}" placeholder="Scan, type, or leave empty: ${nextBadge()}" autocomplete="off"
         class="field mono min-w-0 flex-1 font-bold uppercase text-brand-900"
         style="background:rgba(58,165,151,.09);border-color:rgba(58,165,151,.3)">
       <button type="button" onclick="openScanner()" class="btn btn-soft flex-none px-4 text-xs" aria-label="Scan the lanyard badge">Scan</button>
      </div>
-     <button type="button" onclick="$('#rgBadge').value='${nextBadge()}'" class="tap-link mt-1">Or use the next free number: ${nextBadge()}</button></div>
+     <p class="mt-1 text-[10.5px] text-[#6b8187]">No badge to scan? Leave it empty and they get the next free number, ${nextBadge()}.</p></div>
     <div id="rgErr" class="st-warn" role="alert" hidden></div>
     <button class="btn btn-primary w-full py-3 text-sm">Register & start the checks →</button>
    </form>
@@ -2416,7 +2544,14 @@ function nextBadge(){
  while(attendees.some(a=>a.id==='EXPO-'+String(n).padStart(3,'0')))n++;
  return 'EXPO-'+String(n).padStart(3,'0');
 }
-function toggleReg(){state.regOpen=!state.regOpen;renderMain();}
+function toggleReg(){state.regOpen=!state.regOpen;renderMain();if(state.regOpen){const n=$('#rgName');if(n)n.focus();}}
+/* Male / Female in one tap: the buttons fill the hidden #rgSex that registerSubmit() reads */
+function pickSex(btn){
+ const s=btn&&btn.dataset&&btn.dataset.sex;if(!s)return;
+ $('#rgSex').value=s;
+ btn.parentElement.querySelectorAll('[data-sex]').forEach(b=>{const on=b.dataset.sex===s;
+  b.classList.toggle('btn-primary',on);b.classList.toggle('btn-glass',!on);b.setAttribute('aria-pressed',String(on));});
+}
 /* problems are shown inside the form (not a passing toast), so nothing typed is lost */
 function regError(html){const el=$('#rgErr');if(!el){toast(html.replace(/<[^>]+>/g,''));return;}el.innerHTML=html;el.hidden=!html;}
 const normName=n=>String(n||'').toLowerCase().replace(/[^a-z]/g,'');
@@ -2435,8 +2570,7 @@ function registerSubmit(e,force){
  if(phone&&!waNumber(phone))return regError('That WhatsApp number looks incomplete. Check it (for example 082 123 4567), or leave it empty.');
  if(email&&!validEmail(email))return regError('That email address does not look right. Check it, or leave it empty.');
  /* the id is used in handlers and matched against scanned QR codes, so it must be a clean EXPO-nnn */
- const raw=$('#rgBadge').value.trim();
- if(!raw)return regError('Scan their lanyard badge, or type the number printed on it.');
+ const raw=$('#rgBadge').value.trim()||nextBadge();   /* no badge scanned or typed: the next free number */
  const id=parseBadge(raw);
  if(!id)return regError('A badge looks like EXPO-042.');
  const taken=attendees.find(x=>x.id===id);
@@ -3297,6 +3431,11 @@ function renderServeView(){
  const el=$('#main');
  el.style.display='';
  el.innerHTML=html;
+ /* the same screen drawn again (a pledge pill, a booth, a skill tapped) appears at once: replaying the entrance
+    fade on every tap made the form flicker and feel slow */
+ const key=[st,!!state.volRegOpen,state.volId].join('|');
+ if(key===state._serveKey)el.querySelectorAll(':scope > .stagger').forEach(s=>s.classList.remove('stagger'));
+ state._serveKey=key;
  /* no movePill() here: render() has already started the pill's liquid glide, and a second call
     straight after snapped it into place, so only the Team tab lost its flow */
 }
@@ -3735,7 +3874,8 @@ function viewVolRegister(){
 
   <div><div class="microlabel">${v&&!needsRegistration(v)?'Update registration':'Pledge & register'}</div>
    <div class="display mt-0.5 text-[18px] font-extrabold text-[#0f2a2c]">${v&&!needsRegistration(v)?'Keep your details current':'Volunteer for the expo'}</div>
-   <p class="mt-1 text-[11px] leading-relaxed text-[#6b8187]">${EXPO_UPCOMING.name} · ${expoLine()}</p></div>
+   <p class="mt-1 text-[11px] leading-relaxed text-[#6b8187]">${EXPO_UPCOMING.name} · ${expoLine()}</p>
+   ${v&&!needsRegistration(v)?'':`<p class="mt-1.5 text-[11.5px] font-semibold leading-snug text-[#33504f]">Only a name and mobile are needed now. Tap <b>Submit pledge</b> any time; the rest can wait until closer to the day.</p>`}</div>
 
   <div class="glass p-4 space-y-3">
    <div class="microlabel">1 · Who you are</div>
@@ -4119,6 +4259,7 @@ function waMessage(a){
   '',
   ...P.top.flatMap((x,i)=>[`${i+1}. ${x.do}`,`   How: ${x.how.join('; ')}.`,`   Why: ${x.why}`,'']),
   `📅 ${P.recheck[0]}`,
+  ...(a.interests&&a.interests.followUpName?[`🤝 ${a.interests.followUpName} from the church will follow up with you.`]:[]),
   ...(p.items.length?[`Food for this plan: about ${money(costOf(pk))} a day at typical store prices — about ${money(p.items.reduce((t,it)=>t+cheapDay(it),0))} if you buy each food where it is cheapest.`,
    '',
    `WHERE TO BUY IT CHEAPEST (store prices checked ${PRICE_DATE}):`,
@@ -4230,6 +4371,7 @@ function buildPrintCard(){
    <div class="pc-problem">${esc(P.problem)}${P.urgent?` <b>${esc(P.urgent.t)}.</b>`:''}</div>
    <div>${P.top.map((x,i)=>`<div class="pc-habit"><span class="pc-box"></span><span><b>${i+1}. ${esc(x.do)}.</b> ${esc(x.how[0]||'')}.</span></div>`).join('')}</div>
    <div class="pc-line">📅 ${esc(P.recheck[0])}</div>
+   ${a.interests&&a.interests.followUpName?`<div class="pc-line">🤝 Follow-up: ${esc(a.interests.followUpName)} from the church will be in touch.</div>`:''}
    ${p.help||!p.items.length?'':`<div class="pc-line">🛒 About ${money(costOf(pk))} a day (store prices checked ${PRICE_DATE}; may vary by branch): ${p.items.map(i=>esc(shortFood(i.name))).join(', ')}.</div>`}   <!-- plans with the crisis line need the room -->
    <div class="pc-foot">
     <div class="pc-safety">Not a replacement for your clinic: given by volunteers, not health professionals, as general information, not medical advice. <b>Never stop prescribed pills suddenly</b>; your clinic will adjust them. In an emergency, go to the nearest emergency unit.${p.help?` ${esc(p.help)}`:''}</div>
@@ -4373,7 +4515,9 @@ function jelly(el){if(!el)return;el.classList.remove('jelly');void el.offsetWidt
  const el=document.getElementById('intro');if(!el)return;
  if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches){el.remove();return;}
  let gone=false;
- const leave=()=>{if(gone)return;gone=true;document.documentElement.classList.add('intro-rise');el.classList.add('intro-out');setTimeout(()=>el.remove(),450);};
+ /* intro-rise comes off once the app has risen: left on, #app replayed its .5s rise on later screen changes */
+ const leave=()=>{if(gone)return;gone=true;document.documentElement.classList.add('intro-rise');el.classList.add('intro-out');setTimeout(()=>el.remove(),450);
+  setTimeout(()=>{try{document.documentElement.classList.remove('intro-rise');}catch(e){}},700);};
  const badge=el.querySelector('.intro-badge');
  const anims=badge&&badge.getAnimations?badge.getAnimations():[];
  if(!anims.length){setTimeout(leave,Math.max(120,1100-performance.now()));return;}
@@ -4605,6 +4749,7 @@ function renderGate(){
  let html='';
  if(st==='form'){
   html=`${title('Staff sign-in')}${note('Sign in with your staff email and password to open the passport.')}
+   ${pendingInvite()?note('<b>You have a church invite link.</b> Sign in, or create an account, and you join the church straight away: no searching and no waiting.','text-brand-900'):''}
    <form onsubmit="cloudSignIn(event)" data-pre="gate" class="mt-4 space-y-3">
     ${emailField}${pwField('gatePass','Password','current-password')}
     ${err}
@@ -4957,6 +5102,14 @@ async function loadAccount(){
  }
  cloud.acct=r.data;cloud.acctV++;cloud.health=undefined;          /* Check again also reloads the member's results */
  const m=r.data.membership,c=r.data.church;
+ /* an invite link opened on this device: join that church now, approved (it is used once, whatever the answer) */
+ const inv=pendingInvite();
+ if(inv&&!(m&&m.status==='approved'&&m.role!=='member')){
+  clearInvite();
+  const j=await cloud.client.rpc('join_with_invite',{p_code:inv,p_full_name:'',p_phone:''});
+  if(j.error)toast(isOfflineErr(j.error.message)?'No connection: open the invite link again when you are online.':(j.error.message||'That invite link did not work.'));
+  else{toast('You have joined the church ✓');return loadAccount();}
+ }
  cloud.churchId=c?c.id:'';
  noteHealth('account','ok',c&&m?`${c.name} · ${ROLE_L[m.role]}${m.status==='approved'?'':' (waiting for approval)'}`:'Signed in, not in a church yet.');
  return !!(m&&c&&m.status==='approved'&&m.role!=='member'&&c.status==='active');
@@ -5155,7 +5308,8 @@ function acctTabs(){
 function openAcct(tab){
  cloud.acctTab=tab||'me';
  if(cloud.acctTab==='admin'){cloud.plat=null;cloud.audit=null;}
- if(cloud.acctTab==='church'){cloud.members=null;cloud.adminPlans=null;cloud.planEdit=null;}
+ if(cloud.acctTab==='church'){cloud.members=null;cloud.adminPlans=null;cloud.planEdit=null;cloud.adminFollowups=null;cloud.inviteLink=null;}
+ if(cloud.acctTab==='me')cloud.myFollow=null;
  showModal('#acctSheet');renderAcct();
 }
 function closeAcct(){hideModal('#acctSheet');}
@@ -5173,7 +5327,7 @@ function meHTML(){
  if(!m||!c)return acctNote('This account is not in a church.');
  return `<div class="text-[13px] font-bold text-[#123033]">${esc(c.name)}${c.city?' · '+esc(c.city):''}</div>
   <div class="text-[11px] text-[#4f6870]">${ROLE_L[m.role]} · ${m.status==='approved'?'approved':'waiting for approval'} · ${esc(a.email||'')}</div>
-  ${healthHTML()}${meFormHTML('me')}
+  ${m.followup&&m.status==='approved'?myFollowupsHTML():''}${healthHTML()}${meFormHTML('me')}
   <button onclick="leaveChurch()" class="mt-3 w-full text-center text-[11px] font-bold text-rose-700">Leave ${esc(c.name)}</button>`;
 }
 /* the signed-in staff member's shortcut into the sheet (the panel behind the logo) */
@@ -5337,15 +5491,20 @@ function churchAdminHTML(){
  if(!cid||!c)return acctNote('No church to manage.');
  if(!cloud.members||cloud.members.cid!==cid)loadMembers(cid);
  const L=cloud.members&&cloud.members.cid===cid?cloud.members.list:null,waiting=L?L.filter(u=>u.status==='pending').length:0;
+ const F=followupsFor(cid);
  return `${viaAdmin?`<button onclick="cloud.adminChurch='';openAcct('admin')" class="tap-link">← All churches</button>`:''}
   <div class="mt-1 text-[13px] font-bold text-[#123033]">${esc(c.name)}</div>
-  ${acctBox('Members'+(waiting?` · ${waiting} waiting`:''),!L?acctNote('Loading…'):!L.length?acctNote('Nobody has joined yet.'):L.map(memberRow).join('')
-   +acctNote('Members see only their own details and results. Staff and church admins see this church’s visitors and volunteers, so only give those roles to people you know.'))}
+  ${acctBox('Members'+(waiting?` · ${waiting} waiting`:'')+(F?` · ${F.length} of ${FOLLOWUP_MAX} follow-up people`:''),
+   !L?acctNote('Loading…'):!L.length?acctNote('Nobody has joined yet.'):L.map(u=>memberRow(u,F)).join('')
+   +acctNote('Members see only their own details and results. Staff and church admins see this church’s visitors and volunteers, so only give those roles to people you know.')
+   +acctNote(`Follow-up people (up to ${FOLLOWUP_MAX}) are given visitors to contact after the expo, and see only those visitors.`))}
+  ${acctBox('Invite links',inviteBox(cid,c))}
   ${acctBox('Church plans',churchPlansBox(cid))}
   ${acctBox('Church details',churchFormHTML(c))}`;
 }
-function memberRow(u){
- const id=qSafe(u.user_id);
+/* F = the user ids of the church's follow-up people (null while loading) */
+function memberRow(u,F){
+ const id=qSafe(u.user_id),fu=!!(F&&F.includes(u.user_id));
  return `<div class="border-t border-[#123033]/[.07] py-2.5">
   <div class="flex items-center gap-2"><div class="min-w-0 flex-1"><div class="truncate text-[13px] font-bold text-[#123033]">${esc(u.full_name||'(no name given)')}</div>
    <div class="truncate text-[11px] text-[#4f6870]">${esc(u.email||'')}${u.phone?' · '+esc(u.phone):''}${u.area?' · '+esc(u.area):''}${u.confirmed?'':' · has not confirmed the email yet'}</div></div>
@@ -5353,6 +5512,7 @@ function memberRow(u){
   <div class="mt-1.5 flex flex-wrap items-center gap-2">
    <select onchange="setMember('${id}',this.value,'${qSafe(u.status)}')" aria-label="Role" class="field py-1.5 text-xs" style="width:auto">${['member','staff','admin'].map(r=>`<option value="${r}" ${r===u.role?'selected':''}>${ROLE_L[r]}</option>`).join('')}</select>
    <button class="tap-link" onclick="linkMember('${id}','${qSafe(u.attendee_id||'')}')">${u.attendee_id?'Badge '+esc(u.attendee_id):'Link badge'}</button>
+   ${F&&u.status==='approved'?`<button class="tap-link" aria-pressed="${fu}" onclick="setFollowup('${id}',${!fu})">${fu?'✓ Follow-up person':'Make follow-up person'}</button>`:''}
    <button class="tap-link text-rose-700" onclick="removeMember('${id}')">Remove</button></div></div>`;
 }
 async function loadMembers(cid){
@@ -5507,6 +5667,7 @@ async function cloudSignOut(force){
  cloud.acct=null;cloud.churchId='';cloud.health=undefined;cloud.dir=null;cloud.regChurch=false;cloud.members=null;cloud.plat=null;cloud.audit=null;cloud.adminChurch='';closeAcct();
  cloud.view='login';cloud.viewEmail='';cloud.pending=false;cloud.recovery=false;cloud.formErr='';cloud.gateForce=false;cloud.delOpen=false;
  cloud.plans=null;cloud.adminPlans=null;cloud.planEdit=null;try{localStorage.removeItem(CHURCH_PLANS_KEY);}catch(e){}
+ cloud.followups=null;cloud.adminFollowups=null;cloud.myFollow=null;cloud.inviteLink=null;
  cloud.user=null;cloud.mode=false;cloud.blocked=false;cloud.synced={att:{},vol:{}};cloud.rejected={};cloud.lastFull=0;cloud.since={att:'',vol:''};
  try{localStorage.removeItem(SYNC_KEY);localStorage.removeItem(CHURCH_KEY);}catch(e){}
  _ledgerSig='';

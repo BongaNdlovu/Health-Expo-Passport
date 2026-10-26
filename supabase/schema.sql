@@ -434,6 +434,8 @@ create table if not exists public.memberships (
   created_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now()
 );
+-- a follow-up person (see FOLLOW-UP PEOPLE below); added here because my_account() reads it
+alter table public.memberships add column if not exists followup boolean not null default false;
 create index if not exists memberships_church_idx on public.memberships (church_id, status);
 create unique index if not exists memberships_attendee_idx on public.memberships (church_id, attendee_id) where attendee_id is not null;
 drop trigger if exists memberships_touch on public.memberships;
@@ -688,7 +690,7 @@ as $$
     'email', u.email,
     'platform_admin', exists (select 1 from public.platform_admins p where p.user_id = u.id),
     'membership', (select jsonb_build_object('church_id', m.church_id, 'role', m.role, 'status', m.status, 'full_name', m.full_name,
-                     'phone', m.phone, 'area', m.area, 'birth_date', m.birth_date, 'attendee_id', m.attendee_id)
+                     'phone', m.phone, 'area', m.area, 'birth_date', m.birth_date, 'attendee_id', m.attendee_id, 'followup', m.followup)
                    from public.memberships m where m.user_id = u.id),
     'church', (select jsonb_build_object('id', c.id, 'name', c.name, 'city', c.city, 'phone', c.phone, 'email', c.email, 'status', c.status)
                from public.memberships m join public.churches c on c.id = m.church_id where m.user_id = u.id))
@@ -1079,6 +1081,156 @@ begin
 end;
 $$;
 
+-- ================================================================ FOLLOW-UP PEOPLE
+-- A church names up to five of its approved members as follow-up people. Staff give each visitor one of them (the
+-- visitor's record keeps the member's user id in interests.followUp). A follow-up person sees only the visitors given
+-- to them, through my_followups(), never the rest of the church's data. (memberships.followup is added with the table.)
+
+-- the church's follow-up people, for its staff (to give visitors to) and admins
+create or replace function public.church_followups(p_church uuid)
+returns table (user_id uuid, full_name text, phone text)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select m.user_id, m.full_name, m.phone from public.memberships m
+  where m.church_id = p_church and m.followup and m.status = 'approved'
+    and (p_church = public.staff_church() or public.church_admin_of(p_church))
+  order by lower(m.full_name), m.user_id;
+$$;
+
+-- make a member a follow-up person (at most five per church), or stop; church admins only
+create or replace function public.set_followup(p_user uuid, p_on boolean)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_church uuid; v_status text;
+begin
+  select m.church_id, m.status into v_church, v_status from public.memberships m where m.user_id = p_user;
+  if v_church is null then raise exception 'That person is not in a church.'; end if;
+  if not public.church_admin_of(v_church) then raise exception 'church admins only' using errcode = '42501'; end if;
+  if coalesce(p_on, false) then
+    if v_status <> 'approved' then raise exception 'Approve this member first.'; end if;
+    perform pg_advisory_xact_lock(hashtext('followup:' || v_church::text));   -- two admins at once cannot make a sixth
+    if (select count(*) from public.memberships m where m.church_id = v_church and m.followup and m.user_id <> p_user) >= 5 then
+      raise exception 'A church can have at most five follow-up people. Turn one off first.';
+    end if;
+  end if;
+  update public.memberships m set followup = coalesce(p_on, false), updated_at = now() where m.user_id = p_user;
+end;
+$$;
+
+-- the visitors given to me, if I am an approved follow-up person of an active church
+create or replace function public.my_followups()
+returns table (id text, name text, phone text, email text, created_at timestamptz)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select a.id, a.name, coalesce(a.phone, ''), coalesce(a.email, ''), a.created_at
+  from public.memberships m
+  join public.churches c on c.id = m.church_id and c.status = 'active'
+  join public.attendees a on a.church_id = m.church_id and a.interests ->> 'followUp' = m.user_id::text
+  where m.user_id = (select auth.uid()) and m.followup and m.status = 'approved'
+  order by a.created_at desc
+  limit 500;
+$$;
+
+-- ================================================================ INVITE LINKS
+-- A church admin shares a link (…/?join=CODE). Whoever signs in with it joins that church at once, approved, as a
+-- member or as staff: no searching for the church and no waiting for approval. Links last 30 days and can be cancelled.
+create table if not exists public.church_invites (
+  code       text primary key check (code ~ '^[0-9a-f]{32}$'),
+  church_id  uuid not null references public.churches (id) on delete cascade,
+  role       text not null check (role in ('member', 'staff')),
+  created_by uuid references auth.users (id) on delete set null,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null default now() + interval '30 days',
+  uses       integer not null default 0
+);
+alter table public.church_invites enable row level security;       -- no policies: only the functions below reach it
+revoke all on public.church_invites from anon, authenticated;
+create index if not exists church_invites_church_idx on public.church_invites (church_id);
+
+create or replace function public.create_church_invite(p_church uuid, p_role text)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_code text := replace(gen_random_uuid()::text, '-', '');
+begin
+  if not public.church_admin_of(p_church) then raise exception 'church admins only' using errcode = '42501'; end if;
+  if p_role not in ('member', 'staff') then raise exception 'An invite is for a member or for staff.'; end if;
+  insert into public.church_invites (code, church_id, role, created_by) values (v_code, p_church, p_role, (select auth.uid()));
+  return v_code;
+end;
+$$;
+
+-- cancel every invite link of a church (for example, one was shared too widely)
+create or replace function public.cancel_church_invites(p_church uuid)
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_n integer;
+begin
+  if not public.church_admin_of(p_church) then raise exception 'church admins only' using errcode = '42501'; end if;
+  delete from public.church_invites i where i.church_id = p_church;
+  get diagnostics v_n = row_count;
+  return v_n;
+end;
+$$;
+
+-- what an invite link is for, to show before joining: the church's name and the role (nothing when it is not valid)
+create or replace function public.church_invite_info(p_code text)
+returns table (church_name text, role text)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select c.name, i.role from public.church_invites i join public.churches c on c.id = i.church_id
+  where i.code = p_code and i.expires_at > now() and c.status = 'active';
+$$;
+
+create or replace function public.join_with_invite(p_code text, p_full_name text default '', p_phone text default '')
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_uid uuid := (select auth.uid()); v_inv public.church_invites; v_cur public.memberships;
+begin
+  if v_uid is null then raise exception 'sign in first' using errcode = '42501'; end if;
+  select i.* into v_inv from public.church_invites i join public.churches c on c.id = i.church_id
+  where i.code = p_code and i.expires_at > now() and c.status = 'active';
+  if v_inv.code is null then raise exception 'This invite link has expired or was cancelled. Ask the church for a new one.'; end if;
+  select m.* into v_cur from public.memberships m where m.user_id = v_uid;
+  if v_cur.user_id is not null and v_cur.church_id <> v_inv.church_id then
+    raise exception 'You already belong to another church. Leave it first.';
+  end if;
+  if v_cur.user_id is null then
+    insert into public.memberships (user_id, church_id, role, status, full_name, phone)
+    select v_uid, v_inv.church_id, v_inv.role, 'approved',
+           left(coalesce(nullif(btrim(p_full_name), ''), u.raw_user_meta_data ->> 'full_name', ''), 200), left(btrim(coalesce(p_phone, '')), 40)
+    from auth.users u where u.id = v_uid;
+  else
+    -- already in this church: approve them, and raise a member to staff if that is what the link is for (never lower an admin)
+    update public.memberships m
+    set status = 'approved', role = case when m.role = 'member' and v_inv.role = 'staff' then 'staff' else m.role end, updated_at = now()
+    where m.user_id = v_uid;
+  end if;
+  update public.church_invites i set uses = i.uses + 1 where i.code = v_inv.code;
+  return v_inv.church_id;
+end;
+$$;
+
 do $$
 declare f text;
 begin
@@ -1088,7 +1240,9 @@ begin
     'leave_church()', 'delete_my_account()', 'my_health()', 'update_church(uuid, text, text, text, text)', 'church_members(uuid)',
     'set_member(uuid, text, text)', 'link_member(uuid, text)', 'remove_member(uuid)', 'admin_churches()',
     'admin_set_church_status(uuid, text)', 'admin_audit(integer)',
-    'church_plans(uuid)', 'save_church_plan(uuid, uuid, text, text, jsonb, text)', 'delete_church_plan(uuid)'] loop
+    'church_plans(uuid)', 'save_church_plan(uuid, uuid, text, text, jsonb, text)', 'delete_church_plan(uuid)',
+    'church_followups(uuid)', 'set_followup(uuid, boolean)', 'my_followups()',
+    'create_church_invite(uuid, text)', 'cancel_church_invites(uuid)', 'church_invite_info(text)', 'join_with_invite(text, text, text)'] loop
     execute format('revoke all on function public.%s from public, anon', f);
     execute format('grant execute on function public.%s to authenticated', f);
   end loop;

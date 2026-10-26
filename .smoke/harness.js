@@ -39,6 +39,7 @@ const EXPORTS = [
   'manageChurch', 'saveChurch', 'inChurch', 'conflictOn', 'dropChurchData', 'adoptChurch', 'healthHTML',
   'planFor', 'PRICE_DATE', 'ACTIONS', 'FOOD_WHY', 'urgentOf', 'DISCLAIMER', 'PRECAUTIONS', 'openFood', 'closeFood', 'problemOf',
   'churchPlanList', 'chooseChurchPlan', 'editChurchPlan', 'saveChurchPlan', 'deleteChurchPlan', 'DEMO_CHURCH_PLANS',
+  'followupList', 'chooseFollowup', 'setFollowup', 'makeInvite', 'cancelInvites', 'pendingInvite', 'nextBadge', 'INVITE_KEY',
   'health', 'noteHealth', 'healthReset', 'healthTest', 'statusPanelHTML', 'homeHealthHTML', 'acctHealthHTML', 'qStateBar',
   'SERVE_TABS', 'viewProfile', 'profGate', 'gateBack', 'profPassword', 'profDeleteAsk', 'profDeleteTyped', 'profDeleteGo',
   'profileChanged', 'passwordCheck', 'savePassword',
@@ -1429,7 +1430,7 @@ function makeServer() {
   {
     const noCloudWas = sandbox.NEWSTART_NO_CLOUD;
     const A = { id: 'ch-a', name: 'Grace Chapel', city: 'Durban', phone: '', email: '', status: 'active' };
-    let cplans = [];
+    let cplans = [], cfollow = [];
     const B = { id: 'ch-b', name: 'Hope Church', city: 'Pinetown', phone: '', email: '', status: 'pending' };
     const member = over => Object.assign({ church_id: A.id, role: 'member', status: 'pending', full_name: '', phone: '', area: '', birth_date: null, attendee_id: null }, over);
     const person = over => Object.assign({ user_id: 'user-1', email: 'staff@example.org', platform_admin: false, membership: null, church: null }, over);
@@ -1460,6 +1461,16 @@ function makeServer() {
           cplans = cplans.filter(p => p.id !== id).concat([row]); return done(id);
         },
         delete_church_plan: a => { rc.push('delplan:' + a.p_id); cplans = cplans.filter(p => p.id !== a.p_id); return done(); },
+        church_followups: a => { rc.push('followups:' + a.p_church); return done(JSON.parse(JSON.stringify(cfollow))); },
+        set_followup: a => {
+          rc.push('setfollow:' + a.p_user + ':' + a.p_on);
+          const p = people.find(x => x.user_id === a.p_user) || { full_name: '' };
+          cfollow = cfollow.filter(x => x.user_id !== a.p_user).concat(a.p_on ? [{ user_id: a.p_user, full_name: p.full_name, phone: '' }] : []); return done();
+        },
+        my_followups: () => { rc.push('myfollow'); return done([{ id: 'EXPO-901', name: 'Plan Visitor', phone: '082 000 1111', email: '', created_at: '2026-10-26T10:00:00Z' }]); },
+        create_church_invite: a => { rc.push('invite:' + a.p_church + ':' + a.p_role); return done('0123456789abcdef0123456789abcdef'); },
+        cancel_church_invites: a => { rc.push('cancelinv:' + a.p_church); return done(1); },
+        join_with_invite: a => { rc.push('joininv:' + a.p_code); me.membership = member({ role: 'staff', status: 'approved' }); me.church = { ...A }; return done(A.id); },
         admin_churches: () => { rc.push('admin_churches'); return done([{ ...B, members: 1, staff: 0, pending: 0, visitors: 0, volunteers: 0 }, { ...A, members: 2, staff: 1, pending: 1, visitors: 5, volunteers: 2 }]); },
         admin_set_church_status: a => { rc.push('status:' + a.p_church + ':' + a.p_status); return done(); },
         admin_audit: () => done([{ at: '2026-10-20T09:15:00Z', church: A.name, actor: 'st@example.org', tbl: 'attendees', op: 'UPDATE', row_id: 'EXPO-042' }]),
@@ -1600,6 +1611,36 @@ function makeServer() {
     await g.deleteChurchPlan('ch-a', 'cp-1'); await sleep(20); g.render();
     ok('a church admin deletes a plan, and the visitor it was sent to falls back to the app\'s plan', rc.includes('delplan:cp-1') && /Do these 3 things/.test($main.innerHTML) && !/Easing stiff joints/.test($main.innerHTML), rc.join());
     g.chooseChurchPlan('');
+    /* follow-up people and invite links (Church screen), and giving a visitor a follow-up person (Send home) */
+    g.openAcct('church'); await sleep(30);
+    ok('the Church screen shows follow-up toggles and how many of the five are named', /setFollowup\('u-staff',true\)/.test(sheet()) && /0 of 5 follow-up people/.test(sheet()) && rc.includes('followups:ch-a'), rc.join());
+    await g.setFollowup('u-staff', true); await sleep(20);
+    ok('a church admin makes an approved member a follow-up person', rc.includes('setfollow:u-staff:true') && /✓ Follow-up person/.test(sheet()) && /1 of 5 follow-up people/.test(sheet()), rc.join());
+    ok('…and a member waiting for approval cannot be made one', !/setFollowup\('u-pend'/.test(sheet()));
+    await g.makeInvite('ch-a', 'staff'); await sleep(10);
+    ok('a church admin makes a staff invite link to share', rc.includes('invite:ch-a:staff') && sheet().includes('?join=0123456789abcdef0123456789abcdef') && /Staff invite link/.test(sheet()), rc.join());
+    sandbox.confirm = () => true;
+    await g.cancelInvites('ch-a');
+    ok('…and can cancel every invite link', rc.includes('cancelinv:ch-a') && !sheet().includes('?join='));
+    g.closeAcct();
+    g.state.activeId = cpVisitor.id; g.state.tab = 'send'; g.render(); await sleep(10);
+    ok('staff give a visitor one of the church\'s follow-up people on Send home', /chooseFollowup\('u-staff'\)/.test($main.innerHTML) && $main.innerHTML.includes('Staff Person'));
+    g.chooseFollowup('u-staff');
+    ok('…the visitor\'s record keeps who it is, and the message names them', cpVisitor.interests.followUp === 'u-staff' && cpVisitor.interests.followUpName === 'Staff Person'
+      && g.waMessage(cpVisitor).includes('🤝 Staff Person from the church will follow up with you.'));
+    const meWas = JSON.parse(JSON.stringify(g.cloud.acct.membership));
+    g.cloud.acct.membership.followup = true; g.cloud.acct.membership.status = 'approved';
+    g.openAcct('me'); await sleep(30);
+    ok('a follow-up person sees the visitors given to them under My account', rc.includes('myfollow') && /People to follow up · 1/.test(sheet()) && sheet().includes('Plan Visitor') && sheet().includes('tel:0820001111'), rc.join());
+    g.closeAcct(); g.cloud.acct.membership = meWas;
+    /* an invite link opened on this device is used at the next sign-in: the person joins at once, approved */
+    const meBefore = JSON.parse(JSON.stringify(me));
+    me.membership = null; me.church = null;
+    localStorage.setItem(g.INVITE_KEY, 'fedcba9876543210fedcba9876543210');
+    await g.loadAccount();
+    ok('signing in with an invite link joins the church at once, approved, and uses the link up', rc.includes('joininv:fedcba9876543210fedcba9876543210') && g.pendingInvite() === ''
+      && g.cloud.acct.membership.status === 'approved' && g.cloud.acct.membership.role === 'staff', rc.join());
+    Object.assign(me, meBefore); await g.loadAccount();
 
     /* the platform admin */
     me.platform_admin = true;
@@ -2014,6 +2055,74 @@ function makeServer() {
     await sys(`update public.churches set status = 'active' where id = $1`, [PA]);
     r = await as(PU.adm, `select public.delete_church_plan($1)`, [planId]);
     ok('a church admin deletes a plan', !r.error && (await sys(`select count(*)::int n from public.church_plans where id = $1`, [planId]))[0].n === 0, r.error && r.error.message);
+
+    /* ---- follow-up people ---- */
+    const FU = {}; ['adm', 'stf', 'm1', 'm2', 'm3', 'm4', 'm5', 'm6', 'pend', 'oth', 'new1', 'new2'].forEach((n, i) => { FU[n] = '00000000-0000-4000-8000-0000000001' + String(i).padStart(2, '0'); });
+    for (const [n, id] of Object.entries(FU)) await sys(`insert into auth.users (id, email, email_confirmed_at) values ($1, $2, now())`, [id, 'fu-' + n + '@example.org']);
+    const FA = (await sys(`insert into public.churches (name, status) values ('Follow Church A', 'active') returning id`))[0].id;
+    const FB = (await sys(`insert into public.churches (name, status) values ('Follow Church B', 'active') returning id`))[0].id;
+    await sys(`insert into public.memberships (user_id, church_id, role, status, full_name) values
+      ($1, $11, 'admin', 'approved', 'Ada'), ($2, $11, 'staff', 'approved', 'Sam'), ($3, $11, 'member', 'approved', 'M One'), ($4, $11, 'member', 'approved', 'M Two'),
+      ($5, $11, 'member', 'approved', 'M Three'), ($6, $11, 'member', 'approved', 'M Four'), ($7, $11, 'member', 'approved', 'M Five'), ($8, $11, 'member', 'approved', 'M Six'),
+      ($9, $11, 'member', 'pending', 'Pat'), ($10, $12, 'admin', 'approved', 'Otto')`,
+      [FU.adm, FU.stf, FU.m1, FU.m2, FU.m3, FU.m4, FU.m5, FU.m6, FU.pend, FU.oth, FA, FB]);
+    let fuErr = '';
+    for (const k of ['m1', 'm2', 'm3', 'm4', 'm5']) { const x = await as(FU.adm, `select public.set_followup($1, true)`, [FU[k]]); if (x.error) fuErr += x.error.message; }
+    r = await as(FU.adm, `select public.set_followup($1, true)`, [FU.m6]);
+    ok('a church admin names follow-up people, and a sixth is refused', !fuErr && !!r.error && /at most five/.test(r.error.message), fuErr || (r.error && r.error.message));
+    r = await as(FU.adm, `select public.set_followup($1, true)`, [FU.pend]);
+    ok('a member waiting for approval cannot be a follow-up person', !!r.error);
+    r = await as(FU.stf, `select public.set_followup($1, true)`, [FU.m6]);
+    ok('church staff cannot name follow-up people; only admins can', !!r.error);
+    r = await as(FU.stf, `select full_name from public.church_followups($1)`, [FA]);
+    ok('church staff list the follow-up people, to give visitors to', !r.error && r.rows.length === 5, r.error ? r.error.message : JSON.stringify(r.rows));
+    const f1 = await as(FU.m6, `select count(*)::int n from public.church_followups($1)`, [FA]);
+    const f2 = await as(FU.oth, `select count(*)::int n from public.church_followups($1)`, [FA]);
+    ok('members and other churches see no follow-up list', !f1.error && f1.rows[0].n === 0 && !f2.error && f2.rows[0].n === 0);
+    await as(FU.adm, `select public.set_followup($1, false)`, [FU.m5]);
+    r = await as(FU.adm, `select public.set_followup($1, true)`, [FU.m6]);
+    ok('turning one off makes room for another', !r.error, r.error && r.error.message);
+    await sys(`insert into public.attendees (church_id, id, name, phone, interests) values
+      ($1, 'EXPO-501', 'Given To One', '082 555 0001', jsonb_build_object('followUp', $3::text)), ($1, 'EXPO-502', 'Given To Two', '', jsonb_build_object('followUp', $4::text)),
+      ($2, 'EXPO-503', 'Other Church Visitor', '', jsonb_build_object('followUp', $3::text))`, [FA, FB, FU.m1, FU.m2]);
+    r = await as(FU.m1, `select id, name, phone from public.my_followups()`);
+    ok('a follow-up person sees only the visitors given to them, in their own church', !r.error && r.rows.length === 1 && r.rows[0].id === 'EXPO-501' && r.rows[0].phone === '082 555 0001',
+      r.error ? r.error.message : JSON.stringify(r.rows));
+    r = await as(FU.m1, `select count(*)::int n from public.attendees`);
+    ok('…and still cannot read the visitors table itself', !r.error && r.rows[0].n === 0, r.error && r.error.message);
+    r = await as(FU.m5, `select count(*)::int n from public.my_followups()`);
+    ok('someone who is not (or no longer) a follow-up person sees nobody', !r.error && r.rows[0].n === 0);
+    r = await as(FU.m1, `select public.my_account() a`);
+    ok('my_account says who is a follow-up person', !r.error && r.rows[0].a.membership.followup === true);
+
+    /* ---- invite links ---- */
+    r = await as(FU.adm, `select public.create_church_invite($1, 'staff') code`, [FA]);
+    const inv = r.rows && r.rows[0].code;
+    ok('a church admin makes an invite link', !r.error && /^[0-9a-f]{32}$/.test(inv || ''), r.error && r.error.message);
+    r = await as(FU.stf, `select public.create_church_invite($1, 'member')`, [FA]);
+    ok('church staff cannot make invite links', !!r.error);
+    r = await as(FU.new1, `select church_name, role from public.church_invite_info($1)`, [inv]);
+    ok('an invite link says which church and role it is for', !r.error && r.rows[0].church_name === 'Follow Church A' && r.rows[0].role === 'staff', r.error ? r.error.message : JSON.stringify(r.rows));
+    r = await as(FU.new1, `select public.join_with_invite($1, 'New One', '082 000 0000')`, [inv]);
+    const joined = await sys(`select church_id, role, status, full_name from public.memberships where user_id = $1`, [FU.new1]);
+    ok('opening a staff invite link joins the church at once, approved, as staff', !r.error && joined[0] && joined[0].church_id === FA && joined[0].role === 'staff' && joined[0].status === 'approved' && joined[0].full_name === 'New One',
+      r.error ? r.error.message : JSON.stringify(joined));
+    r = await as(FU.oth, `select public.join_with_invite($1)`, [inv]);
+    ok('someone in another church cannot join with it', !!r.error);
+    r = await as(FU.m6, `select public.join_with_invite($1)`, [inv]);
+    ok('a member of the same church who opens a staff link becomes staff', !r.error && (await sys(`select role from public.memberships where user_id = $1`, [FU.m6]))[0].role === 'staff', r.error && r.error.message);
+    r = await as(FU.adm, `select public.join_with_invite($1)`, [inv]);
+    ok('an admin who opens a staff link stays an admin', !r.error && (await sys(`select role from public.memberships where user_id = $1`, [FU.adm]))[0].role === 'admin', r.error && r.error.message);
+    r = await as(FU.adm, `select public.cancel_church_invites($1) n`, [FA]);
+    const afterCancel = await as(FU.new2, `select public.join_with_invite($1)`, [inv]);
+    ok('a cancelled invite link no longer works', !r.error && r.rows[0].n === 1 && !!afterCancel.error);
+    const inv2 = (await as(FU.adm, `select public.create_church_invite($1, 'member') code`, [FA])).rows[0].code;
+    await sys(`update public.church_invites set expires_at = now() - interval '1 day' where code = $1`, [inv2]);
+    r = await as(FU.new2, `select public.join_with_invite($1)`, [inv2]);
+    ok('an expired invite link no longer works', !!r.error);
+    const a1 = await as(null, `select * from public.church_invite_info($1)`, [inv2]);
+    const a2 = await as(FU.adm, `select count(*) from public.church_invites`);
+    ok('signed-out callers cannot use the invite functions, and the invites table cannot be read directly', !!a1.error && !!a2.error);
 
     /* ---- a brand-new project ---- */
     const fresh = new PGlite();
@@ -2698,6 +2807,27 @@ function makeServer() {
     && /Never stop prescribed pills suddenly/.test($el('printArea').innerHTML));
   g.chooseChurchPlan('');
   ok('“Use the app’s plan instead” goes back to the app\'s plan', !cpDav.interests.churchPlan && /Do these 3 things/.test($main.innerHTML) && /Counsels on Diet §/.test($main.innerHTML));
+  /* the designated follow-up person (practice mode: three example names) */
+  g.state.tab = 'send'; g.render();
+  ok('in practice mode Send home offers the example follow-up people', /chooseFollowup\('demo-f1'\)/.test($main.innerHTML) && $main.innerHTML.includes('Grace Dlamini') && g.followupList().length <= 5);
+  g.chooseFollowup('demo-f2');
+  ok('…choosing one keeps it on the visitor\'s record', cpDav.interests.followUp === 'demo-f2' && cpDav.interests.followUpName === 'Peter Naidoo' && /✓ Peter Naidoo/.test($main.innerHTML));
+  g.buildPrintCard();
+  ok('the WhatsApp message and the printed card name the follow-up person', g.waMessage(cpDav).includes('🤝 Peter Naidoo from the church will follow up with you.')
+    && /Follow-up: Peter Naidoo from the church will be in touch/.test($el('printArea').innerHTML));
+  g.chooseFollowup('');
+  ok('…and None clears it', !cpDav.interests.followUp && !cpDav.interests.followUpName && !/🤝/.test(g.waMessage(cpDav)));
+  g.state.tab = 'plan'; g.render();
+  /* a visitor with no badge scanned or typed gets the next free number */
+  const nextNo = g.nextBadge(), countWas = g.attendees.length;
+  g.state.tab = 'home'; g.state.regOpen = true;
+  $el('rgName').value = 'No Badge Visitor'; $el('rgAge').value = '52'; $el('rgSex').value = 'Female';
+  $el('rgPhone').value = ''; $el('rgEmail').value = ''; $el('rgHeight').value = ''; $el('rgBadge').value = '';
+  g.registerSubmit({ preventDefault() {} });
+  const noBadge = g.attendees.find(a => a.name === 'No Badge Visitor');
+  ok('a visitor registered with no badge gets the next free number at once', !!noBadge && noBadge.id === nextNo && g.attendees.length === countWas + 1, nextNo + ' ' + (noBadge && noBadge.id));
+  if (noBadge) g.attendees.splice(g.attendees.indexOf(noBadge), 1);
+  g.state.activeId = 'EXPO-042'; g.state.sugFor = null; g.state.tab = 'plan'; g.render();
   const showsWarnings = h => h.includes('Warnings and precautions') && h.includes(g.DISCLAIMER) && g.PRECAUTIONS.every(t => h.includes(t));
   ok('the disclaimer says the volunteers are not health professionals and the plan is not medical advice', /not doctors, nurses or other health professionals/.test(g.DISCLAIMER) && /not medical advice/.test(g.DISCLAIMER));
   ok('the precautions cover medicine, screening, pregnancy and illness, herb interactions, warning signs, emergencies and children',
