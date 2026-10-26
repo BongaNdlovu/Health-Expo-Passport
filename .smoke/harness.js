@@ -35,7 +35,7 @@ const EXPORTS = [
   'acctGate', 'acctGateHTML', 'loadAccount', 'openAcct', 'closeAcct', 'renderAcct', 'acctTabs', 'acctButtons', 'joinChurch',
   'registerChurch', 'leaveChurch', 'saveMyDetails', 'churchSearch', 'setMember', 'linkMember', 'removeMember', 'setChurchStatus',
   'manageChurch', 'saveChurch', 'inChurch', 'conflictOn', 'dropChurchData', 'adoptChurch', 'healthHTML',
-  'planFor', 'PRICE_DATE', 'ACTIONS', 'FOOD_WHY', 'urgentOf', 'DISCLAIMER', 'PRECAUTIONS', 'openFood', 'closeFood',
+  'planFor', 'PRICE_DATE', 'ACTIONS', 'FOOD_WHY', 'urgentOf', 'DISCLAIMER', 'PRECAUTIONS', 'openFood', 'closeFood', 'problemOf',
   'churchPlanList', 'chooseChurchPlan', 'editChurchPlan', 'saveChurchPlan', 'deleteChurchPlan', 'DEMO_CHURCH_PLANS',
   'health', 'noteHealth', 'healthReset', 'healthTest', 'statusPanelHTML', 'homeHealthHTML', 'acctHealthHTML', 'qStateBar',
   'SERVE_TABS', 'viewProfile', 'profGate', 'gateBack', 'profPassword', 'profDeleteAsk', 'profDeleteTyped', 'profDeleteGo',
@@ -2333,6 +2333,9 @@ function makeServer() {
   const habits = { s: { sys: 112, dia: 72, sugar: 5.0, chol: 4.2, weight: 65, veg: 2, walk: 5, water: 3, sleep: 8 }, heightCm: 170 };
   ok('low fruit & veg, exercise and water readings each get their plan, in that order', g.planNeeds(habits).map(n => n.k).join() === 'veg,move,water', g.planNeeds(habits).map(n => n.k).join());
   ok('…and a medical flag still comes first', g.planNeeds({ ...habits, s: { ...habits.s, sys: 150, dia: 95 } })[0].k === 'bp');
+  const ones = { ...habits, s: { ...habits.s, veg: 1, walk: 1, water: 1 } }, oneWhy = g.planNeeds(ones).map(n => n.why).join(' | ');
+  ok('a single serving, minute or glass is not written as plural', /\b1 serving of\b/.test(oneWhy) && /\b1 minute of\b/.test(oneWhy) && /\b1 glass of\b/.test(oneWhy)
+    && g.problemOf(ones, 'veg').includes('1 serving a day') && g.problemOf(ones, 'water').includes('1 glass a day') && g.problemOf(habits, 'veg').includes('2 servings a day'), oneWhy);
   const tired = { s: { sys: 112, dia: 72, sugar: 5.0, chol: 4.2, weight: 65, veg: 5, walk: 40, water: 8, sleep: 5 }, heightCm: 170 };
   ok('short sleep → the sleep plan', g.autoProtocol(tired) === 'sleep' && g.planNeeds(tired)[0].k === 'sleep');
   const chol = { s: { sys: 112, dia: 72, sugar: 5.0, chol: 6.8, weight: 65, veg: 5, walk: 40, water: 8, sleep: 8 }, heightCm: 170 };
@@ -2365,6 +2368,7 @@ function makeServer() {
   ok('the weight plan shows no calorie rule of thumb (it came only from the old book)', !/kcal/.test($main.innerHTML));
   g.state.protocol = 'bp'; g.render();
   ok('in practice mode the Plan tab offers the example church plans', /Send a plan from Practice church/.test($main.innerHTML) && /chooseChurchPlan\('demo-joints'\)/.test($main.innerHTML));
+  ok('…each church plan button reads as one line of text, not two columns', /chooseChurchPlan\('demo-joints'\)" class="btn btn-glass py-2\.5 text-\[11px\]"><span class="min-w-0 flex-1 text-left"><b>Easing stiff, painful joints<\/b> · Joint pain<\/span><\/button>/.test($main.innerHTML));
   const cpDav = g.attendees.find(a => a.id === 'EXPO-042');
   g.chooseChurchPlan('demo-joints');
   ok('a chosen church plan replaces the app\'s plan, labelled as the church\'s own, with the pills rule', cpDav.interests.churchPlan === 'demo-joints'

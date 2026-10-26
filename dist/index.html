@@ -1815,7 +1815,7 @@ function churchPlanPicker(a){
  const needs=new Set(planNeeds(a).map(n=>n.k));
  const sorted=[...L].sort((x,y)=>(needs.has(y.problem)-needs.has(x.problem))||String(x.title).localeCompare(String(y.title)));
  return `<details class="pl-switch"><summary>Send a plan from ${esc(churchNameOf(sorted[0]))} ▾</summary>
-  <div class="mt-2 grid gap-2">${sorted.map(cp=>`<button onclick="chooseChurchPlan('${qSafe(cp.id)}')" class="btn btn-glass py-2.5 text-left text-[11px]"><b>${esc(cp.title)}</b> · ${esc(churchPlanLabel(cp))}${needs.has(cp.problem)?' · fits today’s readings':''}</button>`).join('')}</div>
+  <div class="mt-2 grid gap-2">${sorted.map(cp=>`<button onclick="chooseChurchPlan('${qSafe(cp.id)}')" class="btn btn-glass py-2.5 text-[11px]"><span class="min-w-0 flex-1 text-left"><b>${esc(cp.title)}</b> · ${esc(churchPlanLabel(cp))}${needs.has(cp.problem)?' · fits today’s readings':''}</span></button>`).join('')}</div>
  </details>`;
 }
 function viewChurchPlan(a,cp){
@@ -2753,6 +2753,8 @@ function bpStage(sys,dia){
  if(sys>=120||dia>=80)return 'pre-hypertension';
  return 'normal';
 }
+/* "1 serving", "3 servings": a reading with its unit */
+const countOf=(n,one,many)=>n+' '+(Number(n)===1?one:many);
 /* Which plans this person's numbers point to, most urgent first, with the reason in plain words. */
 function planNeeds(a){
  const out=[],sev=c=>c==='flag'?3:c==='watch'?2:0;
@@ -2773,9 +2775,9 @@ function planNeeds(a){
  if(a.interests&&a.interests.stress)out.push({k:'mind',sev:2,rank:4.5,why:'Asked for stress and peace support. The calm-mind plan pairs time outdoors with gratitude, kindness and rest'});
  /* the habit checks, after every medical flag */
  const vg=cat('veg',a.s.veg),wk=cat('walk',a.s.walk),wt=cat('water',a.s.water);
- if(sev(vg[0]))out.push({k:'veg',sev:sev(vg[0]),rank:6,why:`${a.s.veg} servings of fruit and vegetables a day; the goal is 5 or more`});
- if(sev(wk[0]))out.push({k:'move',sev:sev(wk[0]),rank:6.5,why:`${a.s.walk} minutes of exercise a day; the goal is 30`});
- if(sev(wt[0]))out.push({k:'water',sev:sev(wt[0]),rank:7,why:`${a.s.water} glasses of water a day; the goal is 8`});
+ if(sev(vg[0]))out.push({k:'veg',sev:sev(vg[0]),rank:6,why:`${countOf(a.s.veg,'serving','servings')} of fruit and vegetables a day; the goal is 5 or more`});
+ if(sev(wk[0]))out.push({k:'move',sev:sev(wk[0]),rank:6.5,why:`${countOf(a.s.walk,'minute','minutes')} of exercise a day; the goal is 30`});
+ if(sev(wt[0]))out.push({k:'water',sev:sev(wt[0]),rank:7,why:`${countOf(a.s.water,'glass','glasses')} of water a day; the goal is 8`});
  return out.sort((x,y)=>x.rank-y.rank);
 }
 /* The plan actually shown for this visitor: the one picked on the Plan step, else the one their numbers point to.
@@ -2799,9 +2801,9 @@ function problemOf(a,pk){
  if(pk==='sleep'&&s.sleep!=null&&s.sleep<7)return `Sleep ${s.sleep} hours a night: too little. Most adults need 7–8.`;
  if(pk==='mind'&&a.interests&&a.interests.stress)return 'You asked for help with stress and worry.';
  if(pk==='thin'&&bmi(a)!=null&&bmi(a)<18.5)return `BMI ${fmt1(bmi(a))}: underweight. Healthy is 18.5–25.`;
- if(pk==='veg'&&s.veg!=null&&s.veg<5)return `Fruit and vegetables: ${s.veg} servings a day. The goal is 5 or more.`;
- if(pk==='move'&&s.walk!=null&&s.walk<30)return `Exercise: ${s.walk} minutes a day. The goal is 30.`;
- if(pk==='water'&&s.water!=null&&s.water<8)return `Water: ${s.water} glasses a day. The goal is 8.`;
+ if(pk==='veg'&&s.veg!=null&&s.veg<5)return `Fruit and vegetables: ${countOf(s.veg,'serving','servings')} a day. The goal is 5 or more.`;
+ if(pk==='move'&&s.walk!=null&&s.walk<30)return `Exercise: ${countOf(s.walk,'minute','minutes')} a day. The goal is 30.`;
+ if(pk==='water'&&s.water!=null&&s.water<8)return `Water: ${countOf(s.water,'glass','glasses')} a day. The goal is 8.`;
  return planNeeds(a).length?'Not your main need today, but these habits help everyone.'
   :'Your numbers look fine today. This plan helps keep them that way.';
 }
