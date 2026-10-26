@@ -377,7 +377,8 @@ create trigger volunteers_audit after update or delete on public.volunteers for 
 
 -- ================================================================ CHURCHES, MEMBERS AND THE PLATFORM ADMIN
 -- Safe to re-run. Three levels of account:
---   * Platform admin (you): sees every church, approves or suspends churches and manages anyone's membership. Made once,
+--   * Platform admin (you): sees every church, approves or suspends churches and manages anyone's membership. Reads any
+--     church's visitor and volunteer data through admin_church_data (read-only). Made once,
 --     by hand, here in the SQL editor (change the email):
 --        insert into public.platform_admins (user_id) select id from auth.users where email = 'you@example.com'
 --        on conflict do nothing;
@@ -385,7 +386,10 @@ create trigger volunteers_audit after update or delete on public.volunteers for 
 --     admin approves it. A church sees only its own visitors, volunteers, queue and audit trail.
 --   * Person: any account. Joins ONE church and edits their own details there. Once the church approves them they see
 --     their own screening results (after a church admin links their badge). Church admins make some members 'staff'
---     (expo data access, what "approved staff" meant before churches) or 'admin' (also manages the church's members).
+--     (expo data access, what "approved staff" meant before churches) or 'admin' — one of the church's two admin posts,
+--     the Health Department Leader and their Assistant.
+--     An admin reaches only that one church: no account can touch another church's
+--     data. The only way to lead a church you did not create is to be promoted inside it by its admin.
 -- Every visitor, volunteer, queue and audit row carries a church_id, and Row Level Security only lets approved staff of
 -- an ACTIVE church touch that church's rows. Churches and memberships have no policies at all: they are read and changed
 -- only through the functions below, which check who is asking.
@@ -690,7 +694,12 @@ as $$
     'email', u.email,
     'platform_admin', exists (select 1 from public.platform_admins p where p.user_id = u.id),
     'membership', (select jsonb_build_object('church_id', m.church_id, 'role', m.role, 'status', m.status, 'full_name', m.full_name,
-                     'phone', m.phone, 'area', m.area, 'birth_date', m.birth_date, 'attendee_id', m.attendee_id, 'followup', m.followup)
+                     'phone', m.phone, 'area', m.area, 'birth_date', m.birth_date, 'attendee_id', m.attendee_id, 'followup', m.followup,
+                     'admin_rank', case when m.role = 'admin' and m.status = 'approved'
+                                   then (select count(*) + 1 from public.memberships o
+                                         where o.church_id = m.church_id and o.role = 'admin' and o.status = 'approved'
+                                           and (o.created_at, o.user_id) < (m.created_at, m.user_id))
+                                   else 0 end)
                    from public.memberships m where m.user_id = u.id),
     'church', (select jsonb_build_object('id', c.id, 'name', c.name, 'city', c.city, 'phone', c.phone, 'email', c.email, 'status', c.status)
                from public.memberships m join public.churches c on c.id = m.church_id where m.user_id = u.id))
@@ -741,7 +750,7 @@ begin
 end;
 $$;
 
--- a new church starts 'pending' with the person who registers it as its admin
+-- a new church starts 'pending' with the person who registers it as its Health Department Leader (its first admin)
 create or replace function public.register_church(p_name text, p_city text default '', p_phone text default '', p_email text default '')
 returns uuid
 language plpgsql
@@ -876,7 +885,8 @@ begin
 end;
 $$;
 
--- change a member's role or approval. A church always keeps at least one approved admin.
+-- change a member's role or approval. A church always keeps at least one approved admin, and fills only its two posts:
+-- the Health Department Leader and their Assistant.
 create or replace function public.set_member(p_user uuid, p_role text, p_status text)
 returns void
 language plpgsql
@@ -887,6 +897,8 @@ declare v_m public.memberships;
 begin
   select * into v_m from public.memberships m where m.user_id = p_user;
   if not found or not public.church_admin_of(v_m.church_id) then raise exception 'church admins only' using errcode = '42501'; end if;
+  -- hold the church row so two admins changing roles at the same moment cannot both pass the one/two-admin checks
+  perform 1 from public.churches c where c.id = v_m.church_id for update;
   if p_role not in ('member', 'staff', 'admin') or p_status not in ('pending', 'approved') then raise exception 'Unknown role or status.'; end if;
   if p_status = 'approved' and not exists (select 1 from auth.users u where u.id = p_user and u.email_confirmed_at is not null) then
     raise exception 'This person has not confirmed their email yet.';
@@ -895,6 +907,13 @@ begin
      and not exists (select 1 from public.memberships o where o.church_id = v_m.church_id and o.user_id <> p_user
                      and o.role = 'admin' and o.status = 'approved') then
     raise exception 'A church needs at least one admin. Make someone else an admin first.';
+  end if;
+  -- the church's two admin posts (Health Department Leader, then their Assistant) are both filled:
+  -- a third promotion (or approval) is refused until one steps down
+  if p_role = 'admin' and p_status = 'approved' and not (v_m.role = 'admin' and v_m.status = 'approved')
+     and (select count(*) from public.memberships o where o.church_id = v_m.church_id and o.user_id <> p_user
+          and o.role = 'admin' and o.status = 'approved') >= 2 then
+    raise exception 'A church has two admin posts: the Health Department Leader and their Assistant. Both are filled — one must step down first.';
   end if;
   update public.memberships m set role = p_role, status = p_status where m.user_id = p_user;
 end;
@@ -934,6 +953,8 @@ declare v_m public.memberships;
 begin
   select * into v_m from public.memberships m where m.user_id = p_user;
   if not found or not public.church_admin_of(v_m.church_id) then raise exception 'church admins only' using errcode = '42501'; end if;
+  -- hold the church row so a remove racing a promotion cannot drop a church's last admin
+  perform 1 from public.churches c where c.id = v_m.church_id for update;
   if v_m.role = 'admin' and v_m.status = 'approved' and not exists (select 1 from public.memberships o
      where o.church_id = v_m.church_id and o.user_id <> p_user and o.role = 'admin' and o.status = 'approved') then
     raise exception 'A church needs at least one admin. Make someone else an admin first.';
@@ -999,6 +1020,29 @@ begin
     order by l.at desc, l.id desc
     limit greatest(1, least(coalesce(p_limit, 50), 200));
 end;
+$$;
+
+-- the owner's read-only look at one church's expo data: who visited and volunteered. The medical readings themselves
+-- stay out of this view; the owner reads those in the Supabase dashboard (service role), which only they can open.
+create or replace function public.admin_church_data(p_church uuid)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select jsonb_build_object(
+    'visitors', (select coalesce(jsonb_agg(jsonb_build_object('id', a.id, 'name', a.name, 'phone', a.phone, 'email', a.email,
+                                                              'done', a.done, 'created_at', a.created_at, 'updated_at', a.updated_at)
+                                           order by a.created_at desc), '[]'::jsonb)
+                 from (select * from public.attendees where church_id = p_church order by created_at desc limit 500) a),
+    'volunteers', (select coalesce(jsonb_agg(jsonb_build_object('id', v.id, 'name', v.name, 'phone', v.phone, 'email', v.email,
+                                                                'status', v.status, 'created_at', v.created_at)
+                                             order by v.created_at desc), '[]'::jsonb)
+                   from (select * from public.volunteers where church_id = p_church order by created_at desc limit 500) v),
+    'visitor_count', (select count(*) from public.attendees a where a.church_id = p_church),
+    'volunteer_count', (select count(*) from public.volunteers v where v.church_id = p_church))
+  where public.is_platform_admin();   -- no row for anyone else: the caller gets null, never another church's data
 $$;
 
 -- ================================================================ CHURCH PLANS
@@ -1239,7 +1283,7 @@ begin
     'join_church(uuid, text, text)', 'register_church(text, text, text, text)', 'update_my_details(text, text, text, date)',
     'leave_church()', 'delete_my_account()', 'my_health()', 'update_church(uuid, text, text, text, text)', 'church_members(uuid)',
     'set_member(uuid, text, text)', 'link_member(uuid, text)', 'remove_member(uuid)', 'admin_churches()',
-    'admin_set_church_status(uuid, text)', 'admin_audit(integer)',
+    'admin_set_church_status(uuid, text)', 'admin_audit(integer)', 'admin_church_data(uuid)',
     'church_plans(uuid)', 'save_church_plan(uuid, uuid, text, text, jsonb, text)', 'delete_church_plan(uuid)',
     'church_followups(uuid)', 'set_followup(uuid, boolean)', 'my_followups()',
     'create_church_invite(uuid, text)', 'cancel_church_invites(uuid)', 'church_invite_info(text)', 'join_with_invite(text, text, text)'] loop

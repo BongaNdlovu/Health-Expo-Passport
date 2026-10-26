@@ -35,6 +35,7 @@ const EXPORTS = [
   'planNeeds', 'bpStage', 'PROTOCOLS', 'BOOK_REF', 'autoProtocol', 'costOf',
   'BOOK2_REF', 'BOOK3_REF', 'BOOK4_REF', 'refLabel', 'planBooks', 'planCredit', 'HELP_LINE',
   'acctGate', 'acctGateHTML', 'loadAccount', 'openAcct', 'closeAcct', 'renderAcct', 'acctTabs', 'acctButtons', 'joinChurch',
+  'memberRow', 'churchAdminHTML', 'platformHTML', 'adminDataHTML', 'roleLabel', 'adminPostHTML',
   'registerChurch', 'leaveChurch', 'saveMyDetails', 'churchSearch', 'setMember', 'linkMember', 'removeMember', 'setChurchStatus',
   'manageChurch', 'saveChurch', 'inChurch', 'conflictOn', 'dropChurchData', 'adoptChurch', 'healthHTML',
   'planFor', 'PRICE_DATE', 'ACTIONS', 'FOOD_WHY', 'urgentOf', 'DISCLAIMER', 'PRECAUTIONS', 'openFood', 'closeFood', 'problemOf',
@@ -1784,7 +1785,7 @@ function makeServer() {
     me = who({ platform_admin: true, membership: membership({ role: 'admin' }) });
     await g.cloudSync(true); await sleep(400);
     h = profile();
-    ok('a church admin who is also platform admin sees both labels and both shortcuts', h.includes('>Platform admin<') && h.includes('>Church admin<') && h.includes("openAcct('church')") && h.includes("openAcct('admin')"));
+    ok('a church admin who is also platform admin sees both labels and both shortcuts', h.includes('>Platform admin<') && h.includes('>Admin<') && h.includes('>My church<') && h.includes('>All churches<') && h.includes("openAcct('church')") && h.includes("openAcct('admin')"));
     me = who();
     await g.cloudSync(true); await sleep(400);
 
@@ -2965,6 +2966,63 @@ function makeServer() {
   ok('Results counselling tool no longer describes the old plan', !/hibiscus|stock cube|Foot bath/i.test($main.innerHTML) && /Neutral bath/.test($main.innerHTML) && /illustrative estimates/.test($main.innerHTML));
   ok('Results shows the cost as dated store prices', /store prices checked \d+ \w+ \d{4}; they change and vary by branch/.test($main.innerHTML));
   g.resetDemo();
+
+  /* ---- 18. account hub: roles, the two-admin cap, the owner's data view ---- */
+  console.log('\n18. Account hub');
+  const acctKeep = g.cloud.acct;
+  const hubAdminAcct = { user_id: 'u1', email: 'own@x.y', platform_admin: false,
+    membership: { church_id: 'c1', role: 'admin', status: 'approved', followup: false },
+    church: { id: 'c1', name: 'Grace Chapel', city: '', phone: '', email: '', status: 'active' } };
+  g.cloud.acct = { ...hubAdminAcct, platform_admin: true };
+  ok('the owner’s tabs read My account / My church / All churches', g.acctTabs().map(t => t[1]).join('|') === 'My account|My church|All churches');
+  g.cloud.acct = hubAdminAcct;
+  ok('a church admin’s tabs stop at My account / My church', g.acctTabs().map(t => t[1]).join('|') === 'My account|My church');
+  const mr = (u, admins, ranks) => g.memberRow(u, [], admins, ranks);
+  ok('the Admin choice is offered while a church has one admin', !/value="admin"\s+disabled/.test(mr({ user_id: 'u9', role: 'member', status: 'approved' }, 1)));
+  ok('the Admin choice is switched off at two admins', /value="admin"\s+disabled/.test(mr({ user_id: 'u9', role: 'member', status: 'approved' }, 2)));
+  ok('an existing admin keeps the choice open at two admins', !/value="admin"\s+disabled/.test(mr({ user_id: 'u9', role: 'admin', status: 'approved' }, 2)));
+  ok('a pending member cannot be promoted past the cap', /value="admin"\s+disabled/.test(mr({ user_id: 'u9', role: 'member', status: 'pending' }, 2)));
+  g.cloud.members = { cid: 'c1', list: [
+    { user_id: 'u1', role: 'admin', status: 'approved', full_name: 'Own', email: 'own@x.y', confirmed: true },
+    { user_id: 'u2', role: 'admin', status: 'approved', full_name: 'Two', email: 'two@x.y', confirmed: true }] };
+  g.cloud.followups = { cid: 'c1', list: [] };
+  g.cloud.adminFollowups = { cid: 'c1', list: [] };
+  const hub = g.churchAdminHTML();
+  ok('the Members box states that admins manage this church only', /Admins manage this church only/.test(hub));
+  ok('the Members box names the two posts (Leader and Assistant)', /Health Department Leader/.test(hub) && /Assistant/.test(hub));
+  ok('the members list titles the Health Department Leader', /Health Department Leader/.test(mr({ user_id: 'u1', role: 'admin', status: 'approved' }, 2, { u1: 1 })));
+  ok('the members list titles the Assistant', /Assistant Health Department Leader/.test(mr({ user_id: 'u2', role: 'admin', status: 'approved' }, 2, { u2: 2 })));
+  ok('a plain member carries no admin title', !/Department Leader/.test(mr({ user_id: 'u9', role: 'member', status: 'approved' }, 2, {})));
+  ok('rank 1 reads Health Department Leader', g.roleLabel({ role: 'admin', status: 'approved', admin_rank: 1 }) === 'Health Department Leader');
+  ok('rank 2 reads Assistant Health Department Leader', g.roleLabel({ role: 'admin', status: 'approved', admin_rank: 2 }) === 'Assistant Health Department Leader');
+  ok('labels fall back without a rank (schema not re-run yet)', g.roleLabel({ role: 'admin', status: 'approved' }) === 'Admin' && g.roleLabel({ role: 'member', status: 'approved' }) === 'Member');
+  g.cloud.members = { cid: 'c1', list: [
+    { user_id: 'u1', role: 'admin', status: 'approved', full_name: 'Own', email: 'own@x.y', confirmed: true },
+    { user_id: 'u2', role: 'admin', status: 'approved', full_name: 'Two', email: 'two@x.y', confirmed: true }] };
+  const twoAdmins = g.churchAdminHTML();
+  ok('an admin with a co-admin sees their post and the step-down offer', /My admin post/.test(twoAdmins) && /Health Department Leader/.test(twoAdmins) && /stepDown\(\)/.test(twoAdmins));
+  g.cloud.members = { cid: 'c1', list: [
+    { user_id: 'u1', role: 'admin', status: 'approved', full_name: 'Own', email: 'own@x.y', confirmed: true }] };
+  const soleAdmin = g.churchAdminHTML();
+  ok('the only admin is told to promote a member first, with no step-down button', /only admin/.test(soleAdmin) && !/stepDown\(\)/.test(soleAdmin));
+  g.cloud.members = null;
+  const postLoading = g.adminPostHTML(hubAdminAcct.membership, {});
+  ok('while the members load, the admin post says Loading, not "only admin"', /Loading/.test(postLoading) && !/only admin/.test(postLoading) && !/stepDown\(\)/.test(postLoading));
+  g.cloud.acct = { ...hubAdminAcct, platform_admin: true };
+  g.cloud.adminChurch = 'c1';
+  g.cloud.members = { cid: 'c1', list: [
+    { user_id: 'u1', role: 'admin', status: 'approved', full_name: 'Own', email: 'own@x.y', confirmed: true }] };
+  ok('browsing a church as the owner shows no step-down box', !/My admin post/.test(g.churchAdminHTML()));
+  g.cloud.adminChurch = '';
+  g.cloud.acct = { ...hubAdminAcct, platform_admin: true };
+  g.cloud.adminData = 'c1'; g.cloud.adminRows = null;
+  ok('the data view shows Loading while it fetches', /Loading/.test(g.adminDataHTML()));
+  g.cloud.adminRows = { visitors: [{ id: 'EXPO-001', name: 'Ann <b>X</b>', phone: '', email: '', done: true, created_at: '2026-10-01T08:00:00Z', updated_at: '2026-10-01T08:00:00Z' }], volunteers: [], visitor_count: 1, volunteer_count: 0 };
+  const dataView = g.adminDataHTML();
+  ok('the owner’s data view lists a church’s visitors read-only', /Read-only/.test(dataView) && /EXPO-001/.test(dataView) && /Done/.test(dataView));
+  ok('the data view escapes names', !/<b>X<\/b>/.test(dataView));
+  g.cloud.acct = acctKeep; g.cloud.members = null; g.cloud.followups = null; g.cloud.adminFollowups = null;
+  g.cloud.adminData = ''; g.cloud.adminRows = null;
 
   /* persistence flag */
   localStorage.setItem('newstart.passport.v2', JSON.stringify({ attendees: [], volunteers: [], activeId: '', cloud: true }));
