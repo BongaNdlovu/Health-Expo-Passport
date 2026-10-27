@@ -11,7 +11,7 @@ import { qSafe, queueReset, queueSync } from './queue.js';
 import { bmi, cat, chipClass, esc, fmt1, initials, redFlag } from './helpers.js';
 import { planNeeds } from './results.js';
 import { hideModal, showModal } from './volunteer.js';
-import { loadScript } from './scanner.js';
+import { loadScript } from './libs.js';
 /* The account hub: my account, my church, all churches (platform admin), members and approvals. Split from the original single-file app; bundled back into one file by tools/build.js. */
 /* ---------- churches, members and the platform admin ----------
    With the CHURCHES part of supabase/schema.sql every account belongs to one church. Staff and admins of an active church
@@ -827,17 +827,26 @@ async function pushOne(kind,o){
  throw error;
 }
 /* the id is already taken on the server */
+/* Visitor numbers are given by each phone, so two desks registering at the same moment can pick the same one. They are
+   two different people: the one uploaded second takes the next number free on the server and on this phone, and the
+   volunteer is told the new number. This is the visitor's first upload, so only a queue place taken in the second
+   before it would still carry the old number. */
+async function renumberVisitor(o){
+ const ids=await cloud.client.from('attendees').select('id');
+ if(ids.error)throw ids.error;
+ const num=id=>{const m=/^EXPO-(\d+)$/.exec(String(id));return m?+m[1]:0;};
+ const max=Math.max(0,...ids.data.map(r=>num(r.id)),...attendees.map(a=>num(a.id)));
+ const old=o.id;o.id='EXPO-'+String(max+1).padStart(3,'0');
+ if(state.activeId===old)state.activeId=o.id;
+ toast(`Another desk gave out ${old} at the same moment: this visitor is now ${o.id}`);
+ return pushOne('att',o);
+}
 async function resolveConflict(kind,o,s){
  const k=KINDS[kind];
  const {data,error}=await cloud.client.from(k.table).select('*').eq('id',o.id).maybeSingle();
  if(error)throw error;
  if(data&&sigOf(k.toRow(k.fromRow(data)))===s){cloud.synced[kind][o.id]=s;return;}   /* an earlier upload of this very row */
- if(kind==='att'){
-  const i=k.list.indexOf(o);
-  if(data&&i>=0){const r=k.fromRow(data);k.list.splice(i,1,r);cloud.synced.att[o.id]=sigOf(k.toRow(r));}
-  toast(`${o.id} is already registered on another desk — showing that visitor`);
-  return;
- }
+ if(kind==='att')return renumberVisitor(o);
  /* two desks pledged at the same moment: take the next free volunteer number */
  const ids=await cloud.client.from('volunteers').select('id');
  if(ids.error)throw ids.error;

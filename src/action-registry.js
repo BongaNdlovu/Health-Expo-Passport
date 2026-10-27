@@ -10,15 +10,13 @@ import { queueBack, queueCallNext, queueDone, queueRemove, queueServe } from './
 import { closeBigScreen, closeQueuePick, openBigScreen, openQueuePick, qFilterPick, qPickAdd, qSelect, queueSync } from './queue.js';
 import { closeFood, exportCSV, openFood, showAllCare } from './results.js';
 import { onSim, selectProtocol, setFoodMetric, setFoodPlan, toggleFood } from './results.js';
-import { openScanner } from './scanner.js';
-import { closeScanner } from './scanner.js';
 import { render } from './shell.js';
 import { isServe } from './shell.js';
 import { cloud } from './state.js';
 import { filterVisitors, onPrayer, onStationCommit, onStationInput, onStep, registerSubmit, reservePouch, resetDemo, switchTab, toggleInterest, toggleReg } from './visitor.js';
 import { applyReading, finishVisit, goVisit, newVisitFrom, onChronicList, onHeight, pickSex, recordConsent, setAnswer, setMyStation, showGuardian, switchTo, toggleOptin, toggleTick } from './visitor.js';
 import { closeVolReg, closeWhatsApp, exportVolCSV, logExpoEntry, openEmail, openSwitcher, openVolModal, openVolReg, openVolSwitcher, openWhatsApp, pickSecondBooth, pickVolunteer, printCard, removeExpoEntry, saveExpoEntry, saveVolunteer, sendEmail, sendWhatsApp, setVol, setVolTab, startNewVolunteer, switchToVol, toggleDraftBooth, toggleDraftList, toggleShift } from './volunteer.js';
-import { closeSwitcher, closeVolModal, demoScan, filterSwitcher, filterVolSwitcher, manualGo, openWAFor, pickAttendee, pickPledge, recycleBadge, registerNew, setSwitchMode, showAllVol } from './volunteer.js';
+import { closeSwitcher, closeVolModal, filterSwitcher, filterVolSwitcher, openWAFor, pickAttendee, pickPledge, recycleBadge, registerNew, setSwitchMode, showAllVol } from './volunteer.js';
 
 
 /* The action registry: one entry per data-action name. Plain functions are called with (element, event)
@@ -28,10 +26,10 @@ import { closeSwitcher, closeVolModal, demoScan, filterSwitcher, filterVolSwitch
 
 export const ACTION_MAP = {
   /* -- plain functions (no arguments) -- */
-  closeAcct, closeBigScreen, closeCloud, closeFood, closeQueuePick, closeScanner, closeSwitcher,
+  closeAcct, closeBigScreen, closeCloud, closeFood, closeQueuePick, closeSwitcher,
   closeVolModal, closeVolReg, closeWhatsApp, cloudInit, cloudResend, cloudSignOut, copyInvite,
   exportCSV, exportVolCSV, finishVisit, gateBack, gateDemo, goVisit, healthTest, installApp, leaveChurch,
-  logExpoEntry, manualGo, openBigScreen, openCloud, openEmail, openFood, openScanner, openSwitcher, openVolModal,
+  logExpoEntry, openBigScreen, openCloud, openEmail, openFood, openSwitcher, openVolModal,
   openVolReg, openVolSwitcher, openWhatsApp, profDeleteAsk, profDeleteGo, recycleBadge, registerNew, resetDemo,
   saveExpoEntry, saveVolunteer, sendEmail, sendWhatsApp, shareInvite, startNewVolunteer, stepDown,
   switchToVol, toggleReg,
@@ -40,7 +38,6 @@ export const ACTION_MAP = {
   cancelInvites: el => cancelInvites(el.dataset.args),
   chooseChurchPlan: el => chooseChurchPlan(el.dataset.args),
   chooseFollowup: el => chooseFollowup(el.dataset.args),
-  demoScan: el => demoScan(el.dataset.args),
   gateView: el => gateView(el.dataset.args),
   manageChurch: el => manageChurch(el.dataset.args),
   openAcct: el => openAcct(el.dataset.args),

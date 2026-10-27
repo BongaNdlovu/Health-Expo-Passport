@@ -5,17 +5,15 @@
    VERSION is stamped by tools/build.js so every release replaces the old cache. */
 const VERSION = '__VERSION__';
 const SHELL = 'newstart-shell-' + VERSION;
-const LIBS = 'newstart-libs-v2';              /* v2: scripts are now loaded with integrity checks (CORS), so older opaque copies are dropped */
+const LIBS = 'newstart-libs-v3';              /* v3: the scanner and QR libraries are gone, so their cached copies are dropped */
 
 /* the page itself is fetched separately (see install): some hosts redirect /index.html to /, and a redirected
    response may not be handed to a page navigation */
 const SHELL_FILES = ['manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png',
   'icons/icon-maskable-512.png', 'icons/icon-180.png', 'icons/favicon-32.png'];
-/* keep in step with SB_LIB / H5Q / QRJS in index.html (tools/check is in .smoke/harness.js) */
+/* keep in step with SB_LIB in src/cloud.js (tools/check is in .smoke/harness.js) */
 const LIB_URLS = [
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js',
-  'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js',
 ];
 const LIB_HOSTS = ['cdn.jsdelivr.net', 'cdnjs.cloudflare.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 const isSupabase = host => host === 'supabase.co' || host.endsWith('.supabase.co') || host.endsWith('.supabase.in');

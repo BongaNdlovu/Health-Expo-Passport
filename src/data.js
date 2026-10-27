@@ -17,7 +17,7 @@ export const attendees=JSON.parse(JSON.stringify(SEED));
 /* filled from SEED_VOL below — the volunteer tables are declared further down */
 export const volunteers=[];
 export const state={activeId:'EXPO-042',tab:'home',protocol:'bp',sim:{kitchen:3,walk:30,hydro:2},regOpen:false,
-  sugFor:null,sugVal:null,pendingBadge:null,scanLock:false,_goal:null,
+  sugFor:null,sugVal:null,_goal:null,
   /* --- volunteer / serve section --- */
   volTab:'pledge',volId:'VOL-1001',volOpen:false,volRegOpen:false,pledgeDone:false,logOpen:false,switchMode:'visitor',
   vf:{name:'',phone:'',email:'',pledgeExpos:1,skills:[],pref:[],avail:[]},

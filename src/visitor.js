@@ -12,7 +12,6 @@ import { cloud, migrateAttendee, persist, seedDemo } from './state.js';
 import { GRACE_DAYS, RETENTION_YEARS, visitIsOld } from './retention.js';
 import { homeHealthHTML, installEvt, validEmail } from './cloud.js';
 import { hiredCountLabel, pendingLabel, todayStr } from './volunteer.js';
-import { parseBadge } from './scanner.js';
 /* The visitor journey: Check → Results entry, registration, the paper record and the survey. Split from the original single-file app; bundled back into one file by tools/build.js. */
 /* ================= THE VISITOR JOURNEY: Check → Results → Plan → Send home ================= */
 /* where a visitor's passport should open: the step they were on, else the first one not done */
@@ -39,7 +38,7 @@ export function journeyBottom(){
  /* a station volunteer's next move is the next visitor, not this visitor's results */
  if(state.tab==='screen'&&myStation())return `<div class="jr-foot"><div class="jr-btns">
   <button class="btn btn-glass jr-back" data-action="switchTab" data-args="results">Results →</button>
-  <button class="btn btn-primary jr-next" data-action="openScanner">Scan next visitor</button></div></div>`;
+  <button class="btn btn-primary jr-next" data-action="registerNew">Next visitor</button></div></div>`;
  return `<div class="jr-foot">
   ${state.tab==='screen'?`<p id="jrNote" class="jr-note" ${left>0?'':'hidden'}>${left} of 8 checks still empty. You can carry on and come back.</p>`:''}
   <div class="jr-btns">
@@ -91,7 +90,7 @@ export function finishVisit(){
 export function viewNoVisitor(){
  return `<section class="stagger space-y-3.5"><div class="glass p-5 text-center">
   <div class="display text-[16px] font-extrabold text-[#0f2a2c]">No visitor selected</div>
-  <p class="mx-auto mt-1.5 max-w-[30ch] text-[11px] leading-relaxed text-[#5b7178]">Register a visitor or scan a lanyard badge first — their numbers appear here.</p>
+  <p class="mx-auto mt-1.5 max-w-[30ch] text-[11px] leading-relaxed text-[#5b7178]">Register a visitor first — their numbers appear here.</p>
   <button data-action="registerNew" class="btn btn-primary mt-3 w-full py-2.5 text-xs">Register a visitor →</button>
  </div></section>`;
 }
@@ -114,7 +113,7 @@ export function viewHome(){
 
   ${!attendees.length?`<div class="hero p-5 text-center">
    <div class="display text-[17px] font-extrabold text-[#0f2a2c]">Welcome</div>
-   <p class="mx-auto mt-1.5 max-w-[32ch] text-[11.5px] leading-relaxed text-[#5b7178]">${cloud.mode?'The shared database is empty. ':''}Scan a visitor’s lanyard badge, or register a new visitor, to begin.</p>
+   <p class="mx-auto mt-1.5 max-w-[32ch] text-[11.5px] leading-relaxed text-[#5b7178]">${cloud.mode?'The shared database is empty. ':''}Register a new visitor to begin.</p>
   </div>`:`<div class="hero p-5"><div class="wave-clip" aria-hidden="true"><div class="wave w1"></div><div class="wave w2"></div></div>
    <div class="microlabel">Now serving</div>
    <div class="mt-2 flex items-center justify-between gap-3">
@@ -139,15 +138,13 @@ export function viewHome(){
   </div>`}
 
   <div class="grid grid-cols-2 gap-2">
-   <button data-action="openScanner" class="btn btn-primary py-3.5 text-[13px]">
-    <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316zM16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z"/></svg>
-    Scan badge</button>
+   <button data-action="openSwitcher" class="btn btn-primary py-3.5 text-[13px]">Find a visitor</button>
    <button data-action="toggleReg" class="btn ${state.regOpen?'btn-glass':'btn-soft'} py-3.5 text-[13px]" aria-expanded="${!!state.regOpen}">${state.regOpen?'Close form':'+ New visitor'}</button>
   </div>
 
   ${state.regOpen?`<div class="glass p-4">
    <div class="display text-sm font-extrabold">New visitor</div>
-   <div class="mt-0.5 text-[11px] leading-snug text-[#5c747a]">Takes about 30 seconds. Their lanyard badge opens the passport.</div>
+   <div class="mt-0.5 text-[11px] leading-snug text-[#5c747a]">Takes about 30 seconds. Their number is given automatically.</div>
    <form data-action="registerSubmit" novalidate class="pop-in mt-4 space-y-3">
     <input id="rgName" required placeholder="Full name e.g. Sipho Ndlovu" class="field">
     <div class="grid grid-cols-2 gap-3">
@@ -160,14 +157,9 @@ export function viewHome(){
      <div><label class="microlabel" for="rgHeight">Height (cm)</label><input id="rgHeight" type="text" inputmode="numeric" placeholder="if measured" class="field mono mt-1"></div>
     </div>
     <div><label class="microlabel" for="rgEmail">Email (optional)</label><input id="rgEmail" type="email" inputmode="email" autocomplete="off" placeholder="for sending the plan by email" class="field mt-1"></div>
-    <div><label class="microlabel" for="rgBadge">Lanyard badge</label>
-     <div class="mt-1 flex gap-2">
-      <input id="rgBadge" value="${state.pendingBadge||''}" placeholder="${nextBadge()}" autocomplete="off"
-        class="field mono min-w-0 flex-1 font-bold uppercase text-brand-900"
-        style="background:rgba(58,165,151,.09);border-color:rgba(58,165,151,.3)">
-      <button type="button" data-action="openScanner" class="btn btn-soft flex-none px-4 text-xs" aria-label="Scan the lanyard badge">Scan</button>
-     </div>
-     <p class="mt-1 text-[10.5px] text-[#6b8187]">No badge to scan? Leave it empty and they get the next free number, ${nextBadge()}.</p></div>
+    <div><span class="microlabel">Visitor number</span>
+     <div id="rgNumber" class="field mono mt-1 font-bold text-brand-900" style="background:rgba(58,165,151,.09);border-color:rgba(58,165,151,.3)">${nextBadge()}</div>
+     <p class="mt-1 text-[10.5px] text-[#6b8187]">Given automatically. Find them later by name or number.</p></div>
     ${consentFields('rg',false)}
     <div id="rgErr" class="st-warn" role="alert" hidden></div>
     <button class="btn btn-primary w-full py-3 text-sm">Register & start the checks →</button>
@@ -231,11 +223,12 @@ function visitorListHTML(query){
  return rows.map(visitorRowHTML).join('')+(more>0?`<p class="px-1 pt-2 text-center text-[10px] font-semibold text-[#6b8187]">Latest ${rows.length} of ${attendees.length} — search to find anyone else.</p>`:'');
 }
 export function filterVisitors(v){state.vq=v;const el=$('#visitorList');if(el)el.innerHTML=visitorListHTML(v);}
-/* first unused EXPO-nnn above the seed range */
+/* the next visitor number: one above the highest this phone knows (a signed-in phone holds the whole church's list),
+   EXPO-001 on a fresh start. A clash with another desk is settled on upload (resolveConflict in account.js). */
 export function nextBadge(){
- let n=120+attendees.length;
- while(attendees.some(a=>a.id==='EXPO-'+String(n).padStart(3,'0')))n++;
- return 'EXPO-'+String(n).padStart(3,'0');
+ let max=0;
+ for(const a of attendees){const m=/^EXPO-(\d+)$/.exec(a.id);if(m&&+m[1]>max)max=+m[1];}
+ return 'EXPO-'+String(max+1).padStart(3,'0');
 }
 export function toggleReg(){state.regOpen=!state.regOpen;renderMain();if(state.regOpen){const n=$('#rgName');if(n)n.focus();}}
 /* Male / Female in one tap: the buttons fill the hidden #rgSex that registerSubmit() reads */
@@ -351,12 +344,8 @@ export function registerSubmit(e,force){
  if(email&&!validEmail(email))return regError('That email address does not look right. Check it, or leave it empty.');
  const cons=readConsent('rg',age);
  if(cons.err)return regError(cons.err);
- /* the id is used in handlers and matched against scanned QR codes, so it must be a clean EXPO-nnn */
- const raw=$('#rgBadge').value.trim()||nextBadge();   /* no badge scanned or typed: the next free number */
- const id=parseBadge(raw);
- if(!id)return regError('A badge looks like EXPO-042.');
- const taken=attendees.find(x=>x.id===id);
- if(taken)return regError(`${id} already belongs to ${esc(taken.name)}. Use a different lanyard.`);
+ /* the number is given here, not typed; another desk taking the same one at the same moment is settled on upload */
+ const id=nextBadge();
  /* the same person twice gives two half-filled passports: ask first (name, last 9 phone digits, or email) */
  const digits=phone.replace(/\D/g,'').slice(-9);
  /* a new visit of a past visitor is the same person on purpose, so their old passport is not a duplicate */
@@ -367,8 +356,8 @@ export function registerSubmit(e,force){
    <span class="mt-2 flex gap-2"><button type="button" class="st-fix" style="background:#2b8074" data-action="switch-visitor" data-args="${dup.id}">Open ${esc(dup.id)}</button>
    <button type="button" class="st-fix" style="background:#6b8187" data-action="register-again">Register a new passport</button></span>`);
  const a=migrateAttendee({id,name,age,sex,phone:phone||'+27 —',email,heightCm:h,s:{},interests:cons.it,prayer:'',done:false});
- attendees.push(a);state.activeId=a.id;state.regOpen=false;state.pendingBadge=null;state.newVisitOf=null;state.sugFor=null;state._goal=null;
- switchTab('screen');toast(`${a.id} linked to ${firstName(a.name)} ✓ Start the checks`);
+ attendees.push(a);state.activeId=a.id;state.regOpen=false;state.newVisitOf=null;state.sugFor=null;state._goal=null;
+ switchTab('screen');toast(`${firstName(a.name)} is ${a.id} ✓ Start the checks`);
 }
 export function resetDemo(){
  if(cloud.user||cloud.mode){toast('Reset is off while connected to the shared database');return;}
@@ -458,7 +447,7 @@ export function viewScreen(){
    :followUpCard(a)}
  </section>`;
 }
-/* A returning visitor scanned with an old badge: that visit is closed, so the checks start on a new passport */
+/* A returning visitor opened by an old number: that visit is closed, so the checks start on a new passport */
 function pastVisitCard(a){
  return `<div class="glass hue-tint hue-sky p-4">
   <div class="microlabel">Past visit</div>
@@ -470,7 +459,7 @@ function pastVisitCard(a){
 /* opens New visitor with the past visit's details; the badge is new and the consent is asked again */
 export function newVisitFrom(id){
  const a=attendees.find(x=>x.id===id);if(!a)return;
- state.regOpen=true;state.pendingBadge=null;state.newVisitOf=a.id;
+ state.regOpen=true;state.newVisitOf=a.id;
  switchTab('home');
  const put=(sel,v)=>{const el=/** @type {HTMLInputElement|null} */ ($(sel));if(el&&v)el.value=String(v);};
  put('#rgName',a.name);put('#rgAge',a.age||'');put('#rgPhone',a.phone==='+27 —'?'':a.phone);put('#rgEmail',a.email);

@@ -1,6 +1,5 @@
 // @ts-check
 import { I } from './icons.js';
-import { QRJS } from './scanner.js';
 import { $ } from './helpers.js';
 import { journeyTop } from './visitor.js';
 import { attendees, hueOf, state, volunteers } from './data.js';
@@ -11,7 +10,6 @@ import { queue, viewQueue } from './queue.js';
 import { journeyBottom, viewHome, viewNoVisitor, viewScreen, viewSend } from './visitor.js';
 import { updateSimUI, viewCare, viewFood, viewPlan, viewResults } from './results.js';
 import { viewProfile } from './account.js';
-import { closeScanner, loadScript } from './scanner.js';
 import { closeCloud } from './cloud.js';
 /* The app shell: rendering, toast, liquid interactions and the intro. Split from the original single-file app; bundled back into one file by tools/build.js. */
 /* ================= RENDER: SHELL ================= */
@@ -91,7 +89,7 @@ export function toast(m){
  clearTimeout(toastTimer);
  toastTimer=setTimeout(()=>t.classList.add('opacity-0','translate-y-3'),2200);
 }
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeScanner();closeSwitcher();closeWhatsApp();closeVolModal();closeCloud();}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeSwitcher();closeWhatsApp();closeVolModal();closeCloud();}});
 
 /* ================= LIQUID INTERACTIONS ================= */
 export function syncRanges(){document.querySelectorAll('input[type=range]').forEach(/** @param {HTMLInputElement} r */(r)=>r.style.setProperty('--pct',((Number(r.value)-Number(r.min))/((Number(r.max)-Number(r.min))||1)*100)+'%'));}
@@ -163,11 +161,6 @@ export function jelly(el){if(!el)return;el.classList.remove('jelly');void el.off
   else if(slow>18)root.classList.add('lite');
  };
  requestAnimationFrame(()=>requestAnimationFrame(probe));
- /* warm the QR libraries so opening the scanner / printing is instant */
- const idle=window.requestIdleCallback||(f=>setTimeout(f,2500));
- /* the fallback camera scanner (~370 KB) is NOT preloaded any more: it is only needed on phones without a built-in
-    barcode reader, and only once someone opens the scanner, so it loads then (from the offline cache, in a moment) */
- idle(()=>{loadScript(QRJS).catch(()=>{});});
 })();
 
 /* ===== intro ===== */

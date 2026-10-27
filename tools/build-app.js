@@ -1,6 +1,6 @@
 /* Builds the files the Android app carries inside it:   node tools/build-app.js   →   capacitor/www/
    The app is the same built page as the web site (dist/index.html — run tools/build.js first), plus the copies
-   it needs to work with no internet: the three libraries and the fonts from vendor/. A library is copied only
+   it needs to work with no internet: the sign-in library and the fonts from vendor/. A library is copied only
    when its bytes match the integrity hash (SRI) pinned in the page, so the app can never carry a different
    version from the audited one.
    Then run  npx cap sync android  in capacitor/  (tools/sign-app.ps1 does both and signs the result). */
@@ -18,7 +18,7 @@ const html = fs.readFileSync(path.join(root, 'dist', 'index.html'), 'utf8');
 const constOf = n => (html.match(new RegExp("(?:var |const |,)" + n + " ?= ?['\"]([^'\"]+)['\"]")) || [])[1];
 const sriOf = n => (html.match(new RegExp('\\[' + n + "\\] ?:\\s*['\"](sha384-[^'\"]+)['\"]")) || [])[1];
 const appOf = n => (html.match(new RegExp('\\[' + n + "\\] ?:\\s*['\"](vendor/[^'\"]+)['\"]")) || [])[1];
-const LIBS = ['SB_LIB', 'H5Q', 'QRJS'];
+const LIBS = ['SB_LIB'];
 
 const problems = [];
 for (const n of LIBS) {

@@ -23,14 +23,15 @@ const srcText = fs.readdirSync(path.join(__dirname, '..', 'src')).filter(f => f.
    bindings the test needs. This runs in the same script scope. */
 const EXPORTS = [
   'volunteers', 'attendees', 'state', 'SEED_VOL', 'BOOTHS', 'BADGE_TIERS', 'EXPO_UPCOMING', 'AVAIL', 'SKILLS', 'STATUS_UI',
-  'badgeTier', 'nextTier', 'tierProgress', 'volHours', 'volExpos', 'volYears', 'needsRegistration', 'helpersAt',
+  'showCrash', 'hideCrash', 'crashAction',
+  'badgeTier', 'nextTier', 'tierProgress', 'volHours', 'volExpos', 'volLevel', 'VOL_LEVEL_MAX', 'volYears', 'needsRegistration', 'helpersAt',
   'boothLabel', 'boothHue', 'staffedCount', 'esc', 'render', 'setVol', 'setVolTab', 'openVolReg', 'startNewVolunteer',
   'saveVolunteer', 'toggleDraftList', 'toggleDraftBooth', 'pickSecondBooth', 'toggleShift', 'logExpoEntry',
   'saveExpoEntry', 'removeExpoEntry', 'exportVolCSV', 'persistNow', 'loadPersisted', 'resetDemo', 'AV',
   'pickVolunteer', 'openSwitcher', 'openVolSwitcher', 'openVolModal', 'switchTab', 'daysTo', 'volRow', 'medalHTML',
-  'tierRemaining', 'registerSubmit', 'parseBadge', 'nextBadge', 'csvCell', 'closeVolReg', 'setVolTab', 'todayStr',
-  'switchToVol', 'activateBadge', 'onScanText', 'toggleReg', 'viewHome', 'viewCare', 'buildPrintCard', 'openWhatsApp',
-  'openScanner', 'viewResults', 'viewPlan', 'viewScreen', 'migrateAttendee', 'migrateVolunteer', 'onStep',
+  'tierRemaining', 'registerSubmit', 'nextBadge', 'csvCell', 'closeVolReg', 'setVolTab', 'todayStr',
+  'switchToVol', 'toggleReg', 'viewHome', 'viewCare', 'buildPrintCard', 'openWhatsApp',
+  'viewResults', 'viewPlan', 'viewScreen', 'migrateAttendee', 'migrateVolunteer', 'onStep',
   'onStationInput', 'onStationCommit', 'cat', 'healthAge', 'exportCSV', 'redFlag', 'doneCount', 'bmi',
   'firstName', 'initials', 'careNotes',
   'cloud', 'cloudInit', 'cloudSync', 'cloudPush', 'cloudDirtyList', 'cloudPending', 'cloudSignOut', 'cloudAuthEvent',
@@ -163,9 +164,20 @@ console.log('1. Badge tiers');
 ok('7 seed volunteers loaded', g.volunteers.length === 7, 'got ' + g.volunteers.length);
 const byName = n => g.volunteers.find(v => v.name === n);
 const thandi = byName('Thandi Mabaso'), grace = byName('Grace Nkosi'), nomvula = byName('Nomvula Dlamini');
-ok('Thandi: 4 expos / 30h → Silver (Lv2)', g.badgeTier(thandi).n === 2, 'got Lv' + g.badgeTier(thandi).n);
-ok('Grace: 6 expos / 45.5h → Gold (Lv3)', g.badgeTier(grace).n === 3, 'got Lv' + g.badgeTier(grace).n);
-ok('Nomvula: 0 expos → Friend (Lv0)', g.badgeTier(nomvula).n === 0, 'got Lv' + g.badgeTier(nomvula).n);
+ok('Thandi: 4 expos / 30h → Silver medal', g.badgeTier(thandi).n === 2, 'got tier ' + g.badgeTier(thandi).n);
+ok('Thandi is Level 4 (one per expo)', g.volLevel(thandi) === 4, 'got Lv' + g.volLevel(thandi));
+ok('Grace: 6 expos / 45.5h → Gold medal, Level 6', g.badgeTier(grace).n === 3 && g.volLevel(grace) === 6,
+  'got tier ' + g.badgeTier(grace).n + ' Lv' + g.volLevel(grace));
+ok('Nomvula: 0 expos → Friend medal, no level (0 cannot count)',
+  g.badgeTier(nomvula).n === 0 && g.volLevel(nomvula) === 0,
+  'got tier ' + g.badgeTier(nomvula).n + ' Lv' + g.volLevel(nomvula));
+ok('level counts one per expo and stops at 50',
+  g.volLevel({ history: Array(55).fill({ hours: 1 }) }) === g.VOL_LEVEL_MAX && g.VOL_LEVEL_MAX === 50,
+  'got ' + g.volLevel({ history: Array(55).fill({ hours: 1 }) }));
+ok('medal shows the level number, never 0',
+  g.medalHTML(thandi).includes('>4<') && !g.medalHTML(nomvula).includes('>0<')
+    && g.medalHTML(nomvula).includes('–') && g.medalHTML(nomvula).includes('Friend'),
+  g.medalHTML(nomvula).replace(/\s+/g, ' ').slice(0, 120));
 ok('hours sum correctly (Grace = 45.5)', g.volHours(grace) === 45.5, 'got ' + g.volHours(grace));
 ok('next tier for Grace is Platinum', (g.nextTier(grace) || {}).n === 4);
 const pg = g.tierProgress(grace);
@@ -186,7 +198,7 @@ ok('hours-gated progress is 60%', ph.pct === 60, 'got ' + ph.pct);
 ok('hours-gated helper needs 3 more expos', ph.needExpos === 3, 'got ' + ph.needExpos);
 /* exactly on both minimums promotes without a gap */
 ok('meeting both minimums promotes (6 expos / 36h → Gold)', g.badgeTier(hoursGated).n === 3,
-  'got Lv' + g.badgeTier(hoursGated).n);
+  'got tier ' + g.badgeTier(hoursGated).n);
 ok('Legend has no next tier', g.nextTier({ history: Array(12).fill({ hours: 8 }) }) === null);
 ok('exactly one top-tier badge', g.BADGE_TIERS.filter(t => t.n === 5).length === 1);
 
@@ -258,6 +270,39 @@ ok('serve works after round-tripping through Care',
   'len=' + $main.innerHTML.length);
 g.state.tab = 'serve'; g.state.volTab = 'pledge';
 
+/* ---- 3c. crash guard: an uncaught error is an error state, not a dead screen ---- */
+console.log('\n3c. Crash guard');
+const crashCard = () => $el('crashCard');
+ok('no crash card before any error', crashCard().innerHTML === '');
+g.showCrash(new Error('boom: that screen broke'));
+const cardHtml = crashCard().innerHTML;
+ok('an uncaught error shows the crash card',
+  /Something went wrong/.test(cardHtml) && /boom: that screen broke/.test(cardHtml),
+  cardHtml.slice(0, 120));
+ok('the card reassures that nothing was lost', /Nothing was lost/.test(cardHtml));
+ok('the card offers Try again, Reload and Close',
+  /Try again/.test(cardHtml) && /Reload the app/.test(cardHtml) && /Close and carry on/.test(cardHtml));
+g.showCrash(new Error('boom: that screen broke'));
+ok('the same error twice does not restack the card', crashCard().innerHTML === cardHtml);
+g.showCrash(new Error('a different failure'));
+ok('a different error updates the card message', /a different failure/.test(crashCard().innerHTML));
+g.showCrash({ message: 'x'.repeat(500) });
+ok('a very long error is truncated, not swallowed', /x{300}…/.test(crashCard().innerHTML));
+/* Try again gives render one more chance: the pending tab change is drawn and the card is gone */
+g.state.tab = 'home'; g.render();
+g.state.tab = 'queue';                       /* changed but not yet drawn */
+g.crashAction('again');
+ok('Try again hides the card', crashCard().innerHTML === '');
+ok('Try again re-rendered the page (queue drawn)', /Who is waiting where/.test($main.innerHTML),
+  $main.innerHTML.slice(0, 120));
+/* Close and carry on dismisses without touching the page; Reload never throws, even
+   where the host has no reload (the smoke fake DOM has no location.reload) */
+g.showCrash(new Error('one more'));
+g.crashAction('close');
+ok('Close and carry on dismisses the card', crashCard().innerHTML === '');
+ok('Reload does not throw on a host without reload', (g.crashAction('reload'), true));
+ok('hiding an absent card is safe', (g.hideCrash(), true));
+
 /* ---- 4. pledge, then register -------------------------------------- */
 console.log('\n4. Pledge → register flow');
 g.resetDemo();                       /* known starting point */
@@ -275,6 +320,8 @@ ok('pledge creates a volunteer', g.volunteers.length === before + 1);
 ok('new volunteer gets a VOL- id', /^VOL-\d+$/.test(bongani.id), bongani.id);
 ok('new volunteer starts at Friend tier', g.badgeTier(bongani).n === 0);
 ok('new volunteer has no expo history', g.volExpos(bongani) === 0);
+ok('new volunteer has no level — 0 expos cannot count', g.volLevel(bongani) === 0,
+  'got Lv' + g.volLevel(bongani));
 
 /* second booth choice caps the first-choice list at 2 */
 g.state.vf = { name: '', phone: '', email: '', pledgeExpos: 1, skills: [], pref: [], avail: [] };
@@ -302,10 +349,13 @@ ok('expo appended to history', g.volExpos(nom) === 1, 'got ' + g.volExpos(nom));
 ok('hours recorded', g.volHours(nom) === 8, 'got ' + g.volHours(nom));
 ok('badge promoted Friend → Bronze', g.badgeTier(nom).n === lvBefore + 1,
   lvBefore + ' → ' + g.badgeTier(nom).n);
+ok('first expo counts as Level 1', g.volLevel(nom) === 1, 'got Lv' + g.volLevel(nom));
 const key = nom.history[0].expo + '-' + nom.history[0].date;
 g.removeExpoEntry(key);
 ok('entry can be removed again', g.volExpos(nom) === 0, 'got ' + g.volExpos(nom));
 ok('badge reverts after removal', g.badgeTier(nom).n === lvBefore);
+ok('level reverts too — nothing counts from a removed expo', g.volLevel(nom) === 0,
+  'got Lv' + g.volLevel(nom));
 
 /* invalid hours are rejected, not stored */
 g.logExpoEntry();
@@ -388,7 +438,7 @@ console.log('\n11. Visitor registration');
 const submitReg = (o) => {
   g.state.tab = 'home'; g.state.regOpen = true;
   $el('rgName').value = o.name; $el('rgAge').value = o.age ?? '46'; $el('rgSex').value = 'Male';
-  $el('rgPhone').value = o.phone ?? ''; $el('rgEmail').value = o.email ?? ''; $el('rgHeight').value = '170'; $el('rgBadge').value = o.badge; $el('rgConsent').checked = o.consent ?? true; $el('rgOptin').checked = !!o.optin;
+  $el('rgPhone').value = o.phone ?? ''; $el('rgEmail').value = o.email ?? ''; $el('rgHeight').value = '170'; $el('rgConsent').checked = o.consent ?? true; $el('rgOptin').checked = !!o.optin;
   $el('rgGuardian').checked = !!o.guardian; $el('rgGuardianName').value = o.guardianName ?? '';
   g.registerSubmit({ preventDefault() {} });
 };
@@ -547,12 +597,12 @@ g.resetDemo();
   ok('past visit: Register as a new visit opens New visitor with their details filled in', g.state.tab === 'home' && g.state.regOpen === true
     && $el('rgName').value === 'Thandi Back' && $el('rgPhone').value === '082 000 0730' && $el('rgEmail').value === 'thandi@example.org', $el('rgName').value);
   const n = g.attendees.length;
-  $el('rgAge').value = '51'; $el('rgSex').value = 'Female'; $el('rgHeight').value = ''; $el('rgBadge').value = 'EXPO-732';
+  $el('rgAge').value = '51'; $el('rgSex').value = 'Female'; $el('rgHeight').value = ''; const want = g.nextBadge();
   $el('rgConsent').checked = true; $el('rgOptin').checked = false; $el('rgGuardian').checked = false;
   g.registerSubmit({ preventDefault() {} });
-  const nv = g.attendees.find(a => a.id === 'EXPO-732');
+  const nv = g.attendees.find(a => a.id === want);
   ok('past visit: the new visit saves on a new badge without the duplicate warning, and asks consent afresh', g.attendees.length === n + 1 && !!nv
-    && nv.interests.consentV === '2026-10-27' && nv.interests.optin === false && g.state.newVisitOf === null && g.state.activeId === 'EXPO-732', String(g.attendees.length - n));
+    && nv.interests.consentV === '2026-10-27' && nv.interests.optin === false && g.state.newVisitOf === null && g.state.activeId === want, String(g.attendees.length - n));
   const r = g.attendees.find(a => a.id === 'EXPO-731'), was = r.interests.optin;
   act('toggleOptin', 'EXPO-731');
   ok('the follow-up Yes/No button is wired to an action and changes the answer', r.interests.optin === !was, String(r.interests.optin));
@@ -573,40 +623,43 @@ g.resetDemo();
   C.acct = was; g.state.regOpen = false;
 }
 g.resetDemo();
-const n0 = g.attendees.length;
-submitReg({ name: 'Dup Visitor', badge: 'EXPO-042' });
-ok('badge already in use is refused', g.attendees.length === n0 && g.state.activeId === 'EXPO-042');
-submitReg({ name: 'Bad Id', badge: "x');alert(1);//" });
-ok('a badge that is not EXPO-nnn is refused', g.attendees.length === n0);
-submitReg({ name: '   ', badge: 'EXPO-200' });
+const n0 = g.attendees.length, numOf = id => +((/^EXPO-(\d+)$/.exec(id) || [0, 0])[1]), badgeNo = n => 'EXPO-' + String(n).padStart(3, '0');
+const expected = g.nextBadge();
+ok('the next number is one above the highest on this phone', expected === badgeNo(Math.max(...g.attendees.map(a => numOf(a.id))) + 1), expected);
+g.state.tab = 'home'; g.state.regOpen = true; g.render();
+ok('registration shows the number it will give, read-only, with no badge field or scan button', $main.innerHTML.includes('id="rgNumber"')
+  && $main.innerHTML.includes('>' + expected + '<') && !/id="rgBadge"/.test($main.innerHTML) && !/openScanner|Scan badge|lanyard/i.test($main.innerHTML));
+submitReg({ name: '   ' });
 ok('blank name is refused', g.attendees.length === n0);
-submitReg({ name: 'Too Young', age: '3', badge: 'EXPO-200' });
+submitReg({ name: 'Too Young', age: '3' });
 ok('out-of-range age is refused', g.attendees.length === n0);
-submitReg({ name: 'Bad Email', badge: 'EXPO-202', email: 'not-an-email' });
+submitReg({ name: 'Bad Email', email: 'not-an-email' });
 ok('a malformed email address is refused', g.attendees.length === n0);
-submitReg({ name: 'Mail Visitor', badge: 'EXPO-203', email: 'visitor@example.org' });
-const mailed = g.attendees.find(a => a.id === 'EXPO-203');
-ok('a visitor registers with an email address and no phone number', !!mailed && g.attendees.length === n0 + 1 && mailed.email === 'visitor@example.org' && mailed.phone === '+27 —', JSON.stringify(mailed && { email: mailed.email, phone: mailed.phone }));
+submitReg({ name: 'Mail Visitor', email: 'visitor@example.org' });
+const mailed = g.attendees.find(a => a.name === 'Mail Visitor');
+ok('a visitor registers with an email address and no phone number, on the next number', !!mailed && mailed.id === expected && g.attendees.length === n0 + 1
+  && mailed.email === 'visitor@example.org' && mailed.phone === '+27 —', JSON.stringify(mailed && { id: mailed.id, email: mailed.email, phone: mailed.phone }));
 ok('the email reaches the sync row (attToRow) and comes back (rowToAtt)',
   g.attToRow(mailed).email === 'visitor@example.org' && g.rowToAtt(g.attToRow(mailed)).email === 'visitor@example.org');
-submitReg({ name: 'Same Email Again', badge: 'EXPO-204', email: 'VISITOR@example.org ' });
+submitReg({ name: 'Same Email Again', email: 'VISITOR@example.org ' });
 ok('an email another visitor already uses is refused (case, spacing ignored)', g.attendees.length === n0 + 1, String(g.attendees.length));
-submitReg({ name: 'No Contact At All', badge: 'EXPO-205' });
-const bare = g.attendees.find(a => a.id === 'EXPO-205');
+submitReg({ name: 'No Contact At All' });
+const bare = g.attendees.find(a => a.name === 'No Contact At All');
 ok('a visitor with neither phone nor email still registers (both are optional)', !!bare && bare.email === '' && bare.phone === '+27 —');
+ok('numbers count up one per visitor', !!bare && bare.id === badgeNo(numOf(expected) + 1), bare && bare.id);
 g.state.regOpen = false;
-submitReg({ name: '<img src=x onerror=alert(1)> Tester', badge: 'expo-0201', phone: '<b>082 123 4567</b>' });
-const hostile = g.attendees.find(a => a.id === 'EXPO-201');
-ok('lower-case / zero-padded badge normalised to EXPO-201', !!hostile && g.attendees.length === n0 + 3, 'attendees=' + g.attendees.length + ' expected ' + (n0 + 3));
-ok('new visitor becomes the active passport', g.state.activeId === 'EXPO-201');
+submitReg({ name: '<img src=x onerror=alert(1)> Tester', phone: '<b>082 123 4567</b>' });
+const hostile = g.attendees.find(a => a.id === badgeNo(numOf(expected) + 2));
+ok('a third visitor gets the third number', !!hostile && g.attendees.length === n0 + 3, 'attendees=' + g.attendees.length + ' expected ' + (n0 + 3));
+ok('new visitor becomes the active passport', !!hostile && g.state.activeId === hostile.id);
 const shown = {};
 for (const t of ['home', 'screen', 'plan', 'results']) { g.state.tab = t; g.render(); shown[t] = $main.innerHTML; }
 ok('no unescaped visitor markup on any visitor tab',
   Object.values(shown).every(h => !h.includes('<img src=x')), Object.keys(shown).filter(t => shown[t].includes('<img src=x')).join(','));
 g.openSwitcher(); ok('visitor switcher escapes names', !$el('switcherList').innerHTML.includes('<img src=x'));
-g.openScanner(); ok('scanner list escapes names', !$el('scannerList').innerHTML.includes('<img src=x'));
 g.openWhatsApp(); ok('WhatsApp preview escapes names', !$el('waBody').innerHTML.includes('<img src=x'));
 g.buildPrintCard(); ok('print card escapes names', !$el('printArea').innerHTML.includes('<img src=x'));
+ok('the printed card carries no QR code any more', !/pc-qr|pcQr/.test($el('printArea').innerHTML));
 hostile.interests = { nurse: true }; hostile.prayer = '<script>x</script>'; hostile.s.sys = 170; hostile.s.dia = 105;
 g.state.tab = 'care'; g.render();
 ok('care list escapes name, phone and prayer note',
@@ -615,22 +668,12 @@ ok('nextBadge skips ids already issued', !g.attendees.some(a => a.id === g.nextB
 ok('migrateAttendee strips unsafe characters from ids',
   g.migrateAttendee({ id: "EXPO-1');alert(1);//", s: {} }).id === 'EXPO-1alert1');
 
-console.log('\n12. Badge scanning');
-const pb = g.parseBadge;
-ok('EXPO-042 parses', pb('EXPO-042') === 'EXPO-042');
-ok('expo 42 (spaces, lower case) parses', pb(' expo 42 ') === 'EXPO-042');
-ok('EXPO-0042 equals EXPO-042', pb('EXPO-0042') === 'EXPO-042');
-ok('bare number parses', pb('117') === 'EXPO-117');
-ok('badge inside a URL parses', pb('https://x.org/p?b=EXPO-088') === 'EXPO-088');
-ok('garbage is rejected', pb('hello') === null && pb('') === null && pb(null) === null);
-g.resetDemo(); g.state.tab = 'home';
-g.onScanText('EXPO-088');
-ok('scanning a known badge opens that visitor', g.state.activeId === 'EXPO-088' && g.state.tab === 'screen', g.state.activeId + '/' + g.state.tab);
-g.state.scanLock = false;
-g.onScanText('EXPO-777');
-ok('scanning an unknown badge opens registration with the id prefilled',
-  g.state.tab === 'home' && g.state.regOpen && g.state.pendingBadge === 'EXPO-777');
-g.state.scanLock = false; g.state.regOpen = false; g.state.pendingBadge = null;
+console.log('\n12. Visitor numbers');
+{ const kept = g.attendees.splice(0);
+  ok('a phone with no visitors starts at EXPO-001', g.nextBadge() === 'EXPO-001', g.nextBadge());
+  g.attendees.push(...kept); }
+ok('the scanner is gone: no scan functions in the app', typeof g.openScanner === 'undefined' && typeof g.parseBadge === 'undefined' && typeof g.onScanText === 'undefined');
+g.state.regOpen = false;
 
 console.log('\n13. Screening inputs');
 g.resetDemo();
@@ -774,7 +817,6 @@ console.log('\n16. Every CSS class the markup uses actually exists');
   g.state.switchMode = 'volunteer'; g.openSwitcher(); grab($el('switcherList').innerHTML + $el('switcherFoot').innerHTML + $el('switcherHead').innerHTML);
   g.state.switchMode = 'visitor';
   g.openWhatsApp(); grab($el('waBody').innerHTML); g.buildPrintCard(); grab($el('printArea').innerHTML);
-  g.openScanner(); grab($el('scannerList').innerHTML);
   g.renderCloudBody(); grab($el('cloudBody').innerHTML);                         /* signed out, library not loaded */
   g.cloud.client = {}; g.renderCloudBody(); grab($el('cloudBody').innerHTML);    /* signed out, form */
   g.cloud.user = { email: 'a@b.c' }; g.renderCloudBody(); grab($el('cloudBody').innerHTML);   /* signed in */
@@ -944,16 +986,16 @@ function makeServer() {
     const tick = () => new Promise(r => setTimeout(r, 0));
     ok('app: the page boots as the Android app', booted && A.IS_APP === true);
     ok('web: the page does not think it is the app', g.IS_APP === false);
-    ok('web: the libraries still load from their pinned CDN addresses', typeof g.appCopyOf === 'function' && g.appCopyOf(g.SB_LIB) === g.SB_LIB && g.appCopyOf(g.H5Q) === g.H5Q && g.appCopyOf(g.QRJS) === g.QRJS);
+    ok('web: the sign-in library still loads from its pinned CDN address', typeof g.appCopyOf === 'function' && g.appCopyOf(g.SB_LIB) === g.SB_LIB);
 
     let srcs = [], sbEl = {};
     if (booted) {
-      A.loadScript(A.SB_LIB).catch(() => {}); A.loadScript(A.H5Q).catch(() => {}); A.loadScript(A.QRJS).catch(() => {});
+      A.loadScript(A.SB_LIB).catch(() => {});
       srcs = head.children.map(c => c.src);
       sbEl = head.children.find(c => c.src === 'vendor/supabase.min.js') || {};
     }
     ok('app: the sign-in library loads from the copy inside the app, with the same integrity check', !!A.SRI && sbEl.integrity === A.SRI[A.SB_LIB]);
-    ok('app: the scanner and QR libraries load from the copies inside the app', srcs.includes('vendor/html5-qrcode.min.js') && srcs.includes('vendor/qrcode.min.js') && !srcs.some(s => /^https:/.test(s)));
+    ok('app: no library loads from the internet inside the app', srcs.length > 0 && !srcs.some(s => /^https:/.test(s)), srcs.join());
     ok('app: sign-up and password emails link back to the web site, not to the app', booted && A.authRedirect() === 'https://winter-bonus-626a.ndlovufanelesibonge8.workers.dev/');
     ok('app: no service worker is registered inside the app', booted && swRegistered.length === 0);
     appBox.navigator.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)';
@@ -1134,7 +1176,9 @@ function makeServer() {
     g.resetDemo(); srv.reset();
   };
   const signIn = async (email = 'staff@example.org') => { srv.authCb('SIGNED_IN', { user: { id: 'user-1', email } }); await sleep(60); };
-  const registerLocal = (name, badge) => submitReg({ name, badge });
+  /* the sync tests need known numbers: register as a volunteer would, then give the new visitor the number the test uses */
+  const registerLocal = (name, badge) => { submitReg({ name }); const a = g.attendees.find(x => x.id === g.state.activeId && x.name === name);
+    if (a && badge) { a.id = badge; g.state.activeId = badge; } };
 
   /* mapping + seed detection */
   ok('attendee rows survive a database round trip',
@@ -1264,11 +1308,14 @@ function makeServer() {
   ok('a stale counter skips ids already on the device', new Set(g.volunteers.map(v => v.id)).size === g.volunteers.length);
   srv.tables.attendees.set('EXPO-502', { id: 'EXPO-502', name: 'Other Desk Lanyard', age: 33, sex: 'Female', phone: '', height_cm: 165, s: {}, interests: {}, prayer: '', done: false, created_at: 'z' });
   registerLocal('Fresh Local', 'EXPO-501');
-  registerLocal('Dup Local', 'EXPO-502');                                  /* same lanyard another desk just registered */
+  registerLocal('Dup Local', 'EXPO-502');                                  /* another desk gave out the same number a moment ago */
   g.persistNow(); await sleep(1500);
-  ok('lanyard clash: the other desk\'s visitor wins on the server', srv.tables.attendees.get('EXPO-502').name === 'Other Desk Lanyard');
-  ok('lanyard clash: this desk now shows that visitor', g.attendees.filter(a => a.id === 'EXPO-502').length === 1 && g.attendees.find(a => a.id === 'EXPO-502').name === 'Other Desk Lanyard');
-  ok('lanyard clash did not stop the rest uploading', srv.tables.attendees.has('EXPO-501'));
+  const dupLocal = g.attendees.find(a => a.name === 'Dup Local');
+  ok('number clash: the other desk\'s visitor keeps the number on the server', srv.tables.attendees.get('EXPO-502').name === 'Other Desk Lanyard');
+  ok('number clash: this desk\'s visitor moves to the next free number, and nothing is overwritten', !!dupLocal && dupLocal.id !== 'EXPO-502'
+    && srv.tables.attendees.has(dupLocal.id) && srv.tables.attendees.get(dupLocal.id).name === 'Dup Local', dupLocal && dupLocal.id);
+  ok('number clash: the moved visitor stays the open passport', !!dupLocal && g.state.activeId === dupLocal.id, g.state.activeId);
+  ok('number clash did not stop the rest uploading', srv.tables.attendees.has('EXPO-501'));
 
   /* rows the database refuses */
   device(); await signIn();
@@ -2382,8 +2429,8 @@ function makeServer() {
       ('${RA}', 'EXPO-992', 'Resurrected', 40, '{"sys":120,"dia":80}', '{"consent":true,"optin":false}', now() - interval '8 days')`);
     const stillGone = await sys(`select 1 from public.attendees where church_id = $1 and id = 'EXPO-992'`, [RA]);
     ok('7 days: …so the offline copy does not bring the visitor back', !back && stillGone.length === 0, back || 'came back');
-    /* the bug: nextBadge counts the visitors on the phone, so a new visitor can be given the badge number of a
-       visitor the purge deleted. That visitor must sync, readings and all. */
+    /* a number the purge freed can be given again (nextBadge counts up from the highest the phone still holds),
+       so a new visitor on a deleted visitor's number must sync, readings and all. */
     const reuse = await run(`insert into public.attendees (church_id, id, name, age, s, interests) values
       ('${RA}', 'EXPO-992', 'Same Badge, New Expo', 27, jsonb_build_object('sys', 130, 'dia', 85),
        jsonb_build_object('consent', true, 'optin', false, 'consentOn', '${day.d}'))`);
@@ -2497,7 +2544,6 @@ function makeServer() {
     g.openSwitcher(); look('switcher', $el('switcherList').innerHTML + $el('switcherHead').innerHTML);
     g.state.switchMode = 'volunteer'; g.openSwitcher(); look('volunteer switcher', $el('switcherList').innerHTML); g.state.switchMode = 'visitor';
     g.state.activeId = g.attendees[0].id; g.openWhatsApp(); look('WhatsApp', $el('waBody').innerHTML); g.buildPrintCard(); look('print card', $el('printArea').innerHTML);
-    g.openScanner(); look('scanner', $el('scannerList').innerHTML);
     const A = { id: 'ch-a', name: 'C' + X, city: X, phone: X, email: X, status: 'active' };
     C.acct = { user_id: 'u1', email: X, platform_admin: true, membership: { church_id: 'ch-a', role: 'admin', status: 'approved', full_name: X, phone: X, area: X, birth_date: null, attendee_id: 'EXPO-042' }, church: A };
     C.health = { id: 'EXPO-042', name: X, age: 40, sex: 'Male', height_cm: 170, s: { sys: 150, dia: 95 }, interests: {}, created_at: X };
@@ -2654,7 +2700,7 @@ function makeServer() {
   const swSrc = fs.readFileSync(path.join(rootDir, 'sw.js'), 'utf8');
   const constOf = n => (srcText.match(new RegExp("(?:const |,)" + n + "='([^']+)'")) || [])[1];
   const libsInSw = [...swSrc.matchAll(/'(https:\/\/[^']+\.js)'/g)].map(m => m[1]);
-  ok('service worker precaches exactly the libraries the page loads', JSON.stringify(libsInSw.sort()) === JSON.stringify([constOf('SB_LIB'), constOf('H5Q'), constOf('QRJS')].sort()), libsInSw.join());
+  ok('service worker precaches exactly the libraries the page loads', JSON.stringify(libsInSw.sort()) === JSON.stringify([constOf('SB_LIB')].sort()), libsInSw.join());
 
   /* run sw.js against fake service-worker globals and exercise its routing */
   const swCaches = new Map();
@@ -2691,7 +2737,7 @@ function makeServer() {
     swHandlers.fetch({ request: { method: 'GET', mode: 'cors', url, headers, ...rest }, respondWith: p => { out.handled = true; out.promise = p; } }); return out; };
   ok('service worker registers install, activate and fetch handlers', ['install', 'activate', 'fetch'].every(t => typeof swHandlers[t] === 'function'));
   await new Promise(res => swHandlers.install({ waitUntil: p => p.then(res) }));
-  ok('install caches the app shell and the three libraries', swCaches.get('newstart-shell-test1').has(keyOf('index.html')) && swCaches.get('newstart-libs-v2').size === 3, [...swCaches.keys()].join());
+  ok('install caches the app shell and the one library (sign-in)', swCaches.get('newstart-shell-test1').has(keyOf('index.html')) && swCaches.get('newstart-libs-v3').size === 1, [...swCaches.keys()].join());
   swCache('newstart-shell-old'); swCache('something-else');
   await new Promise(res => swHandlers.activate({ waitUntil: p => p.then(res) }));
   ok('activate deletes caches from older versions', !swCaches.has('newstart-shell-old') && !swCaches.has('something-else') && swCaches.has('newstart-shell-test1'), [...swCaches.keys()].join());
@@ -2831,8 +2877,7 @@ function makeServer() {
   const inlineOn = [html, ...fs.readdirSync(srcDir).filter(f => f.endsWith('.js')).map(f => fs.readFileSync(path.join(srcDir, f), 'utf8'))]
     .flatMap(t => t.match(/\son[a-z]+\s*=\s*["']/gi) || []);
   ok('no inline on…= handler is left in the page or its templates', inlineOn.length === 0, inlineOn.join(' '));
-  ok('Enter in the typed-badge field opens it: the field sits in a form that runs manualGo',
-    /<form data-action="manualGo"[^>]*>\s*(?:<!--[^>]*-->\s*)?<input id="manualBadge"/.test(html));
+  ok('the page has no scanner left: no scan dialog, camera view or typed-badge field', !/scannerModal|camVideo|manualBadge|openScanner/.test(html));
   /* the Android app packages dist/index.html, so its build must rebuild dist/ first */
   const signPs = fs.readFileSync(path.join(rootDir, 'tools', 'sign-app.ps1'), 'utf8');
   const iBuild = signPs.indexOf("tools\\build.js'"), iApp = signPs.indexOf("tools\\build-app.js'");
@@ -2999,12 +3044,6 @@ function makeServer() {
   ok('with no visitors the Screen tab shows the empty state, not a follow-up card', $main.innerHTML.includes('No visitor selected') && !$main.innerHTML.includes('prayerNote'));
   g.resetDemo();
 
-  /* scanner demo shortcut only exists in demo mode */
-  C.mode = false; C.user = null; g.openScanner();
-  ok('demo mode: the simulate-a-scan list is shown', $el('scanDemo').style.display === '');
-  C.mode = true; g.openScanner();
-  ok('connected: the simulate-a-scan list (real names) is hidden', $el('scanDemo').style.display === 'none');
-  C.mode = false;
 
   /* service worker never hands out a redirected response */
   const redirected = new Response('page', { status: 200 }); Object.defineProperty(redirected, 'redirected', { value: true });
@@ -3204,11 +3243,11 @@ function makeServer() {
   g.chooseFollowup('');
   ok('…and None clears it', !cpDav.interests.followUp && !cpDav.interests.followUpName && !/🤝/.test(g.waMessage(cpDav)));
   g.state.tab = 'plan'; g.render();
-  /* a visitor with no badge scanned or typed gets the next free number */
+  /* every visitor gets the next free number */
   const nextNo = g.nextBadge(), countWas = g.attendees.length;
   g.state.tab = 'home'; g.state.regOpen = true;
   $el('rgName').value = 'No Badge Visitor'; $el('rgAge').value = '52'; $el('rgSex').value = 'Female';
-  $el('rgPhone').value = ''; $el('rgEmail').value = ''; $el('rgHeight').value = ''; $el('rgBadge').value = ''; $el('rgConsent').checked = true;
+  $el('rgPhone').value = ''; $el('rgEmail').value = ''; $el('rgHeight').value = ''; $el('rgConsent').checked = true;
   g.registerSubmit({ preventDefault() {} });
   const noBadge = g.attendees.find(a => a.name === 'No Badge Visitor');
   ok('a visitor registered with no badge gets the next free number at once', !!noBadge && noBadge.id === nextNo && g.attendees.length === countWas + 1, nextNo + ' ' + (noBadge && noBadge.id));

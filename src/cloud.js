@@ -1,8 +1,6 @@
 // @ts-check
 import { APP_SITE, IS_APP } from './platform.js';
-import { QRJS } from './scanner.js';
 import { $ } from './helpers.js';
-import { H5Q } from './scanner.js';
 import { cloud, migrateAttendee, migrateVolunteer, storageFull } from './state.js';
 import { SEED, SEED_VOL, attendees, state, volunteers } from './data.js';
 import { ACCT_GATES, acctButtons, acctGate, acctGateHTML, churchSearch, cloudInit, cloudRefresh, profileChanged } from './account.js';
@@ -26,16 +24,14 @@ import { qSafe, qs } from './queue.js';
 export const SB_URL='https://wlsrgihkijlvjyfxvhfl.supabase.co';
 export const SB_KEY='sb_publishable_mA_jEgF_t1sRrnfAgM-1eg_wNdvgQYG';
 export const SB_LIB='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js';
-/* Subresource Integrity (sha384) of the three pinned libraries. Changing a library version means recomputing its hash:
+/* Subresource Integrity (sha384) of the pinned sign-in library. Changing a library version means recomputing its hash:
    curl -sL <url> | openssl dgst -sha384 -binary | openssl base64 -A   and prefixing it with sha384- */
 export const SRI={
  [SB_LIB]:'sha384-GFr3yTh5lJznCbZfpTtXnwboFsxqtTQoeTZCRHhE0579KrRmlCzen5AA8ohaB5ug',
- [H5Q]:'sha384-c9d8RFSL+u3exBOJ4Yp3HUJXS4znl9f+z66d1y54ig+ea249SpqR+w1wyvXz/lk+',
- [QRJS]:'sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU',
 };
-/* Inside the Android app the libraries are bundled (tools/build-app.js copies them and refuses any whose bytes do not
+/* Inside the Android app the library is bundled (tools/build-app.js copies them and refuses any whose bytes do not
    match the hash above), so the app needs no internet to start. The integrity check still applies to the copy. */
-const APP_LIB={[SB_LIB]:'vendor/supabase.min.js',[H5Q]:'vendor/html5-qrcode.min.js',[QRJS]:'vendor/qrcode.min.js'};
+const APP_LIB={[SB_LIB]:'vendor/supabase.min.js'};
 export function appCopyOf(src){return IS_APP&&APP_LIB[src]||src;}
 export const SYNC_KEY='newstart.cloud.v1';
 

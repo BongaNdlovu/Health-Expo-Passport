@@ -77,7 +77,7 @@ const SECURITY = ['/*',
   '  X-Content-Type-Options: nosniff',
   '  X-Frame-Options: DENY',
   '  Referrer-Policy: strict-origin-when-cross-origin',
-  '  Permissions-Policy: camera=(self), microphone=(), geolocation=(), payment=()',
+  '  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()',
   '  Strict-Transport-Security: max-age=31536000'];
 
 /* Cloudflare Pages / Netlify: stop the service worker and the page being cached by the CDN for long */

@@ -1,16 +1,13 @@
 // @ts-check
 import { IS_APP } from './platform.js';
-import { QRJS } from './scanner.js';
 import { BADGE_TIERS, STATUS_UI } from './data.js';
 import { $, FOOD_PRICES } from './helpers.js';
-import { setStatus } from './scanner.js';
 import { AVAIL, BOOTH, BOOTHS, DISCLAIMER, EXPO_UPCOMING, PRECAUTIONS, SKILLS, attendees, boothHue, boothLabel, hueOf, planBooks, planCredit, state, volunteers } from './data.js';
 import { A, PRICE_DATE, bmi, costOf, esc, firstName, fmt1, healthAge, initials, money, pefPct, projection, simBP } from './helpers.js';
 import { render, toast } from './shell.js';
 import { LIST_CAP, switchTab, visitorsToShow } from './visitor.js';
 import { migrateVolunteer, persist } from './state.js';
 import { downloadCSV, foodKeyOf, planFor, shortFood } from './results.js';
-import { loadScript, parseBadge, stopCamera } from './scanner.js';
 import { validEmail } from './cloud.js';
 import { GRACE_DAYS, withoutOldReadings } from './retention.js';
 /* Volunteers: pledge, register, booth picker, serve, modals, WhatsApp/email share and the print card. Split from the original single-file app; bundled back into one file by tools/build.js. */
@@ -29,6 +26,10 @@ import { GRACE_DAYS, withoutOldReadings } from './retention.js';
 export const AV=()=>state.volNew?null:(volunteers.find(v=>v.id===state.volId)||volunteers[0]||null);
 export const volHours=v=>(v.history||[]).reduce((t,h)=>t+(Number(h.hours)||0),0);
 export const volExpos=v=>(v.history||[]).length;
+/* The level counts expos served, one level per expo, and stops growing at 50.
+   A volunteer with 0 expos has no level — 0 must never display as one. */
+export const VOL_LEVEL_MAX=50;
+export const volLevel=v=>{const e=volExpos(v);return e>0?Math.min(e,VOL_LEVEL_MAX):0;};
 export const volYears=v=>v.since?Math.max(0,new Date().getFullYear()-Number(String(v.since).slice(0,4))):0;
 export const needsRegistration=v=>v.status==='prospect';
 const checkedInToday=v=>v.status==='checkedin'||v.checkedIn===true;
@@ -70,14 +71,18 @@ function starGlyph(n,size){
  const s='<svg viewBox="0 0 24 24" style="width:'+size+';height:'+size+'" fill="currentColor"><path d="M12 2.6l2.95 5.98 6.6.96-4.77 4.65 1.12 6.57L12 17.66l-5.9 3.1 1.12-6.57L2.45 9.54l6.6-.96L12 2.6z"/></svg>';
  return `<span class="stars">${s.repeat(n)}</span>`;
 }
-/* The medal is the visual badge: tier colour + years of service + stars. */
+/* The medal is the visual badge: tier colour + the volunteer's level (expos served,
+   1–50) + the medal rank and its stars. With no expos there is no number to show —
+   the circle reads – and the rank alone is shown, never "Lv 0". */
 export function medalHTML(v,small){
- const t=badgeTier(v);
- if(small)return `<span class="medal medal-sm hue-${t.hue}" title="${esc(t.name)}"><span class="medal-v"><b class="medal-lv">${t.n}</b></span></span>`;
+ const t=badgeTier(v),lv=volLevel(v);
+ if(small)return `<span class="medal medal-sm hue-${t.hue}" title="${esc(t.name)}"><span class="medal-v"><b class="medal-lv">${lv||'–'}</b></span></span>`;
  return `<span class="medal hue-${t.hue}" role="img" aria-label="${esc(t.name)}">
-  <span class="medal-v"><b class="medal-lv">${t.n}</b><span class="medal-rk">${esc(t.short)}</span>${starGlyph(t.stars,'7px')}</span></span>`;
+  <span class="medal-v"><b class="medal-lv">${lv||'–'}</b><span class="medal-rk">${esc(t.short)}</span>${starGlyph(t.stars,'7px')}</span></span>`;
 }
-const rankPill=v=>{const t=badgeTier(v);return `<span class="rankpill hue-${t.hue}">${esc(t.name)}</span>`;};
+const rankPill=v=>{const t=badgeTier(v);return `<span class="rankpill hue-${t.hue}">${esc(t.name)}</span>;`};
+/* Compact pill: "Lv 4 · Silver" once there is a level, just the rank before it. */
+const lvPill=v=>{const t=badgeTier(v),lv=volLevel(v);return lv?`Lv ${lv} · ${esc(t.short)}`:esc(t.short);};
 
 /* ---------- shared bits ---------- */
 /* local calendar date as YYYY-MM-DD (toISOString is UTC, which is yesterday for the first hours of a South African day) */
@@ -181,7 +186,7 @@ function viewVolPledge(){
      <div class="microlabel">${esc(firstName(AV().name))}’s badge</div>
      <div class="display mt-0.5 truncate text-[15px] font-extrabold text-[#0f2a2c]">${esc(v.name)}</div>
      <div class="mt-1 flex flex-wrap items-center gap-1.5">
-      <span class="rankpill hue-${badgeTier(v).hue}">Lv ${badgeTier(v).n} · ${esc(badgeTier(v).short)}</span>
+      <span class="rankpill hue-${badgeTier(v).hue}">${lvPill(v)}</span>
       <span class="servechip ${STATUS_UI[v.status].cls}">${STATUS_UI[v.status].label}</span>
      </div>
     </div>
@@ -313,7 +318,7 @@ export function volRow(v,confirmed){
    <span class="block truncate text-[12px] font-bold text-[#123033]">${esc(v.name)}</span>
    <span class="mt-0.5 flex flex-wrap items-center gap-1">
     <span class="servechip ${STATUS_UI[v.status].cls}">${STATUS_UI[v.status].label}</span>
-    <span class="rankpill hue-${t.hue}">Lv ${t.n}</span>
+    <span class="rankpill hue-${t.hue}">${volLevel(v)?`Lv ${volLevel(v)}`:esc(t.short)}</span>
     ${confirmed?`<span class="text-[9.5px] font-bold text-[#6b8187]">${esc(boothLabel(v.booth))}</span>`
                :`<span class="text-[9.5px] font-bold text-[#6b8187]">wants ${esc(boothLabel((v.pref||[])[0]||''))}</span>`}
    </span>
@@ -351,7 +356,7 @@ function viewVolBooth(){
 
   <div class="glass hue-tint hue-${boothHue(v.booth)} p-4">
    <div class="flex items-start gap-3">
-    <span class="medal hue-${badgeTier(v).hue}"><span class="medal-v"><b class="medal-lv">${badgeTier(v).n}</b><span class="medal-rk">${esc(badgeTier(v).short)}</span>${starGlyph(badgeTier(v).stars,'7px')}</span></span>
+     <span class="medal hue-${badgeTier(v).hue}"><span class="medal-v"><b class="medal-lv">${volLevel(v)||'–'}</b><span class="medal-rk">${esc(badgeTier(v).short)}</span>${starGlyph(badgeTier(v).stars,'7px')}</span></span>
     <div class="min-w-0 flex-1">
      <div class="microlabel">${esc(v.role||'Volunteer')}</div>
      <div class="display mt-0.5 truncate text-[16px] font-extrabold text-[#0f2a2c]">${esc(v.name)}</div>
@@ -463,7 +468,7 @@ function viewVolRecord(){
     <div class="min-w-0 flex-1">
      <div class="text-[10px] font-extrabold uppercase tracking-wider" style="color:var(--ink)">Badge ${t.n} of ${BADGE_TIERS.length-1}</div>
      <div class="display mt-0.5 text-[16px] leading-tight font-extrabold text-[#0f2a2c]">${esc(t.name)}</div>
-     <div class="mt-1 text-[10px] font-bold text-[#5b7178]">Volunteering since ${esc(String(v.since||'—').slice(0,4))} · ${volYears(v)} yr${volYears(v)===1?'':'s'}</div>
+     <div class="mt-1 text-[10px] font-bold text-[#5b7178]">${volLevel(v)?`Level ${volLevel(v)} of ${VOL_LEVEL_MAX} · `:''}Volunteering since ${esc(String(v.since||'—').slice(0,4))} · ${volYears(v)} yr${volYears(v)===1?'':'s'}</div>
      ${t.stars?`<div class="mt-1 flex gap-0.5 text-[#bf9a40]">${'★'.repeat(t.stars)}<span class="text-[#c9d3d6]">${'★'.repeat(5-t.stars)}</span></div>`:''}
     </div>
    </div>
@@ -727,27 +732,6 @@ export function exportVolCSV(){
  downloadCSV(rows,'newstart-volunteers.csv','Volunteer roster exported ✓');
 }
 
-export function onScanText(raw){
- if(state.scanLock)return;
- const code=parseBadge(raw);
- if(!code){setStatus('Not a Health Expo badge (“'+String(raw).slice(0,22)+'…”)');return;}
- state.scanLock=true;
- stopCamera();hideModal('#scannerModal');
- activateBadge(code);
- setTimeout(()=>{state.scanLock=false;},700);
-}
-export function demoScan(id){onScanText(id);}
-export function manualGo(){
- const el=$('#manualBadge');const code=parseBadge(el.value);
- if(!code){toast('Type a badge like EXPO-042');return;}
- el.value='';onScanText(code);
-}
-export function activateBadge(code){
- const a=attendees.find(x=>x.id===code);
- if(!a&&state.regOpen&&$('#rgBadge')){$('#rgBadge').value=code;toast('Badge '+code+' added to the form ✓');return;}
- if(a){state.activeId=code;state.sugFor=null;state._goal=null;render();toast(`${code} · ${firstName(a.name)} ✓`);switchTab('screen');}
- else{state.pendingBadge=code;state.regOpen=true;state.sugFor=null;render();toast('New lanyard '+code+' — complete registration');switchTab('home');}
-}
 
 /* ================= MODALS ================= */
 export function showModal(sel){const el=$(sel);clearTimeout(el._t);el.classList.remove('hidden','is-closing');el.classList.add('flex');}
@@ -810,7 +794,7 @@ function volSwitcherHTML(query){
    <span class="flex h-9 w-9 flex-none items-center justify-center rounded-full text-[11px] font-extrabold ${act?'av':'tint'} hue-${t.hue}">${initials(v.name)}</span>
    <span class="min-w-0 flex-1"><span class="block truncate text-[13px] font-bold">${esc(v.name)}</span>
     <span class="mt-0.5 flex flex-wrap items-center gap-1"><span class="servechip ${STATUS_UI[v.status].cls}">${STATUS_UI[v.status].label}</span>
-     <span class="mono text-[9.5px] font-bold text-[#6b8187]">Lv ${t.n} · ${volExpos(v)} expos</span></span></span>
+     <span class="mono text-[9.5px] font-bold text-[#6b8187]">${volLevel(v)?`Lv ${volLevel(v)} · ${volExpos(v)} expo${volExpos(v)===1?'':'s'}`:'No expos yet'}</span></span></span>
    ${act?'<svg class="h-5 w-5 flex-none text-brand-600" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>':''}
   </button>`}).join('');
 }
@@ -853,7 +837,7 @@ function renderVolModal(){
   </div>`;
 }
 export function pickAttendee(id){state.activeId=id;state.sugFor=null;state._goal=null;closeSwitcher();render();toast(`Now serving ${firstName(A().name)} · ${id}`);}
-export function registerNew(){closeSwitcher();state.pendingBadge=null;state.regOpen=true;switchTab('home');}
+export function registerNew(){closeSwitcher();state.regOpen=true;switchTab('home');}
 export function openWAFor(id){state.activeId=id;state.sugFor=null;state._goal=null;render();openWhatsApp();}
 /* the paper-record readings that were taken, for the message the visitor keeps */
 function paperLines(a){
@@ -904,7 +888,7 @@ function waFootHTML(kind){
  return kind==='mail'
   ?`<button data-action="closeWhatsApp" class="btn btn-glass flex-1 py-2.5 text-[11px] text-[#5b7178]">Back</button>
     <button data-action="sendEmail" class="btn btn-primary flex-1 py-2.5 text-[11px] text-white">Send by email →</button>`
-  :`<button data-action="recycleBadge" class="btn btn-glass flex-1 py-2.5 text-[11px] text-[#5b7178]">Recycle badge</button>
+  :`<button data-action="recycleBadge" class="btn btn-glass flex-1 py-2.5 text-[11px] text-[#5b7178]">Finish visit</button>
     <button data-action="sendWhatsApp" class="btn flex-1 py-2.5 text-[11px] text-white"
      style="background:linear-gradient(135deg,#25D366,#1aa851);box-shadow:0 12px 24px -14px rgba(37,211,102,.9)">Send in WhatsApp →</button>`;
 }
@@ -1048,16 +1032,10 @@ async function sendEmailInApp(href,msg,savedTo){
 export function recycleBadge(){
  const a=attendees.find(x=>x.id===state.activeId);if(!a){closeWhatsApp();return;}
  a.done=true;closeWhatsApp();render();switchTab('home');
- toast(`Badge ${a.id} recycled for the next visitor ✓`);
+ toast(`${a.id} finished ✓ Ready for the next visitor`);
 }
 
 /* ================= A6 PRINT CARD ================= */
-function ensureQrLib(){
- return new Promise(res=>{
-  if(window.QRCode)return res(undefined);
-  loadScript(QRJS).then(()=>res(undefined)).catch(()=>res(undefined));
- });
-}
 export function buildPrintCard(){
  const a=withoutOldReadings(A()),ha=healthAge(a),{sys,dia}=simBP(a),proj=projection(a),P=planFor(a),pk=P.pk,p=P.p;
  const date=new Date().toLocaleDateString('en-ZA',{day:'numeric',month:'short',year:'numeric'});
@@ -1070,7 +1048,6 @@ export function buildPrintCard(){
     <div><div class="pc-brand">Health Expo Passport</div><div class="pc-sub">SDA Community Health Expo</div>
      <div class="pc-name">${esc(a.name)}</div>
      <div class="pc-meta">${esc(a.id)} · ${a.age}y ${esc(a.sex)} · ${date}</div></div>
-    <div class="pc-qr" id="pcQr"></div>
    </div>
   </div>
   <div class="pc-body">
@@ -1094,11 +1071,6 @@ export function buildPrintCard(){
    </div>
   </div>
  </div>`;
- const qrHost=document.getElementById('pcQr');
- if(qrHost){
-  if(window.QRCode){new QRCode(qrHost,{text:a.id,width:72,height:72,correctLevel:QRCode.CorrectLevel.L});}
-  else qrHost.innerHTML=`<div class="pc-qr-fallback">${esc(a.id)}</div>`;
- }
  fitPrintCard();
 }
 /* The card is a fixed A6 size and cuts off whatever does not fit, which would lose the safety note at the bottom.
@@ -1109,21 +1081,17 @@ function fitPrintCard(){
  for(const cls of ['pc-fit1','pc-fit2']){if(c.scrollHeight<=c.clientHeight+1)break;c.classList.add(cls);}
  pa.style.cssText=old;
 }
-export async function printCard(){
+export function printCard(){
  if(!attendees.length){toast('Register a visitor first');return;}
- await ensureQrLib();
  buildPrintCard();
  if(IS_APP){printCardInApp();return;}
  document.body.classList.add('print-mode');
  window.print();
 }
 /* Android app: the card (with only its own .pc-* styles) goes to the CardPrinter plugin, which prints it through the
-   phone's print service on an A6 page. The QR code is drawn on a canvas, which does not survive copying the HTML, so
-   it travels as a picture. */
+   phone's print service on an A6 page. */
 function printCardInApp(){
  const pa=$('#printArea');
- pa.querySelectorAll('.pc-qr').forEach(q=>{const c=q.querySelector('canvas');if(!c||!c.toDataURL)return;
-  try{const u=c.toDataURL('image/png');q.innerHTML='';const i=document.createElement('img');i.src=u;i.alt='';q.appendChild(i);}catch(e){}});
  const css=[...(document.styleSheets||[])].flatMap(s=>{try{return [...(/** @type {CSSStyleSheet} */ (s)).cssRules];}catch(e){return [];}})
   .filter(r=>r instanceof CSSStyleRule&&r.selectorText.includes('.pc-')).map(r=>r.cssText).join('\n');
  const html=`<!doctype html><html><head><meta charset="utf-8"><style>@page{size:105mm 148mm;margin:0}html,body{margin:0;background:#fff}${css}</style></head><body>${pa.innerHTML}</body></html>`;
