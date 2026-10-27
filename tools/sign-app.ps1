@@ -65,6 +65,9 @@ $env:JAVA_HOME = $jdk; $env:ANDROID_HOME = $sdk; $env:ANDROID_SDK_ROOT = $sdk
 $tools = Get-ChildItem (Join-Path $sdk 'build-tools') -Directory | Sort-Object Name -Descending | Select-Object -First 1
 if (-not $tools) { throw "No Android build-tools found in $sdk" }
 
+# build the web page first: build-app.js packages dist/index.html, so a stale dist/ would ship an old app
+& node (Join-Path $root 'tools\build.js')
+if ($LASTEXITCODE -ne 0) { throw 'tools/build.js failed' }
 # the app's own files: the same page as the web site, plus the bundled libraries (hash-checked) and fonts
 & node (Join-Path $root 'tools\build-app.js')
 if ($LASTEXITCODE -ne 0) { throw 'tools/build-app.js failed' }

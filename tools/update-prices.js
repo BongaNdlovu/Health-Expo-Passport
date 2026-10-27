@@ -18,7 +18,7 @@ const args = process.argv.slice(2);
 const dateIx = args.indexOf('--date');
 const DATE = dateIx >= 0 ? args.splice(dateIx, 2)[1] : '19 Oct 2026';
 const csvPath = args[0] || path.join(root, 'prices', 'prices.csv');
-const HTML = ['index.html', 'newstart-passport (2).html'].map(f => path.join(root, f)).filter(f => fs.existsSync(f));
+const HTML = ['src/helpers.js'].map(f => path.join(root, f)).filter(f => fs.existsSync(f));   // FOOD_PRICES lives in the helpers module now
 
 /* daily amount behind each item (the dose on screen turned into grams or units); `price` = prices.csv item numbers */
 const ITEMS = {

@@ -1,7 +1,8 @@
 /* Builds the files the Android app carries inside it:   node tools/build-app.js   →   capacitor/www/
-   The app is the same page as the web site (index.html), plus the copies it needs to work with no internet:
-   the three libraries and the fonts from vendor/. A library is copied only when its bytes match the integrity hash
-   (SRI) pinned in index.html, so the app can never carry a different version from the audited one.
+   The app is the same built page as the web site (dist/index.html — run tools/build.js first), plus the copies
+   it needs to work with no internet: the three libraries and the fonts from vendor/. A library is copied only
+   when its bytes match the integrity hash (SRI) pinned in the page, so the app can never carry a different
+   version from the audited one.
    Then run  npx cap sync android  in capacitor/  (tools/sign-app.ps1 does both and signs the result). */
 const fs = require('fs');
 const path = require('path');
@@ -10,12 +11,13 @@ const crypto = require('crypto');
 const root = path.join(__dirname, '..');
 const www = path.join(root, 'capacitor', 'www');
 const vendor = path.join(root, 'vendor');
-const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+const html = fs.readFileSync(path.join(root, 'dist', 'index.html'), 'utf8');
 
-/* the library addresses and their pinned hashes, read from index.html itself */
-const constOf = n => (html.match(new RegExp("(?:const |,)" + n + "='([^']+)'")) || [])[1];
-const sriOf = n => (html.match(new RegExp('\\[' + n + "\\]:'(sha384-[^']+)'")) || [])[1];
-const appOf = n => (html.match(new RegExp('\\[' + n + "\\]:'(vendor/[^']+)'")) || [])[1];
+/* the library addresses and their pinned hashes, read from the built page itself (esbuild's formatting:
+   var name = "value", object keys as [NAME]: "value" — accept either quote style) */
+const constOf = n => (html.match(new RegExp("(?:var |const |,)" + n + " ?= ?['\"]([^'\"]+)['\"]")) || [])[1];
+const sriOf = n => (html.match(new RegExp('\\[' + n + "\\] ?:\\s*['\"](sha384-[^'\"]+)['\"]")) || [])[1];
+const appOf = n => (html.match(new RegExp('\\[' + n + "\\] ?:\\s*['\"](vendor/[^'\"]+)['\"]")) || [])[1];
 const LIBS = ['SB_LIB', 'H5Q', 'QRJS'];
 
 const problems = [];

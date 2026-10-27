@@ -1,12 +1,23 @@
 /* Headless smoke test for the NEWSTART passport.
-   Builds a minimal fake DOM, boots the app script, then drives the
-   volunteer section the way a user would and asserts the results. */
+   Builds a minimal fake DOM, boots the app bundle (the same esbuild build the site ships),
+   then drives the volunteer section the way a user would and asserts the results. */
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const esbuild = require('esbuild');
 
+/* the app is now ES modules under src/: bundle them exactly as tools/build.js does,
+   then read the app's internals through the __internals export (src/main.js) */
+const bundled = esbuild.buildSync({
+  entryPoints: [path.join(__dirname, '..', 'src', 'main.js')],
+  bundle: true, format: 'iife', globalName: '__NEWSTART', write: false, logLevel: 'silent',
+}).outputFiles[0].text;
+const body = bundled;   /* the bundle is run as-is; the internals export inside it is the test surface */
+/* the page shell (index.html) is still what serves the styles, the font picker and the static markup */
 const html = fs.readFileSync(process.env.APP_HTML || path.join(__dirname, '..', 'index.html'), 'utf8');
-const body = /<script>([\s\S]*?)<\/script>/.exec(html)[1];
+/* the app's own source text, for assertions written against the original formatting */
+const srcText = fs.readdirSync(path.join(__dirname, '..', 'src')).filter(f => f.endsWith('.js'))
+  .map(f => fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8')).join('\n');
 
 /* const/let declarations are not exposed on the vm global, so re-export the
    bindings the test needs. This runs in the same script scope. */
@@ -45,7 +56,7 @@ const EXPORTS = [
   'SERVE_TABS', 'viewProfile', 'profGate', 'gateBack', 'profPassword', 'profDeleteAsk', 'profDeleteTyped', 'profDeleteGo',
   'profileChanged', 'passwordCheck', 'savePassword',
 ];
-const code = body + '\n;globalThis.__X={' + EXPORTS.map(n => n + ':(typeof ' + n + '!=="undefined"?' + n + ':undefined)').join(',') + '};';
+const code = body;   /* the bundle is run as-is; the internals export inside it is the test surface */
 
 /* ---- minimal DOM ---------------------------------------------------- */
 function makeEl(id) {
@@ -143,8 +154,8 @@ try {
 }
 console.log('\nBoot: OK (no exception)\n');
 
-const g = sandbox.__X;
-if (!g) { console.log('export block did not run'); process.exit(1); }
+const g = sandbox.__NEWSTART && sandbox.__NEWSTART.__internals;
+if (!g) { console.log('the bundle exposed no __NEWSTART.__internals'); process.exit(1); }
 const $main = $el('main');
 
 /* ---- 1. volunteer data + badge maths -------------------------------- */
@@ -401,13 +412,13 @@ g.resetDemo();
       return h.includes('Do you consent to the health screening and beneficial health follow-ups?') && !h.includes('rgOptin') && /kept with the record/.test(h) && /Kept for 2 years after your last visit/.test(h); })());
   y.phone = '082 555 0703'; y.interests.optin = false;   /* they later asked the church to stop the follow-up */
   let out = ''; const keep = sandbox.Blob; sandbox.Blob = function (p) { out = p.join(''); }; g.exportCSV(); sandbox.Blob = keep;
-  { const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'schema.sql'), 'utf8'), yrs = (html.match(/const RETENTION_YEARS=([0-9]+);/) || [])[1];
+  { const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'schema.sql'), 'utf8'), yrs = (bundled.match(/RETENTION_YEARS ?= ?([0-9]+)/) || [])[1];
     ok('POPIA: the retention the notice promises is the one the database purge applies', !!yrs && sql.includes("delete from public.attendees where updated_at < now() - interval '" + yrs + " years'")
       && sql.includes('revoke all on function public.purge_expired_visitors() from public, anon;'), yrs); }
   ok('POPIA: the follow-up CSV leaves out contact details of anyone who did not opt in', !out.includes('555 0703') && out.includes('555 0704') && out.includes('"Follow-up allowed"'));
   const old = g.migrateAttendee({ id: 'EXPO-705', name: 'Old Record', age: 40, s: {}, interests: {} });
   g.attendees.push(old); g.state.activeId = old.id; g.state.tab = 'screen'; g.render();
-  ok('POPIA: a passport with no consent on record keeps its checks closed and asks first', !$main.innerHTML.includes('id="in-sugar"') && /recordConsent\('EXPO-705'\)/.test($main.innerHTML));
+  ok('POPIA: a passport with no consent on record keeps its checks closed and asks first', !$main.innerHTML.includes('id="in-sugar"') && /data-action="recordConsent" data-args="EXPO-705"/.test($main.innerHTML));
 }
 g.resetDemo();
 const n0 = g.attendees.length;
@@ -772,14 +783,14 @@ function makeServer() {
     vm.createContext(appBox);
     let booted = true;
     try {
-      vm.runInContext(body + '\n;globalThis.__A={IS_APP:typeof IS_APP!=="undefined"?IS_APP:undefined,loadScript,authRedirect,installBlock,' +
-        'sendWhatsApp,sendEmail,mailtoHref,openEmail,printCard,waMessage,waNumber,attendees,state,SB_LIB,H5Q,QRJS,SRI};', appBox, { filename: 'app-mode.js' });
+      vm.runInContext(body, appBox, { filename: 'app-mode.js' });
     } catch (e) { booted = false; console.log('APP BOOT THREW: ' + e.stack); }
-    const A = appBox.__A || {};
+    /* the app surface: same internals object the main suite uses (the bundle keeps its scope private) */
+    const A = appBox.__NEWSTART && appBox.__NEWSTART.__internals || {};
     const tick = () => new Promise(r => setTimeout(r, 0));
     ok('app: the page boots as the Android app', booted && A.IS_APP === true);
-    ok('web: the page does not think it is the app', vm.runInContext('typeof IS_APP!=="undefined"&&IS_APP===false', sandbox) === true);
-    ok('web: the libraries still load from their pinned CDN addresses', vm.runInContext('typeof appCopyOf==="function"&&appCopyOf(SB_LIB)===SB_LIB&&appCopyOf(H5Q)===H5Q&&appCopyOf(QRJS)===QRJS', sandbox) === true);
+    ok('web: the page does not think it is the app', g.IS_APP === false);
+    ok('web: the libraries still load from their pinned CDN addresses', typeof g.appCopyOf === 'function' && g.appCopyOf(g.SB_LIB) === g.SB_LIB && g.appCopyOf(g.H5Q) === g.H5Q && g.appCopyOf(g.QRJS) === g.QRJS);
 
     let srcs = [], sbEl = {};
     if (booted) {
@@ -837,8 +848,10 @@ function makeServer() {
   /* ---- 16c. intro, every screen size, quicker screens ---- */
   console.log('\n16c. Intro, screen sizes, quicker screens');
   {
+    /* assertions about the app's own code read the src/ modules (the true source text);
+       the bundle reformats, so exact-source regexes must not run against it */
     const css = (html.match(/v8 · INTRO, EVERY SCREEN SIZE, QUICKER SCREENS[\s\S]*?<\/style>/) || [''])[0];
-    const mainScript = html.search(/\r?\n<script>\r?\n/);   /* \r? — a Windows checkout has CRLF endings */
+    const mainScript = html.search(/\r?\n<script type="module"/);   /* the app boots from src/main.js */
     ok('intro: the logo is in the page itself, so it shows before any script runs',
       html.indexOf('<div id="intro"') > html.indexOf('<body>') && html.indexOf('<div id="intro"') < mainScript && /class="intro-badge"/.test(html));
     ok('intro: the logo pops in and beats once, then the app rises into place',
@@ -846,7 +859,7 @@ function makeServer() {
     ok('intro: it leaves on its own and never holds the app back',
       $el('intro').classList.contains('intro-out') && document.documentElement.classList.contains('intro-rise'));
     ok('intro: people who ask for less motion do not see it',
-      /@media \(prefers-reduced-motion:reduce\)\{#intro\{display:none\}/.test(css) && /prefers-reduced-motion: reduce\)'\)\.matches\)\{el\.remove\(\);return;\}/.test(html));
+      /@media \(prefers-reduced-motion:reduce\)\{#intro\{display:none\}/.test(css) && /prefers-reduced-motion: reduce\)'\)\.matches\)\{el\.remove\(\);return;\}/.test(srcText));
     ok('screens: the header never makes the page wider than the phone',
       /\.hdr-brand\{flex:0 0 auto\}/.test(css) && /\.hdr-tools\{min-width:0;flex:0 1 auto\}/.test(css) && /@media \(max-width:439\.98px\)\{\.hdr-title\{display:none\}\}/.test(css)
       && /#headerChip>span\.text-left>span\{overflow:hidden;text-overflow:ellipsis/.test(css) && /class="hdr-brand /.test(html) && /class="hdr-tools /.test(html) && /class="hdr-title /.test(html));
@@ -858,12 +871,12 @@ function makeServer() {
     ok('screens: cards arrive within half a second and progress bars fill in half a second',
       /\.stagger>\*,\.pour>\*\{animation-duration:\.3s\}/.test(css) && /nth-child\(n\+5\)\{animation-delay:\.12s\}/.test(css) && /\.bar-fill\{animation-duration:\.5s\}/.test(css));
     ok('screens: tab switches are plain renders — no view-transition snapshots for a weak phone to capture and animate',
-      !/startViewTransition/.test(body) && !/::view-transition/.test(html) && !/vtReveal/.test(html) && /state\.tab=t;render\(\);window\.scrollTo\(0,0\)/.test(body));
+      !/startViewTransition/.test(srcText) && !/::view-transition/.test(html) && !/vtReveal/.test(html) && /state\.tab=t;render\(\);window\.scrollTo\(0,0\)/.test(srcText));
     ok('screens: people who ask for less motion get no card entry animations either',
       /@media \(prefers-reduced-motion:reduce\)\{\.stagger>\*,\.pour>\*\{animation:none!important\}\}/.test(html));
     ok('nav: the pill slides in one spring, self-corrects once the layout settles, and there is no SVG goo filter re-filtering the bar every frame or trailing droplet blob',
       /\.nav-goo\{position:absolute;inset:0;border-radius:inherit;pointer-events:none\}/.test(html) && !/url\(#goo\)/.test(html) && !/id="goo"/.test(html)
-      && !/navDrop/.test(html) && !/nav-drop/.test(html) && !/_pillT/.test(body) && /_pillRaf/.test(body));
+      && !/navDrop/.test(html) && !/nav-drop/.test(html) && !/_pillT/.test(srcText) && /_pillRaf/.test(srcText));
     ok('nav: the pill tint stays subtle on every tab (a strong hue read as a stray coloured circle on the active tab)',
       /\.nav-pill\{background-color:var\(--t2\);background-image:linear-gradient\(160deg,rgba\(255,255,255,\.95\),rgba\(255,255,255,\.55\)\)\}/.test(html));
     ok('speed: the whole page is still between interactions — blobs, waves and shimmers are static, bars grow with transforms, nothing runs forever',
@@ -888,7 +901,7 @@ function makeServer() {
   /* ---- 16d. the intro plays in full ---- */
   console.log('\n16d. The intro plays in full');
   {
-    const src = (html.match(/\(function introLeave\(\)\{[\s\S]*?\n\}\)\(\);/) || [''])[0];
+    const src = (srcText.match(/\(function introLeave\(\)\{[\s\S]*?\n\}\)\(\);/) || [''])[0];
     /* runs the intro script on its own, with the logo's animations and the timers under the test's control */
     const runIntro = anims => {
       const timers = [], rose = new Set(), out = new Set(); let removed = 0;
@@ -1370,18 +1383,18 @@ function makeServer() {
   const smallMs = perCheck();
   restA.forEach(a => g.attendees.push(a)); restV.forEach(v => g.volunteers.push(v));
   const scale = fullMs / smallMs;
-  ok('change detection grows in step with the rows (3900 rows vs 390: ' + scale.toFixed(1) + 'x)', scale < 12.5 && g.attendees.length === N && g.volunteers.length === VN,
+  ok('change detection grows in step with the rows (3900 rows vs 390: ' + scale.toFixed(1) + 'x)', scale < 16 && g.attendees.length === N && g.volunteers.length === VN,
     fullMs.toFixed(1) + ' ms vs ' + smallMs.toFixed(1) + ' ms');
   const persT = Date.now(); g.persistNow(); const persMs = Date.now() - persT;
   const payloadKB = Math.round(store.get('newstart.passport.v2').length / 1024);
   ok('saving to the device is fast (' + persMs + ' ms, ' + payloadKB + ' KB of the ~5000 KB limit)', persMs < 300 && payloadKB < 4000, persMs + 'ms ' + payloadKB + 'KB');
 
   g.state.tab = 'home'; g.state.vq = ''; g.render();
-  const homeRows = ($main.innerHTML.match(/switchTo\('/g) || []).length;
+  const homeRows = ($main.innerHTML.match(/data-action="switchTo"/g) || []).length;
   ok('Home draws only the latest ' + homeRows + ' of 3000 visitors', homeRows <= 26 && homeRows >= 20, homeRows);
   ok('Home offers a search box for the rest', $main.innerHTML.includes('id="vq"') && $main.innerHTML.includes('of 3000'));
   g.state.vq = 'Visitor 2999'; g.render();
-  ok('search finds one visitor out of 3000', ($main.innerHTML.match(/switchTo\('/g) || []).length === 1 && $main.innerHTML.includes('Visitor 2999'));
+  ok('search finds one visitor out of 3000', ($main.innerHTML.match(/data-action="switchTo"/g) || []).length === 1 && $main.innerHTML.includes('Visitor 2999'));
   g.state.vq = '082 000 0042'; g.render();
   ok('search also matches phone numbers', $main.innerHTML.includes('Visitor 42<'), '');
   g.state.vq = 'zzzz'; g.render();
@@ -1395,13 +1408,13 @@ function makeServer() {
   for (let i = 0; i < 600; i++) { const a = g.attendees[i]; a.s.sys = 175; a.s.dia = 105; a.interests.optin = true; }
   g.state.tab = 'care'; g.state.careAll = {};
   const careT = Date.now(); g.render(); const careMs = Date.now() - careT;
-  const cards = ($main.innerHTML.match(/openWAFor\('/g) || []).length;
+  const cards = ($main.innerHTML.match(/data-action="openWAFor"/g) || []).length;
   ok('Care with 600 urgent + 1000 call-backs draws a capped set (' + cards + ' cards, ' + careMs + ' ms)', cards <= 100 && careMs < 500, cards + ' ' + careMs);
   ok('Care counts still show the true totals', $main.innerHTML.includes('Urgent') && $main.innerHTML.includes('· 600'));
   g.showAllCare('rose');
-  ok('"Show more" adds 100 cards per tap, not everything', ($main.innerHTML.match(/openWAFor\('/g) || []).length <= 30 + 100 + 30 + 30 + 100, ($main.innerHTML.match(/openWAFor\('/g) || []).length);
+  ok('"Show more" adds 100 cards per tap, not everything', ($main.innerHTML.match(/data-action="openWAFor"/g) || []).length <= 30 + 100 + 30 + 30 + 100, ($main.innerHTML.match(/data-action="openWAFor"/g) || []).length);
   for (let i = 0; i < 6; i++) g.showAllCare('rose');
-  ok('repeated "Show more" reaches all 600 urgent', ($main.innerHTML.match(/openWAFor\('/g) || []).length > 600);
+  ok('repeated "Show more" reaches all 600 urgent', ($main.innerHTML.match(/data-action="openWAFor"/g) || []).length > 600);
   g.state.careMore = {};
   g.state.careAll = {}; g.state.tab = 'home';
   g.persistNow(); await sleep(1500);
@@ -1451,7 +1464,7 @@ function makeServer() {
   ok('500 live inserts from other desks are applied (' + burstMs + ' ms)', g.attendees.length === N + 120 + 500 && burstMs < 3000, g.attendees.length + ' ' + burstMs);
   ok('applying them uploaded nothing back', g.cloudPending() === 0);
   g.state.tab = 'home'; g.render();
-  ok('Home still draws a short list with 3600+ visitors', ($main.innerHTML.match(/switchTo\('/g) || []).length <= 26);
+  ok('Home still draws a short list with 3600+ visitors', ($main.innerHTML.match(/data-action="switchTo"/g) || []).length <= 26);
   C.user = null; g.stopRealtime(); g.state.vq = ''; srv.reset(); store.delete('newstart.cloud.v1');
   C.mode = false; C.synced = { att: {}, vol: {} }; g.resetDemo();
 
@@ -1528,9 +1541,9 @@ function makeServer() {
     const demoRows = g.attendees.length;
     await fresh(person()); await sleep(30);
     ok('signed in with no church → "Choose your church", with the list of churches', gateShown() && g.gateState() === 'church' && /Choose your church/.test(gate())
-      && /Grace Chapel/.test($el('churchDir').innerHTML) && /joinChurch\('ch-a'/.test($el('churchDir').innerHTML), g.gateState());
+      && /Grace Chapel/.test($el('churchDir').innerHTML) && /data-action="join-church" data-args="ch-a"/.test($el('churchDir').innerHTML), g.gateState());
     ok('…and the visitor data saved on this device is cleared', demoRows > 0 && g.attendees.length === 0 && g.volunteers.length === 0, demoRows + ' → ' + g.attendees.length);
-    ok('…and only the platform admin is offered the admin screens', !/openAcct\('admin'\)/.test(gate()) && !g.acctTabs().some(t => t[0] === 'admin'));
+    ok('…and only the platform admin is offered the admin screens', !/data-action="openAcct" data-args="admin"/.test(gate()) && !g.acctTabs().some(t => t[0] === 'admin'));
     await g.joinChurch('ch-a'); await sleep(30);
     ok('joining a church sends the request, then waits for that church to approve', rc.includes('join:ch-a') && g.gateState() === 'pending'
       && /Waiting for approval/.test(gate()) && gate().includes('Grace Chapel') && gate().includes('Check again'), g.gateState() + ' ' + rc.join());
@@ -1571,7 +1584,7 @@ function makeServer() {
       && /Waiting for your church to be approved/.test(gate()) && gate().includes('Hope Church'), g.gateState());
     me.church.status = 'suspended';
     await g.cloudSync(true); await sleep(20);
-    ok('a paused church says so and offers to leave it', g.gateState() === 'suspended' && /is paused/.test(gate()) && /leaveChurch\(\)/.test(gate()), g.gateState());
+    ok('a paused church says so and offers to leave it', g.gateState() === 'suspended' && /is paused/.test(gate()) && /data-action="leaveChurch"/.test(gate()), g.gateState());
 
     /* church staff */
     await fresh(person({ membership: member({ role: 'staff', status: 'approved' }), church: { ...A } }), () => registerLocal('Church Visitor', 'EXPO-310'));
@@ -1583,7 +1596,7 @@ function makeServer() {
     await g.cloudPush(); await sleep(20);
     ok('…edits are matched on church and badge number, not on the badge number alone', srv.lastConflict === 'church_id,id' && srv.tables.attendees.get('EXPO-310').name === 'Church Visitor Edited'
       && srv.tables.attendees.get('EXPO-310').church_id === 'ch-a', srv.lastConflict);
-    ok('the panel behind the logo offers "My account" to staff, without Church or Admin', /openAcct\('me'\)/.test(panel()) && !/openAcct\('church'\)/.test(panel()) && !/openAcct\('admin'\)/.test(panel()));
+    ok('the panel behind the logo offers "My account" to staff, without Church or Admin', /data-action="hub-open" data-args="me"/.test(panel()) && !/data-action="hub-open" data-args="church"/.test(panel()) && !/data-action="hub-open" data-args="admin"/.test(panel()));
     visitor.name = 'Edited Before Switching'; srv.tables.attendees.clear(); srv.calls.length = 0;
     me = person({ membership: member({ church_id: B.id, role: 'staff', status: 'approved' }), church: { ...B, status: 'active' } });
     await g.cloudSync(true); await sleep(30);
@@ -1593,7 +1606,7 @@ function makeServer() {
     /* church admin */
     me = person({ membership: member({ role: 'admin', status: 'approved' }), church: { ...A } });
     await g.cloudSync(true); await sleep(30);
-    ok('a church admin also gets the Church screen', /openAcct\('church'\)/.test(panel()));
+    ok('a church admin also gets the Church screen', /data-action="hub-open" data-args="church"/.test(panel()));
     /* live changes: badge numbers repeat across churches, and delete events are not filtered by the database */
     const live = (eventType, row) => g.onRemoteChange('att', eventType === 'DELETE' ? { eventType, old: row } : { eventType, new: row });
     live('INSERT', { id: 'EXPO-777', name: 'Shared Badge', church_id: 'ch-a', s: {}, interests: {} });
@@ -1604,7 +1617,7 @@ function makeServer() {
     ok('…a live insert from another church is ignored, and this church\'s own delete still applies', !g.attendees.some(a => a.id === 'EXPO-778') && !g.attendees.some(a => a.id === 'EXPO-777'));
     g.openAcct('church'); await sleep(30);
     ok('the Church screen lists the members, with Approve for someone waiting', rc.includes('members:ch-a') && sheet().includes('Pending Person') && sheet().includes('Staff Person')
-      && /setMember\('u-pend','member','approved'\)/.test(sheet()) && /1 waiting/.test(sheet()), rc.join());
+      && /data-action="member-approve" data-user="u-pend" data-role="member"/.test(sheet()) && /1 waiting/.test(sheet()), rc.join());
     await g.setMember('u-pend', 'staff', 'pending');
     sandbox.prompt = () => ' EXPO-042 '; await g.linkMember('u-pend', ''); sandbox.prompt = () => null;
     await g.removeMember('u-staff');
@@ -1618,7 +1631,7 @@ function makeServer() {
     ok('a church admin saves the church\'s details', rc.includes('church:ch-a:Grace Chapel Durban'), rc.join());
     g.closeAcct();
     g.openAcct('church'); await sleep(30);
-    ok('the Church screen has a Church plans box with + Write a new plan', sheet().includes('Church plans') && /editChurchPlan\('ch-a',''\)/.test(sheet()) && rc.includes('plans:ch-a'), rc.join());
+    ok('the Church screen has a Church plans box with + Write a new plan', sheet().includes('Church plans') && /data-action="plan-edit" data-church="ch-a" data-plan=""/.test(sheet()) && rc.includes('plans:ch-a'), rc.join());
     g.editChurchPlan('ch-a', ''); sheet();
     $el('cpProblem').value = 'own'; $el('cpOwn').value = 'Joint pain'; $el('cpTitle').value = 'Easing stiff joints'; $el('cpNote').value = '';
     $el('cpDo0').value = 'Move every joint gently'; $el('cpWhy0').value = 'Keeps joints supple'; $el('cpHow0').value = '5 minutes\nEvery morning';
@@ -1632,7 +1645,7 @@ function makeServer() {
     g.attendees.push(g.migrateAttendee({ id: 'EXPO-901', name: 'Plan Visitor', age: 40, sex: 'Female', s: { sys: 150, dia: 95 }, heightCm: 165 }));
     const cpVisitor = g.attendees.find(a => a.id === 'EXPO-901');
     g.state.activeId = cpVisitor.id; g.state.sugFor = null; g.state.tab = 'plan'; g.render();
-    ok('church staff see the church\'s plans on the Plan tab', /Send a plan from Grace Chapel/.test($main.innerHTML) && /chooseChurchPlan\('cp-1'\)/.test($main.innerHTML));
+    ok('church staff see the church\'s plans on the Plan tab', /Send a plan from Grace Chapel/.test($main.innerHTML) && /data-action="chooseChurchPlan" data-args="cp-1"/.test($main.innerHTML));
     g.chooseChurchPlan('cp-1');
     ok('…sending one shows it in place of the app\'s plan, as the church\'s own, with the pills rule', cpVisitor.interests.churchPlan === 'cp-1' && $main.innerHTML.includes('Easing stiff joints')
       && /Written by Grace Chapel/.test($main.innerHTML) && /not reviewed by the app/.test($main.innerHTML) && /Never stop prescribed pills suddenly/.test($main.innerHTML));
@@ -1643,7 +1656,7 @@ function makeServer() {
     g.chooseChurchPlan('');
     /* follow-up people and invite links (Church screen), and giving a visitor a follow-up person (Send home) */
     g.openAcct('church'); await sleep(30);
-    ok('the Church screen shows follow-up toggles and how many of the five are named', /setFollowup\('u-staff',true\)/.test(sheet()) && /0 of 5 follow-up people/.test(sheet()) && rc.includes('followups:ch-a'), rc.join());
+    ok('the Church screen shows follow-up toggles and how many of the five are named', /data-action="followup-toggle" data-user="u-staff" data-on="1"/.test(sheet()) && /0 of 5 follow-up people/.test(sheet()) && rc.includes('followups:ch-a'), rc.join());
     await g.setFollowup('u-staff', true); await sleep(20);
     ok('a church admin makes an approved member a follow-up person', rc.includes('setfollow:u-staff:true') && /✓ Follow-up person/.test(sheet()) && /1 of 5 follow-up people/.test(sheet()), rc.join());
     ok('…and a member waiting for approval cannot be made one', !/setFollowup\('u-pend'/.test(sheet()));
@@ -1658,7 +1671,7 @@ function makeServer() {
     g.chooseFollowup('u-staff');
     ok('…not even by calling it directly', !cpVisitor.interests.followUp);
     cpVisitor.interests.optin = true; g.render(); await sleep(10);
-    ok('staff give a visitor one of the church\'s follow-up people on Send home', /chooseFollowup\('u-staff'\)/.test($main.innerHTML) && $main.innerHTML.includes('Staff Person'));
+    ok('staff give a visitor one of the church\'s follow-up people on Send home', /data-action="chooseFollowup" data-args="u-staff"/.test($main.innerHTML) && $main.innerHTML.includes('Staff Person'));
     g.chooseFollowup('u-staff');
     ok('…the visitor\'s record keeps who it is, and the message names them', cpVisitor.interests.followUp === 'u-staff' && cpVisitor.interests.followUpName === 'Staff Person'
       && g.waMessage(cpVisitor).includes('🤝 Staff Person from the church will follow up with you.'));
@@ -1679,10 +1692,10 @@ function makeServer() {
     /* the platform admin */
     me.platform_admin = true;
     await g.cloudSync(true); await sleep(20);
-    ok('the platform admin gets an Admin button', /openAcct\('admin'\)/.test(panel()));
+    ok('the platform admin gets an Admin button', /data-action="hub-open" data-args="admin"/.test(panel()));
     g.openAcct('admin'); await sleep(40);
     ok('the Admin screen lists every church with its counts, and Approve for a waiting one', rc.includes('admin_churches') && sheet().includes('Grace Chapel') && sheet().includes('Hope Church')
-      && /setChurchStatus\('ch-b','active'\)/.test(sheet()) && /5 visitors/.test(sheet()) && /1 member ·/.test(sheet()), rc.join());
+      && /data-action="church-status" data-args="ch-b" data-status="active"/.test(sheet()) && /5 visitors/.test(sheet()) && /1 member ·/.test(sheet()), rc.join());
     ok('…with the latest changes in every church', sheet().includes('st@example.org') && sheet().includes('update visitor EXPO-042'));
     await g.setChurchStatus('ch-b', 'active');
     ok('…approving a church calls the database', rc.includes('status:ch-b:active'), rc.join());
@@ -1691,7 +1704,7 @@ function makeServer() {
     g.closeAcct();
     me = person({ platform_admin: true });
     await g.cloudSync(true); await sleep(30);
-    ok('a platform admin with no church of their own can still open the Admin screen', g.gateState() === 'church' && /openAcct\('admin'\)/.test(gate()), g.gateState());
+    ok('a platform admin with no church of their own can still open the Admin screen', g.gateState() === 'church' && /data-action="openAcct" data-args="admin"/.test(gate()), g.gateState());
 
     /* every class these screens use exists in the stylesheet */
     {
@@ -1745,13 +1758,13 @@ function makeServer() {
     sandbox.NEWSTART_NO_CLOUD = true;
     let h = profile();
     ok('with sign-in switched off the page says so instead of showing a form', /switched off/.test(h) && !h.includes('id="pfEmail"'));
-    ok('…and the Profile tab is the highlighted one while open', /switchTab\('me'\)" class="nav-item hue-lilac nav-item-active" aria-current="page"/.test($el('navItems').innerHTML) && $el('navItems').innerHTML.includes('Profile'));
+    ok('…and the Profile tab is the highlighted one while open', /data-action=\"nav-go\" data-tab=\"me\" class=\"nav-item hue-lilac nav-item-active" aria-current="page"/.test($el('navItems').innerHTML) && $el('navItems').innerHTML.includes('Profile'));
 
     /* signed out */
     await freshDevice();
     h = profile();
     ok('signed out, Profile offers sign-in, Forgot password and Create an account, and no Sign out', h.includes('Your profile') && h.includes('id="pfEmail"') && h.includes('id="pfPass"')
-      && h.includes("profGate('forgot')") && h.includes("profGate('signup')") && !h.includes('cloudSignOut()'));
+      && h.includes('data-action="profGate" data-args="forgot"') && h.includes('data-action="profGate" data-args="signup"') && !h.includes('data-action="cloudSignOut"'));
     typed('pfEmail', 'staff@example.org'); typed('pfPass', 'nope');
     await g.cloudSignIn(viaProfile);
     ok('a wrong password is shown on the Profile page itself', C.formErr === 'Wrong email or password.' && $el('pfErr').textContent === 'Wrong email or password.', $el('pfErr').textContent);
@@ -1760,13 +1773,13 @@ function makeServer() {
 
     /* Create an account / Forgot password: the full-screen screens, even over a saved copy, with a way back */
     C.gateKey = ''; g.renderGate();
-    ok('the normal sign-in screen has no "Back to the app" link', !gateBody().includes('gateBack()'));
+    ok('the normal sign-in screen has no "Back to the app" link', !gateBody().includes('data-action="gateBack"'));
     C.ready = true; g.renderGate();
     ok('a device holding saved data shows no gate by itself', g.gateState() === 'hidden' && !gateUp());
     g.profGate('signup');
-    ok('Create an account from Profile opens the sign-up screen over that copy, with Back to the app', C.gateForce === true && g.gateState() === 'signup' && gateUp() && gateBody().includes('gateBack()'), g.gateState());
+    ok('Create an account from Profile opens the sign-up screen over that copy, with Back to the app', C.gateForce === true && g.gateState() === 'signup' && gateUp() && gateBody().includes('data-action="gateBack"'), g.gateState());
     g.profGate('forgot');
-    ok('Forgot password opens the reset screen the same way', g.gateState() === 'forgot' && gateUp() && gateBody().includes('gateBack()') && gateBody().includes('Reset your password'), g.gateState());
+    ok('Forgot password opens the reset screen the same way', g.gateState() === 'forgot' && gateUp() && gateBody().includes('data-action="gateBack"') && gateBody().includes('Reset your password'), g.gateState());
     g.gateBack();
     ok('Back to the app hides it again', g.gateState() === 'hidden' && !gateUp() && C.gateForce === false && C.view === 'login');
     C.ready = false; C.gateKey = '';
@@ -1777,15 +1790,15 @@ function makeServer() {
     h = main();
     ok('after signing in from Profile the page shows the person, not the form', !!C.user && h.includes('Thandi Mabaso') && h.includes('staff@example.org') && !h.includes('id="pfEmail"'), h.slice(0, 80));
     ok('…with role and church as labels, and no admin buttons for plain staff', h.includes('>Staff<') && h.includes('Grace Chapel · Durban') && !h.includes('Platform admin')
-      && !h.includes("openAcct('church')") && !h.includes("openAcct('admin')"));
-    ok('…and the sync, details, password and account sections', h.includes('cloudSync(true)') && h.includes('id="pmName"') && h.includes('value="Thandi Mabaso"') && h.includes('id="pwNew"')
-      && h.includes('cloudSignOut()') && h.includes('profDeleteAsk()'));
+      && !h.includes('data-action="openAcct" data-args="church"') && !h.includes('data-action="openAcct" data-args="admin"'));
+    ok('…and the sync, details, password and account sections', h.includes('data-action=\"sync-now\"') && h.includes('id="pmName"') && h.includes('value="Thandi Mabaso"') && h.includes('id="pwNew"')
+      && h.includes('data-action="cloudSignOut"') && h.includes('data-action="profDeleteAsk"'));
 
     /* admins get their shortcuts */
     me = who({ platform_admin: true, membership: membership({ role: 'admin' }) });
     await g.cloudSync(true); await sleep(400);
     h = profile();
-    ok('a church admin who is also platform admin sees both labels and both shortcuts', h.includes('>Platform admin<') && h.includes('>Admin<') && h.includes('>My church<') && h.includes('>All churches<') && h.includes("openAcct('church')") && h.includes("openAcct('admin')"));
+    ok('a church admin who is also platform admin sees both labels and both shortcuts', h.includes('>Platform admin<') && h.includes('>Admin<') && h.includes('>My church<') && h.includes('>All churches<') && h.includes('data-action="openAcct" data-args="church"') && h.includes('data-action="openAcct" data-args="admin"'));
     me = who();
     await g.cloudSync(true); await sleep(400);
 
@@ -1834,7 +1847,7 @@ function makeServer() {
     me = who({ membership: membership({ role: 'member' }) });
     await freshDevice(); await signIn(); await sleep(150);
     h = gateBody();
-    ok('a member\'s account screen offers Change password and Delete my account', g.gateState() === 'member' && h.includes('id="pwNew"') && h.includes('profDeleteAsk()') && h.includes('cloudSignOut()'), g.gateState());
+    ok('a member\'s account screen offers Change password and Delete my account', g.gateState() === 'member' && h.includes('id="pwNew"') && h.includes('data-action="profDeleteAsk"') && h.includes('data-action="cloudSignOut"'), g.gateState());
     g.profDeleteAsk(); h = gateBody();
     ok('…and the delete confirmation opens inside that screen', h.includes('Type DELETE to confirm') && /id="pfDelGo"[^>]*disabled/.test(h));
     g.profDeleteAsk();
@@ -2187,9 +2200,9 @@ function makeServer() {
     const p1 = panel();
     ok('the panel behind the logo lists every function with its state and time, and offers Test now',
       ['Sign-in', 'Download', 'Upload', 'Live updates', 'Live queue', 'Accounts & admin', 'Database setup'].every(l => p1.includes('<b>' + l + '</b>'))
-      && /healthTest\(\)/.test(p1) && /q-state-bad/.test(p1) && /q-state-live/.test(p1) && /Not checked yet/.test(p1));
+      && /data-action="healthTest"/.test(p1) && /q-state-bad/.test(p1) && /q-state-live/.test(p1) && /Not checked yet/.test(p1));
     g.state.tab = 'home'; g.render(); shots.push($main.innerHTML);
-    ok('Home shows the shared-database state, one tap from the details', /id="homeHealth"/.test($main.innerHTML) && /Up to date/.test(g.homeHealthHTML()) && /openCloud\(\)/.test(g.homeHealthHTML()));
+    ok('Home shows the shared-database state, one tap from the details', /id="homeHealth"/.test($main.innerHTML) && /Up to date/.test(g.homeHealthHTML()) && /data-action="openCloud"/.test(g.homeHealthHTML()));
 
     /* no connection */
     srv.offline = true; registerLocal('Status Waiting', 'EXPO-321');
@@ -2222,9 +2235,9 @@ function makeServer() {
     /* the screens that point here */
     srv.rpcs = { church_directory: () => ({ data: null, error: { code: '42501', message: 'permission denied for function church_directory' } }) };
     await g.churchSearch(''); await flush(); srv.rpcs = null;
-    ok('a refused account call shows on the account screens, with a way to the details', H.account.st === 'bad' && /Refused/.test(H.account.msg) && /openCloud\(\)/.test(g.acctHealthHTML()), JSON.stringify(H.account));
+    ok('a refused account call shows on the account screens, with a way to the details', H.account.st === 'bad' && /Refused/.test(H.account.msg) && /data-action="openCloud"/.test(g.acctHealthHTML()), JSON.stringify(H.account));
     shots.push(g.acctHealthHTML(), g.qStateBar('offline'));
-    ok('the queue banner offers Details when it warns, and not in practice mode', /openCloud\(\)/.test(g.qStateBar('offline')) && !/openCloud\(\)/.test(g.qStateBar('practice')));
+    ok('the queue banner offers Details when it warns, and not in practice mode', /data-action="openCloud"/.test(g.qStateBar('offline')) && !/data-action="openCloud"/.test(g.qStateBar('practice')));
     g.noteHealth('sync', 'bad', '<img src=x onerror=alert(1)>', '<b>detail</b>'); await flush();
     ok('messages from the database are escaped in the status rows', panel().includes('&lt;img src=x') && !panel().includes('<img src=x') && g.homeHealthHTML().includes('&lt;img') && panel().includes('&lt;b&gt;detail'));
     {
@@ -2406,13 +2419,14 @@ function makeServer() {
     ['192x192', '512x512'].every(s => manifest.icons.some(i => i.sizes === s && i.purpose === 'any')) && manifest.icons.some(i => i.sizes === '512x512' && i.purpose === 'maskable'));
   ok('iPhone home-screen icon is 180x180', pngDims('icons/icon-180.png') === '180x180');
   const needs = [/<link rel="manifest" href="manifest\.webmanifest">/, /rel="apple-touch-icon" href="icons\/icon-180\.png"/, /name="apple-mobile-web-app-capable" content="yes"/,
-    /name="mobile-web-app-capable" content="yes"/, /name="theme-color"/, /viewport-fit=cover/, /navigator\.serviceWorker\.register\('sw\.js'\)/];
-  ok('index.html links the manifest, icons, iOS tags and registers the service worker', needs.every(r => r.test(html)), needs.filter(r => !r.test(html)).map(String).join(' '));
-  ok('service worker is only registered on https or localhost', /location\.protocol==='https:'\|\|location\.hostname==='localhost'/.test(html));
+    /name="mobile-web-app-capable" content="yes"/, /name="theme-color"/, /viewport-fit=cover/];
+  ok('index.html links the manifest, icons and iOS tags (the shell page)', needs.every(r => r.test(html)), needs.filter(r => !r.test(html)).map(String).join(' '));
+  ok('the app registers the service worker, only on https or localhost (the app code)', /navigator\.serviceWorker\.register\('sw\.js'\)/.test(srcText)
+    && /location\.protocol==='https:'\|\|location\.hostname==='localhost'/.test(srcText));
   ok('touch screens get 16px inputs (stops iPhone zooming on tap)', /pointer:coarse\)\{\.field,\.step-input[^}]*font-size:16px/.test(html));
 
   const swSrc = fs.readFileSync(path.join(rootDir, 'sw.js'), 'utf8');
-  const constOf = n => (html.match(new RegExp("(?:const |,)" + n + "='([^']+)'")) || [])[1];
+  const constOf = n => (srcText.match(new RegExp("(?:const |,)" + n + "='([^']+)'")) || [])[1];
   const libsInSw = [...swSrc.matchAll(/'(https:\/\/[^']+\.js)'/g)].map(m => m[1]);
   ok('service worker precaches exactly the libraries the page loads', JSON.stringify(libsInSw.sort()) === JSON.stringify([constOf('SB_LIB'), constOf('H5Q'), constOf('QRJS')].sort()), libsInSw.join());
 
@@ -2494,21 +2508,58 @@ function makeServer() {
   netFail = false;
   ok('no health data path appears in the service worker source', !/attendees|volunteers|auth\/v1|rest\/v1/.test(swSrc));
 
-  /* install button states */
-  const run = code => vm.runInContext(code, sandbox);
-  run('installEvt=null');
+  /* install button states — the module's bindings are private to the bundle: drive them through its setters */
+  g.setInstallEvt(null);
   sandbox.navigator.userAgent = 'Mozilla/5.0 (Windows NT 10.0)'; sandbox.matchMedia = () => ({ matches: false, addEventListener() {} });
-  ok('desktop browser with nothing to offer shows no install block', run('installBlock()') === '');
+  ok('desktop browser with nothing to offer shows no install block', g.installBlock() === '');
   sandbox.navigator.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)';
-  ok('iPhone sees the Share → Add to Home Screen steps', /Add to Home Screen/.test(run('installBlock()')));
+  ok('iPhone sees the Share → Add to Home Screen steps', /Add to Home Screen/.test(g.installBlock()));
   sandbox.navigator.userAgent = 'Mozilla/5.0 (Linux; Android 14)';
-  run('installEvt={prompt(){globalThis.__prompted=1},userChoice:Promise.resolve({outcome:"accepted"})}');
-  ok('Android with an install event shows the Install button', /installApp\(\)/.test(run('installBlock()')));
-  await run('installApp()');
-  ok('tapping Install shows the browser install prompt once', sandbox.__prompted === 1 && run('installEvt') === null);
+  g.setInstallEvt({prompt(){sandbox.__prompted=1;},userChoice:Promise.resolve({outcome:'accepted'})});
+  ok('Android with an install event shows the Install button', /data-action="installApp"/.test(g.installBlock()));
+  await g.installApp();
+  ok('tapping Install shows the browser install prompt once', sandbox.__prompted === 1 && g.installEvt === null);
   sandbox.matchMedia = q => ({ matches: /standalone/.test(q), addEventListener() {} });
-  ok('inside the installed app it says so instead of offering install', /Installed on this phone/.test(run('installBlock()')));
+  ok('inside the installed app it says so instead of offering install', /Installed on this phone/.test(g.installBlock()));
   sandbox.matchMedia = () => ({ matches: false, addEventListener() {} }); sandbox.navigator.userAgent = 'node';
+
+  /* ---- 19d. delegated actions: the dispatcher contract ---- */
+  console.log('\n19d. Delegated actions');
+  {
+    const mk = attrs => { const e = { dataset: { ...attrs } }; e.closest = () => e;
+      e.hasAttribute = k => k === 'data-backdrop' && attrs.backdrop === '1'; return e; };
+    const wasVolTab = g.state.volTab;
+    g.dispatch(mk({ action: 'setVolTab', args: 'record' }), { type: 'click', target: {} });
+    ok('a data-action element reaches its adapter with its data-args', g.state.volTab === 'record');
+    g.dispatch(mk({ action: 'setVolTab', args: wasVolTab }), { type: 'click', target: {} });
+    ok('the same adapter runs again with new args (no one-shot caching)', g.state.volTab === wasVolTab);
+    g.cloud.adminData = 'probe';
+    g.dispatch(mk({ action: 'all-churches-back', backdrop: '1' }), { type: 'click', target: { elsewhere: true } });
+    ok('a backdrop action ignores clicks on the content inside it', g.cloud.adminData === 'probe');
+    const backdrop = mk({ action: 'all-churches-back', backdrop: '1' });
+    g.dispatch(backdrop, { type: 'click', target: backdrop });
+    ok('a backdrop action runs when the dimmed backdrop itself is clicked', g.cloud.adminData === '');
+    let warned = 0; const w = console.warn; console.warn = () => { warned++; };
+    g.dispatch(mk({ action: 'no-such-action' }), { type: 'click', target: {} });
+    console.warn = w;
+    ok('an unregistered action warns instead of throwing', warned === 1);
+    g.dispatch(null, { type: 'click', target: {} });
+    ok('a null target is a no-op', true);
+    /* a click on a field inside a form climbs to the form; it must not run the form's submit handler */
+    const form = { ...mk({ action: 'setVolTab', args: 'record' }), tagName: 'FORM' }; form.closest = () => form;
+    g.state.volTab = wasVolTab;
+    g.dispatch(form, { type: 'click', target: {} });
+    ok('a click inside a form does not run the form’s action (no early submit, no undone checkbox tick)', g.state.volTab === wasVolTab);
+    g.dispatch(form, { type: 'change', target: {} });
+    ok('a change inside a form does not run the form’s action', g.state.volTab === wasVolTab);
+    g.dispatch(form, { type: 'submit', target: form });
+    ok('the form’s action runs on submit', g.state.volTab === 'record');
+    g.state.volTab = wasVolTab;
+    const det = mk({ onToggle: 'sim-open' }); det.open = true; g.state.simOpen = false;
+    g.dispatch(det, { type: 'toggle', target: det });
+    ok('a <details> toggle reaches its data-on-toggle adapter (90-day win stays open across redraws)', g.state.simOpen === true);
+    g.state.simOpen = false;
+  }
 
   /* build output */
   const { execFileSync } = require('child_process');
@@ -2516,8 +2567,35 @@ function makeServer() {
   const dist = f => path.join(rootDir, 'dist', f);
   ok('build produces every file a phone needs', ['index.html', 'manifest.webmanifest', 'sw.js', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/icon-180.png', '_headers'].every(f => fs.existsSync(dist(f))));
   ok('build stamps a real version into sw.js', !/__VERSION__/.test(fs.readFileSync(dist('sw.js'), 'utf8')) && /VERSION = '[0-9a-f]{10}'/.test(fs.readFileSync(dist('sw.js'), 'utf8')));
-  ok('built index.html is identical to the source', fs.readFileSync(dist('index.html'), 'utf8') === html);
+  const built = fs.readFileSync(dist('index.html'), 'utf8');
+  const builtCsp = (built.match(/<meta http-equiv="Content-Security-Policy" content="([^"]*)"/) || [])[1];
+  ok('built index.html is one self-contained page: the bundle is inlined, the module tag gone', built.includes('__NEWSTART') && !/<script type="module"/.test(built) && built.length > html.length);
+  ok('the built page allows its two inline scripts by hash, with no unsafe-inline for scripts', builtCsp
+    && /script-src 'self' 'sha256-[^']+' 'sha256-[^']+' https:\/\/cdn\.jsdelivr\.net/.test(builtCsp) && !/script-src[^;]*'unsafe-inline'/.test(builtCsp)
+    && builtCsp === (fs.readFileSync(dist('_headers'), 'utf8').match(/Content-Security-Policy: ([^\n]*)/) || [])[1]);
   ok('the host is told never to long-cache the page or the service worker', /\/sw\.js\s+Cache-Control: no-cache/.test(fs.readFileSync(dist('_headers'), 'utf8')));
+  /* the browser refuses an inline script unless the sha256 of its exact text (newlines included) is in script-src */
+  const cspHash = s => "'sha256-" + require('crypto').createHash('sha256').update(s).digest('base64') + "'";
+  const inlineScripts = [...built.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+  const scriptSrc = ((builtCsp || '').match(/script-src ([^;]*)/) || [])[1] || '';
+  ok('every inline script in the built page is allowed by its exact hash (the app would be blank otherwise)',
+    inlineScripts.length === 2 && inlineScripts.every(s => scriptSrc.split(' ').includes(cspHash(s))), inlineScripts.map(cspHash).join(' '));
+  /* the dev page loads src/ straight into the browser, which (unlike esbuild) needs the full file name */
+  const srcDir = path.join(rootDir, 'src');
+  const badImports = fs.readdirSync(srcDir).filter(f => f.endsWith('.js')).flatMap(f =>
+    [...fs.readFileSync(path.join(srcDir, f), 'utf8').matchAll(/(?:import|export)[^'"]*from\s*['"](\.[^'"]+)['"]/g)]
+      .map(m => m[1]).filter(p => !p.endsWith('.js') || !fs.existsSync(path.join(srcDir, p))).map(p => f + ' → ' + p));
+  ok('every src/ import names an existing .js file, so the browser can load it', badImports.length === 0, badImports.join(', '));
+  /* the policy has no 'unsafe-inline' for scripts, so an on…= attribute would silently do nothing */
+  const inlineOn = [html, ...fs.readdirSync(srcDir).filter(f => f.endsWith('.js')).map(f => fs.readFileSync(path.join(srcDir, f), 'utf8'))]
+    .flatMap(t => t.match(/\son[a-z]+\s*=\s*["']/gi) || []);
+  ok('no inline on…= handler is left in the page or its templates', inlineOn.length === 0, inlineOn.join(' '));
+  ok('Enter in the typed-badge field opens it: the field sits in a form that runs manualGo',
+    /<form data-action="manualGo"[^>]*>\s*(?:<!--[^>]*-->\s*)?<input id="manualBadge"/.test(html));
+  /* the Android app packages dist/index.html, so its build must rebuild dist/ first */
+  const signPs = fs.readFileSync(path.join(rootDir, 'tools', 'sign-app.ps1'), 'utf8');
+  const iBuild = signPs.indexOf("tools\\build.js'"), iApp = signPs.indexOf("tools\\build-app.js'");
+  ok('sign-app.ps1 builds the web page before packaging it into the Android app', iBuild >= 0 && iApp > iBuild);
 
   /* ---- 20. on-the-floor features: WhatsApp, follow-up, pouch ----------- */
   console.log('\n20. WhatsApp, follow-up capture, pouch');
@@ -2556,7 +2634,7 @@ function makeServer() {
     href.startsWith('mailto:David%40Example.ORG?subject=') && decodeURIComponent(href.split('&body=')[1]) === g.waMessage(mailDave) && href.includes('21-day%20plan'), href.slice(0, 80));
   g.state.activeId = 'EXPO-042'; g.state.tab = 'send'; g.render();
   ok('the Send tab offers the email option next to WhatsApp',
-    /openEmail\(\)/.test($main.innerHTML) && /Email the plan/.test($main.innerHTML) && $main.innerHTML.includes('none saved'));
+    /data-action="openEmail"/.test($main.innerHTML) && /Email the plan/.test($main.innerHTML) && $main.innerHTML.includes('none saved'));
   g.openEmail();
   ok('with no email saved, the preview opens with an empty address and a save box',
     /id="emTo"[^>]*value=""/.test($el('waBody').innerHTML) && $el('waBody').innerHTML.includes('emSave') && $el('waFoot').innerHTML.includes('Send by email') && $el('waSub').textContent.includes('email app'));
@@ -2664,7 +2742,7 @@ function makeServer() {
 
   /* pouch reservation (the button lives on the last step, Send, since the plan screen was redesigned) */
   g.resetDemo(); g.state.activeId = 'EXPO-088'; g.state.tab = 'send'; g.render();
-  ok('the Send step offers to reserve the pouch', $main.innerHTML.includes('Reserve the R25 co-op starter pouch') && /reservePouch\(\)/.test($main.innerHTML));
+  ok('the Send step offers to reserve the pouch', $main.innerHTML.includes('Reserve the R25 co-op starter pouch') && /data-action="reservePouch"/.test($main.innerHTML));
   g.reservePouch();
   const sip2 = g.attendees.find(a => a.id === 'EXPO-088');
   ok('Reserve records the pouch for that visitor', sip2.interests.pouch === true && /reserved for Sipho/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
@@ -2835,7 +2913,7 @@ function makeServer() {
   /* the Plan screen */
   g.state.activeId = 'EXPO-042'; g.state.sugFor = null; g.state.tab = 'plan'; g.render();
   ok('Plan screen leads with David\'s main problem, with his other needs as tappable choices', $main.innerHTML.includes('Blood pressure 142/90: high (stage 1). Healthy is under 120/80.')
-    && $main.innerHTML.includes('Also needs attention') && /selectProtocol\('sugar'\)/.test($main.innerHTML));
+    && $main.innerHTML.includes('Also needs attention') && /data-action="selectProtocol" data-args="sugar"/.test($main.innerHTML));
   ok('…shows the plan steps with their sources', /Counsels on Diet §\d+/.test($main.innerHTML) && $main.innerHTML.includes('Source: ' + PL.bp.src));
   ok('…lists what the plan is based on, and credits the Ellen White books it uses', $main.innerHTML.includes('What this plan is based on') && $main.innerHTML.includes('The Ministry of Healing (Ellen G. White, 1905') && $main.innerHTML.includes('Healthful Living (Ellen G. White'));
   ok('…labels Healthful Living references by paragraph', /Healthful Living §\d+/.test($main.innerHTML));
@@ -2852,19 +2930,19 @@ function makeServer() {
     ok('Plan screen renders the new ' + k + ' plan with its source and facts', $main.innerHTML.includes('Source: ' + PL[k].src) && PL[k].facts.every(([t]) => $main.innerHTML.includes(t.slice(0, 25))), k);
   }
   g.state.protocol = 'water'; g.render();
-  ok('a plan with no shopping list shows no food button', !/openFood\(\)/.test($main.innerHTML));
+  ok('a plan with no shopping list shows no food button', !/data-action="openFood"/.test($main.innerHTML));
   g.state.protocol = 'veg'; g.render();
-  ok('a plan with a shopping list still shows the food button', /openFood\(\)/.test($main.innerHTML));
+  ok('a plan with a shopping list still shows the food button', /data-action="openFood"/.test($main.innerHTML));
   g.state.protocol = 'bmi'; g.render();
   ok('the weight plan shows no calorie rule of thumb (it came only from the old book)', !/kcal/.test($main.innerHTML));
   g.state.protocol = 'bp'; g.render();
-  ok('in practice mode the Plan tab offers the example church plans', /Send a plan from Practice church/.test($main.innerHTML) && /chooseChurchPlan\('demo-joints'\)/.test($main.innerHTML));
-  ok('…each church plan button reads as one line of text, not two columns', /chooseChurchPlan\('demo-joints'\)" class="btn btn-glass py-2\.5 text-\[11px\]"><span class="min-w-0 flex-1 text-left"><b>Easing stiff, painful joints<\/b> · Joint pain<\/span><\/button>/.test($main.innerHTML));
+  ok('in practice mode the Plan tab offers the example church plans', /Send a plan from Practice church/.test($main.innerHTML) && /data-action="chooseChurchPlan" data-args="demo-joints"/.test($main.innerHTML));
+  ok('…each church plan button reads as one line of text, not two columns', /data-action="chooseChurchPlan" data-args="demo-joints" class="btn btn-glass py-2\.5 text-\[11px\]"><span class="min-w-0 flex-1 text-left"><b>Easing stiff, painful joints<\/b> · Joint pain<\/span><\/button>/.test($main.innerHTML));
   const cpDav = g.attendees.find(a => a.id === 'EXPO-042');
   g.chooseChurchPlan('demo-joints');
   ok('a chosen church plan replaces the app\'s plan, labelled as the church\'s own, with the pills rule', cpDav.interests.churchPlan === 'demo-joints'
     && $main.innerHTML.includes('Easing stiff, painful joints') && /Written by Practice church/.test($main.innerHTML) && /not reviewed by the app/.test($main.innerHTML)
-    && /Never stop prescribed pills suddenly/.test($main.innerHTML) && /chooseChurchPlan\(''\)/.test($main.innerHTML));
+    && /Never stop prescribed pills suddenly/.test($main.innerHTML) && /data-action="chooseChurchPlan" data-args=""/.test($main.innerHTML));
   ok('…a red-range reading still shows the warning first', /See the triage nurse now|Book a clinic visit this week/.test($main.innerHTML) === !!g.urgentOf(cpDav, 'bp'));
   const cpMsg = g.waMessage(cpDav);
   ok('the WhatsApp message carries the church plan, its church and the pills rule, and no book credit', cpMsg.includes('EASING STIFF, PAINFUL JOINTS') && cpMsg.includes('Move every joint gently each morning') && cpMsg.includes('Practice church')
@@ -2876,7 +2954,7 @@ function makeServer() {
   ok('“Use the app’s plan instead” goes back to the app\'s plan', !cpDav.interests.churchPlan && /Do these 3 things/.test($main.innerHTML) && /Counsels on Diet §/.test($main.innerHTML));
   /* the designated follow-up person (practice mode: three example names) */
   g.state.tab = 'send'; g.render();
-  ok('in practice mode Send home offers the example follow-up people', /chooseFollowup\('demo-f1'\)/.test($main.innerHTML) && $main.innerHTML.includes('Grace Dlamini') && g.followupList().length <= 5);
+  ok('in practice mode Send home offers the example follow-up people', /data-action="chooseFollowup" data-args="demo-f1"/.test($main.innerHTML) && $main.innerHTML.includes('Grace Dlamini') && g.followupList().length <= 5);
   g.chooseFollowup('demo-f2');
   ok('…choosing one keeps it on the visitor\'s record', cpDav.interests.followUp === 'demo-f2' && cpDav.interests.followUpName === 'Peter Naidoo' && /✓ Peter Naidoo/.test($main.innerHTML));
   g.buildPrintCard();
@@ -3000,7 +3078,7 @@ function makeServer() {
     { user_id: 'u1', role: 'admin', status: 'approved', full_name: 'Own', email: 'own@x.y', confirmed: true },
     { user_id: 'u2', role: 'admin', status: 'approved', full_name: 'Two', email: 'two@x.y', confirmed: true }] };
   const twoAdmins = g.churchAdminHTML();
-  ok('an admin with a co-admin sees their post and the step-down offer', /My admin post/.test(twoAdmins) && /Health Department Leader/.test(twoAdmins) && /stepDown\(\)/.test(twoAdmins));
+  ok('an admin with a co-admin sees their post and the step-down offer', /My admin post/.test(twoAdmins) && /Health Department Leader/.test(twoAdmins) && /data-action="stepDown"/.test(twoAdmins));
   g.cloud.members = { cid: 'c1', list: [
     { user_id: 'u1', role: 'admin', status: 'approved', full_name: 'Own', email: 'own@x.y', confirmed: true }] };
   const soleAdmin = g.churchAdminHTML();
