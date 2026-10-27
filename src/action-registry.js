@@ -1,5 +1,5 @@
 // @ts-check
-import { closeAcct, cloudInit, cloudSignIn, cloudSignOut, cloudSync, gateBack, joinChurch, leaveChurch, linkMember, linkVolunteer, manageChurch, myField, myPickPledge, myPledgeEdit, myPledgeSave, mySecondBooth, myToggleBooth, myToggleList, openAcct, profDeleteAsk, profDeleteGo, profDeleteTyped, profGate, profPassword, registerChurch, removeMember, renderAcct, saveChurch, saveMyDetails, setChurchStatus, setMember, teamAdd, teamRelease, teamShift, withdrawMyPledge } from './account.js';
+import { closeAcct, cloudInit, cloudSignIn, cloudSignOut, cloudSync, gateBack, joinChurch, leaveChurch, linkMember, linkVolunteer, manageChurch, markNotifsRead, myField, myPickPledge, myPledgeEdit, myPledgeSave, mySecondBooth, myToggleBooth, myToggleList, notifClose, notifOpen, openAcct, openNotifs, profDeleteAsk, profDeleteGo, profDeleteTyped, profGate, profPassword, registerChurch, removeMember, renderAcct, saveChurch, saveMyDetails, setChurchStatus, setMember, teamAdd, teamRelease, teamShift, withdrawMyPledge } from './account.js';
 import { churchSearchSoon, openChurchData, stepDown } from './account.js';
 import { cancelInvites, chooseChurchPlan, chooseFollowup, deleteChurchPlan, editChurchPlan, makeInvite, saveChurchPlan, setFollowup } from './churchPlans.js';
 import { copyInvite, shareInvite } from './churchPlans.js';
@@ -116,6 +116,12 @@ export const ACTION_MAP = {
   'team-add': el => teamAdd(el.dataset.args),
   'team-release': el => teamRelease(el.dataset.args),
   'team-shift': el => teamShift(el.dataset.vol, el.value),
+
+  /* -- notifications (the bell) -- */
+  openNotifs: () => openNotifs(),
+  'notif-close': () => notifClose(),
+  'notif-mark-read': el => markNotifsRead(el.dataset.args),
+  'notif-open': el => notifOpen(el.dataset.args),
   'church-save': (el, ev) => saveChurch(ev, el.dataset.args),
   'church-status': el => setChurchStatus(el.dataset.args, el.dataset.status),
   'all-churches-back': el => { cloud.adminData = ''; renderAcct(); },

@@ -1615,6 +1615,217 @@ $$;
 revoke all on function public.my_team() from public, anon;
 grant execute on function public.my_team() to authenticated;
 
+-- ================================================================ VOLUNTEER HUB: NOTIFICATIONS
+-- A small inbox for events about the person: membership, placement, the leader title, their church, their team and
+-- their shift. Only people with accounts get rows, and only the account's own rows are readable. Rows are written
+-- by the triggers and functions below — never by the screens — so every path that changes a placement notifies,
+-- including a desk acting through the sync. No body text is ever copied from health data: only station names and
+-- roles. Safe to re-run.
+
+create table if not exists public.notifications (
+  id         bigint generated always as identity primary key,
+  church_id  uuid not null references public.churches (id) on delete cascade,
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  kind       text not null,
+  title      text not null check (length(title) <= 120),
+  body       text not null default '' check (length(body) <= 300),
+  created_at timestamptz not null default now(),
+  read_at    timestamptz
+);
+alter table public.notifications enable row level security;
+revoke all on public.notifications from anon;
+-- a user reads and marks their own rows; there is no insert policy: only the triggers and functions below write
+drop policy if exists "own notifications" on public.notifications;
+create policy "own notifications" on public.notifications
+  for select to authenticated using (user_id = (select auth.uid()));
+drop policy if exists "own notifications read" on public.notifications;
+create policy "own notifications read" on public.notifications
+  for update to authenticated using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+create index if not exists notifications_user_idx on public.notifications (user_id, created_at desc);
+
+-- the station's display name, for notification text (the keys the app's BOOTHS list uses)
+create or replace function public.booth_title(p_booth text)
+returns text
+language sql
+stable
+set search_path = ''
+as $$
+  select case p_booth
+    when 'welcome' then 'Welcome & Registration' when 'vitals' then 'Vitals & BMI'
+    when 'bp' then 'Blood Pressure' when 'sugar' then 'Blood Sugar & Chol.'
+    when 'kitchen' then 'Kitchen Pharmacy' when 'plan' then 'Health Counselling'
+    when 'prayer' then 'Prayer & Chaplaincy' when 'kids' then 'Kids Corner'
+    when 'logistics' then 'Logistics & Setup' when 'media' then 'Media & Photography'
+    when 'followup' then 'Follow-up & Data' when 'refresh' then 'Refreshments'
+    else coalesce(p_booth, '') end;
+$$;
+revoke all on function public.booth_title(text) from public, anon, authenticated;
+
+-- one row, quietly: a notification must never break the change that caused it. The church comes from the event,
+-- never from the caller: the platform admin approving a church has no membership of their own.
+create or replace function public.notify(p_church uuid, p_user uuid, p_kind text, p_title text, p_body text default '')
+returns void
+language sql
+security definer
+set search_path = ''
+as $$
+  insert into public.notifications (church_id, user_id, kind, title, body)
+  select p_church, p_user, p_kind, left(p_title, 120), left(p_body, 300)
+  where p_user is not null and p_church is not null;
+$$;
+revoke all on function public.notify(uuid, uuid, text, text, text) from public, anon, authenticated;
+
+-- placements, the leader title and shifts: written on any update of a linked volunteer row, whichever desk made it
+create or replace function public.volunteers_notify()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_user uuid; v_old_lead uuid; v_new_lead uuid;
+begin
+  select m.user_id into v_user from public.memberships m where m.church_id = new.church_id and m.volunteer_id = new.id;
+  if new.booth is distinct from old.booth then
+    if v_user is not null then
+      perform public.notify(new.church_id, v_user, 'placement',
+        case when new.booth is null then 'You were taken off ' || public.booth_title(old.booth)
+             when old.booth is null then 'You are placed at ' || public.booth_title(new.booth)
+             else 'You moved to ' || public.booth_title(new.booth) end,
+        'Your team leader will confirm your shift on the day.');
+    end if;
+    -- the station that gained or lost someone tells its leader (joined or left your team)
+    select l.user_id into v_new_lead from public.memberships l where l.church_id = new.church_id and l.volunteer_id = (
+      select v.id from public.volunteers v where v.church_id = new.church_id and v.booth = new.booth and v.lead and v.id <> new.id);
+    select l.user_id into v_old_lead from public.memberships l where l.church_id = old.church_id and l.volunteer_id = (
+      select v.id from public.volunteers v where v.church_id = old.church_id and v.booth = old.booth and v.lead and v.id <> old.id);
+    if new.booth is not null and v_new_lead is not null and v_new_lead <> v_user then
+      perform public.notify(new.church_id, v_new_lead, 'team', 'Someone joined your team at ' || public.booth_title(new.booth), 'Open My team to see who and set their shift.');
+    end if;
+    if old.booth is not null and v_old_lead is not null and v_old_lead <> v_user and v_old_lead is distinct from v_new_lead then
+      perform public.notify(old.church_id, v_old_lead, 'team', 'Someone left your team at ' || public.booth_title(old.booth), 'The admin moved them to another station.');
+    end if;
+  end if;
+  if new.lead is distinct from old.lead and v_user is not null then
+    perform public.notify(new.church_id, v_user, 'lead',
+      case when new.lead then 'You lead ' || public.booth_title(new.booth) || ' ★'
+           else 'You are no longer the leader of ' || public.booth_title(coalesce(old.booth, new.booth)) end,
+      case when new.lead then 'Open My team to add people and set their shifts.' else 'Ask your church''s admin if that is a surprise.' end);
+  end if;
+  if new.shift is distinct from old.shift and v_user is not null and new.shift <> '' then
+    perform public.notify(new.church_id, v_user, 'shift', 'Your shift changed', coalesce(new.shift, ''));
+  end if;
+  return null;
+end;
+$$;
+revoke all on function public.volunteers_notify() from public, anon, authenticated;
+drop trigger if exists volunteers_notify on public.volunteers;
+create trigger volunteers_notify after update on public.volunteers
+  for each row execute function public.volunteers_notify();
+
+-- membership approved or role changed
+create or replace function public.memberships_notify()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.status is distinct from old.status and new.status = 'approved' then
+    perform public.notify(new.church_id, new.user_id, 'membership', 'Your membership was approved',
+      'You can now see your own expo results and pledge for the next expo.');
+  end if;
+  if new.role is distinct from old.role then
+    perform public.notify(new.church_id, new.user_id, 'membership', 'Your role changed to ' || new.role,
+      case new.role when 'admin' then 'You manage this church''s members, volunteers and placements.'
+                    when 'staff' then 'You can work the expo app on your church''s desks.'
+                    else 'Ask your church''s admin if that is a surprise.' end);
+  end if;
+  return null;
+end;
+$$;
+revoke all on function public.memberships_notify() from public, anon, authenticated;
+drop trigger if exists memberships_notify on public.memberships;
+create trigger memberships_notify after update on public.memberships
+  for each row execute function public.memberships_notify();
+
+-- the church was approved by the platform admin
+create or replace function public.churches_notify()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.status = 'active' and old.status <> 'active' then
+    perform public.notify(new.id, m.user_id, 'church', 'Your church was approved',
+      new.name || ' can now add visitors, volunteers and the queue.')
+    from public.memberships m where m.church_id = new.id and m.role = 'admin' and m.status = 'approved';
+  end if;
+  return null;
+end;
+$$;
+revoke all on function public.churches_notify() from public, anon, authenticated;
+drop trigger if exists churches_notify on public.churches;
+create trigger churches_notify after update on public.churches
+  for each row execute function public.churches_notify();
+
+-- a member's first pledge tells the church's admins and the leader of each station they chose
+create or replace function public.pledge_notify()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not exists (select 1 from public.notifications n
+                 where n.church_id = new.church_id and n.kind = 'pledge'
+                   and n.title = 'New pledge: ' || new.name and n.created_at > now() - interval '1 hour') then
+    insert into public.notifications (church_id, user_id, kind, title, body)
+    select new.church_id, m.user_id, 'pledge', 'New pledge: ' || new.name,
+           'They asked for ' || array_to_string(new.pref, ', ') || '.'
+    from public.memberships m
+    where m.church_id = new.church_id and m.role = 'admin' and m.status = 'approved';
+    insert into public.notifications (church_id, user_id, kind, title, body)
+    select distinct new.church_id, lm.user_id, 'pledge', 'New pledge for your station: ' || new.name,
+           'They asked for ' || coalesce(public.booth_title(new.booth), 'a station') || '.'
+    from public.volunteers l
+    join public.memberships lm on lm.church_id = l.church_id and lm.volunteer_id = l.id
+    where l.church_id = new.church_id and l.lead and l.booth = any (coalesce(new.pref, '{}'));
+  end if;
+  return null;
+end;
+$$;
+revoke all on function public.pledge_notify() from public, anon, authenticated;
+drop trigger if exists pledge_notify on public.volunteers;
+create trigger pledge_notify after insert on public.volunteers
+  for each row execute function public.pledge_notify();
+
+-- mark read up to a row, in one call ("Mark all read")
+create or replace function public.mark_notifications_read(p_upto bigint)
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare n integer;
+begin
+  if (select auth.uid()) is null then raise exception 'sign in first' using errcode = '42501'; end if;
+  update public.notifications n set read_at = now()
+   where n.user_id = (select auth.uid()) and n.read_at is null and n.id <= coalesce(p_upto, 9223372036854775807);
+  get diagnostics n = row_count;
+  return n;
+end;
+$$;
+revoke all on function public.mark_notifications_read(bigint) from public, anon;
+grant execute on function public.mark_notifications_read(bigint) to authenticated;
+
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'notifications') then
+    alter publication supabase_realtime add table public.notifications;
+  end if;
+end $$;
+
 -- ================================================================ INVITE LINKS
 -- A church admin shares a link (…/?join=CODE). Whoever signs in with it joins that church at once, approved, as a
 -- member or as staff: no searching for the church and no waiting for approval. Links last 30 days and can be cancelled.
@@ -1847,6 +2058,9 @@ begin
           or public.consent_is_old(old -> 'interests'));
   delete from public.audit_log where at < now() - interval '2 years';
   delete from public.queue_entries where joined_at < now() - interval '30 days';
+  -- notifications are read-once: a read one goes after 30 days, any one after 90
+  delete from public.notifications where (read_at is not null and read_at < now() - interval '30 days')
+     or created_at < now() - interval '90 days';
   return n;
 end;
 $$;

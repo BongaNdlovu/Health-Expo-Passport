@@ -14,7 +14,8 @@ export const cloud={client:null,user:null,mode:false,status:'off',err:'',busy:fa
   view:'login',viewEmail:'',pending:false,recovery:false,resendAt:0,signingOut:false,
   acct:null,acctV:0,churchId:'',acctTab:'me',health:undefined,dir:null,regChurch:false,members:null,plat:null,audit:null,adminChurch:'',gateForce:false,delOpen:false,
   pledge:undefined,pledgeErr:false,pledgeBusy:false,   /* the member's own pledge (src/account.js pledgeHTML) */
-  myTeam:undefined,myTeamBusy:false};                   /* a team leader's people (src/account.js myTeamHTML) */
+  myTeam:undefined,myTeamBusy:false,                    /* a team leader's people (src/account.js myTeamHTML) */
+  notifN:0,notifT:null,notifLive:false,notifChannel:null,notifWatched:'',notifs:undefined,notifsOffline:false,notifOpen:false};
 /* Every screen change calls this, but the data rarely changes: compare a fingerprint first and only write (and only
    look for rows to upload) when something really changed. Writing ~1 MB to storage on every tap is what drained phones. */
 let _savedSig='',_fullWarned=false;

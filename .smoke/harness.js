@@ -2647,12 +2647,45 @@ function makeServer() {
       C.acct = null; g.resetDemo();
     }
 
+    /* the notifications bell and hub */
+    const notifReset = g2 => { g2.cloud.notifN = 0; g2.cloud.notifs = undefined; g2.cloud.notifWatched = ''; g2.cloud.notifChannel = null; g2.cloud.notifLive = false; const d = $el('notifDot'); if (d) { d.textContent = ''; } };
+    {
+
+      C.user = null; notifReset(g);
+      g.notifRefresh();
+      ok('the bell is hidden while signed out', $el('notifBell').classList.contains('hidden'));
+      C.user = { id: 'u-notif', email: 'n@ex.org' };
+      srv.tables.notifications = new Map([
+        [1, { id: 1, user_id: 'u-notif', kind: 'placement', title: 'Evil <b>X</b>', body: 'note', created_at: '2026-03-01T08:00:00Z', read_at: null }],
+        [2, { id: 2, user_id: 'u-notif', kind: 'membership', title: 'Approved', body: '', created_at: '2026-03-02T08:00:00Z', read_at: '2026-03-02T09:00:00Z' }],
+      ]);
+      srv.staff = true;                       /* RLS: the account sees its own rows */
+      await g.notifCount(); await sleep(120);
+      ok('the bell shows the unread count once signed in',
+        !$el('notifBell').classList.contains('hidden') && $el('notifDot').textContent === '1', $el('notifDot').textContent);
+      g.openNotifs(); await sleep(120);
+      const nh = $el('notifBody').innerHTML;
+      ok('the hub lists the rows newest first and escapes titles',
+        nh.includes('Evil &lt;b&gt;X&lt;/b&gt;') && nh.indexOf('Approved') < nh.indexOf('Evil') && nh.includes('Mark all read'), nh.slice(0, 140));
+      let markCalls = 0; srv.rpcs = { mark_notifications_read: () => { markCalls++; return { data: markCalls }; } };
+      await g.markNotifsRead(2); await sleep(120);
+      ok('mark all read calls the database once for the caller', markCalls === 1, String(markCalls));
+      srv.rpcs = null;
+      srv.offline = true;
+      g.openNotifs(); await sleep(120);
+      ok('offline the sheet says so instead of pretending', /Connect to see new notifications/.test($el('notifBody').innerHTML), $el('notifBody').innerHTML.slice(0, 120));
+      srv.offline = false;
+      notifReset(g); srv.tables.notifications = new Map(); srv.staff = false; C.user = null;
+      ok('no new polling: the app still has exactly two timers (sync and queue ticks)',
+        (srcText.match(/setInterval\(/g) || []).length === 2, (srcText.match(/setInterval\(/g) || []).length);
+    }
+
 
     /* live connections: reconnecting must not pile up handlers */
-    device(); C.client = srv.client;
+    device(); C.client = srv.client; C.user = { id: 'u-1', email: 'n@ex.org' };
     for (let i = 0; i < 50; i++) { g.stopRealtime(); g.startRealtime(); }
-    ok('50 live reconnects leave exactly one connection (two table handlers), not fifty', srv.handlers.length === 2, srv.handlers.length);
-    g.stopRealtime(); srv.reset();
+    ok('50 live reconnects leave exactly one connection (three table handlers: visitors, volunteers, notifications), not fifty', srv.handlers.length === 3, srv.handlers.length);
+    g.stopRealtime(); C.user = null; srv.reset();
   }
   /* database attacks on a real Postgres (with NEWSTART_PGLITE) */
   if (process.env.NEWSTART_PGLITE) await (async () => {
@@ -2937,6 +2970,61 @@ function makeServer() {
     row = (await sys(`select booth, status, lead, role from public.volunteers where id = 'VOL-2001'`))[0];
     ok('releasing takes the person off the station and out of the lead, so they can be placed elsewhere',
       row.booth === null && row.status === 'prospect' && row.lead === false && row.role === '', JSON.stringify(row));
+
+    /* ---- phase 4: notifications ---- */
+    console.log('\n18d. Volunteer hub: notifications');
+    const notifs = async uid => (await as(uid, `select id, kind, title, body, user_id, read_at from public.notifications order by id`)).rows;
+    await sys(`insert into public.volunteers (church_id, id, name, phone, status, booth) values ($1, 'VOL-4001', 'Placed One', '082 666 0001', 'registered', 'bp')`, [CH]);
+    /* each check counts only the rows created after it: earlier phases left real history behind */
+    const mark = async () => (await sys(`select coalesce(max(id),0)::int m from public.notifications`))[0].m;
+    let markBefore = await mark();
+    await as(U.adm, `select * from public.place_volunteer('VOL-2001','bp')`);
+    const n1 = (await notifs(U.mem1)).filter(x => x.id > markBefore);
+    ok('placing a linked volunteer writes one placement row to their member',
+      n1.length === 1 && n1[0].kind === 'placement' && n1[0].title === 'You are placed at Blood Pressure', JSON.stringify(n1));
+    markBefore = await mark();
+    await as(U.adm, `select public.set_station_lead('bp','VOL-2001')`);
+    const n2 = (await notifs(U.mem1)).filter(x => x.id > markBefore);
+    ok('making a leader writes the title row with the station',
+      n2.length === 1 && n2[0].kind === 'lead' && n2[0].title === 'You lead Blood Pressure ★', JSON.stringify(n2));
+    markBefore = await mark();
+    await as(U.adm, `select public.set_shift('VOL-2001','10:00-14:00')`);
+    const n3 = (await notifs(U.mem1)).filter(x => x.id > markBefore);
+    ok('a shift change writes one shift row', n3.length === 1 && n3[0].kind === 'shift' && n3[0].body === '10:00-14:00', JSON.stringify(n3));
+    await sys(`insert into public.volunteers (church_id, id, name, phone) values ($1,'VOL-4002','No Account','082 666 0002')`, [CH]);
+    markBefore = await mark();
+    await as(U.adm, `select * from public.place_volunteer('VOL-4002','bp')`);
+    ok('an unlinked volunteer generates no notification for anybody', (await mark()) === markBefore, 'an extra row appeared for a user with no link');
+    /* mem2 becomes a member of the church so their rows can be compared */
+    await as(U.adm, `select public.set_member($1,'member','approved')`, [U.mem2]);
+    r = await as(U.mem1, `select public.mark_notifications_read(null) n`);
+    ok('mark all read stamps only the own rows', !r.error && (await notifs(U.mem1)).every(x => x.read_at !== null), r.error && r.error.message);
+    const mem2Rows = await notifs(U.mem2);
+    if (mem2Rows.length) {
+      await as(U.mem1, `update public.notifications set read_at = now() where user_id = '${U.mem2}'`);
+      ok('attack: a member cannot mark another member rows read',
+        (await notifs(U.mem2)).every(x => x.read_at === null));
+      ok('attack: a member cannot read rows that are not theirs',
+        (await as(U.mem1, `select id from public.notifications where user_id = '${U.mem2}'`)).rows.length === 0);
+    }
+    /* the church was approved: its admins hear about it */
+    await sys(`update public.churches set status = 'pending' where id = $1`, [CHB]);
+    await as(U.lonerP || U.adm, `select 1`);   /* noop to keep the shape */
+    await sys(`insert into public.platform_admins (user_id) values ($1) on conflict do nothing`, [U.pend]);
+    await as(U.pend, `select public.admin_set_church_status($1,'active')`, [CHB]);
+    const nB = await notifs(U.admB);
+    ok('approving a church writes one row to each of its admins', nB.some(x => x.kind === 'church' && x.title === 'Your church was approved'), JSON.stringify(nB.map(x => x.title)));
+    /* the purge: a read row goes after 30 days, any row after 90 */
+    await sys(`insert into public.notifications (church_id, user_id, kind, title, created_at, read_at)
+      values ($1, $2, 'pledge', 'Old read', now() - interval '40 days', now() - interval '39 days'),
+             ($1, $2, 'pledge', 'Old unread', now() - interval '100 days', null)`, [CH, U.mem1]);
+    await sys(`select public.purge_expired_visitors()`);
+    const left = await notifs(U.mem1);
+    ok('the daily purge deletes read rows after 30 days and any row after 90',
+      !left.some(x => x.title === 'Old read') && !left.some(x => x.title === 'Old unread')
+        && left.some(x => x.title === 'You are placed at Blood Pressure'), JSON.stringify(left.map(x => x.title)));
+    ok('notifications is in the realtime publication',
+      (await sys(`select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'notifications'`)).length === 1);
 
   })().catch(e => ok('volunteer hub database tests ran to the end', false, e && e.stack || e));
 

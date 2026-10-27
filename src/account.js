@@ -10,7 +10,7 @@ import { PROTOCOLS, STATUS_UI, attendees, boothLabel, state, volunteers } from '
 import { qSafe, queueReset, queueSync } from './queue.js';
 import { bmi, cat, chipClass, esc, fmt1, initials, redFlag } from './helpers.js';
 import { planNeeds } from './results.js';
-import { MY_PLEDGE_ACTS, emptyDraft, hideModal, pledgeFormParts, showModal } from './volunteer.js';
+import { MY_PLEDGE_ACTS, emptyDraft, hideModal, pledgeFormParts, setVolTab, showModal } from './volunteer.js';
 import { loadScript } from './libs.js';
 /* The account hub: my account, my church, all churches (platform admin), members and approvals. Split from the original single-file app; bundled back into one file by tools/build.js. */
 /* ---------- churches, members and the platform admin ----------
@@ -41,12 +41,14 @@ export async function loadAccount(){
  if(r.data&&typeof r.data==='object')noteServerTime(r.data.server_now,sentAt,Date.now());
  if(r.error||!r.data||typeof r.data!=='object'){         /* no churches in this database yet: the old staff check decides */
   cloud.acct=null;cloud.churchId='';
-  if(!r.error||!isOfflineErr(r.error.message))noteHealth('account','warn','Churches are not set up in this database. Until schema.sql is run again, the old staff list decides who gets in.',r.error?String(r.error.message||''):'my_account gave no account');
-  const chk=await cloud.client.rpc('is_staff');
+   if(!r.error||!isOfflineErr(r.error.message))noteHealth('account','warn','Churches are not set up in this database. Until schema.sql is run again, the old staff list decides who gets in.',r.error?String(r.error.message||''):'my_account gave no account');
+   notifWatch();
+   const chk=await cloud.client.rpc('is_staff');
   if(chk.error)throw chk.error;
   return chk.data===true;
  }
  cloud.acct=r.data;cloud.acctV++;cloud.health=undefined;cloud.pledge=undefined;cloud.pledgeEdit=false;cloud.myTeam=undefined;state.mf=null;          /* Check again also reloads the member's results, pledge and team */
+ if(cloud.user&&cloud.notifWatched!==cloud.user.id){cloud.notifWatched=cloud.user.id;notifCountSoon();}   /* the bell count: once per sign-in */
  const m=r.data.membership,c=r.data.church;
  /* an invite link opened on this device: join that church now, approved (it is used once, whatever the answer) */
  const inv=pendingInvite();
@@ -394,6 +396,88 @@ export async function teamRelease(id){
 export async function teamShift(id,shift){
  if(await acctRpc('set_shift',{p_vol:id,p_shift:shift||''},'Shift saved ✓'))cloud.myTeam=undefined,await loadMyTeam();
 }
+
+/* ---------- notifications (VOLUNTEER HUB: NOTIFICATIONS) ----------
+   A bell for every signed-in account. The count is one head-only query, at sign-in and when the app comes to the
+   front — never a timer. Arrivals arrive live: staff ride the existing newstart-live channel (startRealtime), a
+   member who has no channel opens one for their own rows only. Offline keeps the last known count. */
+export function notifRefresh(){
+ const b=$('#notifBell');if(!b)return;
+ b.classList.toggle('hidden',!cloud.user);
+ const d=$('#notifDot');if(!d)return;
+ const n=cloud.notifN||0;
+ if(cloud.user&&n>0){d.style.display='flex';d.textContent=n>9?'9+':String(n);}else d.style.display='none';
+}
+export async function notifCount(){
+ if(!cloud.client||!cloud.user){cloud.notifN=0;notifRefresh();return;}
+ const r=await cloud.client.from('notifications').select('id,read_at',{count:'exact',head:true}).eq('user_id',cloud.user.id).eq('read_at',null);
+ if(r.error)return;                        /* offline: the bell keeps the last known count */
+ cloud.notifN=typeof r.count==='number'?r.count:(Array.isArray(r.data)?r.data.length:0);
+ notifRefresh();
+}
+export function notifCountSoon(){clearTimeout(cloud.notifT);cloud.notifT=setTimeout(notifCount,300);}
+/* a member with no shared channel opens one, filtered to their own rows. (Supabase Realtime applies the table's
+   row level security to postgres_changes, so the filter only ever delivers the account's own inserts.) */
+export function notifWatch(){
+ if(!cloud.client||!cloud.user||cloud.channel||cloud.notifChannel)return;
+ const ch=cloud.client.channel('newstart-notifs');
+ ch.on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:'user_id=eq.'+cloud.user.id},p=>onNotifRow(p.new));
+ ch.subscribe();cloud.notifChannel=ch;
+}
+export function notifStop(){
+ cloud.notifLive=false;cloud.notifWatched='';
+ if(cloud.notifChannel&&cloud.client){try{cloud.client.removeChannel(cloud.notifChannel);}catch(e){}}
+ cloud.notifChannel=null;cloud.notifN=0;notifRefresh();
+}
+function onNotifRow(row){
+ if(!row||row.read_at)return;
+ cloud.notifN=(cloud.notifN||0)+1;notifRefresh();
+ if(cloud.notifOpen)renderNotifs();
+}
+export function openNotifs(){
+ cloud.notifOpen=true;showModal('#notifSheet');cloud.notifs=undefined;renderNotifs();
+}
+async function loadNotifs(){
+ if(!cloud.client||!cloud.user)return;
+ const r=await cloud.client.from('notifications').select('id,kind,title,body,created_at,read_at').eq('user_id',cloud.user.id).order('created_at').range(0,49);
+ if(r.error){cloud.notifs=null;cloud.notifsOffline=isOfflineErr(r.error.message);renderNotifs();return;}
+ const rows=r.data||[];rows.reverse();      /* newest first */
+ cloud.notifs=rows;renderNotifs();
+}
+const KIND_L={membership:'Account',placement:'Placement',lead:'Team leader',church:'Church',pledge:'Pledge',team:'My team',shift:'Shift'};
+export function renderNotifs(){
+ const el=$('#notifBody');if(!el)return;
+ if(!cloud.user){el.innerHTML=acctNote('Sign in to see notifications.');return;}
+ if(cloud.notifs===undefined){loadNotifs();return;}
+ if(cloud.notifs===null){el.innerHTML=`<div class="display text-base font-extrabold">Notifications</div>${acctNote(cloud.notifsOffline?'Connect to see new notifications. Your unread count stays on the bell.':'The notifications could not be loaded. If this keeps happening, check the connection and the database setup.')}`;return;}
+ const L=cloud.notifs||[];
+ const unread=L.filter(x=>!x.read_at).length,maxId=L.length?Math.max(...L.map(x=>Number(x.id)||0)):0;
+ el.innerHTML=`<div class="display text-base font-extrabold">Notifications</div>
+  <div class="mt-1 flex items-center justify-between gap-2">
+   <span class="text-[11px] text-[#5c747a]">${navigator.onLine?'The last 50, newest first.':'Connect to see new notifications.'}</span>
+   ${L.length?`<button data-action="notif-mark-read" data-args="${maxId}" class="tap-link ${unread?'':'opacity-50'}">Mark all read</button>`:''}</div>
+  ${L.length?L.map(x=>`<button data-action="notif-open" data-args="${qSafe(String(x.id))}" class="mt-2 w-full rounded-[16px] border border-[#123033]/[.07] bg-white/60 p-3 text-left ${x.read_at?'opacity-70':''}">
+    <div class="flex items-center justify-between gap-2"><span class="microlabel">${esc(KIND_L[x.kind]||x.kind||'Notification')}</span>
+     <span class="mono flex-none text-[9px] text-[#8a9aa0]">${esc(String(x.created_at||'').slice(0,16).replace('T',' '))}${x.read_at?'':' · new'}</span></div>
+    <div class="mt-0.5 text-[12.5px] font-bold text-[#123033]">${esc(x.title)}</div>
+    ${x.body?`<div class="mt-0.5 text-[11px] leading-snug text-[#4f6870]">${esc(x.body)}</div>`:''}</button>`).join('')
+   :acctNote('Nothing yet. You will hear about your placement, your team and your membership here.')}`;
+}
+export async function markNotifsRead(upto){
+ const r=await acctRpc('mark_notifications_read',{p_upto:Number(upto)||null},'Marked all read ✓');
+ if(!r)return;
+ cloud.notifN=0;notifRefresh();
+ cloud.notifs=undefined;renderNotifs();
+}
+/* a notification about a station opens the board for staff; everything else opens the account screen */
+export function notifOpen(id){
+ const x=(cloud.notifs||[]).find(n=>String(n.id)===String(id));if(!x)return;
+ notifClose();
+ const staff=cloud.acct&&cloud.acct.membership&&cloud.acct.membership.role!=='member';
+ if(staff&&(x.kind==='placement'||x.kind==='team'||x.kind==='pledge'||x.kind==='lead')){setVolTab('muster');render();}
+ else openAcct('me');
+}
+export function notifClose(){cloud.notifOpen=false;hideModal('#notifSheet');}
 
 /* --- the account hub: My account · My church · All churches (platform admin) --- */
 export function acctTabs(){
@@ -795,7 +879,7 @@ export function cloudAuthEvent(ev,session){
   cloud.user=u;cloud.gateForce=false;noteHealth('auth','ok','Signed in as '+(u.email||''));
   if(!same){cloud.mode=true;cloud.blocked=false;cloud.lastFull=0;cloud.since={att:'',vol:''};cloudSync();profileChanged(true);}
  }else if(ev==='SIGNED_OUT'||ev==='INITIAL_SESSION'){
-  if(cloud.user){cloud.user=null;stopRealtime();cloudRefresh();}
+  if(cloud.user){cloud.user=null;stopRealtime();notifStop();cloudRefresh();}
   /* the session ended by itself (expired, or revoked elsewhere): keep working from the saved copy, but say so */
   healthReset();noteHealth('auth','off','Not signed in.');
   if(ev==='SIGNED_OUT'&&cloud.ready&&!cloud.signingOut)toast('Signed out — tap the logo to sign in again');
@@ -869,7 +953,8 @@ export async function cloudSync(manual){
    cloud.blocked=true;cloud.pending=true;
    noteHealth('sync','off','This account has no expo data access, so nothing is downloaded.');noteHealth('upload','off','Nothing to upload for this account.');
    if(cloud.acct){dropChurchData();cloud.ready=false;}      /* the database says no expo access: the saved copy goes too */
-   setCloud('error',cloud.acct?ACCT_MSG[acctGate()]:'This account is not approved yet. Ask the administrator to add it to the staff list (see supabase/README.md).');return;
+   setCloud('error',cloud.acct?ACCT_MSG[acctGate()]:'This account is not approved yet. Ask the administrator to add it to the staff list (see supabase/README.md).');
+   notifWatch();return;
   }
   cloud.pending=false;
   if(cloud.acct)adoptChurch(cloud.churchId);
@@ -1042,6 +1127,8 @@ export function startRealtime(){
  if(cloud.channel||!cloud.client)return;
  const ch=cloud.client.channel('newstart-live');
  for(const kind of ['att','vol'])ch.on('postgres_changes',{event:'*',schema:'public',table:KINDS[kind].table},p=>onRemoteChange(kind,p));
+ /* the bell rides the same channel: a notification for this account arrives without any polling */
+ if(cloud.user)ch.on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:'user_id=eq.'+cloud.user.id},p=>onNotifRow(p.new));
  ch.subscribe(st=>{cloud.liveSt=st;healthLive('live',st);});cloud.channel=ch;
 }
 export function stopRealtime(){
