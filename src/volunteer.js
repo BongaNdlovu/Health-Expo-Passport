@@ -6,7 +6,7 @@ import { AVAIL, BOOTH, BOOTHS, DISCLAIMER, EXPO_UPCOMING, PRECAUTIONS, SKILLS, a
 import { A, PRICE_DATE, bmi, costOf, esc, firstName, fmt1, healthAge, initials, money, pefPct, projection, simBP } from './helpers.js';
 import { render, toast } from './shell.js';
 import { LIST_CAP, switchTab, visitorsToShow } from './visitor.js';
-import { migrateVolunteer, persist } from './state.js';
+import { migrateVolunteer, persist, cloud } from './state.js';
 import { downloadCSV, foodKeyOf, planFor, shortFood } from './results.js';
 import { validEmail } from './cloud.js';
 import { GRACE_DAYS, withoutOldReadings } from './retention.js';
@@ -107,7 +107,7 @@ function availLabels(v){return (v.availability||[]).map(a=>(AVAIL.find(x=>x[0]==
 /* Every volunteer action can be triggered from outside the Team tab (the Home
    card and its modal), so each one first makes sure the Team tab is showing. */
 function gotoServe(){state.tab='serve';}
-const emptyDraft=()=>({name:'',phone:'',email:'',pledgeExpos:1,skills:[],pref:[],avail:[]});
+export const emptyDraft=()=>({name:'',phone:'',email:'',pledgeExpos:1,skills:[],pref:[],avail:[]});
 /* leave the pledge form without saving: drop the draft and undo "new volunteer" */
 function discardVolDraft(){
  state.volRegOpen=false;state.vf=emptyDraft();
@@ -308,6 +308,12 @@ function volCapped(arr,key){
 const volMore=(arr,key)=>arr.length>LIST_CAP&&!(state.volAll&&state.volAll[key])
  ?`<button data-action="showAllVol" data-args="${key}" class="btn btn-glass mt-2 w-full py-2.5 text-[11px] text-[#5b7178]">Show all ${arr.length}</button>`:'';
 export function showAllVol(key){state.volAll=Object.assign({},state.volAll,{[key]:true});render();}
+/* which volunteers are linked to a member account. The admin's loaded member list (src/account.js) is the only
+   source on a staff device, so the mark appears once My church has been opened — no extra request for it. */
+export const linkedVolIds=()=>{
+ const L=(typeof cloud!=='undefined')&&cloud.members&&cloud.members.list;
+ return L?new Set(L.filter(u=>u.volunteer_id).map(u=>u.volunteer_id)):null;
+};
 
 export function volRow(v,confirmed){
  const act=v.id===state.volId;
@@ -319,6 +325,7 @@ export function volRow(v,confirmed){
    <span class="mt-0.5 flex flex-wrap items-center gap-1">
     <span class="servechip ${STATUS_UI[v.status].cls}">${STATUS_UI[v.status].label}</span>
     <span class="rankpill hue-${t.hue}">${volLevel(v)?`Lv ${volLevel(v)}`:esc(t.short)}</span>
+    ${linkedVolIds()&&linkedVolIds().has(v.id)?'<span class="servechip sc-ok">account ✓</span>':''}
     ${confirmed?`<span class="text-[9.5px] font-bold text-[#6b8187]">${esc(boothLabel(v.booth))}</span>`
                :`<span class="text-[9.5px] font-bold text-[#6b8187]">wants ${esc(boothLabel((v.pref||[])[0]||''))}</span>`}
    </span>
@@ -408,8 +415,7 @@ function viewVolBooth(){
 }
 
 /* Booth picker: reads the registration draft when open, else the saved record. */
-function boothPicker({onToggleA,onToggleB}){
- const d=state.vf;
+function boothPicker(d,{onToggleA,onToggleB}){
  const selA=d.pref||[],selB=d.pref2||'';
  return `<div class="space-y-2">
   <div class="microlabel">First choice booth <span class="font-bold normal-case tracking-normal text-[#8a9aa0]">(tap to change)</span></div>
@@ -560,6 +566,74 @@ function emptyVolState(){
 
 /* ---------- registration / pledge form ---------- */
 export function openVolReg(){gotoServe();state.volRegOpen=true;state.logOpen=false;render();window.scrollTo({top:0,behavior:'smooth'});}
+/* Sections 1–3 of the pledge form, shared by the staff pledge (Team tab) and the member's "My pledge" box
+   (src/account.js). `d` is the draft being edited, `pfx` the input-id prefix and `acts` the action names, so the
+   two forms keep separate drafts and never write each other's state. */
+export function pledgeFormParts(d,pfx,acts){
+ return `<div class="glass p-4 space-y-3">
+   <div class="microlabel">1 · Who you are</div>
+   <label class="block"><span class="microlabel">Full name *</span>
+    <input id="${pfx}Name" value="${esc(d.name)}" data-on-input="${acts.name}" class="field mt-1" placeholder="e.g. Thandi Mabaso" autocomplete="name"></label>
+   <div class="grid grid-cols-2 gap-2">
+    <label class="block"><span class="microlabel">Mobile **</span>
+     <input id="${pfx}Phone" value="${esc(d.phone)}" data-on-input="${acts.phone}" type="tel" inputmode="tel" class="field mt-1" placeholder="082 000 0000" autocomplete="tel"></label>
+    <label class="block"><span class="microlabel">T-shirt</span>
+     <select id="${pfx}Shirt" data-on-change="${acts.shirt}" class="field mt-1">
+      ${['','S','M','L','XL','2XL','3XL'].map(s=>`<option value="${s}" ${d.shirt===s?'selected':''}>${s||'—'}</option>`).join('')}</select></label>
+   </div>
+   <label class="block"><span class="microlabel">Email **</span>
+    <input id="${pfx}Email" value="${esc(d.email)}" data-on-input="${acts.email}" type="email" inputmode="email" class="field mt-1" placeholder="you@example.org" autocomplete="email"></label>
+   <p class="text-[11px] leading-snug text-[#6b8187]">** A mobile number or an email address: at least one, so the team can reach you.</p>
+  </div>
+
+  <div class="glass p-4">
+   <div class="microlabel">2 · Your pledge</div>
+   <div class="mt-2">
+    <span class="microlabel">How many expos are you pledging to help at?</span>
+    <div class="mt-1.5 flex flex-wrap gap-1.5">
+     ${[1,2,3,4,6,12].map(n=>`<button data-action="${acts.pledge}" data-args="${n}" class="availpill hue-peach ${d.pledgeExpos===n?'availpill-on':''}">${n}${n===12?'+':''} expo${n>1?'s':''}</button>`).join('')}
+    </div>
+   </div>
+   <div class="mt-3">
+    <span class="microlabel">What can you help with?</span>
+    <div class="mt-1.5 flex flex-wrap gap-1.5">
+     ${SKILLS.map(([k,l])=>`<button data-action="${acts.list}" data-list="${acts.skillsKey}" data-args="${k}" class="availpill hue-aqua ${d.skills.includes(k)?'availpill-on':''}">${l}</button>`).join('')}
+    </div>
+   </div>
+   <div class="mt-3">
+    <span class="microlabel">When are you usually free?</span>
+    <div class="mt-1.5 flex flex-wrap gap-1.5">
+     ${AVAIL.map(([k,l])=>`<button data-action="${acts.list}" data-list="${acts.availKey}" data-args="${k}" class="availpill hue-sage ${d.avail.includes(k)?'availpill-on':''}">${l}</button>`).join('')}
+    </div>
+   </div>
+  </div>
+
+  <div class="glass p-4">
+   <div class="microlabel">3 · Booth preference</div>
+   <div class="mt-2.5">${boothPicker(d,{onToggleA:acts.boothA,onToggleB:acts.boothB})}</div>
+  </div>`;
+}
+/* the member's own pledge draft ("My pledge" box in src/account.js): same shape as state.vf, kept apart from it */
+export const myDraft=()=>state.mf||(state.mf=emptyDraft());
+export function myField(k,val){myDraft()[k]=val;render();}
+export function myPickPledge(n){myDraft().pledgeExpos=n;render();}
+export function myToggleList(k,v){
+ const a=myDraft()[k];const i=a.indexOf(v);
+ if(i<0)a.push(v);else a.splice(i,1);
+ render();
+}
+export function myToggleBooth(k){
+ const a=myDraft().pref;const i=a.indexOf(k);
+ if(i<0){a.push(k);if(a.length>2)a.shift();}else a.splice(i,1);
+ render();
+}
+export function mySecondBooth(k){myDraft().pref2=myDraft().pref2===k?'':k;render();}
+/* the actions the two forms pass to pledgeFormParts: same parts, different drafts */
+export const STAFF_PLEDGE_ACTS={name:'vf-name',phone:'vf-phone',shirt:'vf-shirt',email:'vf-email',
+ pledge:'pledge-pick',list:'draft-toggle',skillsKey:'skills',availKey:'avail',boothA:'toggleDraftBooth',boothB:'pickSecondBooth'};
+export const MY_PLEDGE_ACTS={name:'my-name',phone:'my-phone',shirt:'my-shirt',email:'my-email',
+ pledge:'my-pledge-pick',list:'my-draft-toggle',skillsKey:'skills',availKey:'avail',boothA:'my-draft-booth',boothB:'my-second-booth'};
+
 function viewVolRegister(){
  const v=AV();
  const d=state.vf;
@@ -577,48 +651,7 @@ function viewVolRegister(){
    <p class="mt-1 text-[11px] leading-relaxed text-[#6b8187]">${EXPO_UPCOMING.name} · ${expoLine()}</p>
    ${v&&!needsRegistration(v)?'':`<p class="mt-1.5 text-[11.5px] font-semibold leading-snug text-[#33504f]">Only a name and a mobile number or email are needed now. Tap <b>Submit pledge</b> any time; the rest can wait until closer to the day.</p>`}</div>
 
-  <div class="glass p-4 space-y-3">
-   <div class="microlabel">1 · Who you are</div>
-   <label class="block"><span class="microlabel">Full name *</span>
-    <input id="vfName" value="${esc(d.name)}" data-on-input="vf-name" class="field mt-1" placeholder="e.g. Thandi Mabaso" autocomplete="name"></label>
-   <div class="grid grid-cols-2 gap-2">
-    <label class="block"><span class="microlabel">Mobile **</span>
-     <input id="vfPhone" value="${esc(d.phone)}" data-on-input="vf-phone" type="tel" inputmode="tel" class="field mt-1" placeholder="082 000 0000" autocomplete="tel"></label>
-    <label class="block"><span class="microlabel">T-shirt</span>
-     <select id="vfShirt" data-on-change="vf-shirt" class="field mt-1">
-      ${['','S','M','L','XL','2XL','3XL'].map(s=>`<option value="${s}" ${d.shirt===s?'selected':''}>${s||'—'}</option>`).join('')}</select></label>
-   </div>
-   <label class="block"><span class="microlabel">Email **</span>
-    <input id="vfEmail" value="${esc(d.email)}" data-on-input="vf-email" type="email" inputmode="email" class="field mt-1" placeholder="you@example.org" autocomplete="email"></label>
-   <p class="text-[11px] leading-snug text-[#6b8187]">** A mobile number or an email address: at least one, so the team can reach you.</p>
-  </div>
-
-  <div class="glass p-4">
-   <div class="microlabel">2 · Your pledge</div>
-   <div class="mt-2">
-    <span class="microlabel">How many expos are you pledging to help at?</span>
-    <div class="mt-1.5 flex flex-wrap gap-1.5">
-     ${[1,2,3,4,6,12].map(n=>`<button data-action="pledge-pick" data-args="${n}" class="availpill hue-peach ${d.pledgeExpos===n?'availpill-on':''}">${n}${n===12?'+':''} expo${n>1?'s':''}</button>`).join('')}
-    </div>
-   </div>
-   <div class="mt-3">
-    <span class="microlabel">What can you help with?</span>
-    <div class="mt-1.5 flex flex-wrap gap-1.5">
-     ${SKILLS.map(([k,l])=>`<button data-action="draft-toggle" data-list="skills" data-args="${k}" class="availpill hue-aqua ${d.skills.includes(k)?'availpill-on':''}">${l}</button>`).join('')}
-    </div>
-   </div>
-   <div class="mt-3">
-    <span class="microlabel">When are you usually free?</span>
-    <div class="mt-1.5 flex flex-wrap gap-1.5">
-     ${AVAIL.map(([k,l])=>`<button data-action="draft-toggle" data-list="avail" data-args="${k}" class="availpill hue-sage ${d.avail.includes(k)?'availpill-on':''}">${l}</button>`).join('')}
-    </div>
-   </div>
-  </div>
-
-  <div class="glass p-4">
-   <div class="microlabel">3 · Booth preference</div>
-   <div class="mt-2.5">${boothPicker({onToggleA:'toggleDraftBooth',onToggleB:'pickSecondBooth'})}</div>
-  </div>
+  ${pledgeFormParts(d,'vf',STAFF_PLEDGE_ACTS)}
 
   <div class="glass p-4 space-y-3">
    <div class="microlabel">4 · Registration details <span class="font-bold normal-case tracking-normal text-[#8a9aa0]">(needed closer to the day)</span></div>

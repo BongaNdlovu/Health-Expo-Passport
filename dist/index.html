@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <!-- Same policy as dist/_headers (tools/build.js checks the two stay identical). The header needs a host that reads
      _headers (Cloudflare); this meta travels with the page, so the packaged Android app keeps the same protections. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-XcqlxawbP6EXJYC3f915DR9hWYV4EguqTi2jIZnfCTc=' 'sha256-Mr9yZ0tzAjAOkYZ9wHRo2kGAz5R/Q9eTN9uhxqCnhvg=' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.supabase.in wss://*.supabase.in; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-XcqlxawbP6EXJYC3f915DR9hWYV4EguqTi2jIZnfCTc=' 'sha256-qVZVre75WvuN1ykT1pHbkqyztfBXK1UTpqYToEhd0r0=' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.supabase.in wss://*.supabase.in; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <meta name="theme-color" content="#f6f8f6"/>
 <link rel="manifest" href="manifest.webmanifest">
@@ -2666,6 +2666,10 @@ var __NEWSTART = (() => {
     state.volAll = Object.assign({}, state.volAll, { [key]: true });
     render();
   }
+  var linkedVolIds = () => {
+    const L = typeof cloud !== "undefined" && cloud.members && cloud.members.list;
+    return L ? new Set(L.filter((u) => u.volunteer_id).map((u) => u.volunteer_id)) : null;
+  };
   function volRow(v, confirmed) {
     const act = v.id === state.volId;
     const t = badgeTier(v);
@@ -2676,6 +2680,7 @@ var __NEWSTART = (() => {
    <span class="mt-0.5 flex flex-wrap items-center gap-1">
     <span class="servechip ${STATUS_UI[v.status].cls}">${STATUS_UI[v.status].label}</span>
     <span class="rankpill hue-${t.hue}">${volLevel(v) ? `Lv ${volLevel(v)}` : esc(t.short)}</span>
+    ${linkedVolIds() && linkedVolIds().has(v.id) ? '<span class="servechip sc-ok">account \u2713</span>' : ""}
     ${confirmed ? `<span class="text-[9.5px] font-bold text-[#6b8187]">${esc(boothLabel(v.booth))}</span>` : `<span class="text-[9.5px] font-bold text-[#6b8187]">wants ${esc(boothLabel((v.pref || [])[0] || ""))}</span>`}
    </span>
   </span>
@@ -2762,8 +2767,7 @@ var __NEWSTART = (() => {
   ${boothPickerPreview(v, true)}
  </section>`;
   }
-  function boothPicker({ onToggleA, onToggleB }) {
-    const d = state.vf;
+  function boothPicker(d, { onToggleA, onToggleB }) {
     const selA = d.pref || [], selB = d.pref2 || "";
     return `<div class="space-y-2">
   <div class="microlabel">First choice booth <span class="font-bold normal-case tracking-normal text-[#8a9aa0]">(tap to change)</span></div>
@@ -2925,6 +2929,74 @@ var __NEWSTART = (() => {
     render();
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
+  function pledgeFormParts(d, pfx, acts) {
+    return `<div class="glass p-4 space-y-3">
+   <div class="microlabel">1 \xB7 Who you are</div>
+   <label class="block"><span class="microlabel">Full name *</span>
+    <input id="${pfx}Name" value="${esc(d.name)}" data-on-input="${acts.name}" class="field mt-1" placeholder="e.g. Thandi Mabaso" autocomplete="name"></label>
+   <div class="grid grid-cols-2 gap-2">
+    <label class="block"><span class="microlabel">Mobile **</span>
+     <input id="${pfx}Phone" value="${esc(d.phone)}" data-on-input="${acts.phone}" type="tel" inputmode="tel" class="field mt-1" placeholder="082 000 0000" autocomplete="tel"></label>
+    <label class="block"><span class="microlabel">T-shirt</span>
+     <select id="${pfx}Shirt" data-on-change="${acts.shirt}" class="field mt-1">
+      ${["", "S", "M", "L", "XL", "2XL", "3XL"].map((s) => `<option value="${s}" ${d.shirt === s ? "selected" : ""}>${s || "\u2014"}</option>`).join("")}</select></label>
+   </div>
+   <label class="block"><span class="microlabel">Email **</span>
+    <input id="${pfx}Email" value="${esc(d.email)}" data-on-input="${acts.email}" type="email" inputmode="email" class="field mt-1" placeholder="you@example.org" autocomplete="email"></label>
+   <p class="text-[11px] leading-snug text-[#6b8187]">** A mobile number or an email address: at least one, so the team can reach you.</p>
+  </div>
+
+  <div class="glass p-4">
+   <div class="microlabel">2 \xB7 Your pledge</div>
+   <div class="mt-2">
+    <span class="microlabel">How many expos are you pledging to help at?</span>
+    <div class="mt-1.5 flex flex-wrap gap-1.5">
+     ${[1, 2, 3, 4, 6, 12].map((n) => `<button data-action="${acts.pledge}" data-args="${n}" class="availpill hue-peach ${d.pledgeExpos === n ? "availpill-on" : ""}">${n}${n === 12 ? "+" : ""} expo${n > 1 ? "s" : ""}</button>`).join("")}
+    </div>
+   </div>
+   <div class="mt-3">
+    <span class="microlabel">What can you help with?</span>
+    <div class="mt-1.5 flex flex-wrap gap-1.5">
+     ${SKILLS.map(([k, l]) => `<button data-action="${acts.list}" data-list="${acts.skillsKey}" data-args="${k}" class="availpill hue-aqua ${d.skills.includes(k) ? "availpill-on" : ""}">${l}</button>`).join("")}
+    </div>
+   </div>
+   <div class="mt-3">
+    <span class="microlabel">When are you usually free?</span>
+    <div class="mt-1.5 flex flex-wrap gap-1.5">
+     ${AVAIL.map(([k, l]) => `<button data-action="${acts.list}" data-list="${acts.availKey}" data-args="${k}" class="availpill hue-sage ${d.avail.includes(k) ? "availpill-on" : ""}">${l}</button>`).join("")}
+    </div>
+   </div>
+  </div>
+
+  <div class="glass p-4">
+   <div class="microlabel">3 \xB7 Booth preference</div>
+   <div class="mt-2.5">${boothPicker(d, { onToggleA: acts.boothA, onToggleB: acts.boothB })}</div>
+  </div>`;
+  }
+  var STAFF_PLEDGE_ACTS = {
+    name: "vf-name",
+    phone: "vf-phone",
+    shirt: "vf-shirt",
+    email: "vf-email",
+    pledge: "pledge-pick",
+    list: "draft-toggle",
+    skillsKey: "skills",
+    availKey: "avail",
+    boothA: "toggleDraftBooth",
+    boothB: "pickSecondBooth"
+  };
+  var MY_PLEDGE_ACTS = {
+    name: "my-name",
+    phone: "my-phone",
+    shirt: "my-shirt",
+    email: "my-email",
+    pledge: "my-pledge-pick",
+    list: "my-draft-toggle",
+    skillsKey: "skills",
+    availKey: "avail",
+    boothA: "my-draft-booth",
+    boothB: "my-second-booth"
+  };
   function viewVolRegister() {
     const v = AV();
     const d = state.vf;
@@ -2954,48 +3026,7 @@ var __NEWSTART = (() => {
    <p class="mt-1 text-[11px] leading-relaxed text-[#6b8187]">${EXPO_UPCOMING.name} \xB7 ${expoLine()}</p>
    ${v && !needsRegistration(v) ? "" : `<p class="mt-1.5 text-[11.5px] font-semibold leading-snug text-[#33504f]">Only a name and a mobile number or email are needed now. Tap <b>Submit pledge</b> any time; the rest can wait until closer to the day.</p>`}</div>
 
-  <div class="glass p-4 space-y-3">
-   <div class="microlabel">1 \xB7 Who you are</div>
-   <label class="block"><span class="microlabel">Full name *</span>
-    <input id="vfName" value="${esc(d.name)}" data-on-input="vf-name" class="field mt-1" placeholder="e.g. Thandi Mabaso" autocomplete="name"></label>
-   <div class="grid grid-cols-2 gap-2">
-    <label class="block"><span class="microlabel">Mobile **</span>
-     <input id="vfPhone" value="${esc(d.phone)}" data-on-input="vf-phone" type="tel" inputmode="tel" class="field mt-1" placeholder="082 000 0000" autocomplete="tel"></label>
-    <label class="block"><span class="microlabel">T-shirt</span>
-     <select id="vfShirt" data-on-change="vf-shirt" class="field mt-1">
-      ${["", "S", "M", "L", "XL", "2XL", "3XL"].map((s) => `<option value="${s}" ${d.shirt === s ? "selected" : ""}>${s || "\u2014"}</option>`).join("")}</select></label>
-   </div>
-   <label class="block"><span class="microlabel">Email **</span>
-    <input id="vfEmail" value="${esc(d.email)}" data-on-input="vf-email" type="email" inputmode="email" class="field mt-1" placeholder="you@example.org" autocomplete="email"></label>
-   <p class="text-[11px] leading-snug text-[#6b8187]">** A mobile number or an email address: at least one, so the team can reach you.</p>
-  </div>
-
-  <div class="glass p-4">
-   <div class="microlabel">2 \xB7 Your pledge</div>
-   <div class="mt-2">
-    <span class="microlabel">How many expos are you pledging to help at?</span>
-    <div class="mt-1.5 flex flex-wrap gap-1.5">
-     ${[1, 2, 3, 4, 6, 12].map((n) => `<button data-action="pledge-pick" data-args="${n}" class="availpill hue-peach ${d.pledgeExpos === n ? "availpill-on" : ""}">${n}${n === 12 ? "+" : ""} expo${n > 1 ? "s" : ""}</button>`).join("")}
-    </div>
-   </div>
-   <div class="mt-3">
-    <span class="microlabel">What can you help with?</span>
-    <div class="mt-1.5 flex flex-wrap gap-1.5">
-     ${SKILLS.map(([k, l]) => `<button data-action="draft-toggle" data-list="skills" data-args="${k}" class="availpill hue-aqua ${d.skills.includes(k) ? "availpill-on" : ""}">${l}</button>`).join("")}
-    </div>
-   </div>
-   <div class="mt-3">
-    <span class="microlabel">When are you usually free?</span>
-    <div class="mt-1.5 flex flex-wrap gap-1.5">
-     ${AVAIL.map(([k, l]) => `<button data-action="draft-toggle" data-list="avail" data-args="${k}" class="availpill hue-sage ${d.avail.includes(k) ? "availpill-on" : ""}">${l}</button>`).join("")}
-    </div>
-   </div>
-  </div>
-
-  <div class="glass p-4">
-   <div class="microlabel">3 \xB7 Booth preference</div>
-   <div class="mt-2.5">${boothPicker({ onToggleA: "toggleDraftBooth", onToggleB: "pickSecondBooth" })}</div>
-  </div>
+  ${pledgeFormParts(d, "vf", STAFF_PLEDGE_ACTS)}
 
   <div class="glass p-4 space-y-3">
    <div class="microlabel">4 \xB7 Registration details <span class="font-bold normal-case tracking-normal text-[#8a9aa0]">(needed closer to the day)</span></div>
@@ -5624,7 +5655,10 @@ var __NEWSTART = (() => {
     audit: null,
     adminChurch: "",
     gateForce: false,
-    delOpen: false
+    delOpen: false,
+    pledge: void 0,
+    pledgeErr: false,
+    pledgeBusy: false
   };
   var _savedSig = "";
   var _fullWarned = false;
@@ -7457,6 +7491,9 @@ var __NEWSTART = (() => {
     cloud.acct = r.data;
     cloud.acctV++;
     cloud.health = void 0;
+    cloud.pledge = void 0;
+    cloud.pledgeEdit = false;
+    state.mf = null;
     const m = r.data.membership, c = r.data.church;
     const inv = pendingInvite();
     if (inv && !(m && m.status === "approved" && m.role !== "member")) {
@@ -7564,7 +7601,7 @@ var __NEWSTART = (() => {
   ${out}${meFormHTML("gm")}${leave}${admin}`;
     return `${title("My account")}
   ${acctNote(esc(m.full_name || a.email || "") + " \xB7 " + roleLabel(m) + ' of <b class="text-[#33504f]">' + esc(c.name) + "</b>")}
-  ${healthHTML()}${meFormHTML("gm")}<div class="pf">${profPasswordBox()}</div>
+  ${healthHTML()}${pledgeHTML()}${meFormHTML("gm")}<div class="pf">${profPasswordBox()}</div>
   <button data-action="cloudSignOut" class="btn btn-glass mt-4 w-full py-2.5 text-xs text-[#5b7178]">Sign out</button>${leave}${admin}<div class="pf mt-3">${profDeleteHTML()}</div>`;
   }
   function churchPickHTML() {
@@ -7720,6 +7757,163 @@ var __NEWSTART = (() => {
   ${acctNote(needs.length ? "What to work on first: " + needs.map((n) => esc(PROTOCOLS[n.k].tag)).join(", ") + "." : "Your numbers looked fine at the expo.")}
   ${acctNote("Keep taking any medicine you were prescribed. Only your clinic should change it.")}`);
   }
+  function pledgeHTML() {
+    const m = cloud.acct && cloud.acct.membership;
+    if (!m || m.status !== "approved") return "";
+    if (cloud.pledge === void 0) {
+      loadPledge();
+      return acctBox("My pledge", acctNote("Loading\u2026"));
+    }
+    if (cloud.pledgeErr) return acctBox("My pledge", acctNote("Pledging needs the latest supabase/schema.sql \u2014 ask the church to update the database first."));
+    if (!cloud.pledge) return acctBox("My pledge", acctNote("Pledge to help at the next expo and your name goes onto the team list straight away. Your church\u2019s admin registers you and chooses your station.") + myPledgeFormHTML());
+    if (cloud.pledgeEdit) return acctBox("My pledge", myPledgeFormHTML());
+    const p = cloud.pledge, st = STATUS_UI[p.status];
+    return acctBox("My pledge", `
+  <div class="mt-1 flex flex-wrap items-center gap-1.5">
+   <span class="servechip ${st ? st.cls : "sc-off"}">${esc(st ? st.label : p.status)}</span>
+   ${p.role ? `<span class="servechip sc-off">${esc(p.role)}</span>` : ""}
+  </div>
+  <div class="mt-2 text-[12px] font-bold text-[#123033]">${esc(p.name)}</div>
+  <div class="mt-0.5 text-[11px] text-[#4f6870]">${p.booth ? "Placed at " + esc(boothLabel(p.booth)) : "Not placed yet \u2014 the admin chooses your station"}${p.shift ? " \xB7 " + esc(p.shift) : ""}</div>
+  <div class="mono mt-1 text-[10px] text-[#6b8187]">${esc(p.id)} \xB7 pledged ${esc(String(p.pledged_on || "").slice(0, 10))}</div>
+  <div class="mt-2 flex gap-2">
+   <button data-action="my-pledge-edit" class="btn btn-soft flex-1 py-2 text-xs">Edit my pledge</button>
+   ${p.status === "prospect" ? '<button data-action="my-pledge-withdraw" class="btn btn-glass flex-1 py-2 text-xs text-rose-700">Withdraw</button>' : ""}
+  </div>
+  ${p.status !== "prospect" ? acctNote("You are registered for the expo, so your row is part of the expo plan: an admin has to remove it. Your details here can still be edited.") : ""}`);
+  }
+  async function loadPledge(force) {
+    if (cloud.pledgeBusy && !force) return;
+    cloud.pledgeBusy = true;
+    const r = await acctRpc("my_pledge");
+    cloud.pledgeBusy = false;
+    cloud.pledgeErr = false;
+    if (r === null) {
+      cloud.pledge = null;
+      cloud.pledgeErr = true;
+    } else cloud.pledge = r && r.data && typeof r.data === "object" ? r.data : null;
+    renderAcct();
+    render();
+  }
+  function myDraftInit() {
+    const d = state.mf || (state.mf = emptyDraft());
+    if (!d._init) {
+      const p = cloud.pledge, mm = cloud.acct && cloud.acct.membership || {};
+      d.name = p ? p.name : mm.full_name || "";
+      d.phone = p ? p.phone : mm.phone || "";
+      d.email = p ? p.email : "";
+      d.pledgeExpos = p ? p.pledge_expos || 1 : 1;
+      d.skills = p ? [...p.skills || []] : [];
+      d.pref = p ? [...p.pref || []] : [];
+      d.avail = p ? [...p.availability || []] : [];
+      d.pref2 = p ? p.pref2 || "" : "";
+      d.shirt = p ? p.shirt || "" : "";
+      d.emergency = p ? p.emergency || "" : "";
+      d.notes = p ? p.notes || "" : "";
+      d._init = true;
+    }
+    return d;
+  }
+  function myPledgeFormHTML() {
+    const d = myDraftInit();
+    return `<form data-action="myPledgeSave" class="mt-2 space-y-3">
+  ${pledgeFormParts(d, "mf", MY_PLEDGE_ACTS)}
+  <button id="mfGo" data-label="${cloud.pledge ? "Save my pledge" : "Send my pledge"}" class="btn btn-primary w-full py-3 text-sm">${cloud.pledge ? "Save my pledge" : "Send my pledge \u2192"}</button>
+  <p class="text-[10px] leading-relaxed text-[#8a9aa0]">Your pledge counts straight away \u2014 no approval step. Your church\u2019s admin places you at a station.</p></form>`;
+  }
+  function myPledgeEdit() {
+    cloud.pledgeEdit = true;
+    if (state.mf) delete state.mf._init;
+    renderAcct();
+    render();
+  }
+  function myField(k, val) {
+    myDraftInit()[k] = val;
+  }
+  var myRedraw = () => {
+    renderAcct();
+    render();
+  };
+  function myPickPledge(n) {
+    myDraftInit().pledgeExpos = n;
+    myRedraw();
+  }
+  function myToggleList(k, v) {
+    const a = myDraftInit()[k];
+    const i = a.indexOf(v);
+    if (i < 0) a.push(v);
+    else a.splice(i, 1);
+    myRedraw();
+  }
+  function myToggleBooth(k) {
+    const a = myDraftInit().pref;
+    const i = a.indexOf(k);
+    if (i < 0) {
+      a.push(k);
+      if (a.length > 2) a.shift();
+    } else a.splice(i, 1);
+    myRedraw();
+  }
+  function mySecondBooth(k) {
+    const d = myDraftInit();
+    d.pref2 = d.pref2 === k ? "" : k;
+    myRedraw();
+  }
+  async function myPledgeSave(e) {
+    e.preventDefault();
+    const d = state.mf || {};
+    const name = String(d.name || "").trim(), phone = String(d.phone || "").trim(), email = String(d.email || "").trim();
+    if (!name) {
+      toast("Enter your full name.");
+      return;
+    }
+    if (!/\d/.test(phone) && !validEmail(email)) {
+      toast("Please enter a mobile number or an email address, so the team can reach you");
+      return;
+    }
+    gateBusy("mf", "Sending\u2026");
+    const r = await acctRpc(
+      "save_my_pledge",
+      { p: {
+        name,
+        phone,
+        email,
+        pledgeExpos: d.pledgeExpos || 1,
+        skills: d.skills || [],
+        pref: d.pref || [],
+        pref2: d.pref2 || "",
+        availability: d.avail || [],
+        shirt: d.shirt || "",
+        emergency: d.emergency || "",
+        notes: d.notes || ""
+      } },
+      cloud.pledge ? "Your pledge is saved \u2713" : "Pledge received \u2014 you are on the team list \u2713"
+    );
+    const b = $("#mfGo");
+    if (b) {
+      b.disabled = false;
+      b.textContent = cloud.pledge ? "Save my pledge" : "Send my pledge \u2192";
+    }
+    if (!r) return;
+    cloud.pledgeEdit = false;
+    state.mf = null;
+    await loadPledge(true);
+    await acctReload();
+  }
+  async function withdrawMyPledge() {
+    if (!confirm("Withdraw your pledge? Your name comes off the team list, and you can pledge again at any time.")) return;
+    if (await acctRpc("withdraw_my_pledge", {}, "Your pledge is withdrawn")) {
+      cloud.pledgeEdit = false;
+      state.mf = null;
+      await loadPledge(true);
+      await acctReload();
+    }
+  }
+  async function linkVolunteer(uid, cur) {
+    const v = prompt("Volunteer number of this member\u2019s pledge, e.g. VOL-1001. Leave it empty to unlink.", cur || "");
+    if (v === null) return;
+    if (await acctRpc("link_volunteer", { p_user: uid, p_vol: v.trim() }, v.trim() ? "Volunteer linked \u2713" : "Volunteer unlinked")) await reloadMembers();
+  }
   function acctTabs() {
     const a = cloud.acct, t = [];
     if (!a) return t;
@@ -7766,7 +7960,7 @@ var __NEWSTART = (() => {
     if (!m || !c) return acctNote("This account is not in a church.");
     return `<div class="text-[13px] font-bold text-[#123033]">${esc(c.name)}${c.city ? " \xB7 " + esc(c.city) : ""}</div>
   <div class="text-[11px] text-[#4f6870]">${roleLabel(m)} \xB7 ${m.status === "approved" ? "approved" : "waiting for approval"} \xB7 ${esc(a.email || "")}</div>
-  ${m.followup && m.status === "approved" ? myFollowupsHTML() : ""}${healthHTML()}${meFormHTML("me")}
+  ${m.followup && m.status === "approved" ? myFollowupsHTML() : ""}${healthHTML()}${pledgeHTML()}${meFormHTML("me")}
   <button data-action="leaveChurch" class="mt-3 w-full text-center text-[11px] font-bold text-rose-700">Leave ${esc(c.name)}</button>`;
   }
   function acctButtons() {
@@ -7839,7 +8033,7 @@ var __NEWSTART = (() => {
     <div class="min-w-0"><div class="display truncate text-[19px] leading-tight font-extrabold text-[#0f2a2c]">${esc(w.name)}</div>
      <div class="truncate text-[11px] text-[#5c747a]">${esc(w.email)}</div></div></div>
    <div class="mt-3 flex flex-wrap gap-1.5">${profChips()}</div>${profShortcuts()}</div>`;
-    return hero + profSync() + (m ? meFormHTML("pm") + healthHTML() : "") + profPasswordBox() + installBlock() + profAccountBox();
+    return hero + profSync() + (m ? meFormHTML("pm") + healthHTML() + pledgeHTML() : "") + profPasswordBox() + installBlock() + profAccountBox();
   }
   function profChips() {
     const a = cloud.acct, m = a && a.membership, c = a && a.church, out = [], chip = (t, cls) => `<span class="servechip ${cls}">${esc(t)}</span>`;
@@ -7983,6 +8177,7 @@ var __NEWSTART = (() => {
   <div class="mt-1.5 flex flex-wrap items-center gap-2">
    <select data-on-change="member-role" data-user="${id}" data-status="${qSafe(u.status)}" aria-label="Role" class="field py-1.5 text-xs" style="width:auto">${["member", "staff", "admin"].map((r) => `<option value="${r}" ${r === u.role ? "selected" : ""} ${r === "admin" && capFull ? "disabled" : ""}>${ROLE_L[r]}</option>`).join("")}</select>
    <button class="tap-link" data-action="member-link" data-user="${id}" data-cur="${qSafe(u.attendee_id || "")}">${u.attendee_id ? "Badge " + esc(u.attendee_id) : "Link badge"}</button>
+   <button class="tap-link" data-action="member-vol-link" data-user="${id}" data-cur="${qSafe(u.volunteer_id || "")}">${u.volunteer_id ? "Vol " + esc(u.volunteer_id) : "Link volunteer"}</button>
    ${F && u.status === "approved" ? `<button class="tap-link" aria-pressed="${fu}" data-action="followup-toggle" data-user="${id}" data-on="${fu ? 0 : 1}">${fu ? "\u2713 Follow-up person" : "Make follow-up person"}</button>` : ""}
    <button class="tap-link text-rose-700" data-action="removeMember" data-args="${id}">Remove</button></div></div>`;
   }
@@ -8720,6 +8915,7 @@ var __NEWSTART = (() => {
     registerChurch: (el, ev) => registerChurch(ev),
     registerSubmit: (el, ev) => registerSubmit(ev),
     saveMyDetails: (el, ev) => saveMyDetails(ev),
+    myPledgeSave: (el, ev) => myPledgeSave(ev),
     /* -- account hub -- */
     "sync-now": () => cloudSync(true),
     "church-search": (el) => churchSearchSoon(el.value),
@@ -8736,7 +8932,18 @@ var __NEWSTART = (() => {
     "member-approve": (el) => setMember(el.dataset.user, el.dataset.role, "approved"),
     "member-role": (el) => setMember(el.dataset.user, el.value, el.dataset.status),
     "member-link": (el) => linkMember(el.dataset.user, el.dataset.cur),
+    "member-vol-link": (el) => linkVolunteer(el.dataset.user, el.dataset.cur),
     "followup-toggle": (el) => setFollowup(el.dataset.user, el.dataset.on === "1"),
+    "my-pledge-edit": () => myPledgeEdit(),
+    "my-pledge-withdraw": () => withdrawMyPledge(),
+    "my-name": (el) => myField("name", el.value),
+    "my-phone": (el) => myField("phone", el.value),
+    "my-shirt": (el) => myField("shirt", el.value),
+    "my-email": (el) => myField("email", el.value),
+    "my-pledge-pick": (el) => myPickPledge(Number(el.dataset.args)),
+    "my-draft-toggle": (el) => myToggleList(el.dataset.list, el.dataset.args),
+    "my-draft-booth": (el) => myToggleBooth(el.dataset.args),
+    "my-second-booth": (el) => mySecondBooth(el.dataset.args),
     "church-save": (el, ev) => saveChurch(ev, el.dataset.args),
     "church-status": (el) => setChurchStatus(el.dataset.args, el.dataset.status),
     "all-churches-back": (el) => {
@@ -8964,7 +9171,7 @@ var __NEWSTART = (() => {
   if (!window.NEWSTART_NO_CLOUD) cloudInit();
   var __internals = { dispatch, get installEvt() {
     return installEvt;
-  }, installApp, setInstallEvt, IS_APP, appCopyOf, installBlock, SB_LIB, SRI, authRedirect, loadScript, printCard, setVolTab, volunteers, attendees, state, SEED_VOL, BOOTHS, BADGE_TIERS, EXPO_UPCOMING, AVAIL, SKILLS, STATUS_UI, showCrash, hideCrash, crashAction, badgeTier, nextTier, tierProgress, volHours, volExpos, volLevel, volYears, VOL_LEVEL_MAX, needsRegistration, helpersAt, boothLabel, boothHue, staffedCount, esc, render, setVol, openVolReg, startNewVolunteer, saveVolunteer, toggleDraftList, toggleDraftBooth, pickSecondBooth, toggleShift, logExpoEntry, saveExpoEntry, removeExpoEntry, exportVolCSV, persistNow, loadPersisted, resetDemo, AV, pickVolunteer, openSwitcher, openVolSwitcher, openVolModal, switchTab, daysTo, volRow, medalHTML, tierRemaining, registerSubmit, nextBadge, csvCell, closeVolReg, todayStr, switchToVol, toggleReg, viewHome, viewCare, buildPrintCard, openWhatsApp, viewResults, viewPlan, viewScreen, migrateAttendee, migrateVolunteer, onStep, onStationInput, onStationCommit, cat, healthAge, exportCSV, redFlag, doneCount, bmi, firstName, initials, careNotes, cloud, cloudInit, cloudSync, cloudPush, cloudDirtyList, cloudPending, cloudSignOut, cloudAuthEvent, cloudSignIn, onRemoteChange, KINDS, sigOf, isSeedRow, mergeRemote, renderCloudBody, setCloud, startRealtime, stopRealtime, saveSynced, loadSynced, viewNoVisitor, CLOUD_UI, attToRow, volToRow, rowToAtt, rowToVol, openCloud, closeCloud, afterMerge, showAllCare, filterVisitors, visitorsToShow, fetchRows, gateState, renderGate, gateDemo, togglePass, gateView, cloudSignUp, cloudResend, cloudForgot, cloudNewPassword, passwordProblem, validEmail, waNumber, waMessage, sendWhatsApp, openEmail, sendEmail, mailtoHref, toggleInterest, onPrayer, reservePouch, followUpCard, INT, queue, qs, queueJoin, queueCallNext, queueServe, queueDone, queueBack, queueRemove, qStats, qList, qMode, qCan, viewQueue, cheapDay, cheapLine, foodPriceOf, foodKeyOf, FOOD_PRICES, money, closeWhatsApp, planNeeds, bpStage, PROTOCOLS, BOOK_REF, autoProtocol, costOf, BOOK2_REF, BOOK3_REF, BOOK4_REF, refLabel, planBooks, planCredit, HELP_LINE, acctGate, acctGateHTML, loadAccount, openAcct, closeAcct, renderAcct, acctTabs, acctButtons, joinChurch, memberRow, churchAdminHTML, platformHTML, adminDataHTML, roleLabel, adminPostHTML, registerChurch, leaveChurch, saveMyDetails, churchSearch, setMember, linkMember, removeMember, setChurchStatus, manageChurch, saveChurch, inChurch, conflictOn, dropChurchData, adoptChurch, healthHTML, planFor, PRICE_DATE, ACTIONS: ACTIONS2, FOOD_WHY, urgentOf, DISCLAIMER, PRECAUTIONS, openFood, closeFood, problemOf, churchPlanList, chooseChurchPlan, editChurchPlan, saveChurchPlan, deleteChurchPlan, DEMO_CHURCH_PLANS, followupList, chooseFollowup, setFollowup, makeInvite, cancelInvites, pendingInvite, INVITE_KEY, health, noteHealth, healthReset, healthTest, statusPanelHTML, homeHealthHTML, acctHealthHTML, qStateBar, SERVE_TABS, viewProfile, profGate, gateBack, profPassword, profDeleteAsk, profDeleteTyped, profDeleteGo, profileChanged, passwordCheck, savePassword, applyRetention, graceDays: GRACE_DAYS, retentionYears: RETENTION_YEARS, retention: { visitIsOld, hasReadings, followedUp, clearReadings, withoutOldReadings, readingsGone, noteServerTime, clockKnown } };
+  }, installApp, setInstallEvt, IS_APP, appCopyOf, installBlock, SB_LIB, SRI, authRedirect, loadScript, printCard, setVolTab, volunteers, attendees, state, SEED_VOL, BOOTHS, BADGE_TIERS, EXPO_UPCOMING, AVAIL, SKILLS, STATUS_UI, showCrash, hideCrash, crashAction, pledgeHTML, myPledgeSave, myPledgeEdit, withdrawMyPledge, linkVolunteer, myField, myPickPledge, myToggleList, myToggleBooth, mySecondBooth, badgeTier, nextTier, tierProgress, volHours, volExpos, volLevel, volYears, VOL_LEVEL_MAX, needsRegistration, helpersAt, boothLabel, boothHue, staffedCount, esc, render, setVol, openVolReg, startNewVolunteer, saveVolunteer, toggleDraftList, toggleDraftBooth, pickSecondBooth, toggleShift, logExpoEntry, saveExpoEntry, removeExpoEntry, exportVolCSV, persistNow, loadPersisted, resetDemo, AV, pickVolunteer, openSwitcher, openVolSwitcher, openVolModal, switchTab, daysTo, volRow, medalHTML, tierRemaining, registerSubmit, nextBadge, csvCell, closeVolReg, todayStr, switchToVol, toggleReg, viewHome, viewCare, buildPrintCard, openWhatsApp, viewResults, viewPlan, viewScreen, migrateAttendee, migrateVolunteer, onStep, onStationInput, onStationCommit, cat, healthAge, exportCSV, redFlag, doneCount, bmi, firstName, initials, careNotes, cloud, cloudInit, cloudSync, cloudPush, cloudDirtyList, cloudPending, cloudSignOut, cloudAuthEvent, cloudSignIn, onRemoteChange, KINDS, sigOf, isSeedRow, mergeRemote, renderCloudBody, setCloud, startRealtime, stopRealtime, saveSynced, loadSynced, viewNoVisitor, CLOUD_UI, attToRow, volToRow, rowToAtt, rowToVol, openCloud, closeCloud, afterMerge, showAllCare, filterVisitors, visitorsToShow, fetchRows, gateState, renderGate, gateDemo, togglePass, gateView, cloudSignUp, cloudResend, cloudForgot, cloudNewPassword, passwordProblem, validEmail, waNumber, waMessage, sendWhatsApp, openEmail, sendEmail, mailtoHref, toggleInterest, onPrayer, reservePouch, followUpCard, INT, queue, qs, queueJoin, queueCallNext, queueServe, queueDone, queueBack, queueRemove, qStats, qList, qMode, qCan, viewQueue, cheapDay, cheapLine, foodPriceOf, foodKeyOf, FOOD_PRICES, money, closeWhatsApp, planNeeds, bpStage, PROTOCOLS, BOOK_REF, autoProtocol, costOf, BOOK2_REF, BOOK3_REF, BOOK4_REF, refLabel, planBooks, planCredit, HELP_LINE, acctGate, acctGateHTML, loadAccount, openAcct, closeAcct, renderAcct, acctTabs, acctButtons, joinChurch, memberRow, churchAdminHTML, platformHTML, adminDataHTML, roleLabel, adminPostHTML, registerChurch, leaveChurch, saveMyDetails, churchSearch, setMember, linkMember, removeMember, setChurchStatus, manageChurch, saveChurch, inChurch, conflictOn, dropChurchData, adoptChurch, healthHTML, planFor, PRICE_DATE, ACTIONS: ACTIONS2, FOOD_WHY, urgentOf, DISCLAIMER, PRECAUTIONS, openFood, closeFood, problemOf, churchPlanList, chooseChurchPlan, editChurchPlan, saveChurchPlan, deleteChurchPlan, DEMO_CHURCH_PLANS, followupList, chooseFollowup, setFollowup, makeInvite, cancelInvites, pendingInvite, INVITE_KEY, health, noteHealth, healthReset, healthTest, statusPanelHTML, homeHealthHTML, acctHealthHTML, qStateBar, SERVE_TABS, viewProfile, profGate, gateBack, profPassword, profDeleteAsk, profDeleteTyped, profDeleteGo, profileChanged, passwordCheck, savePassword, applyRetention, graceDays: GRACE_DAYS, retentionYears: RETENTION_YEARS, retention: { visitIsOld, hasReadings, followedUp, clearReadings, withoutOldReadings, readingsGone, noteServerTime, clockKnown } };
   return __toCommonJS(main_exports);
 })();
 

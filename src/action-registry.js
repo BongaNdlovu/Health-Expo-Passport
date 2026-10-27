@@ -1,5 +1,5 @@
 // @ts-check
-import { closeAcct, cloudInit, cloudSignIn, cloudSignOut, cloudSync, gateBack, joinChurch, leaveChurch, linkMember, manageChurch, openAcct, profDeleteAsk, profDeleteGo, profDeleteTyped, profGate, profPassword, registerChurch, removeMember, renderAcct, saveChurch, saveMyDetails, setChurchStatus, setMember } from './account.js';
+import { closeAcct, cloudInit, cloudSignIn, cloudSignOut, cloudSync, gateBack, joinChurch, leaveChurch, linkMember, linkVolunteer, manageChurch, myField, myPickPledge, myPledgeEdit, myPledgeSave, mySecondBooth, myToggleBooth, myToggleList, openAcct, profDeleteAsk, profDeleteGo, profDeleteTyped, profGate, profPassword, registerChurch, removeMember, renderAcct, saveChurch, saveMyDetails, setChurchStatus, setMember, withdrawMyPledge } from './account.js';
 import { churchSearchSoon, openChurchData, stepDown } from './account.js';
 import { cancelInvites, chooseChurchPlan, chooseFollowup, deleteChurchPlan, editChurchPlan, makeInvite, saveChurchPlan, setFollowup } from './churchPlans.js';
 import { copyInvite, shareInvite } from './churchPlans.js';
@@ -79,6 +79,7 @@ export const ACTION_MAP = {
   registerChurch: (el, ev) => registerChurch(ev),
   registerSubmit: (el, ev) => registerSubmit(ev),
   saveMyDetails: (el, ev) => saveMyDetails(ev),
+  myPledgeSave: (el, ev) => myPledgeSave(ev),
 
   /* -- account hub -- */
   'sync-now': () => cloudSync(true),
@@ -90,7 +91,18 @@ export const ACTION_MAP = {
   'member-approve': el => setMember(el.dataset.user, el.dataset.role, 'approved'),
   'member-role': el => setMember(el.dataset.user, el.value, el.dataset.status),
   'member-link': el => linkMember(el.dataset.user, el.dataset.cur),
+  'member-vol-link': el => linkVolunteer(el.dataset.user, el.dataset.cur),
   'followup-toggle': el => setFollowup(el.dataset.user, el.dataset.on === '1'),
+  'my-pledge-edit': () => myPledgeEdit(),
+  'my-pledge-withdraw': () => withdrawMyPledge(),
+  'my-name': el => myField('name', el.value),
+  'my-phone': el => myField('phone', el.value),
+  'my-shirt': el => myField('shirt', el.value),
+  'my-email': el => myField('email', el.value),
+  'my-pledge-pick': el => myPickPledge(Number(el.dataset.args)),
+  'my-draft-toggle': el => myToggleList(el.dataset.list, el.dataset.args),
+  'my-draft-booth': el => myToggleBooth(el.dataset.args),
+  'my-second-booth': el => mySecondBooth(el.dataset.args),
   'church-save': (el, ev) => saveChurch(ev, el.dataset.args),
   'church-status': el => setChurchStatus(el.dataset.args, el.dataset.status),
   'all-churches-back': el => { cloud.adminData = ''; renderAcct(); },

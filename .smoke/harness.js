@@ -2568,6 +2568,44 @@ function makeServer() {
       found.join(' | ') || 'screens not drawn: ' + gaps.join(', '));
     C.user = null; C.acct = null; C.health = undefined; C.members = null; C.plat = null; C.audit = null; C.dir = null; g.healthReset(); g.resetDemo();
 
+    /* the member's own pledge box (self-pledge): status, station, withdraw rule, escaping, and the staff contact rule */
+    {
+      C.acct = { email: 'mem@ex.org', membership: { role: 'member', status: 'approved', full_name: 'Nomsa', phone: '', area: '',
+        birth_date: null, attendee_id: '', followup: false, volunteer_id: 'VOL-1001', admin_rank: 0 },
+        church: { ...A, status: 'active' } };
+      const pledge = { id: 'VOL-1001', name: 'Nomsa <b>X</b>', phone: '082 000 0000', email: '', status: 'prospect', pledge_expos: 2,
+        skills: ['clinic'], pref: ['bp'], pref2: '', availability: ['saturday'], shirt: 'M', emergency: '', notes: '',
+        pledged_on: '2026-01-05', since: '2026-01-05', booth: null, role: '', shift: '' };
+      C.pledge = pledge;
+      const ph = g.pledgeHTML();
+      ok('the My pledge box shows status, placement and the record number read-only',
+        ph.includes('My pledge') && /Pledged/.test(ph) && /Not placed yet/.test(ph) && /VOL-1001/.test(ph), ph.slice(0, 120));
+      ok('the pledge box escapes the name', !/<b>X<\/b>/.test(ph));
+      ok('a prospect can withdraw from the pledge box', ph.includes('my-pledge-withdraw'));
+      C.pledge = { ...pledge, status: 'registered', booth: 'bp', role: 'Team leader' };
+      const pr = g.pledgeHTML();
+      ok('a registered pledge shows its station and role, and no withdraw button',
+        /Placed at/.test(pr) && pr.includes('Team leader') && !pr.includes('my-pledge-withdraw'), pr.slice(0, 120));
+      C.pledge = null;
+      const pf = g.pledgeHTML();
+      ok('a member without a pledge gets the pledge form, with the shared booth picker',
+        pf.includes('id="mfName"') && pf.includes('my-draft-booth') && pf.includes('Send my pledge'));
+      g.state.mf = { name: '', phone: '', email: '', pledgeExpos: 1, skills: [], pref: [], avail: [], pref2: '', shirt: '', emergency: '', notes: '' };
+      await g.myPledgeSave({ preventDefault() {} });
+      ok('the pledge form refuses an empty name in place', /full name/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+      $el('toastMsg').textContent = '';
+      g.state.mf = { ...g.state.mf, name: 'Nomsa', phone: '', email: '' };
+      await g.myPledgeSave({ preventDefault() {} });
+      ok('the pledge needs a mobile number or an email — the staff form\'s rule, word for word',
+        $el('toastMsg').textContent === 'Please enter a mobile number or an email address, so the team can reach you', $el('toastMsg').textContent);
+      ok('the staff form and the member form share that rule and the form parts',
+        (srcText.match(/Please enter a mobile number or an email address, so the team can reach you/g) || []).length === 2
+          && (srcText.match(/pledgeFormParts\(/g) || []).length >= 3, '');
+      C.pledge = undefined; C.pledgeErr = false; g.state.mf = null;
+      g.state.tab = 'home'; g.render();
+    }
+
+
     /* live connections: reconnecting must not pile up handlers */
     device(); C.client = srv.client;
     for (let i = 0; i < 50; i++) { g.stopRealtime(); g.startRealtime(); }
@@ -2676,6 +2714,104 @@ function makeServer() {
       union all select p.proname from pg_proc p join pg_namespace s on s.oid = p.pronamespace where s.nspname = 'public' and p.prosecdef and has_function_privilege('anon', p.oid, 'execute')`);
     ok('audit: signed-out callers can reach no table and no SECURITY DEFINER function', anon.length === 0, anon.map(x => x.n).join(', '));
   })().catch(e => ok('database attacks ran to the end', false, e && e.stack || e));
+
+  /* ---- 18d. the volunteer hub part of supabase/schema.sql on a real Postgres (self-pledge, leaders, placement,
+     notifications) — same fake-Supabase rig as 18c above, one PGlite per phase group --------------------------- */
+  if (process.env.NEWSTART_PGLITE) await (async () => {
+    const { PGlite } = require(path.join(process.env.NEWSTART_PGLITE, 'node_modules', '@electric-sql', 'pglite'));
+    const schema = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'schema.sql'), 'utf8');
+    const db = new PGlite();
+    const as = async (uid, sql, p) => { await db.exec(`reset role; select set_config('request.jwt.claim.sub', '${uid || ''}', false); set role ${uid ? 'authenticated' : 'anon'};`);
+      try { return { rows: (await db.query(sql, p || [])).rows }; } catch (e) { return { error: e }; } finally { await db.exec('reset role'); } };
+    const sys = async (sql, p) => (await db.query(sql, p || [])).rows;
+    const refused = async (uid, sql, p) => !!(await as(uid, sql, p)).error;
+    await db.exec(`create role anon nologin; create role authenticated nologin; create schema auth;
+      create table auth.users (id uuid primary key default gen_random_uuid(), email text unique, raw_user_meta_data jsonb not null default '{}'::jsonb, email_confirmed_at timestamptz, created_at timestamptz not null default now());
+      create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+      grant usage on schema auth to anon, authenticated; grant execute on function auth.uid() to anon, authenticated; grant usage on schema public to anon, authenticated;
+      alter default privileges in schema public grant all on tables to anon, authenticated; alter default privileges in schema public grant all on sequences to anon, authenticated;
+      alter default privileges in schema public grant execute on functions to anon, authenticated; create publication supabase_realtime;`);
+    await db.exec(schema);
+    const U = { adm: 'd0000000-0000-4000-8000-000000000001', staff: 'd0000000-0000-4000-8000-000000000002',
+      mem1: 'd0000000-0000-4000-8000-000000000003', mem2: 'd0000000-0000-4000-8000-000000000004',
+      pend: 'd0000000-0000-4000-8000-000000000005', admB: 'd0000000-0000-4000-8000-000000000006' };
+    for (const [k, id] of Object.entries(U)) await sys(`insert into auth.users (id, email, email_confirmed_at) values ($1, $2, now())`, [id, k + '@hub.org']);
+    const CH = (await sys(`insert into public.churches (name, status) values ('Hub Church', 'active') returning id`))[0].id;
+    await sys(`insert into public.memberships (user_id, church_id, role, status) values ($1,$2,'admin','approved'),($3,$2,'staff','approved'),($4,$2,'member','approved'),($5,$2,'member','approved'),($6,$2,'member','pending')`,
+      [U.adm, CH, U.staff, U.mem1, U.mem2, U.pend]);
+    const CHB = (await sys(`insert into public.churches (name, status) values ('Hub Church B', 'active') returning id`))[0].id;
+    await sys(`insert into public.memberships (user_id, church_id, role, status) values ($1,$2,'admin','approved')`, [U.admB, CHB]);
+
+    /* ---- phase 1: members pledge themselves ---- */
+    console.log('\n18d. Volunteer hub: self-pledge');
+    let r = await as(U.mem1, `select public.save_my_pledge($1) id`, [JSON.stringify(
+      { name: 'Thandi Member', phone: '082 111 0001', email: '', pledgeExpos: 4, skills: ['clinic'], pref: ['bp', 'sugar'], pref2: 'vitals', availability: ['saturday'], shirt: 'M' })]);
+    const vol1 = r.rows && r.rows[0] && r.rows[0].id;
+    let row = (await sys(`select * from public.volunteers where church_id = $1 and id = $2`, [CH, vol1]))[0];
+    ok('a member pledges: a volunteers row is created, prospect, numbered from VOL-1001, and linked to their account',
+      !r.error && /^VOL-\d+$/.test(vol1 || '') && row && row.status === 'prospect' && row.pledge_expos === 4
+        && row.booth === null && row.pledged_on !== null
+        && (await sys(`select volunteer_id from public.memberships where user_id = $1`, [U.mem1]))[0].volunteer_id === vol1,
+      r.error ? r.error.message : JSON.stringify(row));
+    r = await as(U.mem1, `select public.save_my_pledge($1) id`, [JSON.stringify({ name: 'Thandi Member-X', phone: '082 111 0002', email: 'thandi@x.org', booth: 'kitchen', status: 'registered', lead: true, role: 'Boss' })]);
+    row = (await sys(`select * from public.volunteers where id = $1`, [vol1]))[0];
+    ok('a later save updates the same row and cannot set booth, status, lead or role',
+      !r.error && r.rows[0].id === vol1 && row.name === 'Thandi Member-X' && row.phone === '082 111 0002'
+        && row.email === 'thandi@x.org' && row.status === 'prospect' && row.booth === null && row.role === '',
+      r.error ? r.error.message : JSON.stringify(row));
+    r = await as(U.mem2, `select public.save_my_pledge($1) id`, [JSON.stringify({ name: 'Sipho Member', phone: '082 222 0001' })]);
+    const vol2 = r.rows && r.rows[0] && r.rows[0].id;
+    ok('two members pledging get different numbers, and a pledge needs a phone or an email',
+      !r.error && vol2 && vol2 !== vol1 && !!(await as(U.mem2, `select public.save_my_pledge($1)`, [JSON.stringify({ name: 'No Contact', phone: '', email: '' })])).error,
+      r.error ? r.error.message : vol2);
+    ok('a pending member cannot pledge', await refused(U.pend, `select public.save_my_pledge($1)`, [JSON.stringify({ name: 'Waiting', phone: '082 333 0001' })]));
+    await sys(`update public.churches set status = 'suspended' where id = $1`, [CH]);
+    ok('a suspended church cannot take pledges', await refused(U.mem1, `select public.save_my_pledge($1)`, [JSON.stringify({ name: 'X', phone: '082 111 0001' })]));
+    await sys(`update public.churches set status = 'active' where id = $1`, [CH]);
+    /* a volunteer row exists in another church with the same number: the caller must never reach it */
+    const otherRow = (await sys(`insert into public.volunteers (church_id, id, name, booth, status)
+      select id, $1, 'Same Number Elsewhere', 'kitchen', 'checkedin' from public.churches where id <> $2 limit 1 returning id, church_id`, [vol1, CH]))[0];
+    r = await as(U.mem1, `select public.save_my_pledge($1) id`, [JSON.stringify({ name: 'Thandi Member', phone: '082 111 0001', booth: 'stolen' })]);
+    const rowOther = (await sys(`select name, booth, status from public.volunteers where church_id = $1 and id = $2`, [otherRow.church_id, vol1]))[0];
+    ok('a member editing their pledge never touches another church\'s row with the same number',
+      !r.error && rowOther.name === 'Same Number Elsewhere' && rowOther.booth === 'kitchen' && rowOther.status === 'checkedin', JSON.stringify(rowOther));
+    r = await as(U.mem1, `select public.withdraw_my_pledge()`);
+    ok('withdrawing a pledge that is still a prospect deletes it and clears the link',
+      !r.error && (await sys(`select 1 from public.volunteers where church_id = $1 and id = $2`, [CH, vol1])).length === 0
+        && (await sys(`select volunteer_id from public.memberships where user_id = $1`, [U.mem1]))[0].volunteer_id === null,
+      r.error && r.error.message);
+    await as(U.mem1, `select public.save_my_pledge($1)`, [JSON.stringify({ name: 'Thandi Member', phone: '082 111 0001' })]);
+    const vol1b = (await sys(`select volunteer_id from public.memberships where user_id = $1`, [U.mem1]))[0].volunteer_id;
+    await sys(`update public.volunteers set status = 'registered', booth = 'bp' where id = $1`, [vol1b]);
+    r = await as(U.mem1, `select public.withdraw_my_pledge()`);
+    ok('a registered pledge cannot be withdrawn by the member (an admin has to remove it)',
+      !!r.error && /admin/.test(r.error.message) && (await sys(`select 1 from public.volunteers where id = $1`, [vol1b])).length === 1, r.error && r.error.message);
+    /* staff typed this pledge in; an admin links it to the member's account */
+    await sys(`insert into public.volunteers (church_id, id, name, phone) values ($1, 'VOL-2001', 'Typed In', '082 444 0001')`, [CH]);
+    ok('linking a volunteer to an account is for admins only', await refused(U.mem2, `select public.link_volunteer($1,'VOL-2001')`, [U.mem1]));
+    r = await as(U.adm, `select public.link_volunteer($1,'VOL-2001')`, [U.mem1]);
+    ok('an admin links a typed-in pledge; a second member cannot take the same record',
+      !r.error && (await sys(`select volunteer_id from public.memberships where user_id = $1`, [U.mem1]))[0].volunteer_id === 'VOL-2001'
+        && !!(await as(U.adm, `select public.link_volunteer($1,'VOL-2001')`, [U.mem2])).error
+        && !!(await as(U.adm, `select public.link_volunteer($1,'VOL-9999')`, [U.mem2])).error,
+      r.error && r.error.message);
+    r = await as(U.mem1, `select public.my_pledge() p`);
+    ok('my_pledge returns the caller\'s own row with its placement, and null for a member without a pledge',
+      !r.error && r.rows[0] && r.rows[0].p && r.rows[0].p.id === 'VOL-2001' && r.rows[0].p.booth === null
+        && (await as(U.pend, `select public.my_pledge() p`)).rows[0].p === null,
+      r.error ? r.error.message : JSON.stringify(r.rows[0]));
+    /* the table's own RLS hides other members' rows silently: a member sees zero rows and an update changes nothing */
+    const peek = await as(U.mem2, `select name from public.volunteers where id = 'VOL-2001'`);
+    await as(U.mem2, `update public.volunteers set name = 'Hijacked' where id = 'VOL-2001'`);
+    const volName = (await sys(`select name from public.volunteers where church_id = $1 and id = 'VOL-2001'`, [CH]))[0].name;
+    ok('a member cannot read or edit another member\'s pledge through the table itself',
+      !peek.error && peek.rows.length === 0 && volName === 'Typed In', JSON.stringify([peek.rows, volName]));
+
+    /* ---- phase 2: one team leader per station ---- */
+    console.log('\n18d. Volunteer hub: team leaders');
+    /* pending implementation */
+
+  })().catch(e => ok('volunteer hub database tests ran to the end', false, e && e.stack || e));
 
   /* ---- 19. installable app (PWA) -------------------------------------- */
   console.log('\n19. Installable app (PWA)');

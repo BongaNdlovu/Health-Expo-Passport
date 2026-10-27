@@ -440,6 +440,10 @@ create table if not exists public.memberships (
 );
 -- a follow-up person (see FOLLOW-UP PEOPLE below); added here because my_account() reads it
 alter table public.memberships add column if not exists followup boolean not null default false;
+-- the member's own volunteer pledge (see VOLUNTEER HUB: SELF-PLEDGE below); added here because my_account() reads it
+alter table public.memberships add column if not exists volunteer_id text check (volunteer_id ~ '^VOL-[0-9]+$');
+create unique index if not exists memberships_volunteer_idx on public.memberships (church_id, volunteer_id)
+  where volunteer_id is not null;                       -- one volunteer record belongs to one member
 create index if not exists memberships_church_idx on public.memberships (church_id, status);
 create unique index if not exists memberships_attendee_idx on public.memberships (church_id, attendee_id) where attendee_id is not null;
 drop trigger if exists memberships_touch on public.memberships;
@@ -696,6 +700,7 @@ as $$
     'server_now', now(),   -- the phone measures its clock against this before it clears anything by date (src/retention.js)
     'membership', (select jsonb_build_object('church_id', m.church_id, 'role', m.role, 'status', m.status, 'full_name', m.full_name,
                      'phone', m.phone, 'area', m.area, 'birth_date', m.birth_date, 'attendee_id', m.attendee_id, 'followup', m.followup,
+                     'volunteer_id', m.volunteer_id,
                      'admin_rank', case when m.role = 'admin' and m.status = 'approved'
                                    then (select count(*) + 1 from public.memberships o
                                          where o.church_id = m.church_id and o.role = 'admin' and o.status = 'approved'
@@ -865,9 +870,11 @@ begin
 end;
 $$;
 
+-- the extra volunteer_id column arrived after the function did, so the old shape is replaced outright
+drop function if exists public.church_members(uuid);
 create or replace function public.church_members(p_church uuid)
 returns table (user_id uuid, email text, full_name text, phone text, area text, birth_date date, role text, status text,
-               attendee_id text, confirmed boolean, created_at timestamptz)
+               attendee_id text, confirmed boolean, created_at timestamptz, volunteer_id text)
 language plpgsql
 stable
 security definer
@@ -878,7 +885,7 @@ begin
   if not public.church_admin_of(p_church) then raise exception 'church admins only' using errcode = '42501'; end if;
   return query
     select m.user_id, u.email::text, m.full_name, m.phone, m.area, m.birth_date, m.role, m.status, m.attendee_id,
-           u.email_confirmed_at is not null, m.created_at
+           u.email_confirmed_at is not null, m.created_at, m.volunteer_id
     from public.memberships m join auth.users u on u.id = m.user_id
     where m.church_id = p_church
     order by (m.status = 'pending') desc, lower(m.full_name), m.created_at
@@ -1184,6 +1191,165 @@ as $$
   order by a.created_at desc
   limit 500;
 $$;
+
+-- ================================================================ VOLUNTEER HUB: SELF-PLEDGE
+-- A member can pledge themselves from their account: their pledge is a row in public.volunteers, linked to their
+-- account through memberships.volunteer_id (the column is added up with the memberships table, which my_account
+-- reads first). The member may write only the pledge fields (name, contacts, choices); booth, status, role and
+-- history belong to the church's admins, and no function here can touch them. Safe to re-run.
+
+-- the caller's own pledge, read once when their account screen opens (null when they have not pledged)
+create or replace function public.my_pledge()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select jsonb_build_object('id', v.id, 'name', v.name, 'phone', v.phone, 'email', v.email, 'status', v.status,
+    'pledge_expos', v.pledge_expos, 'skills', v.skills, 'pref', v.pref, 'pref2', v.pref2,
+    'availability', v.availability, 'shirt', v.shirt, 'emergency', v.emergency, 'notes', v.notes,
+    'pledged_on', v.pledged_on, 'since', v.since, 'booth', v.booth, 'role', v.role, 'shift', v.shift)
+  from public.memberships m
+  join public.churches c on c.id = m.church_id and c.status = 'active'
+  join public.volunteers v on v.church_id = m.church_id and v.id = m.volunteer_id
+  where m.user_id = (select auth.uid()) and m.status = 'approved';
+$$;
+
+-- create (first save) or update (later saves) the caller's own pledge. Only the pledge fields are taken: an admin
+-- owns booth, status, role, history and checked_in, and nothing here can change them. The volunteer number is
+-- handed out under a per-church lock, so two members saving at the same moment get different numbers.
+create or replace function public.save_my_pledge(p jsonb)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := (select auth.uid());
+  v_m public.memberships;
+  v_id text;
+  v_num integer;
+  v_name text; v_phone text; v_email text; v_expos integer;
+  v_skills text[]; v_pref text[]; v_avail text[];
+  v_list jsonb;
+begin
+  if v_uid is null then raise exception 'sign in first' using errcode = '42501'; end if;
+  select * into v_m from public.memberships m where m.user_id = v_uid;
+  if v_m.user_id is null then raise exception 'Join a church first.' using errcode = '42501'; end if;
+  if v_m.status <> 'approved' then raise exception 'Your church has to approve you before you can pledge.' using errcode = '42501'; end if;
+  if not exists (select 1 from public.churches c where c.id = v_m.church_id and c.status = 'active') then
+    raise exception 'Your church is not open for pledges at the moment.' using errcode = '42501';
+  end if;
+
+  -- the pledge fields, trimmed to the same limits as volunteers_limits (which backs this up as a constraint)
+  v_name  := left(btrim(coalesce(p ->> 'name', '')), 200);
+  v_phone := left(btrim(coalesce(p ->> 'phone', '')), 40);
+  v_email := left(btrim(coalesce(p ->> 'email', '')), 254);
+  v_expos := coalesce(nullif(regexp_replace(coalesce(p ->> 'pledgeExpos', ''), '\D', '', ''), '')::integer, 1);
+  v_expos := greatest(1, least(v_expos, 50));
+  if length(btrim(v_name)) = 0 then raise exception 'Enter your full name.'; end if;
+  if v_phone = '' and v_email = '' then raise exception 'Add a mobile number or an email address, so the team can reach you.'; end if;
+  -- lists arrive as JSON arrays of short booth/skill keys; anything longer or bigger is dropped, not stored
+  v_list := p -> 'skills';
+  v_skills := case when jsonb_typeof(v_list) = 'array' then
+    (select coalesce(array_agg(left(btrim(x), 40)), '{}'::text[]) from (select jsonb_array_elements_text(v_list) x) s where btrim(x) <> '' limit 20)
+    else '{}'::text[] end;
+  v_list := p -> 'availability';
+  v_avail := case when jsonb_typeof(v_list) = 'array' then
+    (select coalesce(array_agg(left(btrim(x), 40)), '{}'::text[]) from (select jsonb_array_elements_text(v_list) x) s where btrim(x) <> '' limit 20)
+    else '{}'::text[] end;
+  v_list := p -> 'pref';
+  v_pref := case when jsonb_typeof(v_list) = 'array' then
+    (select coalesce(array_agg(left(btrim(x), 40)), '{}'::text[]) from (select jsonb_array_elements_text(v_list) x) s where btrim(x) <> '' limit 2)
+    else '{}'::text[] end;
+
+  if v_m.volunteer_id is not null then
+    update public.volunteers v set
+      name = v_name, phone = v_phone, email = v_email, pledge_expos = v_expos,
+      skills = v_skills, pref = v_pref, pref2 = left(btrim(coalesce(p ->> 'pref2', '')), 40),
+      availability = v_avail, shirt = left(btrim(coalesce(p ->> 'shirt', '')), 20),
+      emergency = left(btrim(coalesce(p ->> 'emergency', '')), 500),
+      notes = left(btrim(coalesce(p ->> 'notes', '')), 2000), updated_at = now()
+    where v.church_id = v_m.church_id and v.id = v_m.volunteer_id;
+    if not found then raise exception 'Your pledge could not be found — ask your church''s admin.'; end if;
+    return v_m.volunteer_id;
+  end if;
+
+  -- first save: the next free number in this church, under a lock so two members cannot take the same one
+  perform pg_advisory_xact_lock(hashtext('vol:' || v_m.church_id::text));
+  v_num := coalesce((select max(substring(v.id from 5)::integer) from public.volunteers v where v.church_id = v_m.church_id), 1000) + 1;
+  while exists (select 1 from public.volunteers v where v.church_id = v_m.church_id and v.id = 'VOL-' || v_num) loop
+    v_num := v_num + 1;
+  end loop;
+  v_id := 'VOL-' || v_num;
+  insert into public.volunteers (church_id, id, name, phone, email, status, pledge_expos, skills, pref, pref2,
+      availability, shirt, emergency, notes, since, pledged_on)
+  values (v_m.church_id, v_id, v_name, v_phone, v_email, 'prospect', v_expos, v_skills, v_pref,
+      left(btrim(coalesce(p ->> 'pref2', '')), 40), v_avail, left(btrim(coalesce(p ->> 'shirt', '')), 20),
+      left(btrim(coalesce(p ->> 'emergency', '')), 500), left(btrim(coalesce(p ->> 'notes', '')), 2000),
+      to_char(now(), 'YYYY-MM-DD'), current_date);
+  update public.memberships m set volunteer_id = v_id, updated_at = now() where m.user_id = v_uid;
+  return v_id;
+end;
+$$;
+
+-- take back a pledge that has not been registered yet. Once the person is registered or checked in, the row is part
+-- of the expo plan and an admin has to remove it.
+create or replace function public.withdraw_my_pledge()
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_m public.memberships;
+begin
+  select * into v_m from public.memberships m where m.user_id = (select auth.uid());
+  if v_m.user_id is null or v_m.volunteer_id is null then raise exception 'You have no pledge to withdraw.'; end if;
+  delete from public.volunteers v
+   where v.church_id = v_m.church_id and v.id = v_m.volunteer_id and v.status = 'prospect';
+  if not found then
+    raise exception 'Your pledge is already registered for the expo — ask your church''s admin to remove it.';
+  end if;
+  update public.memberships m set volunteer_id = null, updated_at = now() where m.user_id = v_m.user_id;
+end;
+$$;
+
+-- attach a pledge a staff member typed in to the person's account, or unlink with an empty number (admins only,
+-- mirroring link_member)
+create or replace function public.link_volunteer(p_user uuid, p_vol text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_m public.memberships; v_id text := upper(btrim(coalesce(p_vol, '')));
+begin
+  select * into v_m from public.memberships m where m.user_id = p_user;
+  if not found or not public.church_admin_of(v_m.church_id) then raise exception 'church admins only' using errcode = '42501'; end if;
+  if v_id = '' then
+    update public.memberships m set volunteer_id = null, updated_at = now() where m.user_id = p_user;
+    return;
+  end if;
+  if not (v_id ~ '^VOL-[0-9]+$') then raise exception 'A volunteer number looks like VOL-1001.'; end if;
+  if not exists (select 1 from public.volunteers v where v.church_id = v_m.church_id and v.id = v_id) then
+    raise exception 'No volunteer with number % in this church.', v_id;
+  end if;
+  if exists (select 1 from public.memberships o where o.church_id = v_m.church_id and o.volunteer_id = v_id and o.user_id <> p_user) then
+    raise exception 'Volunteer % is already linked to another member.', v_id;
+  end if;
+  update public.memberships m set volunteer_id = v_id, updated_at = now() where m.user_id = p_user;
+end;
+$$;
+
+revoke all on function public.my_pledge() from public, anon;
+grant execute on function public.my_pledge() to authenticated;
+revoke all on function public.save_my_pledge(jsonb) from public, anon;
+grant execute on function public.save_my_pledge(jsonb) to authenticated;
+revoke all on function public.withdraw_my_pledge() from public, anon;
+grant execute on function public.withdraw_my_pledge() to authenticated;
+revoke all on function public.link_volunteer(uuid, text) from public, anon;
+grant execute on function public.link_volunteer(uuid, text) to authenticated;
 
 -- ================================================================ INVITE LINKS
 -- A church admin shares a link (…/?join=CODE). Whoever signs in with it joins that church at once, approved, as a

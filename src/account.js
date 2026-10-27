@@ -2,15 +2,15 @@
 import { KINDS, acctHealthHTML, isNet, renderGate } from './cloud.js';
 import { $ } from './helpers.js';
 import { cloud, persist, persistNow, seedDemo } from './state.js';
-import { CLOUD_UI, SB_KEY, SB_LIB, SB_URL, SYNC_KEY, closeCloud, resetLedgerSig, cloudDirtyList, cloudPending, gateBusy, gateView, healthFromError, healthLive, healthReset, healthUpload, installBlock, isDirty, isMissingErr, isOfflineErr, isSeedRow, noteHealth, passwordCheck, pwField, renderCloudBody, rowToAtt, savePassword, saveSynced, saveSyncedSoon, setCloud, sigOf } from './cloud.js';
+import { CLOUD_UI, SB_KEY, SB_LIB, SB_URL, SYNC_KEY, closeCloud, resetLedgerSig, cloudDirtyList, cloudPending, gateBusy, gateView, healthFromError, healthLive, healthReset, healthUpload, installBlock, isDirty, isMissingErr, isOfflineErr, isSeedRow, noteHealth, passwordCheck, pwField, renderCloudBody, rowToAtt, savePassword, saveSynced, saveSyncedSoon, setCloud, sigOf, validEmail } from './cloud.js';
 import { CHURCH_PLANS_KEY, FOLLOWUP_MAX, churchPlansBox, clearInvite, followupsFor, inviteBox, myFollowupsHTML, pendingInvite } from './churchPlans.js';
 import { GRACE_DAYS, clearReadings, clockKnown, followedUp, hasReadings, noteServerTime, readingsGone, visitIsOld } from './retention.js';
 import { render, toast } from './shell.js';
-import { PROTOCOLS, attendees, state, volunteers } from './data.js';
+import { PROTOCOLS, STATUS_UI, attendees, boothLabel, state, volunteers } from './data.js';
 import { qSafe, queueReset, queueSync } from './queue.js';
 import { bmi, cat, chipClass, esc, fmt1, initials, redFlag } from './helpers.js';
 import { planNeeds } from './results.js';
-import { hideModal, showModal } from './volunteer.js';
+import { MY_PLEDGE_ACTS, emptyDraft, hideModal, pledgeFormParts, showModal } from './volunteer.js';
 import { loadScript } from './libs.js';
 /* The account hub: my account, my church, all churches (platform admin), members and approvals. Split from the original single-file app; bundled back into one file by tools/build.js. */
 /* ---------- churches, members and the platform admin ----------
@@ -46,7 +46,7 @@ export async function loadAccount(){
   if(chk.error)throw chk.error;
   return chk.data===true;
  }
- cloud.acct=r.data;cloud.acctV++;cloud.health=undefined;          /* Check again also reloads the member's results */
+ cloud.acct=r.data;cloud.acctV++;cloud.health=undefined;cloud.pledge=undefined;cloud.pledgeEdit=false;state.mf=null;          /* Check again also reloads the member's results and pledge */
  const m=r.data.membership,c=r.data.church;
  /* an invite link opened on this device: join that church now, approved (it is used once, whatever the answer) */
  const inv=pendingInvite();
@@ -125,7 +125,7 @@ export function acctGateHTML(st){
   ${out}${meFormHTML('gm')}${leave}${admin}`;
  return `${title('My account')}
   ${acctNote(esc(m.full_name||a.email||'')+' · '+roleLabel(m)+' of <b class="text-[#33504f]">'+esc(c.name)+'</b>')}
-  ${healthHTML()}${meFormHTML('gm')}<div class="pf">${profPasswordBox()}</div>
+  ${healthHTML()}${pledgeHTML()}${meFormHTML('gm')}<div class="pf">${profPasswordBox()}</div>
   <button data-action="cloudSignOut" class="btn btn-glass mt-4 w-full py-2.5 text-xs text-[#5b7178]">Sign out</button>${leave}${admin}<div class="pf mt-3">${profDeleteHTML()}</div>`;
 }
 function churchPickHTML(){
@@ -250,6 +250,109 @@ export function healthHTML(){
   ${acctNote('Keep taking any medicine you were prescribed. Only your clinic should change it.')}`);
 }
 
+/* --- my pledge (self-pledge, supabase "VOLUNTEER HUB: SELF-PLEDGE") ---
+   The member's pledge is a volunteers row linked through memberships.volunteer_id. cloud.pledge: undefined = not
+   loaded yet, null = no pledge, object = the row my_pledge() returned. The form reuses sections 1–3 of the staff
+   pledge form (volunteer.js pledgeFormParts) with its own draft, state.mf, so the two never write each other. */
+export function pledgeHTML(){
+ const m=cloud.acct&&cloud.acct.membership;
+ if(!m||m.status!=='approved')return '';
+ if(cloud.pledge===undefined){loadPledge();return acctBox('My pledge',acctNote('Loading…'));}
+ if(cloud.pledgeErr)return acctBox('My pledge',acctNote('Pledging needs the latest supabase/schema.sql — ask the church to update the database first.'));
+ if(!cloud.pledge)return acctBox('My pledge',acctNote('Pledge to help at the next expo and your name goes onto the team list straight away. Your church’s admin registers you and chooses your station.')+myPledgeFormHTML());
+ if(cloud.pledgeEdit)return acctBox('My pledge',myPledgeFormHTML());
+ const p=cloud.pledge,st=STATUS_UI[p.status];
+ return acctBox('My pledge',`
+  <div class="mt-1 flex flex-wrap items-center gap-1.5">
+   <span class="servechip ${st?st.cls:'sc-off'}">${esc(st?st.label:p.status)}</span>
+   ${p.role?`<span class="servechip sc-off">${esc(p.role)}</span>`:''}
+  </div>
+  <div class="mt-2 text-[12px] font-bold text-[#123033]">${esc(p.name)}</div>
+  <div class="mt-0.5 text-[11px] text-[#4f6870]">${p.booth?'Placed at '+esc(boothLabel(p.booth)):'Not placed yet — the admin chooses your station'}${p.shift?' · '+esc(p.shift):''}</div>
+  <div class="mono mt-1 text-[10px] text-[#6b8187]">${esc(p.id)} · pledged ${esc(String(p.pledged_on||'').slice(0,10))}</div>
+  <div class="mt-2 flex gap-2">
+   <button data-action="my-pledge-edit" class="btn btn-soft flex-1 py-2 text-xs">Edit my pledge</button>
+   ${p.status==='prospect'?'<button data-action="my-pledge-withdraw" class="btn btn-glass flex-1 py-2 text-xs text-rose-700">Withdraw</button>':''}
+  </div>
+  ${p.status!=='prospect'?acctNote('You are registered for the expo, so your row is part of the expo plan: an admin has to remove it. Your details here can still be edited.'):''}`);
+}
+async function loadPledge(force){
+ if(cloud.pledgeBusy&&!force)return;
+ cloud.pledgeBusy=true;
+ const r=await acctRpc('my_pledge');
+ cloud.pledgeBusy=false;cloud.pledgeErr=false;
+ if(r===null){cloud.pledge=null;cloud.pledgeErr=true;}
+ else cloud.pledge=r&&r.data&&typeof r.data==='object'?r.data:null;
+ renderAcct();render();
+}
+/* the member's pledge draft: prefilled from their saved pledge (or their membership details) the first time it opens */
+function myDraftInit(){
+ const d=state.mf||(state.mf=emptyDraft());
+ if(!d._init){
+  const p=cloud.pledge,mm=(cloud.acct&&cloud.acct.membership)||{};
+  d.name=p?p.name:(mm.full_name||'');d.phone=p?p.phone:(mm.phone||'');d.email=p?p.email:'';
+  d.pledgeExpos=p?(p.pledge_expos||1):1;
+  d.skills=p?[...(p.skills||[])]:[];d.pref=p?[...(p.pref||[])]:[];d.avail=p?[...(p.availability||[])]:[];
+  d.pref2=p?(p.pref2||''):'';d.shirt=p?(p.shirt||''):'';d.emergency=p?(p.emergency||''):'';d.notes=p?(p.notes||''):'';
+  d._init=true;
+ }
+ return d;
+}
+function myPledgeFormHTML(){
+ const d=myDraftInit();
+ return `<form data-action="myPledgeSave" class="mt-2 space-y-3">
+  ${pledgeFormParts(d,'mf',MY_PLEDGE_ACTS)}
+  <button id="mfGo" data-label="${cloud.pledge?'Save my pledge':'Send my pledge'}" class="btn btn-primary w-full py-3 text-sm">${cloud.pledge?'Save my pledge':'Send my pledge →'}</button>
+  <p class="text-[10px] leading-relaxed text-[#8a9aa0]">Your pledge counts straight away — no approval step. Your church’s admin places you at a station.</p></form>`;
+}
+export function myPledgeEdit(){cloud.pledgeEdit=true;if(state.mf)delete state.mf._init;renderAcct();render();}
+/* the member form's field and chip handlers write state.mf; chips redraw, text fields only store (a redraw while
+   typing would throw the person off the field, exactly like the staff form) */
+export function myField(k,val){myDraftInit()[k]=val;}
+const myRedraw=()=>{renderAcct();render();};
+export function myPickPledge(n){myDraftInit().pledgeExpos=n;myRedraw();}
+export function myToggleList(k,v){
+ const a=myDraftInit()[k];const i=a.indexOf(v);
+ if(i<0)a.push(v);else a.splice(i,1);
+ myRedraw();
+}
+export function myToggleBooth(k){
+ const a=myDraftInit().pref;const i=a.indexOf(k);
+ if(i<0){a.push(k);if(a.length>2)a.shift();}else a.splice(i,1);
+ myRedraw();
+}
+export function mySecondBooth(k){const d=myDraftInit();d.pref2=d.pref2===k?'':k;myRedraw();}
+export async function myPledgeSave(e){
+ e.preventDefault();
+ const d=state.mf||{};
+ const name=String(d.name||'').trim(),phone=String(d.phone||'').trim(),email=String(d.email||'').trim();
+ if(!name){toast('Enter your full name.');return;}
+ if(!/\d/.test(phone)&&!validEmail(email)){toast('Please enter a mobile number or an email address, so the team can reach you');return;}
+ gateBusy('mf','Sending…');
+ const r=await acctRpc('save_my_pledge',{p:{name,phone,email,pledgeExpos:d.pledgeExpos||1,skills:d.skills||[],
+   pref:d.pref||[],pref2:d.pref2||'',availability:d.avail||[],shirt:d.shirt||'',emergency:d.emergency||'',notes:d.notes||''}},
+   cloud.pledge?'Your pledge is saved ✓':'Pledge received — you are on the team list ✓');
+ const b=$('#mfGo');if(b){b.disabled=false;b.textContent=cloud.pledge?'Save my pledge':'Send my pledge →';}
+ if(!r)return;
+ cloud.pledgeEdit=false;state.mf=null;
+ await loadPledge(true);
+ await acctReload();                      /* my_account now carries the volunteer_id */
+}
+export async function withdrawMyPledge(){
+ if(!confirm('Withdraw your pledge? Your name comes off the team list, and you can pledge again at any time.'))return;
+ if(await acctRpc('withdraw_my_pledge',{},'Your pledge is withdrawn')){
+  cloud.pledgeEdit=false;state.mf=null;
+  await loadPledge(true);
+  await acctReload();
+ }
+}
+/* attach a pledge a staff member typed in to the person's account (admins, mirroring linkMember) */
+export async function linkVolunteer(uid,cur){
+ const v=prompt('Volunteer number of this member’s pledge, e.g. VOL-1001. Leave it empty to unlink.',cur||'');
+ if(v===null)return;
+ if(await acctRpc('link_volunteer',{p_user:uid,p_vol:v.trim()},v.trim()?'Volunteer linked ✓':'Volunteer unlinked'))await reloadMembers();
+}
+
 /* --- the account hub: My account · My church · All churches (platform admin) --- */
 export function acctTabs(){
  const a=cloud.acct,t=[];if(!a)return t;
@@ -280,7 +383,7 @@ function meHTML(){
  if(!m||!c)return acctNote('This account is not in a church.');
  return `<div class="text-[13px] font-bold text-[#123033]">${esc(c.name)}${c.city?' · '+esc(c.city):''}</div>
   <div class="text-[11px] text-[#4f6870]">${roleLabel(m)} · ${m.status==='approved'?'approved':'waiting for approval'} · ${esc(a.email||'')}</div>
-  ${m.followup&&m.status==='approved'?myFollowupsHTML():''}${healthHTML()}${meFormHTML('me')}
+  ${m.followup&&m.status==='approved'?myFollowupsHTML():''}${healthHTML()}${pledgeHTML()}${meFormHTML('me')}
   <button data-action="leaveChurch" class="mt-3 w-full text-center text-[11px] font-bold text-rose-700">Leave ${esc(c.name)}</button>`;
 }
 /* the signed-in staff member's shortcut into the sheet (the panel behind the logo) */
@@ -350,7 +453,7 @@ function profSignedIn(){
     <div class="min-w-0"><div class="display truncate text-[19px] leading-tight font-extrabold text-[#0f2a2c]">${esc(w.name)}</div>
      <div class="truncate text-[11px] text-[#5c747a]">${esc(w.email)}</div></div></div>
    <div class="mt-3 flex flex-wrap gap-1.5">${profChips()}</div>${profShortcuts()}</div>`;
- return hero+profSync()+(m?meFormHTML('pm')+healthHTML():'')+profPasswordBox()+installBlock()+profAccountBox();
+ return hero+profSync()+(m?meFormHTML('pm')+healthHTML()+pledgeHTML():'')+profPasswordBox()+installBlock()+profAccountBox();
 }
 /* role, church and approval as small labels under the name */
 function profChips(){
@@ -478,6 +581,7 @@ export function memberRow(u,F,admins,ranks){
   <div class="mt-1.5 flex flex-wrap items-center gap-2">
    <select data-on-change="member-role" data-user="${id}" data-status="${qSafe(u.status)}" aria-label="Role" class="field py-1.5 text-xs" style="width:auto">${['member','staff','admin'].map(r=>`<option value="${r}" ${r===u.role?'selected':''} ${r==='admin'&&capFull?'disabled':''}>${ROLE_L[r]}</option>`).join('')}</select>
    <button class="tap-link" data-action="member-link" data-user="${id}" data-cur="${qSafe(u.attendee_id||'')}">${u.attendee_id?'Badge '+esc(u.attendee_id):'Link badge'}</button>
+   <button class="tap-link" data-action="member-vol-link" data-user="${id}" data-cur="${qSafe(u.volunteer_id||'')}">${u.volunteer_id?'Vol '+esc(u.volunteer_id):'Link volunteer'}</button>
    ${F&&u.status==='approved'?`<button class="tap-link" aria-pressed="${fu}" data-action="followup-toggle" data-user="${id}" data-on="${fu?0:1}">${fu?'✓ Follow-up person':'Make follow-up person'}</button>`:''}
    <button class="tap-link text-rose-700" data-action="removeMember" data-args="${id}">Remove</button></div></div>`;
 }
