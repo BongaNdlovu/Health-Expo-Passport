@@ -972,6 +972,15 @@ function makeServer() {
       saved.map(o => o.name).join(','));
     ok('app: the native plugin has saveDownload, writing to Downloads through MediaStore', /public void saveDownload\(PluginCall call\)/.test(javaSrc)
       && /MediaStore\.Downloads\.EXTERNAL_CONTENT_URI/.test(javaSrc));
+    ok('app: printing refuses a second card while one is being prepared, and answers once with a timeout', /if \(printView != null\)/.test(javaSrc)
+      && /answered\[0\] = true/.test(javaSrc) && /postDelayed\(timeout, PRINT_TIMEOUT_MS\)/.test(javaSrc));
+    { const res = p => fs.readFileSync(path.join(__dirname, '..', 'capacitor', 'android', 'app', 'src', 'main', p), 'utf8');
+      const man = res('AndroidManifest.xml'), dx = res('res/xml/data_extraction_rules.xml'), fp = res('res/xml/file_paths.xml');
+      ok('app: no backup, and no device-to-device transfer of the app data', /android:allowBackup="false"/.test(man)
+        && /android:dataExtractionRules="@xml\/data_extraction_rules"/.test(man)
+        && ['cloud-backup', 'device-transfer'].every(s => new RegExp('<' + s + '>[\\s\\S]*domain="root" path="\\."[\\s\\S]*domain="sharedpref" path="\\."[\\s\\S]*</' + s + '>').test(dx)));
+      ok('app: the FileProvider shares two dedicated folders, never the storage root', !/path="\."/.test(fp)
+        && /external-files-path name="captured_photos" path="Pictures\/"/.test(fp) && /cache-path name="shared" path="shared\/"/.test(fp)); }
     ok('app: WhatsApp opens the WhatsApp app with the message ready', opened.length === 1 && opened[0] === 'whatsapp://send?phone=' + num + '&text=' + encodeURIComponent(msg) && shared.length === 0);
     whatsappInstalled = false;
     if (booted) { A.sendWhatsApp(); await tick(); await tick(); }
