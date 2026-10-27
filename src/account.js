@@ -46,7 +46,7 @@ export async function loadAccount(){
   if(chk.error)throw chk.error;
   return chk.data===true;
  }
- cloud.acct=r.data;cloud.acctV++;cloud.health=undefined;cloud.pledge=undefined;cloud.pledgeEdit=false;state.mf=null;          /* Check again also reloads the member's results and pledge */
+ cloud.acct=r.data;cloud.acctV++;cloud.health=undefined;cloud.pledge=undefined;cloud.pledgeEdit=false;cloud.myTeam=undefined;state.mf=null;          /* Check again also reloads the member's results, pledge and team */
  const m=r.data.membership,c=r.data.church;
  /* an invite link opened on this device: join that church now, approved (it is used once, whatever the answer) */
  const inv=pendingInvite();
@@ -125,7 +125,7 @@ export function acctGateHTML(st){
   ${out}${meFormHTML('gm')}${leave}${admin}`;
  return `${title('My account')}
   ${acctNote(esc(m.full_name||a.email||'')+' · '+roleLabel(m)+' of <b class="text-[#33504f]">'+esc(c.name)+'</b>')}
-  ${healthHTML()}${pledgeHTML()}${meFormHTML('gm')}<div class="pf">${profPasswordBox()}</div>
+  ${healthHTML()}${pledgeHTML()}${myTeamHTML()}${meFormHTML('gm')}<div class="pf">${profPasswordBox()}</div>
   <button data-action="cloudSignOut" class="btn btn-glass mt-4 w-full py-2.5 text-xs text-[#5b7178]">Sign out</button>${leave}${admin}<div class="pf mt-3">${profDeleteHTML()}</div>`;
 }
 function churchPickHTML(){
@@ -353,6 +353,48 @@ export async function linkVolunteer(uid,cur){
  if(await acctRpc('link_volunteer',{p_user:uid,p_vol:v.trim()},v.trim()?'Volunteer linked ✓':'Volunteer unlinked'))await reloadMembers();
 }
 
+/* ---------- my team (station leaders, VOLUNTEER HUB: PLACEMENT) ----------
+   A team leader may be a plain member: their rights come from their linked volunteer record, not from staff access.
+   my_team() returns their station's people and the unplaced volunteers who asked for it — and nothing else. */
+export function myTeamHTML(){
+ const p=cloud.pledge;
+ if(!p||!p.lead||!p.booth)return '';
+ if(cloud.myTeam===undefined){loadMyTeam();return acctBox('My team · '+esc(boothLabel(p.booth)),acctNote('Loading…'));}
+ const L=cloud.myTeam||[],placed=L.filter(x=>x.booth),wait=L.filter(x=>!x.booth);
+ const row=x=>`<div class="border-t border-[#123033]/[.07] py-2">
+   <div class="flex items-center gap-2"><div class="min-w-0 flex-1">
+    <div class="truncate text-[12.5px] font-bold text-[#123033]">${esc(x.name)}${x.lead?' <span class="text-[#bf9a40]">★</span>':''}</div>
+    <div class="truncate text-[10.5px] text-[#4f6870]">${esc(x.phone||'')}${x.phone&&x.pref&&x.pref.length?' · asked for '+esc(x.pref.map(boothLabel).join(', ')):''}</div></div>
+    <span class="servechip ${STATUS_UI[x.status]?STATUS_UI[x.status].cls:'sc-off'}">${esc(STATUS_UI[x.status]?STATUS_UI[x.status].label:x.status)}</span></div>
+   ${x.booth?`<div class="mt-1.5 flex items-center gap-2">
+     <input data-on-change="team-shift" data-vol="${qSafe(x.id)}" value="${esc(x.shift||'')}" aria-label="Shift for ${esc(x.name)}"
+       placeholder="Shift, e.g. 09:00–13:00" class="field flex-1 py-1.5 text-xs">
+     ${x.lead?'':`<button class="tap-link flex-none text-rose-700" data-action="team-release" data-args="${qSafe(x.id)}">Take off my station</button>`}</div>`
+    :`<button class="btn btn-primary mt-1.5 w-full py-2 text-xs" data-action="team-add" data-args="${qSafe(x.id)}">Add to my team</button>`}</div>`;
+ return acctBox('My team · '+esc(boothLabel(p.booth)),
+  (placed.length?placed.map(row).join(''):'<p class="mt-1 text-[11px] text-[#4f6870]">Nobody is placed at your station yet.</p>')
+  +(wait.length?`<div class="microlabel mt-3">Waiting for a place · ${wait.length}</div>${wait.map(row).join('')}`:'')
+  +acctNote('You can add people who asked for your station, take your own people off it and set their shifts. Moving between stations is the admin’s job.'));
+}
+async function loadMyTeam(){
+ if(cloud.myTeamBusy)return;
+ cloud.myTeamBusy=true;
+ const r=await acctRpc('my_team');
+ cloud.myTeamBusy=false;
+ cloud.myTeam=r&&Array.isArray(r.data)?r.data:[];
+ renderAcct();render();
+}
+export async function teamAdd(id){
+ const b=cloud.pledge&&cloud.pledge.booth;if(!b)return;
+ if(await acctRpc('place_volunteer',{p_vol:id,p_booth:b},'Added to your team ✓'))cloud.myTeam=undefined,await loadMyTeam();
+}
+export async function teamRelease(id){
+ if(await acctRpc('release_volunteer',{p_vol:id},'Taken off the station'))cloud.myTeam=undefined,await loadMyTeam();
+}
+export async function teamShift(id,shift){
+ if(await acctRpc('set_shift',{p_vol:id,p_shift:shift||''},'Shift saved ✓'))cloud.myTeam=undefined,await loadMyTeam();
+}
+
 /* --- the account hub: My account · My church · All churches (platform admin) --- */
 export function acctTabs(){
  const a=cloud.acct,t=[];if(!a)return t;
@@ -383,7 +425,7 @@ function meHTML(){
  if(!m||!c)return acctNote('This account is not in a church.');
  return `<div class="text-[13px] font-bold text-[#123033]">${esc(c.name)}${c.city?' · '+esc(c.city):''}</div>
   <div class="text-[11px] text-[#4f6870]">${roleLabel(m)} · ${m.status==='approved'?'approved':'waiting for approval'} · ${esc(a.email||'')}</div>
-  ${m.followup&&m.status==='approved'?myFollowupsHTML():''}${healthHTML()}${pledgeHTML()}${meFormHTML('me')}
+  ${m.followup&&m.status==='approved'?myFollowupsHTML():''}${healthHTML()}${pledgeHTML()}${myTeamHTML()}${meFormHTML('me')}
   <button data-action="leaveChurch" class="mt-3 w-full text-center text-[11px] font-bold text-rose-700">Leave ${esc(c.name)}</button>`;
 }
 /* the signed-in staff member's shortcut into the sheet (the panel behind the logo) */
@@ -453,7 +495,7 @@ function profSignedIn(){
     <div class="min-w-0"><div class="display truncate text-[19px] leading-tight font-extrabold text-[#0f2a2c]">${esc(w.name)}</div>
      <div class="truncate text-[11px] text-[#5c747a]">${esc(w.email)}</div></div></div>
    <div class="mt-3 flex flex-wrap gap-1.5">${profChips()}</div>${profShortcuts()}</div>`;
- return hero+profSync()+(m?meFormHTML('pm')+healthHTML()+pledgeHTML():'')+profPasswordBox()+installBlock()+profAccountBox();
+ return hero+profSync()+(m?meFormHTML('pm')+healthHTML()+pledgeHTML()+myTeamHTML():'')+profPasswordBox()+installBlock()+profAccountBox();
 }
 /* role, church and approval as small labels under the name */
 function profChips(){

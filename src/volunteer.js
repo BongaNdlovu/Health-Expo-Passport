@@ -4,11 +4,13 @@ import { BADGE_TIERS, STATUS_UI } from './data.js';
 import { $, FOOD_PRICES } from './helpers.js';
 import { AVAIL, BOOTH, BOOTHS, DISCLAIMER, EXPO_UPCOMING, PRECAUTIONS, SKILLS, attendees, boothHue, boothLabel, hueOf, planBooks, planCredit, state, volunteers } from './data.js';
 import { A, PRICE_DATE, bmi, costOf, esc, firstName, fmt1, healthAge, initials, money, pefPct, projection, simBP } from './helpers.js';
-import { render, toast } from './shell.js';
+import { render, toast, toastUndo } from './shell.js';
 import { LIST_CAP, switchTab, visitorsToShow } from './visitor.js';
 import { migrateVolunteer, persist, cloud } from './state.js';
+import { isOfflineErr, validEmail } from './cloud.js';
+/* a lazy cycle: account.js imports this module's modal helpers; the sync call happens only at runtime */
+import { cloudSync } from './account.js';
 import { downloadCSV, foodKeyOf, planFor, shortFood } from './results.js';
-import { validEmail } from './cloud.js';
 import { GRACE_DAYS, withoutOldReadings } from './retention.js';
 /* Volunteers: pledge, register, booth picker, serve, modals, WhatsApp/email share and the print card. Split from the original single-file app; bundled back into one file by tools/build.js. */
 /* =====================================================================
@@ -272,8 +274,8 @@ function viewVolMuster(){
         <span class="mono text-[10px] font-extrabold ${got>=cap?'text-brand-800':got===0?'text-rose-600':'text-amber-700'}">${got}/${cap}</span>
        </div>
        <div class="covbar mt-1.5 ${cls}"><i style="width:${pct}%"></i></div>
-       ${(()=>{const leader=team.find(x=>x.lead);
-         return leader?`<div class="mt-1 truncate text-[10px] font-bold text-[#33504f]">★ ${esc(firstName(leader.name))} leads this station</div>`
+       ${(()=>{const leader=team.find(x=>x.lead),lk=linkedVolIds();
+         return leader?`<div class="mt-1 truncate text-[10px] font-bold text-[#33504f]">★ ${esc(firstName(leader.name))} leads this station${mayPlace()&&lk&&!lk.has(leader.id)?' · link them to an account so they can manage their team':''}</div>`
                       :'<div class="mt-1 text-[10px] font-semibold text-[#8a9aa0]">No leader yet</div>';})()}
        ${got?`<div class="mt-1 truncate text-[10px] font-semibold text-[#6b8187]">${team.slice(0,12).map(v=>esc(firstName(v.name))).join(' · ')}${got>12?` · +${got-12}`:''}</div>`:
              `<div class="mt-1 text-[10px] font-semibold text-rose-600/90">Nobody yet — needs ${cap} helper${cap>1?'s':''}</div>`}
@@ -283,7 +285,7 @@ function viewVolMuster(){
 
   ${confirmed.length?`<div class="glass p-3.5">
    <div class="microlabel">Confirmed helpers · ${confirmed.length}</div>
-   <div class="mt-2 space-y-1.5">${volCapped(confirmed,'confirmed').map(v=>volRow(v,true)).join('')}</div>
+   <div class="mt-2 space-y-1.5">${volCapped(confirmed,'confirmed').map(v=>volRow(v,true,mayPlace())).join('')}</div>
    ${volMore(confirmed,'confirmed')}
   </div>`:''}
 
@@ -292,7 +294,7 @@ function viewVolMuster(){
     <div class="microlabel">Pledged — registration pending</div>
     ${upcoming.length?`<span class="servechip sc-warn">${upcoming.length} to register</span>`:'<span class="servechip sc-ok">all registered</span>'}
    </div>
-   ${upcoming.length?`<div class="mt-2 space-y-1.5">${volCapped(upcoming,'pending').map(v=>volRow(v,false)).join('')}</div>
+   ${upcoming.length?`<div class="mt-2 space-y-1.5">${volCapped(upcoming,'pending').map(v=>volRow(v,false,mayPlace())).join('')}</div>
     ${volMore(upcoming,'pending')}
     <p class="mt-2.5 text-[10px] leading-relaxed text-[#6b8187]">Registration opens two weeks before the expo. Tap a name to register them now, or send a reminder.</p>`
    :`<p class="mt-2 text-[11px] leading-relaxed text-[#6b8187]">Everyone who pledged has completed registration. 🎉</p>`}
@@ -318,10 +320,111 @@ export const linkedVolIds=()=>{
  return L?new Set(L.filter(u=>u.volunteer_id).map(u=>u.volunteer_id)):null;
 };
 
-export function volRow(v,confirmed){
- const act=v.id===state.volId;
+/* ================= PLACEMENT BOARD (admins and station leaders) =================
+   Tap a volunteer on the muster: a sheet to move, swap, release or make team leader. Everything goes through the
+   database functions (supabase "VOLUNTEER HUB: PLACEMENT"), which refuse a team leader acting outside their own
+   station — the screens only show what the caller may do. No drag-and-drop: tap targets work with one thumb. */
+export const isAdminAcct=()=>{
+ const m=cloud.acct&&cloud.acct.membership;
+ return !!m&&m.status==='approved'&&m.role==='admin';
+};
+/* may this viewer place people at all? An admin, or a team leader through their linked volunteer record */
+export const mayPlace=()=>{
+ if(isAdminAcct())return true;
+ const m=cloud.acct&&cloud.acct.membership,vid=m&&m.volunteer_id;
+ const v=vid&&volunteers.find(x=>x.id===vid);
+ return !!(v&&v.lead);
+};
+/* the station the signed-in leader runs, through their linked record */
+export const myLeadBooth=()=>{
+ const m=cloud.acct&&cloud.acct.membership,vid=m&&m.volunteer_id;
+ const v=vid&&volunteers.find(x=>x.id===vid);
+ return v&&v.lead?v.booth:'';
+};
+async function volRpc(fn,args,done){
+ if(!cloud.client)return null;
+ let r;try{r=await cloud.client.rpc(fn,args||{});}catch(e){r={error:e};}
+ if(r.error){toast(isOfflineErr(r.error.message)?'No connection — try again when you are online.':(r.error.message||'That did not work.'));return null;}
+ if(done)toast(done);
+ return r;
+}
+/* every placement change is pulled back straight away, so the board shows the truth even without live updates */
+const afterPlace=async()=>{await cloudSync(true);};
+export function openPlaceSheet(id){
+ gotoServe();state.placeId=id;state.logOpen=false;showModal('#placeSheet');rerenderPlace();
+}
+export function closePlaceSheet(){state.placeId='';hideModal('#placeSheet');render();}
+const placedVol=()=>volunteers.find(v=>v.id===state.placeId)||null;
+function placeSheetHTML(){
+ const v=placedVol();if(!v)return '';
+ const linked=linkedVolIds(),isAdm=isAdminAcct();
+ const mine=myLeadBooth();
+ const stations=BOOTHS.map(b=>({b,n:helpersAt(b.k).length}));
+ /* who this caller may offer as the other half of a swap: an admin anybody, a leader their own people or the unplaced */
+ const swappable=volunteers.filter(x=>x.id!==v.id&&(isAdm||x.booth===mine||!x.booth));
+ return `<div class="flex items-center gap-2.5">
+   <span class="flex h-9 w-9 flex-none items-center justify-center rounded-full text-[11px] font-extrabold av hue-${badgeTier(v).hue}">${initials(v.name)}</span>
+   <div class="min-w-0 flex-1"><div class="truncate text-[13px] font-bold text-[#123033]">${esc(v.name)}</div>
+    <div class="text-[10.5px] text-[#4f6870]">${v.booth?'At '+esc(boothLabel(v.booth)):'Not placed yet'}${(v.pref||[]).length?' · asked for '+esc((v.pref||[]).map(boothLabel).join(', ')):''}${v.pref2?' or '+esc(boothLabel(v.pref2)):''}</div></div>
+   <span class="servechip ${STATUS_UI[v.status].cls}">${STATUS_UI[v.status].label}</span></div>
+  ${linked&&!linked.has(v.id)&&isAdm&&v.lead?'<p class="mt-2 rounded-xl bg-amber-50/80 p-2 text-[10.5px] font-semibold leading-snug text-[#8a5a12]">This team leader has no account linked — link them under My church so they can manage their team.</p>':''}
+  <div class="microlabel mt-3">Move to…</div>
+  <div class="mt-1.5 grid grid-cols-2 gap-1.5">
+   ${stations.map(({b,n})=>`<button data-action="place-move" data-args="${b.k}" class="boothpick hue-${b.hue} ${v.booth===b.k?'boothpick-sel':''}">
+     <span class="flex items-center gap-2"><span class="boothpick-glyph">${b.letter}</span>
+      <span class="min-w-0"><span class="block truncate text-[10.5px] font-extrabold leading-tight text-[#123033]">${esc(b.label)}</span>
+       <span class="mono block text-[8.5px] font-bold text-[#8a9aa0]">${n}${v.booth===b.k?'':'/'+b.cap} filled</span></span></span></button>`).join('')}
+  </div>
+  ${v.booth?`<div class="microlabel mt-3">Swap with…</div>
+   <div class="mt-1.5 max-h-[26vh] space-y-1 overflow-y-auto no-scrollbar">
+    ${swappable.slice(0,25).map(x=>`<button data-action="place-swap" data-args="${x.id}" class="flex w-full items-center gap-2 rounded-[14px] px-2 py-1.5 text-left transition hover:bg-white/60">
+      <span class="flex h-6 w-6 flex-none items-center justify-center rounded-full text-[9px] font-extrabold tint hue-${badgeTier(x).hue}">${initials(x.name)}</span>
+      <span class="min-w-0 flex-1 truncate text-[11.5px] font-bold text-[#123033]">${esc(x.name)}</span>
+      <span class="flex-none text-[9.5px] font-bold text-[#6b8187]">${x.booth?esc(boothLabel(x.booth)):'unplaced'}</span></button>`).join('')||'<p class="px-1 py-2 text-[11px] text-[#6b8187]">Nobody to swap with.</p>'}
+   </div>
+   <div class="mt-3 flex gap-2">
+    <button data-action="place-release" class="btn btn-glass flex-1 py-2 text-xs text-rose-700">Take off this station</button>
+    ${isAdm?`<button data-action="place-lead" class="btn btn-soft flex-1 py-2 text-xs">${v.lead?'Remove ★ leader':'Make ★ team leader'}</button>`:''}
+   </div>`:`<p class="mt-3 text-[11px] leading-relaxed text-[#6b8187]">Pick a station above to place ${esc(firstName(v.name))}. Their choices are listed first, but the choice is yours.</p>`}`;
+}
+const rerenderPlace=()=>{const el=$('#placeBody');if(el)el.innerHTML=placeSheetHTML();};
+export async function placeMove(booth){
+ const v=placedVol();if(!v)return;
+ if(v.booth===booth)return;
+ const from=v.booth;
+ const r=await volRpc('place_volunteer',{p_vol:v.id,p_booth:booth});
+ if(!r)return;
+ await afterPlace();rerenderPlace();
+ const back=()=>volRpc('place_volunteer',{p_vol:v.id,p_booth:from||''}).then(r2=>{if(r2)afterPlace();});
+ toastUndo(`${firstName(v.name)} → ${boothLabel(booth)} ✓`,back);
+}
+export async function placeSwap(otherId){
+ const v=placedVol(),o=volunteers.find(x=>x.id===otherId);if(!v||!o)return;
+ const r=await volRpc('swap_volunteers',{p_a:v.id,p_b:o.id});
+ if(!r)return;
+ await afterPlace();rerenderPlace();
+ toastUndo(`Swapped ${firstName(v.name)} ↔ ${firstName(o.name)} ✓`,()=>volRpc('swap_volunteers',{p_a:v.id,p_b:o.id}).then(r2=>{if(r2)afterPlace();}));
+}
+export async function placeRelease(){
+ const v=placedVol();if(!v)return;
+ const from=v.booth;
+ const r=await volRpc('release_volunteer',{p_vol:v.id});
+ if(!r)return;
+ await afterPlace();rerenderPlace();
+ if(from)toastUndo(`${firstName(v.name)} taken off ${boothLabel(from)}`,()=>volRpc('place_volunteer',{p_vol:v.id,p_booth:from}).then(r2=>{if(r2)afterPlace();}));
+}
+export async function placeLead(){
+ const v=placedVol();if(!v)return;
+ const make=!v.lead;
+ const r=await volRpc('set_station_lead',{p_booth:v.booth,p_vol:make?v.id:null},make?`${firstName(v.name)} leads ${boothLabel(v.booth)} ★`:'Leader removed');
+ if(!r)return;
+ await afterPlace();rerenderPlace();
+}
+
+export function volRow(v,confirmed,placeMode){
+ const act=!placeMode&&v.id===state.volId;
  const t=badgeTier(v);
- return `<button data-action="setVol" data-args="${v.id}" class="flex w-full items-center gap-2.5 rounded-[18px] px-2 py-2 text-left transition-all duration-300 ${act?'bg-brand-500/10 ring-1 ring-brand-400/25':'hover:bg-white/60'}">
+ return `<button data-action="${placeMode?'openPlaceSheet':'setVol'}" data-args="${v.id}" class="flex w-full items-center gap-2.5 rounded-[18px] px-2 py-2 text-left transition-all duration-300 ${act?'bg-brand-500/10 ring-1 ring-brand-400/25':'hover:bg-white/60'}">
   <span class="flex h-8 w-8 flex-none items-center justify-center rounded-full text-[10px] font-extrabold av hue-${t.hue}">${initials(v.name)}</span>
   <span class="min-w-0 flex-1">
    <span class="block truncate text-[12px] font-bold text-[#123033]">${esc(v.name)}</span>
@@ -713,10 +816,17 @@ export function saveVolunteer(){
   volunteers.push(rec);state.volId=id;
   toast(registered?`${firstName(name)} registered at ${boothLabel(rec.booth)} ✓`:`Pledge received — ${firstName(name)} ✓`);
  }else{
+  /* in the shared database, where a person stands is the admin's or the station leader's call — the place-guard
+     trigger refuses anybody else writing booth. A plain staff edit touches only the pledge fields; the demo and
+     the admins' own form keep the old one-tap registration. */
+  const cloudStaff=!!(cloud.user&&cloud.acct&&cloud.acct.membership&&cloud.acct.membership.status==='approved');
+  const mayPlaceHere=!cloudStaff||isAdminAcct()||!!myLeadBooth();
   Object.assign(v,{name,phone,email:d.email,pledgeExpos:d.pledgeExpos,skills:[...d.skills],
    pref:[...d.pref],pref2:d.pref2,availability:[...d.avail],shirt:d.shirt,emergency:d.emergency,notes:d.notes});
-  if(registered){v.status=v.status==='checkedin'?'checkedin':'registered';v.booth=d.pref[0];v.registeredOn=v.registeredOn||today;}
-  else if(v.status!=='checkedin'){v.status='prospect';}
+  if(mayPlaceHere){
+   if(registered){v.status=v.status==='checkedin'?'checkedin':'registered';v.booth=d.pref[0];v.registeredOn=v.registeredOn||today;}
+   else if(v.status!=='checkedin'){v.status='prospect';}
+  }
   toast('Saved ✓');
  }
  state.volRegOpen=false;state.volNew=false;state.vf=emptyDraft();

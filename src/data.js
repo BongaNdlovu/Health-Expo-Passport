@@ -21,6 +21,7 @@ export const state={activeId:'EXPO-042',tab:'home',protocol:'bp',sim:{kitchen:3,
   /* --- volunteer / serve section --- */
   volTab:'pledge',volId:'VOL-1001',volOpen:false,volRegOpen:false,pledgeDone:false,logOpen:false,switchMode:'visitor',
   vf:{name:'',phone:'',email:'',pledgeExpos:1,skills:[],pref:[],avail:[]},
+  placeId:'',                    /* the volunteer on the placement board (admins and station leaders) */
   _volSeq:1008};
 
 export const STATION_DEFS=[

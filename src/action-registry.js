@@ -1,5 +1,5 @@
 // @ts-check
-import { closeAcct, cloudInit, cloudSignIn, cloudSignOut, cloudSync, gateBack, joinChurch, leaveChurch, linkMember, linkVolunteer, manageChurch, myField, myPickPledge, myPledgeEdit, myPledgeSave, mySecondBooth, myToggleBooth, myToggleList, openAcct, profDeleteAsk, profDeleteGo, profDeleteTyped, profGate, profPassword, registerChurch, removeMember, renderAcct, saveChurch, saveMyDetails, setChurchStatus, setMember, withdrawMyPledge } from './account.js';
+import { closeAcct, cloudInit, cloudSignIn, cloudSignOut, cloudSync, gateBack, joinChurch, leaveChurch, linkMember, linkVolunteer, manageChurch, myField, myPickPledge, myPledgeEdit, myPledgeSave, mySecondBooth, myToggleBooth, myToggleList, openAcct, profDeleteAsk, profDeleteGo, profDeleteTyped, profGate, profPassword, registerChurch, removeMember, renderAcct, saveChurch, saveMyDetails, setChurchStatus, setMember, teamAdd, teamRelease, teamShift, withdrawMyPledge } from './account.js';
 import { churchSearchSoon, openChurchData, stepDown } from './account.js';
 import { cancelInvites, chooseChurchPlan, chooseFollowup, deleteChurchPlan, editChurchPlan, makeInvite, saveChurchPlan, setFollowup } from './churchPlans.js';
 import { copyInvite, shareInvite } from './churchPlans.js';
@@ -16,7 +16,7 @@ import { cloud } from './state.js';
 import { filterVisitors, onPrayer, onStationCommit, onStationInput, onStep, registerSubmit, reservePouch, resetDemo, switchTab, toggleInterest, toggleReg } from './visitor.js';
 import { applyReading, finishVisit, goVisit, newVisitFrom, onChronicList, onHeight, pickSex, recordConsent, setAnswer, setMyStation, showGuardian, switchTo, toggleOptin, toggleTick } from './visitor.js';
 import { closeVolReg, closeWhatsApp, exportVolCSV, logExpoEntry, openEmail, openSwitcher, openVolModal, openVolReg, openVolSwitcher, openWhatsApp, pickSecondBooth, pickVolunteer, printCard, removeExpoEntry, saveExpoEntry, saveVolunteer, sendEmail, sendWhatsApp, setVol, setVolTab, startNewVolunteer, switchToVol, toggleDraftBooth, toggleDraftList, toggleShift } from './volunteer.js';
-import { closeSwitcher, closeVolModal, filterSwitcher, filterVolSwitcher, openWAFor, pickAttendee, pickPledge, recycleBadge, registerNew, setSwitchMode, showAllVol } from './volunteer.js';
+import { closeSwitcher, closeVolModal, closePlaceSheet, filterSwitcher, filterVolSwitcher, openWAFor, openPlaceSheet, pickAttendee, pickPledge, placeLead, placeMove, placeRelease, placeSwap, recycleBadge, registerNew, setSwitchMode, showAllVol } from './volunteer.js';
 
 
 /* The action registry: one entry per data-action name. Plain functions are called with (element, event)
@@ -103,6 +103,19 @@ export const ACTION_MAP = {
   'my-draft-toggle': el => myToggleList(el.dataset.list, el.dataset.args),
   'my-draft-booth': el => myToggleBooth(el.dataset.args),
   'my-second-booth': el => mySecondBooth(el.dataset.args),
+
+  /* -- placement board (admins and station leaders) -- */
+  openPlaceSheet: el => openPlaceSheet(el.dataset.args),
+  'place-close': () => closePlaceSheet(),
+  'place-move': el => placeMove(el.dataset.args),
+  'place-swap': el => placeSwap(el.dataset.args),
+  'place-release': () => placeRelease(),
+  'place-lead': () => placeLead(),
+
+  /* -- a team leader's own team (account panel) -- */
+  'team-add': el => teamAdd(el.dataset.args),
+  'team-release': el => teamRelease(el.dataset.args),
+  'team-shift': el => teamShift(el.dataset.vol, el.value),
   'church-save': (el, ev) => saveChurch(ev, el.dataset.args),
   'church-status': el => setChurchStatus(el.dataset.args, el.dataset.status),
   'all-churches-back': el => { cloud.adminData = ''; renderAcct(); },

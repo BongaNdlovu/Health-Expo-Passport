@@ -85,9 +85,20 @@ export function renderMain(anim){
 let toastTimer;
 export function toast(m){
  $('#toastMsg').textContent=m;
+ undoFn=null;const u=$('#toastUndo');if(u)u.classList.add('hidden');
  const t=$('#toast');t.classList.remove('opacity-0','translate-y-3');{const d=t.firstElementChild;d.style.animation='none';void d.offsetWidth;d.style.animation='dropIn .75s cubic-bezier(.34,1.5,.5,1) both';}
  clearTimeout(toastTimer);
  toastTimer=setTimeout(()=>t.classList.add('opacity-0','translate-y-3'),2200);
+}
+/* a toast with an Undo action (the placement board): the button lives 6 seconds, then the offer is gone */
+let undoFn=null;
+export function toastUndo(m,fn){
+ toast(m);
+ undoFn=fn;
+ const u=$('#toastUndo');
+ if(u){u.classList.remove('hidden');u.onclick=()=>{const f=undoFn;undoFn=null;u.classList.add('hidden');if(f)f();};}
+ clearTimeout(toastTimer);
+ toastTimer=setTimeout(()=>{undoFn=null;const b=$('#toastUndo');if(b)b.classList.add('hidden');},6000);
 }
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeSwitcher();closeWhatsApp();closeVolModal();closeCloud();}});
 

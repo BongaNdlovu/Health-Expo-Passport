@@ -925,6 +925,15 @@
   </div>
 </div>
 
+<!-- ===== Placement board: move, swap, release, make team leader (admins and station leaders) ===== -->
+<div id="placeSheet" role="dialog" aria-modal="true" aria-label="Place volunteer" class="fixed inset-0 z-50 hidden items-end bg-[#0b1a1c]/40 backdrop-blur-md" data-action="place-close" data-backdrop="1">
+  <div class="glass sheet-up mx-auto w-full max-w-md rounded-b-none rounded-t-[28px] p-5">
+    <div class="mx-auto mb-4 h-1.5 w-10 rounded-full bg-[#123033]/10"></div>
+    <div id="placeBody" class="max-h-[52vh] overflow-y-auto no-scrollbar"></div>
+    <button data-action="place-close" class="btn btn-glass mt-3 w-full py-2.5 text-xs">Done</button>
+  </div>
+</div>
+
 <!-- ===== Cloud sync / staff sign-in ===== -->
 <div id="cloudModal" role="dialog" aria-modal="true" aria-label="Cloud sync" class="fixed inset-0 z-50 hidden items-end bg-[#0b1a1c]/40 backdrop-blur-md" data-action="closeCloud" data-backdrop="1">
   <div class="glass sheet-up mx-auto w-full max-w-md rounded-b-none rounded-t-[28px] p-5">
@@ -1020,6 +1029,7 @@
   <div class="flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold text-white"
        style="background:linear-gradient(135deg,rgba(31,77,72,.96),rgba(18,48,51,.96));box-shadow:0 18px 40px -18px rgba(16,60,58,.9);backdrop-filter:blur(12px)">
     <span class="h-2 w-2 rounded-full bg-brand-300"></span><span id="toastMsg"></span>
+    <button id="toastUndo" class="hidden" style="pointer-events:auto;background:rgba(255,255,255,.15);border:0;border-radius:9999px;padding:4px 10px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#9fd8cc;cursor:pointer">Undo</button>
   </div>
 </div>
 

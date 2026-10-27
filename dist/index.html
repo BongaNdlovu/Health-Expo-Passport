@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <!-- Same policy as dist/_headers (tools/build.js checks the two stay identical). The header needs a host that reads
      _headers (Cloudflare); this meta travels with the page, so the packaged Android app keeps the same protections. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-XcqlxawbP6EXJYC3f915DR9hWYV4EguqTi2jIZnfCTc=' 'sha256-h0JYHqmvgcQyyl/N8woAZfD6r8OEKddZVF1zZQOpgmc=' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.supabase.in wss://*.supabase.in; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-XcqlxawbP6EXJYC3f915DR9hWYV4EguqTi2jIZnfCTc=' 'sha256-sYJh+V5fu9WJg6MQVWa/5VU7FQp+ZK6ZTQKgusvPF5c=' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.supabase.in wss://*.supabase.in; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <meta name="theme-color" content="#f6f8f6"/>
 <link rel="manifest" href="manifest.webmanifest">
@@ -925,6 +925,15 @@
   </div>
 </div>
 
+<!-- ===== Placement board: move, swap, release, make team leader (admins and station leaders) ===== -->
+<div id="placeSheet" role="dialog" aria-modal="true" aria-label="Place volunteer" class="fixed inset-0 z-50 hidden items-end bg-[#0b1a1c]/40 backdrop-blur-md" data-action="place-close" data-backdrop="1">
+  <div class="glass sheet-up mx-auto w-full max-w-md rounded-b-none rounded-t-[28px] p-5">
+    <div class="mx-auto mb-4 h-1.5 w-10 rounded-full bg-[#123033]/10"></div>
+    <div id="placeBody" class="max-h-[52vh] overflow-y-auto no-scrollbar"></div>
+    <button data-action="place-close" class="btn btn-glass mt-3 w-full py-2.5 text-xs">Done</button>
+  </div>
+</div>
+
 <!-- ===== Cloud sync / staff sign-in ===== -->
 <div id="cloudModal" role="dialog" aria-modal="true" aria-label="Cloud sync" class="fixed inset-0 z-50 hidden items-end bg-[#0b1a1c]/40 backdrop-blur-md" data-action="closeCloud" data-backdrop="1">
   <div class="glass sheet-up mx-auto w-full max-w-md rounded-b-none rounded-t-[28px] p-5">
@@ -1020,6 +1029,7 @@
   <div class="flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold text-white"
        style="background:linear-gradient(135deg,rgba(31,77,72,.96),rgba(18,48,51,.96));box-shadow:0 18px 40px -18px rgba(16,60,58,.9);backdrop-filter:blur(12px)">
     <span class="h-2 w-2 rounded-full bg-brand-300"></span><span id="toastMsg"></span>
+    <button id="toastUndo" class="hidden" style="pointer-events:auto;background:rgba(255,255,255,.15);border:0;border-radius:9999px;padding:4px 10px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#9fd8cc;cursor:pointer">Undo</button>
   </div>
 </div>
 
@@ -1146,6 +1156,8 @@ var __NEWSTART = (() => {
     logOpen: false,
     switchMode: "visitor",
     vf: { name: "", phone: "", email: "", pledgeExpos: 1, skills: [], pref: [], avail: [] },
+    placeId: "",
+    /* the volunteer on the placement board (admins and station leaders) */
     _volSeq: 1008
   };
   var STATION_DEFS = [
@@ -2633,8 +2645,8 @@ var __NEWSTART = (() => {
        </div>
        <div class="covbar mt-1.5 ${cls}"><i style="width:${pct}%"></i></div>
        ${(() => {
-        const leader = team.find((x) => x.lead);
-        return leader ? `<div class="mt-1 truncate text-[10px] font-bold text-[#33504f]">\u2605 ${esc(firstName(leader.name))} leads this station</div>` : '<div class="mt-1 text-[10px] font-semibold text-[#8a9aa0]">No leader yet</div>';
+        const leader = team.find((x) => x.lead), lk = linkedVolIds();
+        return leader ? `<div class="mt-1 truncate text-[10px] font-bold text-[#33504f]">\u2605 ${esc(firstName(leader.name))} leads this station${mayPlace() && lk && !lk.has(leader.id) ? " \xB7 link them to an account so they can manage their team" : ""}</div>` : '<div class="mt-1 text-[10px] font-semibold text-[#8a9aa0]">No leader yet</div>';
       })()}
        ${got ? `<div class="mt-1 truncate text-[10px] font-semibold text-[#6b8187]">${team.slice(0, 12).map((v) => esc(firstName(v.name))).join(" \xB7 ")}${got > 12 ? ` \xB7 +${got - 12}` : ""}</div>` : `<div class="mt-1 text-[10px] font-semibold text-rose-600/90">Nobody yet \u2014 needs ${cap} helper${cap > 1 ? "s" : ""}</div>`}
       </div>`;
@@ -2644,7 +2656,7 @@ var __NEWSTART = (() => {
 
   ${confirmed.length ? `<div class="glass p-3.5">
    <div class="microlabel">Confirmed helpers \xB7 ${confirmed.length}</div>
-   <div class="mt-2 space-y-1.5">${volCapped(confirmed, "confirmed").map((v) => volRow(v, true)).join("")}</div>
+   <div class="mt-2 space-y-1.5">${volCapped(confirmed, "confirmed").map((v) => volRow(v, true, mayPlace())).join("")}</div>
    ${volMore(confirmed, "confirmed")}
   </div>` : ""}
 
@@ -2653,7 +2665,7 @@ var __NEWSTART = (() => {
     <div class="microlabel">Pledged \u2014 registration pending</div>
     ${upcoming.length ? `<span class="servechip sc-warn">${upcoming.length} to register</span>` : '<span class="servechip sc-ok">all registered</span>'}
    </div>
-   ${upcoming.length ? `<div class="mt-2 space-y-1.5">${volCapped(upcoming, "pending").map((v) => volRow(v, false)).join("")}</div>
+   ${upcoming.length ? `<div class="mt-2 space-y-1.5">${volCapped(upcoming, "pending").map((v) => volRow(v, false, mayPlace())).join("")}</div>
     ${volMore(upcoming, "pending")}
     <p class="mt-2.5 text-[10px] leading-relaxed text-[#6b8187]">Registration opens two weeks before the expo. Tap a name to register them now, or send a reminder.</p>` : `<p class="mt-2 text-[11px] leading-relaxed text-[#6b8187]">Everyone who pledged has completed registration. \u{1F389}</p>`}
   </div>
@@ -2675,10 +2687,138 @@ var __NEWSTART = (() => {
     const L = typeof cloud !== "undefined" && cloud.members && cloud.members.list;
     return L ? new Set(L.filter((u) => u.volunteer_id).map((u) => u.volunteer_id)) : null;
   };
-  function volRow(v, confirmed) {
-    const act = v.id === state.volId;
+  var isAdminAcct = () => {
+    const m = cloud.acct && cloud.acct.membership;
+    return !!m && m.status === "approved" && m.role === "admin";
+  };
+  var mayPlace = () => {
+    if (isAdminAcct()) return true;
+    const m = cloud.acct && cloud.acct.membership, vid = m && m.volunteer_id;
+    const v = vid && volunteers.find((x) => x.id === vid);
+    return !!(v && v.lead);
+  };
+  var myLeadBooth = () => {
+    const m = cloud.acct && cloud.acct.membership, vid = m && m.volunteer_id;
+    const v = vid && volunteers.find((x) => x.id === vid);
+    return v && v.lead ? v.booth : "";
+  };
+  async function volRpc(fn, args, done) {
+    if (!cloud.client) return null;
+    let r;
+    try {
+      r = await cloud.client.rpc(fn, args || {});
+    } catch (e) {
+      r = { error: e };
+    }
+    if (r.error) {
+      toast(isOfflineErr(r.error.message) ? "No connection \u2014 try again when you are online." : r.error.message || "That did not work.");
+      return null;
+    }
+    if (done) toast(done);
+    return r;
+  }
+  var afterPlace = async () => {
+    await cloudSync(true);
+  };
+  function openPlaceSheet(id) {
+    gotoServe();
+    state.placeId = id;
+    state.logOpen = false;
+    showModal("#placeSheet");
+    rerenderPlace();
+  }
+  function closePlaceSheet() {
+    state.placeId = "";
+    hideModal("#placeSheet");
+    render();
+  }
+  var placedVol = () => volunteers.find((v) => v.id === state.placeId) || null;
+  function placeSheetHTML() {
+    const v = placedVol();
+    if (!v) return "";
+    const linked = linkedVolIds(), isAdm = isAdminAcct();
+    const mine = myLeadBooth();
+    const stations = BOOTHS.map((b) => ({ b, n: helpersAt(b.k).length }));
+    const swappable = volunteers.filter((x) => x.id !== v.id && (isAdm || x.booth === mine || !x.booth));
+    return `<div class="flex items-center gap-2.5">
+   <span class="flex h-9 w-9 flex-none items-center justify-center rounded-full text-[11px] font-extrabold av hue-${badgeTier(v).hue}">${initials(v.name)}</span>
+   <div class="min-w-0 flex-1"><div class="truncate text-[13px] font-bold text-[#123033]">${esc(v.name)}</div>
+    <div class="text-[10.5px] text-[#4f6870]">${v.booth ? "At " + esc(boothLabel(v.booth)) : "Not placed yet"}${(v.pref || []).length ? " \xB7 asked for " + esc((v.pref || []).map(boothLabel).join(", ")) : ""}${v.pref2 ? " or " + esc(boothLabel(v.pref2)) : ""}</div></div>
+   <span class="servechip ${STATUS_UI[v.status].cls}">${STATUS_UI[v.status].label}</span></div>
+  ${linked && !linked.has(v.id) && isAdm && v.lead ? '<p class="mt-2 rounded-xl bg-amber-50/80 p-2 text-[10.5px] font-semibold leading-snug text-[#8a5a12]">This team leader has no account linked \u2014 link them under My church so they can manage their team.</p>' : ""}
+  <div class="microlabel mt-3">Move to\u2026</div>
+  <div class="mt-1.5 grid grid-cols-2 gap-1.5">
+   ${stations.map(({ b, n }) => `<button data-action="place-move" data-args="${b.k}" class="boothpick hue-${b.hue} ${v.booth === b.k ? "boothpick-sel" : ""}">
+     <span class="flex items-center gap-2"><span class="boothpick-glyph">${b.letter}</span>
+      <span class="min-w-0"><span class="block truncate text-[10.5px] font-extrabold leading-tight text-[#123033]">${esc(b.label)}</span>
+       <span class="mono block text-[8.5px] font-bold text-[#8a9aa0]">${n}${v.booth === b.k ? "" : "/" + b.cap} filled</span></span></span></button>`).join("")}
+  </div>
+  ${v.booth ? `<div class="microlabel mt-3">Swap with\u2026</div>
+   <div class="mt-1.5 max-h-[26vh] space-y-1 overflow-y-auto no-scrollbar">
+    ${swappable.slice(0, 25).map((x) => `<button data-action="place-swap" data-args="${x.id}" class="flex w-full items-center gap-2 rounded-[14px] px-2 py-1.5 text-left transition hover:bg-white/60">
+      <span class="flex h-6 w-6 flex-none items-center justify-center rounded-full text-[9px] font-extrabold tint hue-${badgeTier(x).hue}">${initials(x.name)}</span>
+      <span class="min-w-0 flex-1 truncate text-[11.5px] font-bold text-[#123033]">${esc(x.name)}</span>
+      <span class="flex-none text-[9.5px] font-bold text-[#6b8187]">${x.booth ? esc(boothLabel(x.booth)) : "unplaced"}</span></button>`).join("") || '<p class="px-1 py-2 text-[11px] text-[#6b8187]">Nobody to swap with.</p>'}
+   </div>
+   <div class="mt-3 flex gap-2">
+    <button data-action="place-release" class="btn btn-glass flex-1 py-2 text-xs text-rose-700">Take off this station</button>
+    ${isAdm ? `<button data-action="place-lead" class="btn btn-soft flex-1 py-2 text-xs">${v.lead ? "Remove \u2605 leader" : "Make \u2605 team leader"}</button>` : ""}
+   </div>` : `<p class="mt-3 text-[11px] leading-relaxed text-[#6b8187]">Pick a station above to place ${esc(firstName(v.name))}. Their choices are listed first, but the choice is yours.</p>`}`;
+  }
+  var rerenderPlace = () => {
+    const el = $("#placeBody");
+    if (el) el.innerHTML = placeSheetHTML();
+  };
+  async function placeMove(booth) {
+    const v = placedVol();
+    if (!v) return;
+    if (v.booth === booth) return;
+    const from = v.booth;
+    const r = await volRpc("place_volunteer", { p_vol: v.id, p_booth: booth });
+    if (!r) return;
+    await afterPlace();
+    rerenderPlace();
+    const back = () => volRpc("place_volunteer", { p_vol: v.id, p_booth: from || "" }).then((r2) => {
+      if (r2) afterPlace();
+    });
+    toastUndo(`${firstName(v.name)} \u2192 ${boothLabel(booth)} \u2713`, back);
+  }
+  async function placeSwap(otherId) {
+    const v = placedVol(), o = volunteers.find((x) => x.id === otherId);
+    if (!v || !o) return;
+    const r = await volRpc("swap_volunteers", { p_a: v.id, p_b: o.id });
+    if (!r) return;
+    await afterPlace();
+    rerenderPlace();
+    toastUndo(`Swapped ${firstName(v.name)} \u2194 ${firstName(o.name)} \u2713`, () => volRpc("swap_volunteers", { p_a: v.id, p_b: o.id }).then((r2) => {
+      if (r2) afterPlace();
+    }));
+  }
+  async function placeRelease() {
+    const v = placedVol();
+    if (!v) return;
+    const from = v.booth;
+    const r = await volRpc("release_volunteer", { p_vol: v.id });
+    if (!r) return;
+    await afterPlace();
+    rerenderPlace();
+    if (from) toastUndo(`${firstName(v.name)} taken off ${boothLabel(from)}`, () => volRpc("place_volunteer", { p_vol: v.id, p_booth: from }).then((r2) => {
+      if (r2) afterPlace();
+    }));
+  }
+  async function placeLead() {
+    const v = placedVol();
+    if (!v) return;
+    const make = !v.lead;
+    const r = await volRpc("set_station_lead", { p_booth: v.booth, p_vol: make ? v.id : null }, make ? `${firstName(v.name)} leads ${boothLabel(v.booth)} \u2605` : "Leader removed");
+    if (!r) return;
+    await afterPlace();
+    rerenderPlace();
+  }
+  function volRow(v, confirmed, placeMode) {
+    const act = !placeMode && v.id === state.volId;
     const t = badgeTier(v);
-    return `<button data-action="setVol" data-args="${v.id}" class="flex w-full items-center gap-2.5 rounded-[18px] px-2 py-2 text-left transition-all duration-300 ${act ? "bg-brand-500/10 ring-1 ring-brand-400/25" : "hover:bg-white/60"}">
+    return `<button data-action="${placeMode ? "openPlaceSheet" : "setVol"}" data-args="${v.id}" class="flex w-full items-center gap-2.5 rounded-[18px] px-2 py-2 text-left transition-all duration-300 ${act ? "bg-brand-500/10 ring-1 ring-brand-400/25" : "hover:bg-white/60"}">
   <span class="flex h-8 w-8 flex-none items-center justify-center rounded-full text-[10px] font-extrabold av hue-${t.hue}">${initials(v.name)}</span>
   <span class="min-w-0 flex-1">
    <span class="block truncate text-[12px] font-bold text-[#123033]">${esc(v.name)}</span>
@@ -3128,6 +3268,8 @@ var __NEWSTART = (() => {
       state.volId = id;
       toast(registered ? `${firstName(name)} registered at ${boothLabel(rec.booth)} \u2713` : `Pledge received \u2014 ${firstName(name)} \u2713`);
     } else {
+      const cloudStaff = !!(cloud.user && cloud.acct && cloud.acct.membership && cloud.acct.membership.status === "approved");
+      const mayPlaceHere = !cloudStaff || isAdminAcct() || !!myLeadBooth();
       Object.assign(v, {
         name,
         phone,
@@ -3141,12 +3283,14 @@ var __NEWSTART = (() => {
         emergency: d.emergency,
         notes: d.notes
       });
-      if (registered) {
-        v.status = v.status === "checkedin" ? "checkedin" : "registered";
-        v.booth = d.pref[0];
-        v.registeredOn = v.registeredOn || today;
-      } else if (v.status !== "checkedin") {
-        v.status = "prospect";
+      if (mayPlaceHere) {
+        if (registered) {
+          v.status = v.status === "checkedin" ? "checkedin" : "registered";
+          v.booth = d.pref[0];
+          v.registeredOn = v.registeredOn || today;
+        } else if (v.status !== "checkedin") {
+          v.status = "prospect";
+        }
       }
       toast("Saved \u2713");
     }
@@ -5462,6 +5606,9 @@ var __NEWSTART = (() => {
   var toastTimer;
   function toast(m) {
     $("#toastMsg").textContent = m;
+    undoFn = null;
+    const u = $("#toastUndo");
+    if (u) u.classList.add("hidden");
     const t = $("#toast");
     t.classList.remove("opacity-0", "translate-y-3");
     {
@@ -5472,6 +5619,27 @@ var __NEWSTART = (() => {
     }
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => t.classList.add("opacity-0", "translate-y-3"), 2200);
+  }
+  var undoFn = null;
+  function toastUndo(m, fn) {
+    toast(m);
+    undoFn = fn;
+    const u = $("#toastUndo");
+    if (u) {
+      u.classList.remove("hidden");
+      u.onclick = () => {
+        const f = undoFn;
+        undoFn = null;
+        u.classList.add("hidden");
+        if (f) f();
+      };
+    }
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      undoFn = null;
+      const b = $("#toastUndo");
+      if (b) b.classList.add("hidden");
+    }, 6e3);
   }
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
@@ -5666,7 +5834,10 @@ var __NEWSTART = (() => {
     delOpen: false,
     pledge: void 0,
     pledgeErr: false,
-    pledgeBusy: false
+    pledgeBusy: false,
+    /* the member's own pledge (src/account.js pledgeHTML) */
+    myTeam: void 0,
+    myTeamBusy: false
   };
   var _savedSig = "";
   var _fullWarned = false;
@@ -7504,6 +7675,7 @@ var __NEWSTART = (() => {
     cloud.health = void 0;
     cloud.pledge = void 0;
     cloud.pledgeEdit = false;
+    cloud.myTeam = void 0;
     state.mf = null;
     const m = r.data.membership, c = r.data.church;
     const inv = pendingInvite();
@@ -7612,7 +7784,7 @@ var __NEWSTART = (() => {
   ${out}${meFormHTML("gm")}${leave}${admin}`;
     return `${title("My account")}
   ${acctNote(esc(m.full_name || a.email || "") + " \xB7 " + roleLabel(m) + ' of <b class="text-[#33504f]">' + esc(c.name) + "</b>")}
-  ${healthHTML()}${pledgeHTML()}${meFormHTML("gm")}<div class="pf">${profPasswordBox()}</div>
+  ${healthHTML()}${pledgeHTML()}${myTeamHTML()}${meFormHTML("gm")}<div class="pf">${profPasswordBox()}</div>
   <button data-action="cloudSignOut" class="btn btn-glass mt-4 w-full py-2.5 text-xs text-[#5b7178]">Sign out</button>${leave}${admin}<div class="pf mt-3">${profDeleteHTML()}</div>`;
   }
   function churchPickHTML() {
@@ -7925,6 +8097,48 @@ var __NEWSTART = (() => {
     if (v === null) return;
     if (await acctRpc("link_volunteer", { p_user: uid, p_vol: v.trim() }, v.trim() ? "Volunteer linked \u2713" : "Volunteer unlinked")) await reloadMembers();
   }
+  function myTeamHTML() {
+    const p = cloud.pledge;
+    if (!p || !p.lead || !p.booth) return "";
+    if (cloud.myTeam === void 0) {
+      loadMyTeam();
+      return acctBox("My team \xB7 " + esc(boothLabel(p.booth)), acctNote("Loading\u2026"));
+    }
+    const L = cloud.myTeam || [], placed = L.filter((x) => x.booth), wait = L.filter((x) => !x.booth);
+    const row = (x) => `<div class="border-t border-[#123033]/[.07] py-2">
+   <div class="flex items-center gap-2"><div class="min-w-0 flex-1">
+    <div class="truncate text-[12.5px] font-bold text-[#123033]">${esc(x.name)}${x.lead ? ' <span class="text-[#bf9a40]">\u2605</span>' : ""}</div>
+    <div class="truncate text-[10.5px] text-[#4f6870]">${esc(x.phone || "")}${x.phone && x.pref && x.pref.length ? " \xB7 asked for " + esc(x.pref.map(boothLabel).join(", ")) : ""}</div></div>
+    <span class="servechip ${STATUS_UI[x.status] ? STATUS_UI[x.status].cls : "sc-off"}">${esc(STATUS_UI[x.status] ? STATUS_UI[x.status].label : x.status)}</span></div>
+   ${x.booth ? `<div class="mt-1.5 flex items-center gap-2">
+     <input data-on-change="team-shift" data-vol="${qSafe(x.id)}" value="${esc(x.shift || "")}" aria-label="Shift for ${esc(x.name)}"
+       placeholder="Shift, e.g. 09:00\u201313:00" class="field flex-1 py-1.5 text-xs">
+     ${x.lead ? "" : `<button class="tap-link flex-none text-rose-700" data-action="team-release" data-args="${qSafe(x.id)}">Take off my station</button>`}</div>` : `<button class="btn btn-primary mt-1.5 w-full py-2 text-xs" data-action="team-add" data-args="${qSafe(x.id)}">Add to my team</button>`}</div>`;
+    return acctBox(
+      "My team \xB7 " + esc(boothLabel(p.booth)),
+      (placed.length ? placed.map(row).join("") : '<p class="mt-1 text-[11px] text-[#4f6870]">Nobody is placed at your station yet.</p>') + (wait.length ? `<div class="microlabel mt-3">Waiting for a place \xB7 ${wait.length}</div>${wait.map(row).join("")}` : "") + acctNote("You can add people who asked for your station, take your own people off it and set their shifts. Moving between stations is the admin\u2019s job.")
+    );
+  }
+  async function loadMyTeam() {
+    if (cloud.myTeamBusy) return;
+    cloud.myTeamBusy = true;
+    const r = await acctRpc("my_team");
+    cloud.myTeamBusy = false;
+    cloud.myTeam = r && Array.isArray(r.data) ? r.data : [];
+    renderAcct();
+    render();
+  }
+  async function teamAdd(id) {
+    const b = cloud.pledge && cloud.pledge.booth;
+    if (!b) return;
+    if (await acctRpc("place_volunteer", { p_vol: id, p_booth: b }, "Added to your team \u2713")) cloud.myTeam = void 0, await loadMyTeam();
+  }
+  async function teamRelease(id) {
+    if (await acctRpc("release_volunteer", { p_vol: id }, "Taken off the station")) cloud.myTeam = void 0, await loadMyTeam();
+  }
+  async function teamShift(id, shift) {
+    if (await acctRpc("set_shift", { p_vol: id, p_shift: shift || "" }, "Shift saved \u2713")) cloud.myTeam = void 0, await loadMyTeam();
+  }
   function acctTabs() {
     const a = cloud.acct, t = [];
     if (!a) return t;
@@ -7971,7 +8185,7 @@ var __NEWSTART = (() => {
     if (!m || !c) return acctNote("This account is not in a church.");
     return `<div class="text-[13px] font-bold text-[#123033]">${esc(c.name)}${c.city ? " \xB7 " + esc(c.city) : ""}</div>
   <div class="text-[11px] text-[#4f6870]">${roleLabel(m)} \xB7 ${m.status === "approved" ? "approved" : "waiting for approval"} \xB7 ${esc(a.email || "")}</div>
-  ${m.followup && m.status === "approved" ? myFollowupsHTML() : ""}${healthHTML()}${pledgeHTML()}${meFormHTML("me")}
+  ${m.followup && m.status === "approved" ? myFollowupsHTML() : ""}${healthHTML()}${pledgeHTML()}${myTeamHTML()}${meFormHTML("me")}
   <button data-action="leaveChurch" class="mt-3 w-full text-center text-[11px] font-bold text-rose-700">Leave ${esc(c.name)}</button>`;
   }
   function acctButtons() {
@@ -8044,7 +8258,7 @@ var __NEWSTART = (() => {
     <div class="min-w-0"><div class="display truncate text-[19px] leading-tight font-extrabold text-[#0f2a2c]">${esc(w.name)}</div>
      <div class="truncate text-[11px] text-[#5c747a]">${esc(w.email)}</div></div></div>
    <div class="mt-3 flex flex-wrap gap-1.5">${profChips()}</div>${profShortcuts()}</div>`;
-    return hero + profSync() + (m ? meFormHTML("pm") + healthHTML() + pledgeHTML() : "") + profPasswordBox() + installBlock() + profAccountBox();
+    return hero + profSync() + (m ? meFormHTML("pm") + healthHTML() + pledgeHTML() + myTeamHTML() : "") + profPasswordBox() + installBlock() + profAccountBox();
   }
   function profChips() {
     const a = cloud.acct, m = a && a.membership, c = a && a.church, out = [], chip = (t, cls) => `<span class="servechip ${cls}">${esc(t)}</span>`;
@@ -8955,6 +9169,17 @@ var __NEWSTART = (() => {
     "my-draft-toggle": (el) => myToggleList(el.dataset.list, el.dataset.args),
     "my-draft-booth": (el) => myToggleBooth(el.dataset.args),
     "my-second-booth": (el) => mySecondBooth(el.dataset.args),
+    /* -- placement board (admins and station leaders) -- */
+    openPlaceSheet: (el) => openPlaceSheet(el.dataset.args),
+    "place-close": () => closePlaceSheet(),
+    "place-move": (el) => placeMove(el.dataset.args),
+    "place-swap": (el) => placeSwap(el.dataset.args),
+    "place-release": () => placeRelease(),
+    "place-lead": () => placeLead(),
+    /* -- a team leader's own team (account panel) -- */
+    "team-add": (el) => teamAdd(el.dataset.args),
+    "team-release": (el) => teamRelease(el.dataset.args),
+    "team-shift": (el) => teamShift(el.dataset.vol, el.value),
     "church-save": (el, ev) => saveChurch(ev, el.dataset.args),
     "church-status": (el) => setChurchStatus(el.dataset.args, el.dataset.status),
     "all-churches-back": (el) => {
@@ -9182,7 +9407,7 @@ var __NEWSTART = (() => {
   if (!window.NEWSTART_NO_CLOUD) cloudInit();
   var __internals = { dispatch, get installEvt() {
     return installEvt;
-  }, installApp, setInstallEvt, IS_APP, appCopyOf, installBlock, SB_LIB, SRI, authRedirect, loadScript, printCard, setVolTab, volunteers, attendees, state, SEED_VOL, BOOTHS, BADGE_TIERS, EXPO_UPCOMING, AVAIL, SKILLS, STATUS_UI, showCrash, hideCrash, crashAction, pledgeHTML, myPledgeSave, myPledgeEdit, withdrawMyPledge, linkVolunteer, myField, myPickPledge, myToggleList, myToggleBooth, mySecondBooth, badgeTier, nextTier, tierProgress, volHours, volExpos, volLevel, volYears, VOL_LEVEL_MAX, needsRegistration, helpersAt, boothLabel, boothHue, staffedCount, esc, render, setVol, openVolReg, startNewVolunteer, saveVolunteer, toggleDraftList, toggleDraftBooth, pickSecondBooth, toggleShift, logExpoEntry, saveExpoEntry, removeExpoEntry, exportVolCSV, persistNow, loadPersisted, resetDemo, AV, pickVolunteer, openSwitcher, openVolSwitcher, openVolModal, switchTab, daysTo, volRow, medalHTML, tierRemaining, registerSubmit, nextBadge, csvCell, closeVolReg, todayStr, switchToVol, toggleReg, viewHome, viewCare, buildPrintCard, openWhatsApp, viewResults, viewPlan, viewScreen, migrateAttendee, migrateVolunteer, onStep, onStationInput, onStationCommit, cat, healthAge, exportCSV, redFlag, doneCount, bmi, firstName, initials, careNotes, cloud, cloudInit, cloudSync, cloudPush, cloudDirtyList, cloudPending, cloudSignOut, cloudAuthEvent, cloudSignIn, onRemoteChange, KINDS, sigOf, isSeedRow, mergeRemote, renderCloudBody, setCloud, startRealtime, stopRealtime, saveSynced, loadSynced, viewNoVisitor, CLOUD_UI, attToRow, volToRow, rowToAtt, rowToVol, openCloud, closeCloud, afterMerge, showAllCare, filterVisitors, visitorsToShow, fetchRows, gateState, renderGate, gateDemo, togglePass, gateView, cloudSignUp, cloudResend, cloudForgot, cloudNewPassword, passwordProblem, validEmail, waNumber, waMessage, sendWhatsApp, openEmail, sendEmail, mailtoHref, toggleInterest, onPrayer, reservePouch, followUpCard, INT, queue, qs, queueJoin, queueCallNext, queueServe, queueDone, queueBack, queueRemove, qStats, qList, qMode, qCan, viewQueue, cheapDay, cheapLine, foodPriceOf, foodKeyOf, FOOD_PRICES, money, closeWhatsApp, planNeeds, bpStage, PROTOCOLS, BOOK_REF, autoProtocol, costOf, BOOK2_REF, BOOK3_REF, BOOK4_REF, refLabel, planBooks, planCredit, HELP_LINE, acctGate, acctGateHTML, loadAccount, openAcct, closeAcct, renderAcct, acctTabs, acctButtons, joinChurch, memberRow, churchAdminHTML, platformHTML, adminDataHTML, roleLabel, adminPostHTML, registerChurch, leaveChurch, saveMyDetails, churchSearch, setMember, linkMember, removeMember, setChurchStatus, manageChurch, saveChurch, inChurch, conflictOn, dropChurchData, adoptChurch, healthHTML, planFor, PRICE_DATE, ACTIONS: ACTIONS2, FOOD_WHY, urgentOf, DISCLAIMER, PRECAUTIONS, openFood, closeFood, problemOf, churchPlanList, chooseChurchPlan, editChurchPlan, saveChurchPlan, deleteChurchPlan, DEMO_CHURCH_PLANS, followupList, chooseFollowup, setFollowup, makeInvite, cancelInvites, pendingInvite, INVITE_KEY, health, noteHealth, healthReset, healthTest, statusPanelHTML, homeHealthHTML, acctHealthHTML, qStateBar, SERVE_TABS, viewProfile, profGate, gateBack, profPassword, profDeleteAsk, profDeleteTyped, profDeleteGo, profileChanged, passwordCheck, savePassword, applyRetention, graceDays: GRACE_DAYS, retentionYears: RETENTION_YEARS, retention: { visitIsOld, hasReadings, followedUp, clearReadings, withoutOldReadings, readingsGone, noteServerTime, clockKnown } };
+  }, installApp, setInstallEvt, IS_APP, appCopyOf, installBlock, SB_LIB, SRI, authRedirect, loadScript, printCard, setVolTab, volunteers, attendees, state, SEED_VOL, BOOTHS, BADGE_TIERS, EXPO_UPCOMING, AVAIL, SKILLS, STATUS_UI, showCrash, hideCrash, crashAction, pledgeHTML, myPledgeSave, myPledgeEdit, withdrawMyPledge, linkVolunteer, myField, myPickPledge, myToggleList, myToggleBooth, mySecondBooth, myTeamHTML, teamAdd, teamRelease, teamShift, mayPlace, isAdminAcct, myLeadBooth, openPlaceSheet, closePlaceSheet, placeMove, placeSwap, placeRelease, placeLead, badgeTier, nextTier, tierProgress, volHours, volExpos, volLevel, volYears, VOL_LEVEL_MAX, needsRegistration, helpersAt, boothLabel, boothHue, staffedCount, esc, render, setVol, openVolReg, startNewVolunteer, saveVolunteer, toggleDraftList, toggleDraftBooth, pickSecondBooth, toggleShift, logExpoEntry, saveExpoEntry, removeExpoEntry, exportVolCSV, persistNow, loadPersisted, resetDemo, AV, pickVolunteer, openSwitcher, openVolSwitcher, openVolModal, switchTab, daysTo, volRow, medalHTML, tierRemaining, registerSubmit, nextBadge, csvCell, closeVolReg, todayStr, switchToVol, toggleReg, viewHome, viewCare, buildPrintCard, openWhatsApp, viewResults, viewPlan, viewScreen, migrateAttendee, migrateVolunteer, onStep, onStationInput, onStationCommit, cat, healthAge, exportCSV, redFlag, doneCount, bmi, firstName, initials, careNotes, cloud, cloudInit, cloudSync, cloudPush, cloudDirtyList, cloudPending, cloudSignOut, cloudAuthEvent, cloudSignIn, onRemoteChange, KINDS, sigOf, isSeedRow, mergeRemote, renderCloudBody, setCloud, startRealtime, stopRealtime, saveSynced, loadSynced, viewNoVisitor, CLOUD_UI, attToRow, volToRow, rowToAtt, rowToVol, openCloud, closeCloud, afterMerge, showAllCare, filterVisitors, visitorsToShow, fetchRows, gateState, renderGate, gateDemo, togglePass, gateView, cloudSignUp, cloudResend, cloudForgot, cloudNewPassword, passwordProblem, validEmail, waNumber, waMessage, sendWhatsApp, openEmail, sendEmail, mailtoHref, toggleInterest, onPrayer, reservePouch, followUpCard, INT, queue, qs, queueJoin, queueCallNext, queueServe, queueDone, queueBack, queueRemove, qStats, qList, qMode, qCan, viewQueue, cheapDay, cheapLine, foodPriceOf, foodKeyOf, FOOD_PRICES, money, closeWhatsApp, planNeeds, bpStage, PROTOCOLS, BOOK_REF, autoProtocol, costOf, BOOK2_REF, BOOK3_REF, BOOK4_REF, refLabel, planBooks, planCredit, HELP_LINE, acctGate, acctGateHTML, loadAccount, openAcct, closeAcct, renderAcct, acctTabs, acctButtons, joinChurch, memberRow, churchAdminHTML, platformHTML, adminDataHTML, roleLabel, adminPostHTML, registerChurch, leaveChurch, saveMyDetails, churchSearch, setMember, linkMember, removeMember, setChurchStatus, manageChurch, saveChurch, inChurch, conflictOn, dropChurchData, adoptChurch, healthHTML, planFor, PRICE_DATE, ACTIONS: ACTIONS2, FOOD_WHY, urgentOf, DISCLAIMER, PRECAUTIONS, openFood, closeFood, problemOf, churchPlanList, chooseChurchPlan, editChurchPlan, saveChurchPlan, deleteChurchPlan, DEMO_CHURCH_PLANS, followupList, chooseFollowup, setFollowup, makeInvite, cancelInvites, pendingInvite, INVITE_KEY, health, noteHealth, healthReset, healthTest, statusPanelHTML, homeHealthHTML, acctHealthHTML, qStateBar, SERVE_TABS, viewProfile, profGate, gateBack, profPassword, profDeleteAsk, profDeleteTyped, profDeleteGo, profileChanged, passwordCheck, savePassword, applyRetention, graceDays: GRACE_DAYS, retentionYears: RETENTION_YEARS, retention: { visitIsOld, hasReadings, followedUp, clearReadings, withoutOldReadings, readingsGone, noteServerTime, clockKnown } };
   return __toCommonJS(main_exports);
 })();
 

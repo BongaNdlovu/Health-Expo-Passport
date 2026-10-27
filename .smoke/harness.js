@@ -2115,7 +2115,7 @@ function makeServer() {
     /* run SQL as a signed-in user (uid), or as anon (null); returns { rows } or { error } */
     const as = async (uid, sql, params) => {
       await db.exec(`reset role; select set_config('request.jwt.claim.sub', '${uid || ''}', false); set role ${uid ? 'authenticated' : 'anon'};`);
-      try { return { rows: (await db.query(sql, params || [])).rows }; } catch (e) { return { error: e }; } finally { await db.exec('reset role'); }
+      try { return { rows: (await db.query(sql, params || [])).rows }; } catch (e) { return { error: e }; } finally { await db.exec(`select set_config('request.jwt.claim.sub', '', false); reset role`); }   /* the claim is session-scoped: clear it, or the next raw query inherits the identity */
     };
     const sys = async (sql, params) => (await db.query(sql, params || [])).rows;
     const run = async sql => { try { await db.exec(sql); return ''; } catch (e) { return e.message || String(e); } };
@@ -2621,6 +2621,32 @@ function makeServer() {
       g.resetDemo();
     }
 
+    /* the placement board: admins and leaders tap a volunteer to move, swap, release or make leader */
+    {
+      g.resetDemo(); C.acct = null;      /* nobody signed in */
+      g.state.tab = 'serve'; g.state.volTab = 'muster'; g.render();
+      ok('in the demo the muster rows still open the volunteer (nobody is signed in)', $main.innerHTML.includes('data-action="setVol"') && !$main.innerHTML.includes('data-action="openPlaceSheet"'));
+      C.acct = { email: 'adm@ex.org', membership: { role: 'admin', status: 'approved', full_name: 'Adm', phone: '', area: '',
+        birth_date: null, attendee_id: '', followup: false, admin_rank: 1 }, church: { ...A, status: 'active' } };
+      g.state.tab = 'serve'; g.render();
+      ok('signed in as an admin, muster rows open the placement board', $main.innerHTML.includes('data-action="openPlaceSheet"'));
+      const evil = g.volunteers.find(v => v.id === 'VOL-1002');
+      const evilName = evil.name; evil.name = 'Evil <b>X</b>';
+      g.openPlaceSheet('VOL-1002');
+      const sheet = $el('placeBody').innerHTML;
+      ok('the placement sheet shows Move to, Swap with and the person choices',
+        /Move to…/.test(sheet) && /Swap with…/.test(sheet) && /asked for/.test(sheet), sheet.slice(0, 120));
+      ok('the placement sheet escapes names', !/<b>X<\/b>/.test(sheet));
+      ok('an admin sees Make team leader', /place-lead/.test(sheet));
+      g.closePlaceSheet();
+      evil.name = evilName;
+      C.acct = { ...C.acct, membership: { ...C.acct.membership, role: 'staff' } };
+      g.state.tab = 'serve'; g.render();
+      ok('plain staff keep the read-only board (taps open the volunteer, no placement actions)',
+        $main.innerHTML.includes('data-action="setVol"') && !$main.innerHTML.includes('data-action="openPlaceSheet"'));
+      C.acct = null; g.resetDemo();
+    }
+
 
     /* live connections: reconnecting must not pile up handlers */
     device(); C.client = srv.client;
@@ -2634,7 +2660,7 @@ function makeServer() {
     const schema = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'schema.sql'), 'utf8');
     const db = new PGlite();
     const as = async (uid, sql, p) => { await db.exec(`reset role; select set_config('request.jwt.claim.sub', '${uid || ''}', false); set role ${uid ? 'authenticated' : 'anon'};`);
-      try { return { rows: (await db.query(sql, p || [])).rows }; } catch (e) { return { error: e }; } finally { await db.exec('reset role'); } };
+      try { return { rows: (await db.query(sql, p || [])).rows }; } catch (e) { return { error: e }; } finally { await db.exec(`select set_config('request.jwt.claim.sub', '', false); reset role`); }   /* the claim is session-scoped: clear it, or the next raw query inherits the identity */ };
     const sys = async (sql, p) => (await db.query(sql, p || [])).rows;
     await db.exec(`create role anon nologin; create role authenticated nologin; create schema auth;
       create table auth.users (id uuid primary key default gen_random_uuid(), email text unique, raw_user_meta_data jsonb not null default '{}'::jsonb, email_confirmed_at timestamptz, created_at timestamptz not null default now());
@@ -2738,7 +2764,7 @@ function makeServer() {
     const schema = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'schema.sql'), 'utf8');
     const db = new PGlite();
     const as = async (uid, sql, p) => { await db.exec(`reset role; select set_config('request.jwt.claim.sub', '${uid || ''}', false); set role ${uid ? 'authenticated' : 'anon'};`);
-      try { return { rows: (await db.query(sql, p || [])).rows }; } catch (e) { return { error: e }; } finally { await db.exec('reset role'); } };
+      try { return { rows: (await db.query(sql, p || [])).rows }; } catch (e) { return { error: e }; } finally { await db.exec(`select set_config('request.jwt.claim.sub', '', false); reset role`); }   /* the claim is session-scoped: clear it, or the next raw query inherits the identity */ };
     const sys = async (sql, p) => (await db.query(sql, p || [])).rows;
     const refused = async (uid, sql, p) => {
       const out = !!(await as(uid, sql, p)).error;
@@ -2839,18 +2865,78 @@ function makeServer() {
     ok('the database itself refuses a second leader at one station',
       await refused(U.staff, `update public.volunteers set lead = true where church_id = $1 and id = $2`, [CH, vol2])
         && (await sys(`select lead from public.volunteers where church_id = $1 and id = $2`, [CH, vol2]))[0].lead === false);
-    const moved = await as(U.staff, `update public.volunteers set booth = 'kitchen' where church_id = $1 and id = 'VOL-2001'`, [CH]);
+    /* only admins and the station's leader may move people now, so this move runs as the admin */
+    const moved = await as(U.adm, `update public.volunteers set booth = 'kitchen' where church_id = $1 and id = 'VOL-2001'`, [CH]);
     row = (await sys(`select lead, role from public.volunteers where church_id = $1 and id = 'VOL-2001'`, [CH]))[0];
     ok('moving a leader to another station clears their leadership (an update that changes only the booth)',
       row.lead === false, JSON.stringify(row) + (moved.error ? ' · move error: ' + moved.error.message : ''));
     r = await as(U.mem1, `select public.my_pledge() p`);
     ok('the member sees the loss of the title straight away', !r.error && r.rows[0].p.lead === false);
-    await as(U.staff, `update public.volunteers set booth = 'bp', lead = true where church_id = $1 and id = 'VOL-2001'`, [CH]);
+    await as(U.adm, `update public.volunteers set booth = 'bp', lead = true where church_id = $1 and id = 'VOL-2001'`, [CH]);
     const bothRow = (await sys(`select lead, booth from public.volunteers where id = 'VOL-2001'`))[0];
     ok('an update that sets both booth and lead together is allowed (what the swap uses)',
       bothRow.lead === true, JSON.stringify(bothRow));
 
-    /* pending implementation */
+    /* ---- phase 3: admins place, move and swap ---- */
+    console.log('\n18d. Volunteer hub: placement');
+    /* the state from phase 2: VOL-2001 (mem1, linked) is leader at bp; VOL-1002 (mem2's pledge) registered at bp;
+       VOL-1003 (mem1's first pledge, now unlinked) registered at bp */
+    ok('attack: plain staff cannot move anybody by writing the table (the database refuses, not just the UI)',
+      await refused(U.staff, `update public.volunteers set booth = 'prayer' where church_id = $1 and id = $2`, [CH, vol2]));
+    r = await as(U.adm, `select * from public.place_volunteer('VOL-1002','kitchen')`);
+    row = (await sys(`select booth, status from public.volunteers where church_id = $1 and id = 'VOL-1002'`, [CH]))[0];
+    ok('an admin places a person at another station', !r.error && row.booth === 'kitchen', r.error && r.error.message);
+    await sys(`insert into public.volunteers (church_id, id, name, phone, status) values ($1, 'VOL-3001', 'New Pledge', '082 555 0001', 'prospect')`, [CH]);
+    r = await as(U.adm, `select * from public.place_volunteer('VOL-3001','prayer')`);
+    row = (await sys(`select booth, status, registered_on from public.volunteers where id = 'VOL-3001'`))[0];
+    ok('placing a prospect registers them and dates the registration', row.booth === 'prayer' && row.status === 'registered' && row.registered_on !== null);
+    /* swap the leader (bp) with the person at kitchen: the title stays with the STATION */
+    r = await as(U.adm, `select * from public.swap_volunteers('VOL-2001','VOL-1002')`);
+    const afterSwap = await sys(`select id, booth, lead from public.volunteers where church_id = $1 and id in ('VOL-2001','VOL-1002') order by id`, [CH]);
+    ok('a swap is atomic: each person ends at exactly one of the two stations',
+      !r.error && afterSwap.length === 2 && afterSwap.some(x => x.id === 'VOL-2001' && x.booth === 'kitchen')
+        && afterSwap.some(x => x.id === 'VOL-1002' && x.booth === 'bp'), r.error ? r.error.message : JSON.stringify(afterSwap));
+    ok('after a swap the station keeps exactly one leader, and it is the person now standing there',
+      afterSwap.find(x => x.id === 'VOL-1002').lead === true && afterSwap.find(x => x.id === 'VOL-2001').lead === false
+        && (await sys(`select count(*)::int n from public.volunteers where church_id = $1 and booth = 'bp' and lead`, [CH]))[0].n === 1,
+      JSON.stringify(afterSwap));
+    /* mem2's linked row now leads bp — and mem2 is a plain member with no staff role */
+    r = await as(U.mem2, `select * from public.my_team()`);
+    ok('my_team works for a leader who is only a member (no staff access), and names their people',
+      !r.error && r.rows.some(x => x.id === 'VOL-1003') && r.rows.every(x => x.status !== undefined), r.error && r.error.message);
+    ok('my_team never carries notes, emergency contacts or history',
+      r.rows.length > 0 && r.rows.every(x => !('notes' in x) && !('emergency' in x) && !('history' in x)), JSON.stringify(r.rows[0]));
+    await sys(`insert into public.volunteers (church_id, id, name, phone, pref, notes, emergency) values ($1,'VOL-3002','Chooser','082 555 0002','{bp}','secret','mum 911')`, [CH]);
+    r = await as(U.mem2, `select * from public.my_team()`);
+    ok('an unplaced volunteer who chose the station appears as waiting, without their private fields',
+      r.rows.some(x => x.id === 'VOL-3002' && !x.booth) && !JSON.stringify(r.rows).includes('secret') && !JSON.stringify(r.rows).includes('mum 911'),
+      JSON.stringify(r.rows.map(x => x.id)));
+    ok('a leader adds an unplaced chooser to their station and takes them off again',
+      !!(await as(U.mem2, `select * from public.place_volunteer('VOL-3002','bp')`)).error === false
+        && (await sys(`select booth, status from public.volunteers where id='VOL-3002'`))[0].status === 'registered'
+        && !!(await as(U.mem2, `select * from public.release_volunteer('VOL-3002')`)).error === false
+        && (await sys(`select booth, status from public.volunteers where id='VOL-3002'`))[0].booth === null,
+      'place or release refused');
+    ok('attack: a leader cannot act outside their own station — place, release or make a leader',
+      await refused(U.mem2, `select * from public.place_volunteer('VOL-3002','prayer')`)
+        && await refused(U.mem2, `select * from public.release_volunteer('VOL-2001')`)
+        && await refused(U.mem2, `select public.set_station_lead('bp','VOL-2001')`));
+    ok('attack: a leader cannot touch a person who was never at their station',
+      await refused(U.mem2, `select public.set_shift('VOL-2001','09:00-13:00')`));
+    /* the leader loses the rights the moment the title moves (an admin moves VOL-2001 back to bp first) */
+    await as(U.adm, `select * from public.place_volunteer('VOL-2001','bp')`);
+    await as(U.adm, `select public.set_station_lead('bp','VOL-2001')`);
+    ok('the moment the title moves, the old leader is refused and the new one can act',
+      await refused(U.mem2, `select * from public.place_volunteer('VOL-3002','bp')`)
+        && !!(await as(U.mem1, `select * from public.place_volunteer('VOL-3002','bp')`)).error === false,
+      'leader handover failed');
+    r = await as(U.adm, `select public.set_shift('VOL-2001','09:00-13:00')`);
+    ok('an admin sets a shift; the title arrived with the role text',
+      !r.error && (await sys(`select shift, role from public.volunteers where id='VOL-2001'`))[0].role === 'Team leader');
+    await as(U.adm, `select public.release_volunteer('VOL-2001')`);
+    row = (await sys(`select booth, status, lead, role from public.volunteers where id = 'VOL-2001'`))[0];
+    ok('releasing takes the person off the station and out of the lead, so they can be placed elsewhere',
+      row.booth === null && row.status === 'prospect' && row.lead === false && row.role === '', JSON.stringify(row));
 
   })().catch(e => ok('volunteer hub database tests ran to the end', false, e && e.stack || e));
 

@@ -1382,6 +1382,239 @@ drop trigger if exists volunteers_lead_move on public.volunteers;
 create trigger volunteers_lead_move before update on public.volunteers
   for each row execute function public.volunteers_lead_move();
 
+-- ================================================================ VOLUNTEER HUB: PLACEMENT
+-- All placing, moving, swapping and releasing goes through these functions, so the rules sit in one place and the
+-- database — not the screens — decides who may do what. The caller is a church admin, or the station's team leader
+-- acting within their own team (a leader's rights come from their linked volunteer record: memberships.volunteer_id,
+-- VOLUNTEER HUB: SELF-PLEDGE — they need no staff access). Everything takes the church's advisory lock, so two
+-- people placing at the same moment leave a consistent board. Safe to re-run.
+
+-- may the caller move a person from one booth to another? An admin of an active church may; a team leader may
+-- place an unplaced person into their own station, release or reorder within it, and nothing else.
+create or replace function public.can_place(p_from text, p_to text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  with me as (
+    select v.booth, v.lead from public.memberships m
+    join public.churches c on c.id = m.church_id and c.status = 'active'
+    join public.volunteers v on v.church_id = m.church_id and v.id = m.volunteer_id
+    where m.user_id = (select auth.uid()) and m.status = 'approved'
+  )
+  select exists (select 1 from public.memberships m join public.churches c on c.id = m.church_id
+                  where m.user_id = (select auth.uid()) and m.status = 'approved' and m.role = 'admin'
+                    and c.status = 'active')
+      or exists (select 1 from me
+                  where lead and ((p_from is not distinct from booth and (p_to is null or p_to = booth))
+                               or (p_from is null and p_to is not distinct from booth)));
+$$;
+revoke all on function public.can_place(text, text) from public, anon, authenticated;
+
+-- nobody outside these functions changes where a person stands: a direct update of booth or lead by anybody else
+-- is refused (the staff sync sends whole rows, but only the placement columns are guarded; edits of names and
+-- contact details still go through). Leaders' rights are read live, so losing the title loses the rights at once.
+create or replace function public.volunteers_place_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if (new.booth is distinct from old.booth or new.lead is distinct from old.lead)
+     and (select auth.uid()) is not null
+     and not (public.is_admin() or public.can_place(old.booth, new.booth)) then
+    raise exception 'Only the church''s admins and the station''s team leader may place volunteers' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.volunteers_place_guard() from public, anon, authenticated;
+drop trigger if exists volunteers_place_guard on public.volunteers;
+create trigger volunteers_place_guard before update on public.volunteers
+  for each row execute function public.volunteers_place_guard();
+
+-- the caller's church for volunteer-hub actions: any approved member of an active church (leaders are not staff)
+create or replace function public.hub_church()
+returns uuid
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select m.church_id from public.memberships m join public.churches c on c.id = m.church_id
+  where m.user_id = (select auth.uid()) and m.status = 'approved' and c.status = 'active';
+$$;
+revoke all on function public.hub_church() from public, anon;
+grant execute on function public.hub_church() to authenticated;
+
+-- put someone on a station (an unplaced person, or a move). A prospect becomes registered on their first placement.
+create or replace function public.place_volunteer(p_vol text, p_booth text)
+returns setof public.volunteers
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_row public.volunteers; v_church uuid := public.hub_church();
+begin
+  if v_church is null then raise exception 'Join a church first.' using errcode = '42501'; end if;
+  perform pg_advisory_xact_lock(hashtext('vol:' || v_church::text));
+  select * into v_row from public.volunteers v where v.church_id = v_church and v.id = p_vol for update;
+  if not found then raise exception 'No such volunteer in your church.'; end if;
+  if length(btrim(coalesce(p_booth, ''))) = 0 then raise exception 'Choose a station.'; end if;
+  if not (public.is_admin() or public.can_place(v_row.booth, btrim(p_booth))) then
+    raise exception 'Only the church''s admins and the station''s team leader may place volunteers' using errcode = '42501';
+  end if;
+  update public.volunteers v set
+    booth = btrim(p_booth),
+    status = case when v.status = 'prospect' then 'registered' else v.status end,
+    registered_on = coalesce(v.registered_on, current_date)
+  where v.church_id = v_church and v.id = p_vol
+  returning * into v_row;
+  return next v_row;
+end;
+$$;
+revoke all on function public.place_volunteer(text, text) from public, anon;
+grant execute on function public.place_volunteer(text, text) to authenticated;
+
+-- swap two people in one locked transaction. The leader title stays with the STATION: whoever arrives at a station
+-- that had a leader becomes its leader, and the one who left is no longer a leader. The three steps below never
+-- show the unique index two leaders at one station: both leads are cleared before the booths move.
+create or replace function public.swap_volunteers(p_a text, p_b text)
+returns setof public.volunteers
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_church uuid := public.hub_church();
+  v_a public.volunteers; v_b public.volunteers;
+  v_a_lead boolean; v_b_lead boolean;
+begin
+  if v_church is null then raise exception 'Join a church first.' using errcode = '42501'; end if;
+  perform pg_advisory_xact_lock(hashtext('vol:' || v_church::text));
+  select * into v_a from public.volunteers v where v.church_id = v_church and v.id = least(p_a, p_b) for update;
+  if not found then raise exception 'No such volunteer in your church.'; end if;
+  select * into v_b from public.volunteers v where v.church_id = v_church and v.id = greatest(p_a, p_b) for update;
+  if not found then raise exception 'No such volunteer in your church.'; end if;
+  if v_a.id = v_b.id then raise exception 'Pick two different people to swap.'; end if;
+  if not (public.is_admin()
+          or (public.can_place(v_a.booth, v_b.booth) and public.can_place(v_b.booth, v_a.booth))) then
+    raise exception 'A team leader may only swap within their own station, or one of their people with somebody unplaced' using errcode = '42501';
+  end if;
+  v_a_lead := v_a.lead; v_b_lead := v_b.lead;
+  update public.volunteers v set lead = false
+   where v.church_id = v_church and v.id in (v_a.id, v_b.id) and v.lead;
+  update public.volunteers v set booth = case when v.id = v_a.id then v_b.booth else v_a.booth end
+   where v.church_id = v_church and v.id in (v_a.id, v_b.id);
+  update public.volunteers v set lead = true, role = 'Team leader'
+   where v.church_id = v_church and ((v.id = v_a.id and v_b_lead) or (v.id = v_b.id and v_a_lead));
+  return query select * from public.volunteers v where v.church_id = v_church and v.id in (v_a.id, v_b.id);
+end;
+$$;
+revoke all on function public.swap_volunteers(text, text) from public, anon;
+grant execute on function public.swap_volunteers(text, text) to authenticated;
+
+-- make (or unmake, with p_vol null) a station's one team leader; admins only
+create or replace function public.set_station_lead(p_booth text, p_vol text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_church uuid := public.hub_church();
+begin
+  if v_church is null then raise exception 'Join a church first.' using errcode = '42501'; end if;
+  if not public.is_admin() then raise exception 'Only the church''s admins choose team leaders' using errcode = '42501'; end if;
+  if length(btrim(coalesce(p_booth, ''))) = 0 then raise exception 'Choose a station.'; end if;
+  perform pg_advisory_xact_lock(hashtext('vol:' || v_church::text));
+  update public.volunteers v set lead = false, role = ''
+   where v.church_id = v_church and v.booth = btrim(p_booth) and v.lead;
+  if coalesce(btrim(p_vol), '') <> '' then
+    update public.volunteers v set lead = true, role = 'Team leader'
+     where v.church_id = v_church and v.id = btrim(p_vol) and v.booth = btrim(p_booth);
+    if not found then raise exception 'Place them at the station first, then make them the leader.'; end if;
+  end if;
+end;
+$$;
+revoke all on function public.set_station_lead(text, text) from public, anon;
+grant execute on function public.set_station_lead(text, text) to authenticated;
+
+-- take someone off their station so they can be placed elsewhere (their pledge choices stay)
+create or replace function public.release_volunteer(p_vol text)
+returns setof public.volunteers
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_row public.volunteers; v_church uuid := public.hub_church();
+begin
+  if v_church is null then raise exception 'Join a church first.' using errcode = '42501'; end if;
+  perform pg_advisory_xact_lock(hashtext('vol:' || v_church::text));
+  select * into v_row from public.volunteers v where v.church_id = v_church and v.id = p_vol for update;
+  if not found then raise exception 'No such volunteer in your church.'; end if;
+  if not (public.is_admin() or public.can_place(v_row.booth, null)) then
+    raise exception 'Only the church''s admins and the station''s team leader may release volunteers' using errcode = '42501';
+  end if;
+  update public.volunteers v set
+    booth = null, status = 'prospect', lead = false,
+    role = case when v.lead then '' else v.role end, updated_at = now()
+  where v.church_id = v_church and v.id = p_vol
+  returning * into v_row;
+  return next v_row;
+end;
+$$;
+revoke all on function public.release_volunteer(text) from public, anon;
+grant execute on function public.release_volunteer(text) to authenticated;
+
+-- a team leader sets one of their people's shift; an admin may set anybody's
+create or replace function public.set_shift(p_vol text, p_shift text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_row public.volunteers; v_church uuid := public.hub_church();
+begin
+  if v_church is null then raise exception 'Join a church first.' using errcode = '42501'; end if;
+  select * into v_row from public.volunteers v where v.church_id = v_church and v.id = p_vol;
+  if not found then raise exception 'No such volunteer in your church.'; end if;
+  if not (public.is_admin() or public.can_place(v_row.booth, v_row.booth)) then
+    raise exception 'Only the church''s admins and the station''s team leader may set shifts' using errcode = '42501';
+  end if;
+  update public.volunteers v set shift = left(btrim(coalesce(p_shift, '')), 100), updated_at = now()
+   where v.church_id = v_church and v.id = p_vol;
+end;
+$$;
+revoke all on function public.set_shift(text, text) from public, anon;
+grant execute on function public.set_shift(text, text) to authenticated;
+
+-- the leader's team: their station's people plus the unplaced volunteers who asked for the station. Only what a
+-- team leader may see — never notes, emergency contacts or history — and never another station's rows.
+create or replace function public.my_team()
+returns table (id text, name text, phone text, status text, booth text, shift text, pref text[], pref2 text, lead boolean, linked boolean)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select v.id, v.name, v.phone, v.status, v.booth, v.shift, v.pref, v.pref2, v.lead,
+         exists (select 1 from public.memberships o where o.church_id = v.church_id and o.volunteer_id = v.id)
+  from public.memberships m
+  join public.churches c on c.id = m.church_id and c.status = 'active'
+  join public.volunteers me on me.church_id = m.church_id and me.id = m.volunteer_id and me.lead and me.booth is not null
+  join public.volunteers v on v.church_id = m.church_id
+   and (v.booth = me.booth
+        or (v.booth is null and (me.booth = any (v.pref) or v.pref2 = me.booth)))
+  where m.user_id = (select auth.uid()) and m.status = 'approved'
+  order by (v.booth is null), lower(v.name)
+  limit 200;
+$$;
+revoke all on function public.my_team() from public, anon;
+grant execute on function public.my_team() to authenticated;
+
 -- ================================================================ INVITE LINKS
 -- A church admin shares a link (…/?join=CODE). Whoever signs in with it joins that church at once, approved, as a
 -- member or as staff: no searching for the church and no waiting for approval. Links last 30 days and can be cancelled.
