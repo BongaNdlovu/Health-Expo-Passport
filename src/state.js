@@ -60,7 +60,11 @@ export function migrateAttendee(a){
  }
  /* ids are interpolated into data-* attributes, so keep them to letters, digits and dashes */
  const id=String(a.id==null?'':a.id).replace(/[^A-Za-z0-9-]/g,'');
- return /** @type {import('./types.js').Attendee} */ (Object.assign({heightCm:165,interests:{},email:'',prayer:'',done:false},a,{id,s,email:String(a.email==null?'':a.email).trim().slice(0,200)}));
+ const o=/** @type {import('./types.js').Attendee} */ (Object.assign({heightCm:165,interests:{},email:'',prayer:'',done:false},a,{id,s,email:String(a.email==null?'':a.email).trim().slice(0,200)}));
+ /* the visit's date, sent to the database so an old record keeps its real date (see attToRow) */
+ if(a.created_at!=null&&!isNaN(Date.parse(String(a.created_at))))o.created_at=new Date(String(a.created_at)).toISOString();
+ else delete o.created_at;
+ return o;
 }
 /** Migrates an old or untrusted volunteer object into the current shape. @param {Record<string,any>} v @returns {import('./types.js').Volunteer} */
 export function migrateVolunteer(v){

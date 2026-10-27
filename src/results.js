@@ -7,11 +7,34 @@ import { ACTIONS, DISCLAIMER, FOOD_WHY, HEARD, HUE_P, PLAN_GOAL, PROTOCOLS, RECH
 import { persist } from './state.js';
 import { jelly, renderMain, syncRanges, toast } from './shell.js';
 import { chosenChurchPlan, churchPlanFor, churchPlanPicker, viewChurchPlan } from './churchPlans.js';
+import { GRACE_DAYS, readingsGone, visitIsOld, withoutOldReadings } from './retention.js';
 import { hasConsent, optedIn } from './visitor.js';
+/* the three numbers at the top of Results: actual age, health age now, and the 90-day goal */
+function scoreTiles(tile,a,ha,proj,gone){
+ return `${tile('Actual age',fmt1(a.age),'yrs old','border-sky-200/70 bg-sky-50/80 text-sky-800')}
+    ${tile('Now',gone?'—':ha.health!=null?fmt1(ha.health):'—',gone?'readings deleted':ha.complete?`${ha.total>0?'+':''}${fmt1(ha.total)} yrs`:ha.f.length+'/8 done',
+      ha.total>0.4?'border-rose-200/70 bg-rose-50/70 text-rose-700':'border-sage-200/80 bg-sage-50/90 text-sage-800')}
+    ${tile('90-day goal',gone?'—':fmt1(proj.age),gone?'readings deleted':`win ${fmt1(proj.yearsWon)} yrs`,'border-lilac-200/80 bg-lilac-50/90 text-lilac-700','scoreGoal')}`;
+}
+/* the "What adds the most years" list, longest first, with the rest behind a tap */
+function yearsHTML(byYears,row){
+ return `<div class="space-y-1.5">${byYears.slice(0,3).map(row).join('')}</div>
+   ${byYears.length>3?`<details class="pl-switch"><summary>Show all ${byYears.length} ▾</summary><div class="mt-2 space-y-1.5">${byYears.slice(3).map(row).join('')}</div></details>`:''}`;
+}
+/* what the "What to work on" card lists: the needs, or the all-clear */
+function workOnHTML(a,needs){
+ return needs.length?`<div class="mt-2.5 space-y-1.5">${needs.map((n,i)=>`<div class="flex items-start gap-2.5 rounded-[16px] px-3 py-2 ${i?'bg-white/50':'bg-white/85 ring-1 ring-brand-400/25'}">
+      <span class="chip ${n.sev>=3?'chip-flag':'chip-watch'} mt-0.5 flex-none">${PROTOCOLS[n.k].tag}</span>
+      <span class="text-[11px] leading-snug text-[#33504f]">${esc(problemOf(a,n.k))}</span></div>`).join('')}</div>
+    <p class="mt-2.5 text-[11px] leading-snug text-[#5c747a]">Next, the Plan turns <b class="text-[#123033]">${PROTOCOLS[needs[0].k].tag.toLowerCase()}</b> into 3 clear actions.</p>`
+  :`<p class="mt-1 text-[11.5px] leading-snug text-[#3d5c5e]">No numbers need attention today ✓ The Plan shows habits that keep them that way.</p>`;
+}
+/* the one line a screen shows instead of numbers whose readings were deleted after the grace period */
+const goneNote=cls=>`<p class="${cls}">Readings were deleted ${GRACE_DAYS} days after the visit. They were given on the printed card or by WhatsApp on the day.</p>`;
 /* Results, Plan, Food and Care views. Split from the original single-file app; bundled back into one file by tools/build.js. */
 /* ================= VIEW: RESULTS ================= */
 export function viewResults(){
- const a=A(),ha=healthAge(a),{sys,dia}=simBP(a),proj=projection(a),pk=autoProtocol(a),first=esc(firstName(a.name));
+ const raw=A(),a=withoutOldReadings(raw),gone=visitIsOld(raw),ha=healthAge(a),{sys,dia}=simBP(a),proj=projection(a),pk=autoProtocol(a),first=esc(firstName(a.name));
  const tile=(l,v,sub,cls,id)=>`<div class="rounded-[18px] border px-2 py-3 text-center ${cls}">
   <div class="text-[10px] font-bold opacity-65">${l}</div>
   <div class="display mt-1.5 text-xl leading-none font-extrabold" ${id?`id="${id}"`:''}>${v}</div>
@@ -33,32 +56,24 @@ export function viewResults(){
    <div class="microlabel">Results</div>
    <div class="display text-base font-extrabold">${first}’s health age</div>
    <p class="mt-1 text-[11px] leading-snug text-[#5c747a]">Worked out from the 8 checks, no maths needed.</p>
-   <div class="mt-3.5 grid grid-cols-3 gap-2">
-    ${tile('Actual age',fmt1(a.age),'yrs old','border-sky-200/70 bg-sky-50/80 text-sky-800')}
-    ${tile('Now',ha.health!=null?fmt1(ha.health):'—',ha.complete?`${ha.total>0?'+':''}${fmt1(ha.total)} yrs`:ha.f.length+'/8 done',
-      ha.total>0.4?'border-rose-200/70 bg-rose-50/70 text-rose-700':'border-sage-200/80 bg-sage-50/90 text-sage-800')}
-    ${tile('90-day goal',fmt1(proj.age),`win ${fmt1(proj.yearsWon)} yrs`,'border-lilac-200/80 bg-lilac-50/90 text-lilac-700','scoreGoal')}
-   </div>
-   ${!ha.complete?`<div class="mt-3 rounded-2xl border border-amber-200/70 bg-amber-50/70 px-3 py-2 text-[10px] font-semibold leading-snug text-amber-800">
-     Finish all 8 checks for the exact score. Missing checks use typical values in the goal above.</div>`:''}
+   ${gone?goneNote('mt-2 rounded-2xl border border-sky-200/70 bg-sky-50/70 px-3 py-2 text-[10.5px] font-semibold leading-snug text-sky-800'):''}
+   <div class="mt-3.5 grid grid-cols-3 gap-2">${scoreTiles(tile,a,ha,proj,gone)}</div>
+   ${gone||ha.complete?'':`<div class="mt-3 rounded-2xl border border-amber-200/70 bg-amber-50/70 px-3 py-2 text-[10px] font-semibold leading-snug text-amber-800">
+     Finish all 8 checks for the exact score. Missing checks use typical values in the goal above.</div>`}
   </div>
 
   <div class="glass p-4">
    <div class="microlabel">What to work on</div>
-   ${needs.length?`<div class="mt-2.5 space-y-1.5">${needs.map((n,i)=>`<div class="flex items-start gap-2.5 rounded-[16px] px-3 py-2 ${i?'bg-white/50':'bg-white/85 ring-1 ring-brand-400/25'}">
-      <span class="chip ${n.sev>=3?'chip-flag':'chip-watch'} mt-0.5 flex-none">${PROTOCOLS[n.k].tag}</span>
-      <span class="text-[11px] leading-snug text-[#33504f]">${esc(problemOf(a,n.k))}</span></div>`).join('')}</div>
-    <p class="mt-2.5 text-[11px] leading-snug text-[#5c747a]">Next, the Plan turns <b class="text-[#123033]">${PROTOCOLS[needs[0].k].tag.toLowerCase()}</b> into 3 clear actions.</p>`
-   :`<p class="mt-1 text-[11.5px] leading-snug text-[#3d5c5e]">No numbers need attention today ✓ The Plan shows habits that keep them that way.</p>`}
+   ${gone?`<p class="mt-1 text-[11.5px] leading-snug text-[#3d5c5e]">This visit’s readings are no longer kept, so there is nothing to work on from today. The plan below keeps the habits that help everyone.</p>`
+   :workOnHTML(a,needs)}
   </div>
 
   <div class="glass p-4">
    <div class="microlabel mb-2.5">What adds the most years</div>
-   <div class="space-y-1.5">${byYears.slice(0,3).map(row).join('')}</div>
-   ${byYears.length>3?`<details class="pl-switch"><summary>Show all ${byYears.length} ▾</summary><div class="mt-2 space-y-1.5">${byYears.slice(3).map(row).join('')}</div></details>`:''}
+   ${gone?`<p class="text-[11.5px] leading-snug text-[#3d5c5e]">Deleted with the readings ${GRACE_DAYS} days after the visit.</p>`:yearsHTML(byYears,row)}
   </div>
 
-  <details class="glass pl-det" ${state.simOpen?'open':''} data-on-toggle="sim-open"><summary>Show the 90-day win (counselling tool)</summary><div>
+  ${gone?'':`<details class="glass pl-det" ${state.simOpen?'open':''} data-on-toggle="sim-open"><summary>Show the 90-day win (counselling tool)</summary><div>
    <p class="text-[11px] leading-snug text-[#5c747a]">Slide the three commitments with the visitor and watch blood pressure and health age respond.</p>
    <div class="sim-panel mt-3">
     <div class="flex items-center justify-between gap-2">
@@ -83,7 +98,7 @@ export function viewResults(){
     ${simSlider('simH','hydro','3 · Neutral bath + early night','simHBadge',0,2,1,state.sim.hydro,'A warm, neutral bath (33–35°C, never hot) before bed and lights out before 22:00 (Ministry of Healing ch. 17).')}
    </div>
    <p class="mt-3 text-center text-[10px] leading-snug text-[#8a9aa0]">Expo readings are a quick screening, not a diagnosis, and the volunteers are not health professionals. The blood-pressure and health-age figures are illustrative estimates for counselling, not a prediction. The plans draw, in our own words, on the health writings of Ellen G. White.${costOf(pk)?` The full plan’s food costs about ${money(costOf(pk))} a day (store prices checked ${PRICE_DATE}; they change and vary by branch).`:''}</p>
-  </div></details>
+  </div></details>`}
  </section>`;
 }
 function simSlider(id,key,label,badgeId,min,max,step,val,caption){
@@ -233,7 +248,7 @@ export function planFor(a,pk){
   top:list.slice(0,3),more:list.slice(3),recheck:RECHECK[pk]};
 }
 export function viewPlan(){
- const a=A(),sug=autoProtocol(a);
+ const raw=A(),a=withoutOldReadings(raw),gone=visitIsOld(raw),sug=autoProtocol(a);
  if(state.sugFor!==a.id||state.sugVal!==sug){state.protocol=sug;state.sugFor=a.id;state.sugVal=sug;}
  const cp=chosenChurchPlan(a);if(cp)return viewChurchPlan(a,cp);
  const P=planFor(a,state.protocol),p=P.p,hue=HUE_P[P.pk],first=esc(firstName(a.name));
@@ -250,6 +265,7 @@ export function viewPlan(){
    <div class="microlabel">${first}’s plan · 21 days</div>
    <div class="display mt-0.5 text-[19px] leading-tight font-extrabold text-[#0f2a2c]">${P.goal}</div>
    <p class="pl-problem">${esc(P.problem)}</p>
+   ${gone?`<p class="mt-2 rounded-[14px] border border-sky-200/70 bg-sky-50/70 px-3 py-2 text-[10.5px] font-semibold leading-snug text-sky-800">Readings were deleted ${GRACE_DAYS} days after the visit. This plan is the general one that helps everyone.</p>`:''}
    ${others.length?`<div class="pl-also"><span>Also needs attention:</span>${others.map(n=>`<button class="fd-chip hue-${HUE_P[n.k]}" data-action="selectProtocol" data-args="${n.k}">${esc(PROTOCOLS[n.k].tag)} →</button>`).join('')}</div>`:''}
    <details class="pl-switch"><summary>Show a different plan ▾</summary>
     <div class="mt-2 grid grid-cols-2 gap-2">${Object.keys(PROTOCOLS).map(k=>`<button data-action="selectProtocol" data-args="${k}" class="btn py-2.5 text-[11px] ${k===P.pk?'btn-hue hue-'+HUE_P[k]:'btn-glass'}">${PROTOCOLS[k].tag}</button>`).join('')}</div>
@@ -257,7 +273,7 @@ export function viewPlan(){
    ${churchPlanPicker(a)}
   </div>
 
-  ${P.urgent?`<div class="pl-urgent" role="alert"><b>⚠ ${esc(P.urgent.t)}</b><span>${esc(P.urgent.w)}</span></div>`:''}
+  ${P.urgent&&!gone?`<div class="pl-urgent" role="alert"><b>⚠ ${esc(P.urgent.t)}</b><span>${esc(P.urgent.w)}</span></div>`:''}
   ${careNotes(a).length?`<div class="glass p-4"><div class="pl-h">Also talk about</div>
    <ul class="mt-2 list-disc space-y-1.5 pl-4 text-[12px] leading-snug text-[#33504f]">${careNotes(a).map(n=>`<li>${esc(n)}</li>`).join('')}</ul></div>`:''}
 
@@ -482,8 +498,9 @@ export function exportCSV(){
   'Health consent','Consent date','Notice version','Parent or guardian','Follow-up allowed']];
  const yn=v=>v===1?'Yes':v===0?'No':'';
  const ticked=(a,set)=>Object.keys(set).filter(k=>a.interests[k]).map(k=>set[k]).join('; ');
- attendees.forEach(a=>{
-  const ha=healthAge(a),s=a.s;
+ attendees.forEach(raw=>{
+  /* the readings of a visit past the grace period are never exported either (the database has already cleared them) */
+  const a=withoutOldReadings(raw),ha=healthAge(a),s=a.s;
   const fl=[cat('bp',{sys:s.sys,dia:s.dia}),cat('sugar',s.sugar),cat('bmi',bmi(a))].filter(c=>c[0]==='flag'||c[0]==='watch').map(c=>c[1]).join('; ');
   /* this is the follow-up sheet: no contact details for anyone who did not agree to be contacted */
   const ok=optedIn(a);
@@ -495,7 +512,7 @@ export function exportCSV(){
    hasConsent(a)?'Yes':'Not recorded',a.interests.consentOn||'',a.interests.consentV||'',a.interests.guardianName||'',ok?'Yes':'No']);
  });
  downloadCSV(rows,'newstart-followup.csv');
- toast('Follow-up sheet exported (CSV) ✓');
+ toast('Follow-up sheet exported (CSV) ✓ This file holds health data: delete it when you are done.');
 }
 /* Quote every cell, and defuse spreadsheet formulas: a typed name like =HYPERLINK(...) would
    otherwise execute when the file is opened in Excel. Phone numbers starting "+27" stay as they are. */

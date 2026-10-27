@@ -45,10 +45,14 @@ export const attToRow=a=>({id:a.id,name:a.name,age:a.age!==''&&Number.isFinite(+
  phone:a.phone||null,email:a.email||null,height_cm:a.heightCm!=null&&a.heightCm!==''&&Number.isFinite(+a.heightCm)?+a.heightCm:null,s:a.s||{},interests:a.interests||{},
  prayer:a.prayer||'',done:!!a.done,
  /* sent only when written, so a database not yet given the chronic_list column still takes every other visitor */
- ...(a.chronicList?{chronic_list:a.chronicList}:{})});
-/** Converts a database row back into an Attendee. @param {{id:string,name:string,age:number,sex:string,phone:string,email:string,height_cm:number,s:Record<string,number|null>,interests:Record<string,any>,prayer:string,done:boolean,chronic_list?:string}} r */
+ ...(a.chronicList?{chronic_list:a.chronicList}:{}),
+ /* the visit's date: kept so a record uploaded late still counts as its real visit and not as a new one (the 7-day
+    retention in schema.sql and the phone's own rule both read it). Omitted on a brand-new visitor, where now() is right. */
+ ...(a.created_at?{created_at:a.created_at}:{})});
+/** Converts a database row back into an Attendee. @param {{id:string,name:string,age:number,sex:string,phone:string,email:string,height_cm:number,s:Record<string,number|null>,interests:Record<string,any>,prayer:string,done:boolean,chronic_list?:string,created_at?:string}} r */
 export const rowToAtt=r=>migrateAttendee({id:r.id,name:r.name,age:r.age==null?0:r.age,sex:r.sex||'',phone:r.phone||'',email:r.email||'',
- heightCm:r.height_cm==null?null:Number(r.height_cm),s:r.s||{},interests:r.interests||{},prayer:r.prayer||'',done:!!r.done,chronicList:r.chronic_list||''});
+ heightCm:r.height_cm==null?null:Number(r.height_cm),s:r.s||{},interests:r.interests||{},prayer:r.prayer||'',done:!!r.done,chronicList:r.chronic_list||'',
+ created_at:r.created_at});
 /** Converts a Volunteer record into its database row. @param {import('./types.js').Volunteer} v */
 export const volToRow=v=>({id:v.id,name:v.name,phone:v.phone||'',email:v.email||'',status:v.status||'prospect',
  pledge_expos:Number(v.pledgeExpos)||1,skills:v.skills||[],pref:v.pref||[],pref2:v.pref2||'',booth:nulIfEmpty(v.booth),

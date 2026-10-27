@@ -33,6 +33,30 @@ Next.js files in the Supabase quickstart (`utils/supabase/*`, middleware) do not
 
 6. Open the app and sign in. The dot on the logo turns green once the first sync finishes.
 
+## Retention: readings are kept 7 days, follow-up 2 years
+
+POPIA s14 says no longer than needed. A visitor takes their results home on the printed card or by WhatsApp on the day,
+so the church does not need the readings afterwards:
+
+- **7 days after the visit** the health readings, survey answers, chronic-illness text, height and prayer request are
+  deleted. A visitor who did **not** agree to follow-up is deleted entirely; one who did keeps only badge, name, phone,
+  email, age, sex, interests (with the consent record) and the dates.
+- **2 years after the last visit** the whole record goes, follow-up or not.
+
+`schema.sql` enforces this twice: a trigger on `public.attendees` clears the readings on any write of an old visit (so a
+phone that was offline cannot put them back), and `purge_expired_visitors()` does the deletion. The app applies the same
+rule on the device (`GRACE_DAYS` and `RETENTION_YEARS` in `src/retention.js`) and the notice the visitor reads says it.
+Change all of them together.
+
+- **The purge has to run.** It is scheduled daily at 03:00 **only if the pg_cron extension is on** (Database →
+  Extensions → pg_cron). With pg_cron off nothing is deleted: a platform admin has to run
+  `select public.purge_expired_visitors();` in the SQL editor. The trigger still keeps old readings out of any write.
+- A stale copy on a phone is judged by the visit's date: `created_at` when the app sends it, otherwise the consent date
+  (`interests.consentOn`), which every version of the app sends. Badge numbers are reused at the next expo, so the badge
+  number alone never decides whether a record is old.
+- The `audit_log` copy of a deleted visit is emptied straight away when its readings are past the 7 days, so deleted
+  readings do not survive there.
+
 ## Churches, members and the platform admin
 
 Run the whole of `schema.sql` again (it is safe to re-run). It adds three levels of account on top of the expo app:

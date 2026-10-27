@@ -9,6 +9,7 @@ import { JOURNEY, JOURNEY_LABEL, jelly, render, renderMain, toast } from './shel
 import { planFor } from './results.js';
 import { followupPicker } from './churchPlans.js';
 import { cloud, migrateAttendee, persist, seedDemo } from './state.js';
+import { GRACE_DAYS, RETENTION_YEARS, visitIsOld } from './retention.js';
 import { homeHealthHTML, installEvt, validEmail } from './cloud.js';
 import { hiredCountLabel, pendingLabel, todayStr } from './volunteer.js';
 import { parseBadge } from './scanner.js';
@@ -238,24 +239,32 @@ export function pickSex(btn){
 }
 /* ================= POPIA CONSENT =================
    Health readings and prayer requests are special personal information (POPIA s26–27): they are processed only with
-   the visitor's explicit consent. The volunteer asks one question, CONSENT_Q, which covers the screening and health
-   follow-up. The yes is kept in interests (consent, optin) with the date and NOTICE_VERSION: the notice below is what
-   that yes covers, kept as proof, not read aloud. Follow-up can be stopped later (optin off). Under 18, a parent or
-   guardian consents (s34–35), named in guardianName. Change NOTICE_VERSION whenever the notice text changes. */
-const CONSENT_Q='Do you consent to the health screening and beneficial health follow-ups?';
-const NOTICE_VERSION='2026-10-26';
-/* POPIA s14: kept no longer than needed. A record not updated for this long is deleted (purge_expired_visitors in schema.sql). */
-const RETENTION_YEARS=2;
-const PRIVACY_NOTICE=[
- ['Who','The church running this health expo, through its approved health team.'],
+   the visitor's explicit consent. The volunteer asks one question, CONSENT_Q, which covers the screening and any prayer
+   request, and a second, optional question about follow-up. Both answers are kept in interests (consent, optin) with the
+   date and NOTICE_VERSION: the notice below is what the yes covers, kept as proof, not read aloud. Follow-up can be
+   stopped later (optin off). Under 18, a parent or guardian consents (s34–35), named in guardianName. Change
+   NOTICE_VERSION whenever the notice text changes. */
+const CONSENT_Q='Do you consent to today’s health screening, including any prayer request you share?';
+const NOTICE_VERSION='2026-10-27';
+/* POPIA s14: kept no longer than needed. The readings go GRACE_DAYS after the visit and a record not updated for
+   RETENTION_YEARS is deleted; the database does the same (purge_expired_visitors in schema.sql). */
+/* the church or organisation that ran the expo, as it registered itself; demo mode has none */
+const noticeChurch=()=>{const c=cloud.acct&&cloud.acct.church;return c&&c.name?c:null;};
+const churchName=()=>{const c=noticeChurch();return c?c.name:'The church or organisation running this health expo';};
+const churchWho=()=>{const c=noticeChurch();
+ if(!c)return 'The church or organisation running this health expo, through its approved health team.';
+ const reach=[c.city,c.phone,c.email].filter(Boolean).join(' · ');
+ return reach?`${c.name} (${reach}), through its approved health team.`:`${c.name}, through its approved health team.`;};
+const noticeRows=()=>[
+ ['Who',churchWho()],
  ['What','Name, age, sex, contact details, your health checks and survey answers, and any prayer request.'],
- ['Why','To screen your health today, give you a home plan, and contact you afterwards by WhatsApp, email or phone about your results and health follow-up.'],
- ['Who sees it','Only the church’s approved health team. It is never sold. If you ask for your plan on WhatsApp or by email, it is sent through that service.'],
- ['How long',`Kept for ${RETENTION_YEARS} years after your last visit, then deleted.`],
- ['Your choice','Taking part is voluntary. Without this consent we cannot record your checks. You may ask us to stop the follow-up at any time.'],
+ ['Why','To screen your health today and give you a home plan. Only if you agree to follow-up will you be contacted afterwards by WhatsApp, email or phone.'],
+ ['Who sees it',`Only the approved health team of ${churchName()}. It is never sold. If you ask for your plan on WhatsApp or by email, it is sent through that service.`],
+ ['How long',`Your health readings and any prayer request are deleted ${GRACE_DAYS} days after your visit. If you agree to follow-up, only your name and contact details are kept, for up to ${RETENTION_YEARS} years after your last visit.`],
+ ['Your choice','Taking part is voluntary. Without the screening consent we cannot record your checks. Follow-up is your choice and you may stop it at any time.'],
  ['Your rights','You may see, correct or ask us to delete your information at any time, and object to its use. Complaints: the Information Regulator, www.inforegulator.org.za.'],
 ];
-const noticeHTML=()=>`<dl class="mt-2 space-y-1.5 text-[11px] leading-snug text-[#33504f]">${PRIVACY_NOTICE.map(([t,d])=>`<div><dt class="inline font-bold">${t}: </dt><dd class="inline">${d}</dd></div>`).join('')}</dl>`;
+const noticeHTML=()=>`<dl class="mt-2 space-y-1.5 text-[11px] leading-snug text-[#33504f]">${noticeRows().map(([t,d])=>`<div><dt class="inline font-bold">${t}: </dt><dd class="inline">${esc(d)}</dd></div>`).join('')}</dl>`;
 export const hasConsent=a=>!!(a&&a.interests&&a.interests.consent);
 export const optedIn=a=>!!(a&&a.interests&&a.interests.optin);
 const isMinor=age=>Number(age)>0&&Number(age)<18;
@@ -266,6 +275,8 @@ function consentFields(p,minor){
   <p class="mt-1 text-[13px] font-bold leading-snug text-[#123033]">“${CONSENT_Q}”</p>
   <label class="mt-2 flex items-start gap-2 text-[12px] leading-snug text-[#123033]"><input id="${p}Consent" type="checkbox" class="mt-0.5 h-4 w-4 flex-none">
    <span><b>Yes, they consent.</b> Required to record the checks.</span></label>
+  <label class="mt-2 flex items-start gap-2 text-[12px] leading-snug text-[#123033]"><input id="${p}Optin" type="checkbox" class="mt-0.5 h-4 w-4 flex-none">
+   <span>May we contact you afterwards about your results, seminars and classes? <b>Optional.</b></span></label>
   <details class="mt-2"><summary class="text-[11px] font-semibold text-brand-800">What this consent covers (kept with the record) ▾</summary>${noticeHTML()}</details>
   <div id="${p}GuardianBox" class="mt-2.5 space-y-2 rounded-[14px] bg-amber-50/80 p-2.5" ${minor?'':'hidden'}>
    <div class="text-[11.5px] font-bold text-amber-800">Under 18: a parent or guardian must agree</div>
@@ -280,8 +291,8 @@ export function showGuardian(p,age){const b=document.getElementById(p+'GuardianB
 function readConsent(p,age){
  const on=id=>{const el=/** @type {HTMLInputElement|null} */ (document.getElementById(p+id));return !!(el&&el.checked);};
  if(!on('Consent'))return {err:'Ask the consent question and tick Yes: without it the checks cannot be recorded (POPIA).'};
- /* one yes covers the screening and the health follow-up; the notice version is the proof of what it covered */
- const out={consent:true,optin:true,consentOn:todayStr(),consentV:NOTICE_VERSION};
+ /* the screening yes is required; the follow-up yes is a separate, optional answer */
+ const out={consent:true,optin:on('Optin'),consentOn:todayStr(),consentV:NOTICE_VERSION};
  if(isMinor(age)){
   const el=/** @type {HTMLInputElement|null} */ (document.getElementById(p+'GuardianName')),gn=el?String(el.value||'').trim().replace(/\s+/g,' ').slice(0,80):'';
   if(!gn||!on('Guardian'))return {err:'Under 18: type the parent or guardian’s name and tick their consent.'};
@@ -307,11 +318,11 @@ export function recordConsent(id){
  a.interests=Object.assign({},a.interests,r.it);persist();renderMain();toast('Consent recorded ✓');
 }
 /* the follow-up yes can be changed later, or withdrawn (POPIA s11(2)) */
-function toggleOptin(id){
+export function toggleOptin(id){
  const a=attendees.find(x=>x.id===id);if(!a)return;
  a.interests=a.interests||{};a.interests.optin=!a.interests.optin;
  if(!a.interests.optin){delete a.interests.followUp;delete a.interests.followUpName;}
- persist();renderMain();toast(a.interests.optin?'Follow-up allowed ✓':'No follow-up contact');
+ persist();renderMain();toast(a.interests.optin?'Follow-up allowed ✓':'No follow-up contact — the record is deleted with the readings 7 days after the visit.');
 }
 /* problems are shown inside the form (not a passing toast), so nothing typed is lost */
 function regError(html){const el=$('#rgErr');if(!el){toast(html.replace(/<[^>]+>/g,''));return;}el.innerHTML=html;el.hidden=!html;}
@@ -340,14 +351,15 @@ export function registerSubmit(e,force){
  if(taken)return regError(`${id} already belongs to ${esc(taken.name)}. Use a different lanyard.`);
  /* the same person twice gives two half-filled passports: ask first (name, last 9 phone digits, or email) */
  const digits=phone.replace(/\D/g,'').slice(-9);
- const dup=!force&&attendees.find(x=>normName(x.name)===normName(name)
+ /* a new visit of a past visitor is the same person on purpose, so their old passport is not a duplicate */
+ const dup=!force&&attendees.find(x=>x.id!==state.newVisitOf&&(normName(x.name)===normName(name)
    ||(digits.length===9&&String(x.phone||'').replace(/\D/g,'').slice(-9)===digits)
-   ||(email&&String(x.email||'').toLowerCase()===email.toLowerCase()));
+   ||(email&&String(x.email||'').toLowerCase()===email.toLowerCase())));
  if(dup)return regError(`${esc(dup.name)} may already be registered as <b>${esc(dup.id)}</b>.
    <span class="mt-2 flex gap-2"><button type="button" class="st-fix" style="background:#2b8074" data-action="switch-visitor" data-args="${dup.id}">Open ${esc(dup.id)}</button>
    <button type="button" class="st-fix" style="background:#6b8187" data-action="register-again">Register a new passport</button></span>`);
  const a=migrateAttendee({id,name,age,sex,phone:phone||'+27 —',email,heightCm:h,s:{},interests:cons.it,prayer:'',done:false});
- attendees.push(a);state.activeId=a.id;state.regOpen=false;state.pendingBadge=null;state.sugFor=null;state._goal=null;
+ attendees.push(a);state.activeId=a.id;state.regOpen=false;state.pendingBadge=null;state.newVisitOf=null;state.sugFor=null;state._goal=null;
  switchTab('screen');toast(`${a.id} linked to ${firstName(a.name)} ✓ Start the checks`);
 }
 export function resetDemo(){
@@ -405,6 +417,8 @@ export function viewScreen(){
  const ms=myStation(),one=ms&&ms!=='bp'?STATION_DEFS.concat(EXTRA_DEFS).find(x=>x.k===ms):null;
  /* POPIA: no consent on record, no checks */
  if(attendees.some(x=>x.id===a.id)&&!hasConsent(a))return `<section class="stagger space-y-3">${consentCard(a)}</section>`;
+ /* a visit past the grace period takes no new readings: the database would clear them on upload */
+ if(attendees.some(x=>x.id===a.id)&&visitIsOld(a))return `<section class="stagger space-y-3">${pastVisitCard(a)}</section>`;
  return `<section class="stagger space-y-3">
   <div id="redBanner" class="${redFlag(a)?'':'hidden'} flex items-start gap-2.5 rounded-2xl border border-rose-200/70 bg-rose-50/90 p-4 text-rose-700">
    <span class="flex h-8 w-8 flex-none items-center justify-center rounded-[12px] bg-rose-500/15 font-extrabold">!</span>
@@ -435,6 +449,25 @@ export function viewScreen(){
   ${ms?`<p class="text-center text-[12px] text-[#4f6870]">Saved automatically ✓ Only your station is shown. <button class="tap-link" data-action="setMyStation" data-args="">Show all 8 checks</button></p>`
    :followUpCard(a)}
  </section>`;
+}
+/* A returning visitor scanned with an old badge: that visit is closed, so the checks start on a new passport */
+function pastVisitCard(a){
+ return `<div class="glass hue-tint hue-sky p-4">
+  <div class="microlabel">Past visit</div>
+  <div class="display text-base font-extrabold">${esc(firstName(a.name))}’s visit was more than ${GRACE_DAYS} days ago</div>
+  <p class="mt-1 text-[11px] leading-snug text-[#5c747a]">Readings of a past visit are deleted after ${GRACE_DAYS} days, so this passport takes no new checks. Register today’s visit on a new badge: their details are filled in, and they are asked for consent again.</p>
+  <button class="btn btn-primary mt-3 w-full py-3 text-sm" data-action="new-visit" data-args="${a.id}">Register as a new visit</button>
+ </div>`;
+}
+/* opens New visitor with the past visit's details; the badge is new and the consent is asked again */
+export function newVisitFrom(id){
+ const a=attendees.find(x=>x.id===id);if(!a)return;
+ state.regOpen=true;state.pendingBadge=null;state.newVisitOf=a.id;
+ switchTab('home');
+ const put=(sel,v)=>{const el=/** @type {HTMLInputElement|null} */ ($(sel));if(el&&v)el.value=String(v);};
+ put('#rgName',a.name);put('#rgAge',a.age||'');put('#rgPhone',a.phone==='+27 —'?'':a.phone);put('#rgEmail',a.email);
+ const sx=document.querySelector(`[data-action="pick-sex"][data-sex="${a.sex}"]`);if(sx)pickSex(sx);
+ showGuardian('rg',a.age);
 }
 /* "My station": a station volunteer sees only the check they do, so nothing to scroll past. Kept on this phone. */
 const MS_KEY='newstart.myStation';

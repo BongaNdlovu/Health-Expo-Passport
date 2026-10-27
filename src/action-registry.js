@@ -16,7 +16,7 @@ import { render } from './shell.js';
 import { isServe } from './shell.js';
 import { cloud } from './state.js';
 import { filterVisitors, onPrayer, onStationCommit, onStationInput, onStep, registerSubmit, reservePouch, resetDemo, switchTab, toggleInterest, toggleReg } from './visitor.js';
-import { applyReading, finishVisit, goVisit, onChronicList, onHeight, pickSex, recordConsent, setAnswer, setMyStation, showGuardian, switchTo, toggleTick } from './visitor.js';
+import { applyReading, finishVisit, goVisit, newVisitFrom, onChronicList, onHeight, pickSex, recordConsent, setAnswer, setMyStation, showGuardian, switchTo, toggleOptin, toggleTick } from './visitor.js';
 import { closeVolReg, closeWhatsApp, logExpoEntry, openSwitcher, openVolModal, openVolReg, openVolSwitcher, pickSecondBooth, pickVolunteer, printCard, removeExpoEntry, saveExpoEntry, saveVolunteer, sendEmail, sendWhatsApp, setVol, setVolTab, startNewVolunteer, switchToVol, toggleDraftBooth, toggleDraftList, toggleShift } from './volunteer.js';
 import { closeSwitcher, closeVolModal, demoScan, filterSwitcher, filterVolSwitcher, manualGo, openWAFor, pickAttendee, pickPledge, recycleBadge, registerNew, setSwitchMode, showAllVol } from './volunteer.js';
 
@@ -124,6 +124,8 @@ export const ACTION_MAP = {
   'visitors-filter': el => filterVisitors(el.value),
   'switch-visitor': el => { state.regOpen = false; switchTo(el.dataset.args); },
   'register-again': () => registerSubmit(null, true),
+  'new-visit': el => newVisitFrom(el.dataset.args),
+  toggleOptin: el => toggleOptin(el.dataset.args),
   'step': el => onStep(el.dataset.id, el.dataset.k, Number(el.dataset.dir), Number(el.dataset.min),
     Number(el.dataset.max), Number(el.dataset.step), Number(el.dataset.def)),
   'station-input': el => onStationInput(el.dataset.id, el.dataset.k, el, Number(el.dataset.min), Number(el.dataset.max)),

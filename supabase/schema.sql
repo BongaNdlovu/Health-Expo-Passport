@@ -693,6 +693,7 @@ as $$
     'user_id', u.id,
     'email', u.email,
     'platform_admin', exists (select 1 from public.platform_admins p where p.user_id = u.id),
+    'server_now', now(),   -- the phone measures its clock against this before it clears anything by date (src/retention.js)
     'membership', (select jsonb_build_object('church_id', m.church_id, 'role', m.role, 'status', m.status, 'full_name', m.full_name,
                      'phone', m.phone, 'area', m.area, 'birth_date', m.birth_date, 'attendee_id', m.attendee_id, 'followup', m.followup,
                      'admin_rank', case when m.role = 'admin' and m.status = 'approved'
@@ -1299,12 +1300,85 @@ alter table public.attendees add column if not exists chronic_list text;
 alter table public.attendees drop constraint if exists attendees_chronic_list_len;
 alter table public.attendees add constraint attendees_chronic_list_len check (coalesce(length(chronic_list), 0) <= 200) not valid;
 
+-- ================================================================ READINGS ARE KEPT 7 DAYS
+-- A visitor takes their results home on the printed card or by WhatsApp on the day, so the readings of that visit are
+-- cleared a week later and a visitor who did not agree to follow-up is deleted. This is enforced on every write, not
+-- only by the purge below, because a phone that was offline still holds an old copy and would otherwise upload the
+-- readings again (src/account.js mergeRemote does re-upload a row that is "edited here but gone there").
+-- The visit's date comes from created_at, which the app now sends with each row, so an old copy keeps its real date
+-- instead of looking like a new visit. A phone running the older app does not send created_at, but every version
+-- sends the consent date (interests.consentOn), so that date decides for those. Badge numbers are per church and can
+-- be reused at a later expo, so a badge number never decides on its own. Change 7 days here, in src/retention.js and
+-- in the notice together.
+
+-- one definition of "this visit is past the grace period", used by the trigger and the purge
+create or replace function public.visit_is_old(p_created timestamptz)
+returns boolean
+language sql
+stable
+set search_path = ''
+as $$
+  select p_created is not null and p_created < now() - interval '7 days';
+$$;
+revoke all on function public.visit_is_old(timestamptz) from public, anon, authenticated;
+
+-- The date on the consent record, and whether it is past the grace period. An older phone does not send created_at,
+-- so the column default would make its stale copy look like a new visit; every version of the app sends this date.
+-- ISO dates compare correctly as text, so a malformed value is ignored rather than failing the write.
+create or replace function public.consent_is_old(j jsonb)
+returns boolean
+language sql
+stable
+set search_path = ''
+as $$
+  select coalesce(j ->> 'consentOn', '') ~ '^\d{4}-\d{2}-\d{2}$'
+     and (j ->> 'consentOn') < to_char(now() - interval '7 days', 'YYYY-MM-DD');
+$$;
+revoke all on function public.consent_is_old(jsonb) from public, anon, authenticated;
+
+create or replace function public.attendees_retention()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_follow boolean;
+begin
+  v_follow := coalesce(new.interests ->> 'optin', 'false') = 'true';
+
+  -- a visit's date never moves: an update keeps the date the row already has
+  if tg_op = 'UPDATE' then new.created_at := old.created_at; end if;
+
+  -- an old visit is one whose date the phone sent is past the grace period, or (for an older phone that sends no
+  -- date) whose consent date is. A badge number is reused at a later expo, so it never decides on its own.
+  if not public.visit_is_old(new.created_at) and not public.consent_is_old(new.interests) then return new; end if;
+
+  -- a visit past the grace period keeps nothing about itself: no readings, no prayer, no measurements
+  new.s := '{}'::jsonb;
+  new.prayer := '';
+  new.chronic_list := null;
+  new.height_cm := null;
+  -- without follow-up there is nothing left to keep, so a first write of such a visit is skipped; the daily purge
+  -- deletes a row that is still there (an update keeps the row it cannot delete from inside its own trigger)
+  if not v_follow and tg_op = 'INSERT' then return null; end if;
+  return new;
+end;
+$$;
+revoke all on function public.attendees_retention() from public, anon, authenticated;
+drop trigger if exists attendees_retention on public.attendees;
+create trigger attendees_retention before insert or update on public.attendees
+  for each row execute function public.attendees_retention();
+
 -- ================================================================ RETENTION (POPIA s14)
--- A visitor's record is kept for 2 years after their last visit (the last time it was updated), then deleted. The
--- app's privacy notice says the same (RETENTION_YEARS in index.html): change both together.
--- Deleting a visitor normally leaves a full copy in audit_log so an admin's mistake can be undone. Those copies are
--- emptied after 90 days, and a record removed here leaves no copy at all. Queue entries hold only badge numbers and
--- times, and are kept 30 days. Audit lines themselves (who did what, no health data) are kept 2 years.
+-- Visitors take their results home on the printed card or by WhatsApp on the day, so the church does not keep the
+-- readings of a past visit: GRACE_DAYS after the visit they are cleared, and a visitor who did not agree to follow-up
+-- is deleted with them. Only name and contact details of a follow-up stay, for 2 years after their last visit (the last
+-- time the row was updated), then the whole record goes. The app applies the same rule on the phone (GRACE_DAYS and
+-- RETENTION_YEARS in src/retention.js) and its privacy notice says it: change both together.
+-- Deleting a visitor normally leaves a full copy in audit_log so an admin's mistake can be undone. Copies of a visit
+-- whose readings were cleared are emptied straight away; any other is emptied after 90 days, and the purge below leaves
+-- no copy at all. Queue entries hold only badge numbers and times, and are kept 30 days. Audit lines themselves (who
+-- did what, no health data) are kept 2 years.
 create or replace function public.purge_expired_visitors()
 returns integer
 language plpgsql
@@ -1313,17 +1387,34 @@ set search_path = ''
 as $$
 declare n integer;
 begin
-  -- the weekly job runs with no signed-in user; a signed-in caller must be the platform admin
+  -- the daily job runs with no signed-in user; a signed-in caller must be the platform admin
   if auth.uid() is not null and not public.is_platform_admin() then
     raise exception 'platform admin only' using errcode = '42501';
   end if;
+  -- the readings of a visit older than the grace period go, but the person stays if they agreed to follow-up
+  update public.attendees set s = '{}'::jsonb, prayer = '', chronic_list = null, height_cm = null
+   where (created_at < now() - interval '7 days' or public.consent_is_old(interests))
+     and (s <> '{}'::jsonb or prayer <> '' or chronic_list is not null or height_cm is not null);
+  -- without follow-up there is nothing left to keep, so the visitor goes. A phone that still holds an old copy cannot
+  -- put them back: the trigger judges the copy by its created_at or its consent date, not by its badge number.
   with gone as (
-    delete from public.attendees where updated_at < now() - interval '2 years' returning id
+    delete from public.attendees a
+     where (a.created_at < now() - interval '7 days' or public.consent_is_old(a.interests))
+       and coalesce(a.interests ->> 'optin', 'false') <> 'true'
+    returning 1
   )
   select count(*) into n from gone;
+  -- 2 years after the last visit, everything goes, follow-up or not
+  with expired as (
+    delete from public.attendees where updated_at < now() - interval '2 years' returning id
+  )
+  select n + count(*) into n from expired;
   update public.audit_log set old = null
    where tbl = 'attendees' and op = 'DELETE' and old is not null
-     and (at < now() - interval '90 days' or (old ->> 'updated_at')::timestamptz < now() - interval '2 years');
+     and (at < now() - interval '90 days'
+          or (old ->> 'updated_at')::timestamptz < now() - interval '2 years'
+          or (old ->> 'created_at')::timestamptz < now() - interval '7 days'
+          or public.consent_is_old(old -> 'interests'));
   delete from public.audit_log where at < now() - interval '2 years';
   delete from public.queue_entries where joined_at < now() - interval '30 days';
   return n;
@@ -1332,13 +1423,18 @@ $$;
 revoke all on function public.purge_expired_visitors() from public, anon;
 grant execute on function public.purge_expired_visitors() to authenticated;
 
--- run it every Sunday at 03:00 when the pg_cron extension is on (Database → Extensions → pg_cron); without it, a
--- platform admin runs  select public.purge_expired_visitors();  here once a month
+-- The list of deleted badge numbers this rule used to keep is gone. Badge numbers are reused at the next expo, so the
+-- list quietly dropped a new visitor who was given a deleted visitor's number; the consent date above replaces it.
+drop table if exists public.purged_attendees;
+
+-- run it every day at 03:00 when the pg_cron extension is on (Database → Extensions → pg_cron), so a reading lives at
+-- most a day past the 7-day grace period. Without the extension nothing is deleted: a platform admin then runs
+--   select public.purge_expired_visitors();  here (daily, or as often as the expo is in use).
 do $$
 begin
   if exists (select 1 from pg_extension where extname = 'pg_cron') then
     perform cron.unschedule(jobid) from cron.job where jobname = 'purge-expired-visitors';
-    perform cron.schedule('purge-expired-visitors', '0 3 * * 0', 'select public.purge_expired_visitors()');
+    perform cron.schedule('purge-expired-visitors', '0 3 * * *', 'select public.purge_expired_visitors()');
   end if;
 end $$;
 

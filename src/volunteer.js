@@ -12,6 +12,7 @@ import { migrateVolunteer, persist } from './state.js';
 import { downloadCSV, foodKeyOf, planFor, shortFood } from './results.js';
 import { loadScript, parseBadge, stopCamera } from './scanner.js';
 import { validEmail } from './cloud.js';
+import { GRACE_DAYS, withoutOldReadings } from './retention.js';
 /* Volunteers: pledge, register, booth picker, serve, modals, WhatsApp/email share and the print card. Split from the original single-file app; bundled back into one file by tools/build.js. */
 /* =====================================================================
    VOLUNTEER / SERVE  —  pledge → register → booth → serve → record
@@ -891,6 +892,7 @@ function waPreviewHTML(a){
   </div>`:''}
   <p class="mt-3 text-[10px] leading-relaxed text-[#8a9aa0]">From ${planCredit(p)} — ${p.src}.</p>
   ${p.help?`<p class="mt-2 text-[10px] font-bold leading-relaxed text-rose-700">${esc(p.help)}</p>`:''}
+  <p class="mt-3 text-[10px] font-bold leading-relaxed text-[#6b8187]">Keep this: the church deletes your health readings ${GRACE_DAYS} days after your visit.</p>
   <p class="mt-2 text-[10px] leading-relaxed text-[#6b8187]">${esc(DISCLAIMER)} ${esc(PRECAUTIONS[5])}</p>
   <p class="mt-3 text-[10px] italic text-[#6b8187]">“Beloved, I pray that you may prosper in all things and be in health, just as your soul prospers.” — 3 John 1:2</p>
  </div>`;
@@ -905,7 +907,8 @@ function waFootHTML(kind){
 }
 export function openWhatsApp(){
  if(!attendees.length){toast('Register a visitor first');return;}
- const a=A();
+ /* an old visit's readings were deleted: the preview says so rather than showing numbers that are gone */
+ const a=withoutOldReadings(A());
  $('#waSub').textContent='Message preview · opens in WhatsApp';
  $('#waBody').innerHTML=waPreviewHTML(a);
  $('#waFoot').innerHTML=waFootHTML('wa');
@@ -914,7 +917,7 @@ export function openWhatsApp(){
 /* the same plan by email: the body is exactly the message WhatsApp would send */
 export function openEmail(){
  if(!attendees.length){toast('Register a visitor first');return;}
- const a=A();
+ const a=withoutOldReadings(A());
  $('#waSub').textContent='Message preview · opens in their email app';
  $('#waBody').innerHTML=waPreviewHTML(a)+`
   <div class="modal-in mt-3 rounded-[16px] border border-white/90 bg-white/85 p-3">
@@ -949,6 +952,7 @@ export function cheapLine(it){
 }
 /* the same content as the preview, as the plain text that gets sent */
 export function waMessage(a){
+ a=withoutOldReadings(a);
  const ha=healthAge(a),{sys,dia}=simBP(a),proj=projection(a),P=planFor(a),pk=P.pk,p=P.p;
  return [
   `🌿 Hi ${firstName(a.name)}! Thank you for visiting the SDA Community Health Expo. Here is your personal health scorecard and 21-day natural plan (badge ${a.id}):`,
@@ -975,6 +979,7 @@ export function waMessage(a){
   '',
   ...(p.help?[p.help,'']:[]),
   `These are home remedies and healthy-living advice, not a replacement for your clinic. If you take blood-pressure or diabetes pills, do not stop them suddenly — your clinic will adjust the doses safely.`,
+  `Keep this: the church deletes your health readings ${GRACE_DAYS} days after your visit.`,
   '',
   DISCLAIMER,
   'Warnings and precautions:',
@@ -1051,7 +1056,7 @@ function ensureQrLib(){
  });
 }
 export function buildPrintCard(){
- const a=A(),ha=healthAge(a),{sys,dia}=simBP(a),proj=projection(a),P=planFor(a),pk=P.pk,p=P.p;
+ const a=withoutOldReadings(A()),ha=healthAge(a),{sys,dia}=simBP(a),proj=projection(a),P=planFor(a),pk=P.pk,p=P.p;
  const date=new Date().toLocaleDateString('en-ZA',{day:'numeric',month:'short',year:'numeric'});
  /* An A6 card is small: the 3 actions with their first "how", food on one line, short book names. (The old card,
     with four long store lines, ran past the bottom edge and cut the safety note off.) */
@@ -1080,7 +1085,7 @@ export function buildPrintCard(){
    ${a.interests&&a.interests.followUpName?`<div class="pc-line">🤝 Follow-up: ${esc(a.interests.followUpName)} from the church will be in touch.</div>`:''}
    ${p.help||!p.items.length?'':`<div class="pc-line">🛒 About ${money(costOf(pk))} a day (store prices checked ${PRICE_DATE}; may vary by branch): ${p.items.map(i=>esc(shortFood(i.name))).join(', ')}.</div>`}   <!-- plans with the crisis line need the room -->
    <div class="pc-foot">
-    <div class="pc-safety">Not a replacement for your clinic: given by volunteers, not health professionals, as general information, not medical advice. <b>Never stop prescribed pills suddenly</b>; your clinic will adjust them. In an emergency, go to the nearest emergency unit.${p.help?` ${esc(p.help)}`:''}</div>
+    <div class="pc-safety">Not a replacement for your clinic: given by volunteers, not health professionals, as general information, not medical advice. <b>Never stop prescribed pills suddenly</b>; your clinic will adjust them. In an emergency, go to the nearest emergency unit.${p.help?` ${esc(p.help)}`:''} Your health readings are deleted ${GRACE_DAYS} days after your visit — keep this card.</div>
     <div class="pc-verse">“Beloved, I pray that you may prosper in all things and be in health.” — 3 John 1:2 · From: ${esc(books)}.</div>
     <div class="pc-bottom"><span>${a.interests.nurse?'☎ A nurse will call you within 48 hours':'Questions? Speak to the Health Ministries team'}</span><span>Badge ${esc(a.id)}</span></div>
    </div>

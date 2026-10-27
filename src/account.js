@@ -2,8 +2,9 @@
 import { KINDS, acctHealthHTML, isNet, renderGate } from './cloud.js';
 import { $ } from './helpers.js';
 import { cloud, persist, persistNow, seedDemo } from './state.js';
-import { CLOUD_UI, SB_KEY, SB_LIB, SB_URL, SYNC_KEY, closeCloud, resetLedgerSig, cloudDirtyList, cloudPending, gateBusy, gateView, healthFromError, healthLive, healthReset, healthUpload, installBlock, isDirty, isMissingErr, isOfflineErr, noteHealth, passwordCheck, pwField, renderCloudBody, rowToAtt, savePassword, saveSynced, saveSyncedSoon, setCloud, sigOf } from './cloud.js';
+import { CLOUD_UI, SB_KEY, SB_LIB, SB_URL, SYNC_KEY, closeCloud, resetLedgerSig, cloudDirtyList, cloudPending, gateBusy, gateView, healthFromError, healthLive, healthReset, healthUpload, installBlock, isDirty, isMissingErr, isOfflineErr, isSeedRow, noteHealth, passwordCheck, pwField, renderCloudBody, rowToAtt, savePassword, saveSynced, saveSyncedSoon, setCloud, sigOf } from './cloud.js';
 import { CHURCH_PLANS_KEY, FOLLOWUP_MAX, churchPlansBox, clearInvite, followupsFor, inviteBox, myFollowupsHTML, pendingInvite } from './churchPlans.js';
+import { GRACE_DAYS, clearReadings, clockKnown, followedUp, hasReadings, noteServerTime, readingsGone, visitIsOld } from './retention.js';
 import { render, toast } from './shell.js';
 import { PROTOCOLS, attendees, state, volunteers } from './data.js';
 import { qSafe, queueReset, queueSync } from './queue.js';
@@ -36,7 +37,8 @@ export const conflictOn=()=>cloud.churchId?'church_id,id':'id';
 const isChurchAdmin=()=>{const m=cloud.acct&&cloud.acct.membership;return !!m&&m.role==='admin'&&m.status==='approved';};
 /* who is signed in; true when they are staff of an active church (the expo app opens) */
 export async function loadAccount(){
- const r=await cloud.client.rpc('my_account');
+ const sentAt=Date.now(),r=await cloud.client.rpc('my_account');
+ if(r.data&&typeof r.data==='object')noteServerTime(r.data.server_now,sentAt,Date.now());
  if(r.error||!r.data||typeof r.data!=='object'){         /* no churches in this database yet: the old staff check decides */
   cloud.acct=null;cloud.churchId='';
   if(!r.error||!isOfflineErr(r.error.message))noteHealth('account','warn','Churches are not set up in this database. Until schema.sql is run again, the old staff list decides who gets in.',r.error?String(r.error.message||''):'my_account gave no account');
@@ -129,7 +131,7 @@ export function acctGateHTML(st){
 function churchPickHTML(){
  const link=(fn,t)=>`<div class="mt-3 text-center"><button type="button" data-action="${fn}" class="text-[11px] font-extrabold text-brand-700">${t}</button></div>`;
  if(cloud.regChurch)return `<form data-action="registerChurch" class="mt-4 space-y-3">
-   <label class="block"><span class="microlabel">Church name</span><input id="rcName" required maxlength="120" placeholder="e.g. Grace Chapel" class="field mt-1"></label>
+   <label class="block"><span class="microlabel">Church or organisation name</span><input id="rcName" required maxlength="120" placeholder="e.g. Grace Chapel" class="field mt-1"></label>
    <label class="block"><span class="microlabel">Town or city</span><input id="rcCity" maxlength="80" placeholder="e.g. Durban" class="field mt-1"></label>
    <label class="block"><span class="microlabel">Church phone</span><input id="rcPhone" type="tel" inputmode="tel" maxlength="40" class="field mt-1"></label>
    <label class="block"><span class="microlabel">Church email</span><input id="rcEmail" type="email" inputmode="email" maxlength="254" class="field mt-1"></label>
@@ -212,6 +214,11 @@ async function loadHealth(){
 /* The member's own readings from the expo, with the same colour bands as the Results tab. Only the medical readings
    decide the clinic line, as in urgentOf(): danger range (redFlag) = see a clinic soon; any other red blood pressure,
    sugar, cholesterol or weight = book a clinic visit this week. The app's medicine rule always shows. */
+/** What "My screening results" says when there are no readings: deleted after the grace period, or never measured. */
+function emptyHealthNote(gone){
+ return gone?acctNote(`The readings of this visit were deleted ${GRACE_DAYS} days after it, as the notice said they would be. Ask your church for a new screening.`)
+  :acctNote('No readings were recorded for this badge.');
+}
 export function healthHTML(){
  const m=cloud.acct.membership;
  if(m.status!=='approved')return '';
@@ -219,6 +226,8 @@ export function healthHTML(){
  if(cloud.health===undefined){loadHealth();return acctBox('My screening results',acctNote('Loading…'));}
  if(!cloud.health)return acctBox('My screening results',acctNote('Your linked results could not be loaded. If this keeps happening, ask your church to check the badge link.'));
  const a=rowToAtt(cloud.health),s=a.s,b=bmi(a),has=v=>v!=null&&v!=='';
+ /* an old record with no readings is not "not measured yet": the readings were deleted after the grace period */
+ const gone=readingsGone(cloud.health);
  const rows=[
   ['Blood pressure',s.sys&&s.dia?`${s.sys}/${s.dia}`:'',cat('bp',{sys:s.sys,dia:s.dia})],
   ['Blood sugar',has(s.sugar)?`${s.sugar} mmol/L`:'',cat('sugar',s.sugar)],
@@ -234,7 +243,7 @@ export function healthHTML(){
   ${rows.length?rows.map(r=>`<div class="flex items-center justify-between gap-2 border-t border-[#123033]/[.07] py-2">
     <span class="text-[12px] font-bold text-[#123033]">${r[0]}</span>
     <span class="flex items-center gap-2"><span class="text-[12px] text-[#33504f]">${esc(r[1])}</span><span class="${chipClass(r[2][0])}">${esc(r[2][1])}</span></span></div>`).join('')
-   :acctNote('No readings were recorded for this badge.')}
+   :emptyHealthNote(gone)}
   ${red?`<p class="mt-2 text-[11px] font-bold leading-relaxed text-rose-700">${danger?'A reading was in the danger range (blood pressure 160/100 or more, or blood sugar 15 or more). Please see a clinic as soon as you can.'
    :'A reading is in the red range. Please book a clinic visit this week.'}</p>`:''}
   ${acctNote(needs.length?'What to work on first: '+needs.map(n=>esc(PROTOCOLS[n.k].tag)).join(', ')+'.':'Your numbers looked fine at the expo.')}
@@ -725,6 +734,10 @@ export async function cloudSync(manual){
   const changed=mergeRemote('att',ra,full)|mergeRemote('vol',rv,full);
   noteSince('att',ra);noteSince('vol',rv);
   if(full)cloud.lastFull=Date.now();
+  /* the same 7-day rule the database applies, on this device, before anything is uploaded: an old record is cleared
+     (or dropped) here rather than being sent back after the purge */
+  const pruned=applyRetention();
+  if(pruned&&!attendees.some(a=>a.id===state.activeId))state.activeId=(attendees[0]||{}).id||'';
   await pushDirty();
   afterMerge();saveSynced();persistNow();
   startRealtime();
@@ -839,6 +852,21 @@ export function afterMerge(kind){
   if(!state.volNew&&!volunteers.some(v=>v.id===state.volId))state.volId=(volunteers[0]||{}).id||null;
   if(cloud.user){let m=1000;for(const v of volunteers){const n=parseInt(String(v.id).replace(/\D/g,''),10)||0;if(n>m)m=n;}state._volSeq=m+1;}
  }
+}
+/* The same 7-day rule the database applies (schema.sql), on this device: the readings of a past visit go, and a visitor
+   who did not agree to follow-up goes with them. It only touches records the server has already confirmed and that have
+   no pending local edit — those upload first, and the database clears them there. Demo data is never touched. */
+export function applyRetention(){
+ if(!cloud.user&&!cloud.mode)return 0;
+ if(!clockKnown())return 0;   /* the database's clock is not known yet: this phone's own could be days out */
+ let n=0;
+ for(let i=attendees.length-1;i>=0;i--){
+  const a=attendees[i];
+  if(cloud.synced.att[a.id]===undefined||isSeedRow('att',a)||!visitIsOld(a)||isDirty('att',a))continue;
+  if(!followedUp(a)){attendees.splice(i,1);delete cloud.synced.att[a.id];n++;}
+  else if(hasReadings(a)){clearReadings(a);n++;}     /* now differs from the server copy, so it is uploaded and the trigger keeps it clear */
+ }
+ return n;
 }
 export function cloudQueuePush(){
  if(!cloud.user||!cloud.client||cloud.blocked)return;

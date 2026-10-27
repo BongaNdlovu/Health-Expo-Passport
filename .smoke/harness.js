@@ -396,6 +396,10 @@ const submitReg = (o) => {
 g.resetDemo();
 {
   const n = g.attendees.length, by = nm => g.attendees.find(a => a.name === nm);
+  /* the follow-up tick starts unticked: ask once before touching it */
+  g.state.tab = 'home'; g.state.regOpen = true; g.render();
+  ok('POPIA: the follow-up question is a second tick, unticked by default', !/id="rgOptin"[^>]*checked/.test($main.innerHTML) && /id="rgOptin"/.test($main.innerHTML)
+    && /Optional/.test($main.innerHTML), '');
   submitReg({ name: 'No Consent', badge: 'EXPO-701', consent: false });
   ok('POPIA: a visitor cannot be registered without the health-information consent', g.attendees.length === n && /consent/i.test($el('rgErr').innerHTML));
   submitReg({ name: 'Young One', age: '15', badge: 'EXPO-702' });
@@ -403,13 +407,16 @@ g.resetDemo();
   submitReg({ name: 'Young Two', age: '15', badge: 'EXPO-703', guardian: true, guardianName: 'Ma Dlamini' });
   const y = by('Young Two');
   ok('POPIA: with the guardian named and ticked, the child is registered and the guardian kept', !!y && y.interests.guardian === true && y.interests.guardianName === 'Ma Dlamini'
-    && y.interests.consent === true && y.interests.optin === true && y.interests.consentV === '2026-10-26' && /^\d{4}-\d{2}-\d{2}$/.test(y.interests.consentOn));
+    && y.interests.consent === true && y.interests.optin === false && y.interests.consentV === '2026-10-27' && /^\d{4}-\d{2}-\d{2}$/.test(y.interests.consentOn),
+    JSON.stringify(y && y.interests));
   ok('POPIA: the consent record survives loading and syncing', (() => { const m = g.rowToAtt(g.attToRow(y)).interests;
-    return m.consent === true && m.guardianName === 'Ma Dlamini' && m.consentOn === y.interests.consentOn && m.consentV === '2026-10-26'; })());
+    return m.consent === true && m.guardianName === 'Ma Dlamini' && m.consentOn === y.interests.consentOn && m.consentV === '2026-10-27'; })());
   submitReg({ name: 'Adult Optin', badge: 'EXPO-704', optin: true, phone: '082 555 0704' });
-  ok('POPIA: one question covers the screening and the health follow-up, and the notice is kept, not read out', by('Adult Optin') && by('Adult Optin').interests.optin === true
+  ok('POPIA: the screening yes saves the record, the follow-up yes is what allows contact', by('Adult Optin') && by('Adult Optin').interests.optin === true
+    && y.interests.optin === false
     && (() => { g.state.tab = 'home'; g.state.regOpen = true; g.render(); const h = $main.innerHTML;
-      return h.includes('Do you consent to the health screening and beneficial health follow-ups?') && !h.includes('rgOptin') && /kept with the record/.test(h) && /Kept for 2 years after your last visit/.test(h); })());
+      return h.includes('Do you consent to today’s health screening, including any prayer request you share?') && /id="rgOptin"/.test(h) && /kept with the record/.test(h)
+        && /deleted 7 days after your visit/.test(h) && /up to 2 years after your last visit/.test(h); })());
   y.phone = '082 555 0703'; y.interests.optin = false;   /* they later asked the church to stop the follow-up */
   let out = ''; const keep = sandbox.Blob; sandbox.Blob = function (p) { out = p.join(''); }; g.exportCSV(); sandbox.Blob = keep;
   { const sql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'schema.sql'), 'utf8'), yrs = (bundled.match(/RETENTION_YEARS ?= ?([0-9]+)/) || [])[1];
@@ -419,6 +426,119 @@ g.resetDemo();
   const old = g.migrateAttendee({ id: 'EXPO-705', name: 'Old Record', age: 40, s: {}, interests: {} });
   g.attendees.push(old); g.state.activeId = old.id; g.state.tab = 'screen'; g.render();
   ok('POPIA: a passport with no consent on record keeps its checks closed and asks first', !$main.innerHTML.includes('id="in-sugar"') && /data-action="recordConsent" data-args="EXPO-705"/.test($main.innerHTML));
+}
+
+/* POPIA: readings live 7 days, on the phone as in the database */
+g.resetDemo();
+{
+  const day = 86400000, old = { id: 'EXPO-720', name: 'Old Visit', age: 44, sex: 'Male', phone: '082 000 0720', heightCm: 172,
+    s: { sys: 152, dia: 96, sugar: 6.1 }, interests: { consent: true, optin: true }, prayer: 'old prayer', done: true };
+  const rec = g.migrateAttendee({ ...old, created_at: new Date(Date.now() - 8 * day).toISOString() });
+  const fresh = g.migrateAttendee({ ...old, id: 'EXPO-721', name: 'Fresh Visit', created_at: new Date(Date.now() - 6 * day).toISOString() });
+  g.attendees.push(rec, fresh);
+  /* screens must render an emptied record without a crash and without "NaN" */
+  for (const [id, label] of [['EXPO-720', 'old'], ['EXPO-721', 'fresh']]) {
+    g.state.activeId = id;
+    for (const t of ['results', 'plan', 'send']) { g.state.tab = t; g.render(); }
+    ok('7 days: ' + label + ' record renders Results, Plan and Send with no NaN', !$main.innerHTML.includes('NaN'), label);
+  }
+  g.state.activeId = 'EXPO-720'; g.state.tab = 'results'; g.render();
+  ok('7 days: Results says the readings were deleted, instead of showing numbers', /Readings were deleted 7 days after the visit/.test($main.innerHTML)
+    && !$main.innerHTML.includes('152/96'), '');
+  g.state.tab = 'plan'; g.render();
+  ok('7 days: the Plan says the readings are gone and shows no danger banner from them', /Readings were deleted 7 days after the visit/.test($main.innerHTML)
+    && !/See the triage nurse now/.test($main.innerHTML), '');
+  g.openWhatsApp();
+  ok('7 days: the WhatsApp message no longer carries the old readings, and says they are deleted', /deletes your health readings 7 days after/.test($el('waBody').innerHTML)
+    && !$el('waBody').innerHTML.includes('152'), '');
+  g.closeWhatsApp(); g.buildPrintCard();
+  ok('7 days: the printed card says the readings are deleted after 7 days', /deleted 7 days after your visit/.test($el('printArea').innerHTML), '');
+
+  /* the phone's own copy: a synced record is cleared, a pending one is kept until it uploads */
+  const C = g.cloud;
+  g.attendees.push(g.migrateAttendee({ id: 'EXPO-722', name: 'Not Opted In', age: 30, s: { sys: 130, dia: 85 }, interests: { consent: true, optin: false },
+    created_at: new Date(Date.now() - 9 * day).toISOString() }));
+  const pendingOne = g.migrateAttendee({ id: 'EXPO-723', name: 'Pending Edit', age: 33, s: { sys: 141, dia: 91 }, interests: { consent: true, optin: false },
+    created_at: new Date(Date.now() - 9 * day).toISOString() });
+  g.attendees.push(pendingOne);
+  const wasUser = C.user, wasMode = C.mode, syncedBefore = { ...C.synced.att };
+  C.user = { id: 'u1', email: 'staff@example.org' }; C.mode = true;
+  C.synced.att['EXPO-720'] = g.sigOf(g.attToRow(rec));
+  C.synced.att['EXPO-721'] = g.sigOf(g.attToRow(fresh));
+  C.synced.att['EXPO-722'] = g.sigOf(g.attToRow(g.attendees.find(a => a.id === 'EXPO-722')));
+  /* EXPO-723 is deliberately NOT in the ledger: it has a pending edit that has not uploaded yet */
+  ok('fast clock: before the database clock is known, the phone clears nothing by date', !g.retention.clockKnown() && g.applyRetention() === 0, '');
+  g.retention.noteServerTime(new Date().toISOString(), Date.now(), Date.now());   /* this phone's clock agrees with the database */
+  const cleared = g.applyRetention();
+  const r720 = g.attendees.find(a => a.id === 'EXPO-720'), r721 = g.attendees.find(a => a.id === 'EXPO-721');
+  ok('7 days: the phone clears a synced old record and keeps its name and phone', !!r720 && r720.phone === '082 000 0720'
+    && !Object.values(r720.s).some(v => v != null) && r720.prayer === '', JSON.stringify(r720 && r720.s));
+  ok('7 days: …drops a synced old visitor who did not opt in', cleared >= 2 && !g.attendees.some(a => a.id === 'EXPO-722'), 'cleared=' + cleared);
+  ok('7 days: …leaves a fresh visit alone', !!r721 && r721.s.sys === 152, JSON.stringify(r721 && r721.s));
+  ok('7 days: a pending unsynced edit is not lost before it uploads', !!g.attendees.find(a => a.id === 'EXPO-723'), '');
+  ok('7 days: demo visitors are never touched', g.isSeedRow('att', g.attendees.find(a => a.id === 'EXPO-042')) === true);
+  /* a phone 10 days fast: judged on the database's clock, a 2-day-old visit is fresh and keeps its readings */
+  const twoDays = g.migrateAttendee({ id: 'EXPO-724', name: 'Fast Clock Visit', age: 35, s: { sys: 133, dia: 86 }, interests: { consent: true, optin: true },
+    created_at: new Date(Date.now() - 2 * day).toISOString() });
+  g.attendees.push(twoDays); C.synced.att['EXPO-724'] = g.sigOf(g.attToRow(twoDays));
+  const realNow = Date.now, fast = 10 * day;
+  sandbox.Date.now = () => realNow() + fast;
+  g.retention.noteServerTime(new Date(realNow()).toISOString(), realNow() + fast, realNow() + fast);
+  g.applyRetention();
+  const r724 = g.attendees.find(a => a.id === 'EXPO-724');
+  ok('fast clock: a phone 10 days fast does not clear a 2-day-old visit', !!r724 && r724.s.sys === 133 && !g.retention.visitIsOld(r724), JSON.stringify(r724 && r724.s));
+  /* and a slow phone still sees an 8-day-old visit as old */
+  sandbox.Date.now = () => realNow() - fast;
+  g.retention.noteServerTime(new Date(realNow()).toISOString(), realNow() - fast, realNow() - fast);
+  ok('fast clock: a phone 10 days slow still treats an 8-day-old visit as old', g.retention.visitIsOld(rec), '');
+  sandbox.Date.now = realNow;
+  g.retention.noteServerTime(new Date().toISOString(), Date.now(), Date.now());
+  Object.assign(C, { user: wasUser, mode: wasMode, synced: { att: syncedBefore, vol: C.synced.vol } });
+}
+
+/* a returning visitor scanned with an old badge: no checks on the past visit, a new visit on a new badge instead */
+g.resetDemo();
+{
+  const day = 86400000, act = (action, args) => { const e = { dataset: { action, args } }; e.closest = () => e; e.hasAttribute = () => false;
+    g.dispatch(e, { type: 'click', target: {} }); };
+  const past = g.migrateAttendee({ id: 'EXPO-730', name: 'Thandi Back', age: 51, sex: 'Female', phone: '082 000 0730', email: 'thandi@example.org',
+    s: { sys: 150, dia: 95 }, interests: { consent: true, optin: true, consentOn: '2026-01-10' }, created_at: new Date(Date.now() - 30 * day).toISOString() });
+  const recent = g.migrateAttendee({ id: 'EXPO-731', name: 'Recent Visit', age: 40, s: {}, interests: { consent: true, optin: false },
+    created_at: new Date(Date.now() - 2 * day).toISOString() });
+  g.attendees.push(past, recent);
+  g.state.activeId = 'EXPO-730'; g.state.tab = 'screen'; g.render();
+  ok('past visit: the station screen takes no checks and offers a new visit', !$main.innerHTML.includes('id="in-sugar"') && !$main.innerHTML.includes('id="prayerNote"')
+    && /data-action="new-visit" data-args="EXPO-730"/.test($main.innerHTML) && /more than 7 days ago/.test($main.innerHTML), '');
+  g.state.activeId = 'EXPO-731'; g.render();
+  ok('past visit: a visit inside the 7 days keeps its checks open', $main.innerHTML.includes('id="in-sugar"') && !/data-action="new-visit"/.test($main.innerHTML), '');
+  act('new-visit', 'EXPO-730');
+  ok('past visit: Register as a new visit opens New visitor with their details filled in', g.state.tab === 'home' && g.state.regOpen === true
+    && $el('rgName').value === 'Thandi Back' && $el('rgPhone').value === '082 000 0730' && $el('rgEmail').value === 'thandi@example.org', $el('rgName').value);
+  const n = g.attendees.length;
+  $el('rgAge').value = '51'; $el('rgSex').value = 'Female'; $el('rgHeight').value = ''; $el('rgBadge').value = 'EXPO-732';
+  $el('rgConsent').checked = true; $el('rgOptin').checked = false; $el('rgGuardian').checked = false;
+  g.registerSubmit({ preventDefault() {} });
+  const nv = g.attendees.find(a => a.id === 'EXPO-732');
+  ok('past visit: the new visit saves on a new badge without the duplicate warning, and asks consent afresh', g.attendees.length === n + 1 && !!nv
+    && nv.interests.consentV === '2026-10-27' && nv.interests.optin === false && g.state.newVisitOf === null && g.state.activeId === 'EXPO-732', String(g.attendees.length - n));
+  const r = g.attendees.find(a => a.id === 'EXPO-731'), was = r.interests.optin;
+  act('toggleOptin', 'EXPO-731');
+  ok('the follow-up Yes/No button is wired to an action and changes the answer', r.interests.optin === !was, String(r.interests.optin));
+}
+
+/* POPIA: the notice names the church that ran the expo, and falls back in demo mode */
+g.resetDemo();
+{
+  g.state.tab = 'home'; g.state.regOpen = true; g.render();
+  ok('POPIA: with no church loaded the notice says "church or organisation" and keeps the 7-day and 2-year terms',
+    /The church or organisation running this health expo/.test($main.innerHTML) && /deleted 7 days after your visit/.test($main.innerHTML)
+    && /up to 2 years after your last visit/.test($main.innerHTML), '');
+  const C = g.cloud, was = C.acct;
+  C.acct = { membership: { role: 'admin', status: 'approved' }, church: { id: 'c1', name: 'Grace Chapel', city: 'Durban', phone: '031 000 0000', email: 'office@grace.example' } };
+  g.render();
+  ok('POPIA: signed in, the notice names the church, its town, phone and email', /Grace Chapel/.test($main.innerHTML)
+    && /Durban/.test($main.innerHTML) && /031 000 0000/.test($main.innerHTML) && /office@grace\.example/.test($main.innerHTML), '');
+  C.acct = was; g.state.regOpen = false;
 }
 g.resetDemo();
 const n0 = g.attendees.length;
@@ -659,7 +779,7 @@ function makeServer() {
     calls: [], handlers: [], authCb: null, seq: 0, maxRows: 1000, users: new Map(), signupMode: 'confirm' };
   srv.reset = () => { srv.tables.attendees.clear(); srv.tables.volunteers.clear(); srv.offline = false; srv.staff = true; srv.calls.length = 0; srv.users.clear(); srv.signupMode = 'confirm'; srv.rpcs = null; srv.rtState = ''; };
   srv.emit = (table, payload) => srv.handlers.filter(h => h.table === table).forEach(h => h.cb(payload));
-  const created = () => new Date(1700000000000 + srv.seq++ * 1000).toISOString();
+  const created = () => new Date(Date.now() + srv.seq++ * 1000).toISOString();
   const valid = (t, row) => t === 'attendees' ? /^EXPO-[0-9]{3,4}$/.test(row.id) && String(row.name || '').trim().length > 0
                                               : /^VOL-[0-9]+$/.test(row.id) && String(row.name || '').trim().length > 0;
   class Q {
@@ -693,11 +813,12 @@ function makeServer() {
       if (this.op === 'insert') {
         if (tbl.has(this.row.id)) return { data: null, error: { code: '23505', message: 'duplicate key value' } };
         const ts = created();
-        tbl.set(this.row.id, { ...this.row, created_at: ts, updated_at: ts });
+        /* the database keeps a supplied created_at (the app sends it so a late upload still counts as its real visit) */
+        tbl.set(this.row.id, { ...this.row, created_at: this.row.created_at || ts, updated_at: ts });
         srv.emit(this.t, { eventType: 'INSERT', new: tbl.get(this.row.id) });
       } else {
         const had = tbl.get(this.row.id), ts = created();
-        tbl.set(this.row.id, { ...this.row, created_at: had ? had.created_at : ts, updated_at: ts });
+        tbl.set(this.row.id, { ...this.row, created_at: (had && had.created_at) || this.row.created_at || ts, updated_at: ts });
         srv.emit(this.t, { eventType: had ? 'UPDATE' : 'INSERT', new: tbl.get(this.row.id) });
       }
       return { data: null, error: null };
@@ -1348,7 +1469,7 @@ function makeServer() {
   /* ---- 18. scale: thousands of visitors ------------------------------ */
   console.log('\n18. Scale (3000 visitors, 900 volunteers, 1000-row response cap)');
   device();
-  const iso = i => new Date(1700000000000 + i * 1000).toISOString();
+  const iso = i => new Date(Date.now() - 3600000 + i * 1000).toISOString();
   const N = 3000, VN = 900;
   for (let i = 0; i < N; i++) {
     const id = 'EXPO-' + (1000 + i);
@@ -2025,7 +2146,8 @@ function makeServer() {
     ok('one badge cannot be linked to two members', !r.error && !!r6.error && /already linked/.test(r6.error.message), (r.error || r6.error || {}).message);
     r = await as(U.alice, `select public.set_member($1, 'member', 'approved')`, [U.frank]);
     ok('an account that has not confirmed its email cannot be approved', !!r.error && /confirmed/.test(r.error.message), r.error && r.error.message);
-    await sys(`update public.attendees set created_at = now() + interval '1 day' where church_id = $1 and id = 'EXPO-001'`, [A]);
+    await sys(`delete from public.attendees where church_id = $1 and id = 'EXPO-001'`, [A]);
+    await sys(`insert into public.attendees (church_id, id, name, created_at) values ($1, 'EXPO-001', 'Next Expo Visitor', now() + interval '1 day')`, [A]);
     r = await as(U.dave, `select public.my_health() h`);
     ok('if the badge is reused for someone new, the member no longer sees it', !r.error && r.rows[0].h === null, JSON.stringify(r.rows));
     r = await as(U.alice, `select public.set_member($1, 'staff', 'approved')`, [U.dave]);
@@ -2170,6 +2292,61 @@ function makeServer() {
     const a1 = await as(null, `select * from public.church_invite_info($1)`, [inv2]);
     const a2 = await as(FU.adm, `select count(*) from public.church_invites`);
     ok('signed-out callers cannot use the invite functions, and the invites table cannot be read directly', !!a1.error && !!a2.error);
+
+    /* ---- retention: readings live 7 days (POPIA s14) ---- */
+    const RA = (await sys(`insert into public.churches (name, status) values ('Retention Church', 'active') returning id`))[0].id;
+    await sys(`insert into public.attendees (church_id, id, name, age, height_cm, s, prayer, chronic_list, interests) values
+      ($1, 'EXPO-991', 'Old Follow-up', 50, 170, '{"sys":150,"dia":95}', 'pray', 'asthma', '{"consent":true,"optin":true}'),
+      ($1, 'EXPO-992', 'Old No Follow-up', 40, 165, '{"sys":120,"dia":80}', '', null, '{"consent":true,"optin":false}'),
+      ($1, 'EXPO-993', 'Fresh Visit', 30, 160, '{"sys":118,"dia":78}', '', null, '{"consent":true,"optin":false}')`, [RA]);
+    /* the real timeline: the visits are written on the day, and then a week passes. A visit's date cannot be moved
+       any more, so the trigger is off for the one update that plays the week. */
+    const day = (await sys(`select to_char(now(), 'YYYY-MM-DD') d, to_char(now() - interval '8 days', 'YYYY-MM-DD') old`))[0];
+    const backdate = await run(`alter table public.attendees disable trigger attendees_retention;
+      update public.attendees set created_at = now() - interval '8 days',
+        interests = interests || jsonb_build_object('consentOn', to_char(now() - interval '8 days', 'YYYY-MM-DD'))
+       where church_id = '${RA}' and id in ('EXPO-991','EXPO-992');
+      alter table public.attendees enable trigger attendees_retention;`);
+    ok('7 days: a visit written on the day keeps its readings', !backdate);
+    /* a phone that was offline sends its old copy back: the same row with its real (old) date */
+    const up = await run(`update public.attendees set s = '{"sys":150,"dia":95}', prayer = 'again', height_cm = 170
+      where church_id = '${RA}' and id = 'EXPO-991'`);
+    const afterUp = await sys(`select s, prayer, height_cm, chronic_list from public.attendees where church_id = $1 and id = 'EXPO-991'`, [RA]);
+    ok('7 days: a phone that was offline cannot put the readings back (prayer, chronic list and height too)', !up
+      && JSON.stringify(afterUp[0].s) === '{}' && afterUp[0].prayer === '' && afterUp[0].height_cm === null && afterUp[0].chronic_list === null,
+      up || JSON.stringify(afterUp));
+    const freshKept = await sys(`select s, height_cm from public.attendees where church_id = $1 and id = 'EXPO-993'`, [RA]);
+    ok('7 days: a visit inside the grace period keeps everything, untouched', Number(freshKept[0].s.sys) === 118 && Number(freshKept[0].height_cm) === 160, JSON.stringify(freshKept));
+    const purged = await as(U.erin, `select public.purge_expired_visitors() n`);
+    const left = await sys(`select id from public.attendees where church_id = $1 order by id`, [RA]);
+    ok('7 days: the daily purge deletes an old visitor who did not agree to follow-up', !purged.error && !left.some(x => x.id === 'EXPO-992'), (purged.error && purged.error.message) || JSON.stringify(left));
+    ok('7 days: …and keeps the follow-up visitor (name and contact details) and the fresh visit', left.map(x => x.id).join() === 'EXPO-991,EXPO-993', JSON.stringify(left));
+    const noCopy = await sys(`select old from public.audit_log where tbl = 'attendees' and op = 'DELETE' and row_id = 'EXPO-992'`);
+    ok('7 days: the audit copy of a deleted visit holds no readings', noCopy.length === 1 && noCopy[0].old === null, JSON.stringify(noCopy));
+    /* a phone that never sends created_at (the older app) is judged by the consent date on the record */
+    const noDate = await run(`insert into public.attendees (church_id, id, name, age, s, interests) values
+      ('${RA}', 'EXPO-992', 'Old Phone Copy', 40, jsonb_build_object('sys', 120, 'dia', 80),
+       jsonb_build_object('consent', true, 'optin', false, 'consentOn', '${day.old}'))`);
+    const stillGoneByConsent = await sys(`select 1 from public.attendees where church_id = $1 and id = 'EXPO-992'`, [RA]);
+    ok('7 days: an older phone that sends no created_at is judged by its consent date, so the copy stays gone', !noDate && stillGoneByConsent.length === 0, noDate || 'came back');
+    const back = await run(`insert into public.attendees (church_id, id, name, age, s, interests, created_at) values
+      ('${RA}', 'EXPO-992', 'Resurrected', 40, '{"sys":120,"dia":80}', '{"consent":true,"optin":false}', now() - interval '8 days')`);
+    const stillGone = await sys(`select 1 from public.attendees where church_id = $1 and id = 'EXPO-992'`, [RA]);
+    ok('7 days: …so the offline copy does not bring the visitor back', !back && stillGone.length === 0, back || 'came back');
+    /* the bug: nextBadge counts the visitors on the phone, so a new visitor can be given the badge number of a
+       visitor the purge deleted. That visitor must sync, readings and all. */
+    const reuse = await run(`insert into public.attendees (church_id, id, name, age, s, interests) values
+      ('${RA}', 'EXPO-992', 'Same Badge, New Expo', 27, jsonb_build_object('sys', 130, 'dia', 85),
+       jsonb_build_object('consent', true, 'optin', false, 'consentOn', '${day.d}'))`);
+    const reused = await sys(`select s from public.attendees where church_id = $1 and id = 'EXPO-992'`, [RA]);
+    ok('7 days: a new visitor given the deleted badge number syncs, with the readings', !reuse && reused.length === 1 && Number(reused[0].s.sys) === 130, reuse || JSON.stringify(reused));
+    /* a phone cannot move a recorded visit's date to keep its readings longer */
+    await run(`update public.attendees set created_at = now() - interval '30 days' where church_id = '${RA}' and id = 'EXPO-993'`);
+    const dateKept = await sys(`select created_at > now() - interval '8 days' recent from public.attendees where church_id = $1 and id = 'EXPO-993'`, [RA]);
+    ok('7 days: a phone cannot move a visit date to keep the readings longer', dateKept.length === 1 && dateKept[0].recent === true, JSON.stringify(dateKept));
+    const rSql = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'schema.sql'), 'utf8');
+    ok('7 days: the app, the database and the notice all say 7 days', /GRACE_DAYS\s*=\s*7/.test(srcText) && /interval '7 days'/.test(rSql)
+      && /\$\{GRACE_DAYS\} days after your visit/.test(srcText) && /0 3 \* \* \*/.test(rSql), '');
 
     /* ---- a brand-new project ---- */
     const fresh = new PGlite();

@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <!-- Same policy as dist/_headers (tools/build.js checks the two stay identical). The header needs a host that reads
      _headers (Cloudflare); this meta travels with the page, so the packaged Android app keeps the same protections. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-XcqlxawbP6EXJYC3f915DR9hWYV4EguqTi2jIZnfCTc=' 'sha256-Wl+iFq70A2yk+o0xZ9WCOf7tz9lXIoNHMklk/iD9T7Y=' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.supabase.in wss://*.supabase.in; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-XcqlxawbP6EXJYC3f915DR9hWYV4EguqTi2jIZnfCTc=' 'sha256-Pa14nTt9TectlW3zlNDSepqWiT6aW3CKeJPjBQjgWSY=' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.supabase.in wss://*.supabase.in; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <meta name="theme-color" content="#f6f8f6"/>
 <link rel="manifest" href="manifest.webmanifest">
@@ -2373,6 +2373,42 @@ var __NEWSTART = (() => {
     wa: '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.299.045-.677.063-1.092-.069-.252-.08-.575-.187-.988-.365-1.739-.751-2.874-2.502-2.961-2.617-.087-.116-.708-.94-.708-1.793s.448-1.273.607-1.446c.159-.173.346-.217.462-.217l.332.006c.106.005.249-.04.39.298.144.347.491 1.2.534 1.287.043.087.072.188.014.304-.058.116-.087.188-.173.289l-.26.304c-.087.086-.177.18-.076.354.101.174.449.741.964 1.201.662.591 1.221.774 1.394.86s.274.072.376-.043c.101-.116.433-.506.549-.68.116-.173.231-.145.39-.087s1.011.477 1.184.564.289.13.332.202c.045.072.045.419-.1.824z"/></svg>'
   };
 
+  // src/retention.js
+  var GRACE_DAYS = 7;
+  var RETENTION_YEARS = 2;
+  var clockSkew = 0;
+  var skewKnown = false;
+  function noteServerTime(iso, sentAt, gotAt) {
+    const t = Date.parse(iso || "");
+    if (isNaN(t)) return;
+    clockSkew = t - (sentAt + gotAt) / 2;
+    skewKnown = true;
+  }
+  var clockKnown = () => skewKnown;
+  var serverNow = () => Date.now() + clockSkew;
+  var visitIsOld = (a) => {
+    const t = Date.parse(a && a.created_at || "");
+    return !isNaN(t) && serverNow() - t > GRACE_DAYS * 864e5;
+  };
+  var hasReadings = (a) => {
+    const s = a && a.s || {};
+    return Object.keys(s).some((k) => s[k] != null) || !!(a && (a.prayer || a.chronicList || a.heightCm != null));
+  };
+  var readingsGone = (a) => visitIsOld(a) && !(a && a.s && Object.keys(a.s).some((k) => a.s[k] != null));
+  var followedUp = (a) => !!(a && a.interests && a.interests.optin);
+  function clearReadings(a) {
+    const s = a && a.s || {};
+    for (const k of Object.keys(s)) s[k] = null;
+    a.prayer = "";
+    a.chronicList = "";
+    a.heightCm = null;
+    return a;
+  }
+  function withoutOldReadings(a) {
+    if (!a || !visitIsOld(a) || !hasReadings(a)) return a;
+    return clearReadings({ ...a, s: { ...a.s || {} } });
+  }
+
   // src/volunteer.js
   var AV = () => state.volNew ? null : volunteers.find((v) => v.id === state.volId) || volunteers[0] || null;
   var volHours = (v) => (v.history || []).reduce((t, h) => t + (Number(h.hours) || 0), 0);
@@ -3476,6 +3512,7 @@ var __NEWSTART = (() => {
   </div>` : ""}
   <p class="mt-3 text-[10px] leading-relaxed text-[#8a9aa0]">From ${planCredit(p)} \u2014 ${p.src}.</p>
   ${p.help ? `<p class="mt-2 text-[10px] font-bold leading-relaxed text-rose-700">${esc(p.help)}</p>` : ""}
+  <p class="mt-3 text-[10px] font-bold leading-relaxed text-[#6b8187]">Keep this: the church deletes your health readings ${GRACE_DAYS} days after your visit.</p>
   <p class="mt-2 text-[10px] leading-relaxed text-[#6b8187]">${esc(DISCLAIMER)} ${esc(PRECAUTIONS[5])}</p>
   <p class="mt-3 text-[10px] italic text-[#6b8187]">\u201CBeloved, I pray that you may prosper in all things and be in health, just as your soul prospers.\u201D \u2014 3 John 1:2</p>
  </div>`;
@@ -3491,7 +3528,7 @@ var __NEWSTART = (() => {
       toast("Register a visitor first");
       return;
     }
-    const a = A();
+    const a = withoutOldReadings(A());
     $("#waSub").textContent = "Message preview \xB7 opens in WhatsApp";
     $("#waBody").innerHTML = waPreviewHTML(a);
     $("#waFoot").innerHTML = waFootHTML("wa");
@@ -3502,7 +3539,7 @@ var __NEWSTART = (() => {
       toast("Register a visitor first");
       return;
     }
-    const a = A();
+    const a = withoutOldReadings(A());
     $("#waSub").textContent = "Message preview \xB7 opens in their email app";
     $("#waBody").innerHTML = waPreviewHTML(a) + `
   <div class="modal-in mt-3 rounded-[16px] border border-white/90 bg-white/85 p-3">
@@ -3534,6 +3571,7 @@ var __NEWSTART = (() => {
     return `\u2022 ${name}: ${where} \u2014 about ${money(cheapDay(it))} a day`;
   }
   function waMessage(a) {
+    a = withoutOldReadings(a);
     const ha = healthAge(a), { sys, dia } = simBP(a), proj = projection(a), P = planFor(a), pk = P.pk, p = P.p;
     return [
       `\u{1F33F} Hi ${firstName(a.name)}! Thank you for visiting the SDA Community Health Expo. Here is your personal health scorecard and 21-day natural plan (badge ${a.id}):`,
@@ -3562,6 +3600,7 @@ var __NEWSTART = (() => {
       "",
       ...p.help ? [p.help, ""] : [],
       `These are home remedies and healthy-living advice, not a replacement for your clinic. If you take blood-pressure or diabetes pills, do not stop them suddenly \u2014 your clinic will adjust the doses safely.`,
+      `Keep this: the church deletes your health readings ${GRACE_DAYS} days after your visit.`,
       "",
       DISCLAIMER,
       "Warnings and precautions:",
@@ -3686,7 +3725,7 @@ var __NEWSTART = (() => {
     });
   }
   function buildPrintCard() {
-    const a = A(), ha = healthAge(a), { sys, dia } = simBP(a), proj = projection(a), P = planFor(a), pk = P.pk, p = P.p;
+    const a = withoutOldReadings(A()), ha = healthAge(a), { sys, dia } = simBP(a), proj = projection(a), P = planFor(a), pk = P.pk, p = P.p;
     const date = (/* @__PURE__ */ new Date()).toLocaleDateString("en-ZA", { day: "numeric", month: "short", year: "numeric" });
     const books = p.credit || planBooks(p, P.top.map((x) => x.ref)).map((b) => b.split(" (")[0]).join("; ");
     $("#printArea").innerHTML = `<div class="pc-card">
@@ -3713,7 +3752,7 @@ var __NEWSTART = (() => {
    ${a.interests && a.interests.followUpName ? `<div class="pc-line">\u{1F91D} Follow-up: ${esc(a.interests.followUpName)} from the church will be in touch.</div>` : ""}
    ${p.help || !p.items.length ? "" : `<div class="pc-line">\u{1F6D2} About ${money(costOf(pk))} a day (store prices checked ${PRICE_DATE}; may vary by branch): ${p.items.map((i) => esc(shortFood(i.name))).join(", ")}.</div>`}   <!-- plans with the crisis line need the room -->
    <div class="pc-foot">
-    <div class="pc-safety">Not a replacement for your clinic: given by volunteers, not health professionals, as general information, not medical advice. <b>Never stop prescribed pills suddenly</b>; your clinic will adjust them. In an emergency, go to the nearest emergency unit.${p.help ? ` ${esc(p.help)}` : ""}</div>
+    <div class="pc-safety">Not a replacement for your clinic: given by volunteers, not health professionals, as general information, not medical advice. <b>Never stop prescribed pills suddenly</b>; your clinic will adjust them. In an emergency, go to the nearest emergency unit.${p.help ? ` ${esc(p.help)}` : ""} Your health readings are deleted ${GRACE_DAYS} days after your visit \u2014 keep this card.</div>
     <div class="pc-verse">\u201CBeloved, I pray that you may prosper in all things and be in health.\u201D \u2014 3 John 1:2 \xB7 From: ${esc(books)}.</div>
     <div class="pc-bottom"><span>${a.interests.nurse ? "\u260E A nurse will call you within 48 hours" : "Questions? Speak to the Health Ministries team"}</span><span>Badge ${esc(a.id)}</span></div>
    </div>
@@ -4860,19 +4899,32 @@ var __NEWSTART = (() => {
       b.setAttribute("aria-pressed", String(on));
     });
   }
-  var CONSENT_Q = "Do you consent to the health screening and beneficial health follow-ups?";
-  var NOTICE_VERSION = "2026-10-26";
-  var RETENTION_YEARS = 2;
-  var PRIVACY_NOTICE = [
-    ["Who", "The church running this health expo, through its approved health team."],
+  var CONSENT_Q = "Do you consent to today\u2019s health screening, including any prayer request you share?";
+  var NOTICE_VERSION = "2026-10-27";
+  var noticeChurch = () => {
+    const c = cloud.acct && cloud.acct.church;
+    return c && c.name ? c : null;
+  };
+  var churchName = () => {
+    const c = noticeChurch();
+    return c ? c.name : "The church or organisation running this health expo";
+  };
+  var churchWho = () => {
+    const c = noticeChurch();
+    if (!c) return "The church or organisation running this health expo, through its approved health team.";
+    const reach = [c.city, c.phone, c.email].filter(Boolean).join(" \xB7 ");
+    return reach ? `${c.name} (${reach}), through its approved health team.` : `${c.name}, through its approved health team.`;
+  };
+  var noticeRows = () => [
+    ["Who", churchWho()],
     ["What", "Name, age, sex, contact details, your health checks and survey answers, and any prayer request."],
-    ["Why", "To screen your health today, give you a home plan, and contact you afterwards by WhatsApp, email or phone about your results and health follow-up."],
-    ["Who sees it", "Only the church\u2019s approved health team. It is never sold. If you ask for your plan on WhatsApp or by email, it is sent through that service."],
-    ["How long", `Kept for ${RETENTION_YEARS} years after your last visit, then deleted.`],
-    ["Your choice", "Taking part is voluntary. Without this consent we cannot record your checks. You may ask us to stop the follow-up at any time."],
+    ["Why", "To screen your health today and give you a home plan. Only if you agree to follow-up will you be contacted afterwards by WhatsApp, email or phone."],
+    ["Who sees it", `Only the approved health team of ${churchName()}. It is never sold. If you ask for your plan on WhatsApp or by email, it is sent through that service.`],
+    ["How long", `Your health readings and any prayer request are deleted ${GRACE_DAYS} days after your visit. If you agree to follow-up, only your name and contact details are kept, for up to ${RETENTION_YEARS} years after your last visit.`],
+    ["Your choice", "Taking part is voluntary. Without the screening consent we cannot record your checks. Follow-up is your choice and you may stop it at any time."],
     ["Your rights", "You may see, correct or ask us to delete your information at any time, and object to its use. Complaints: the Information Regulator, www.inforegulator.org.za."]
   ];
-  var noticeHTML = () => `<dl class="mt-2 space-y-1.5 text-[11px] leading-snug text-[#33504f]">${PRIVACY_NOTICE.map(([t, d]) => `<div><dt class="inline font-bold">${t}: </dt><dd class="inline">${d}</dd></div>`).join("")}</dl>`;
+  var noticeHTML = () => `<dl class="mt-2 space-y-1.5 text-[11px] leading-snug text-[#33504f]">${noticeRows().map(([t, d]) => `<div><dt class="inline font-bold">${t}: </dt><dd class="inline">${esc(d)}</dd></div>`).join("")}</dl>`;
   var hasConsent = (a) => !!(a && a.interests && a.interests.consent);
   var optedIn = (a) => !!(a && a.interests && a.interests.optin);
   var isMinor = (age) => Number(age) > 0 && Number(age) < 18;
@@ -4882,6 +4934,8 @@ var __NEWSTART = (() => {
   <p class="mt-1 text-[13px] font-bold leading-snug text-[#123033]">\u201C${CONSENT_Q}\u201D</p>
   <label class="mt-2 flex items-start gap-2 text-[12px] leading-snug text-[#123033]"><input id="${p}Consent" type="checkbox" class="mt-0.5 h-4 w-4 flex-none">
    <span><b>Yes, they consent.</b> Required to record the checks.</span></label>
+  <label class="mt-2 flex items-start gap-2 text-[12px] leading-snug text-[#123033]"><input id="${p}Optin" type="checkbox" class="mt-0.5 h-4 w-4 flex-none">
+   <span>May we contact you afterwards about your results, seminars and classes? <b>Optional.</b></span></label>
   <details class="mt-2"><summary class="text-[11px] font-semibold text-brand-800">What this consent covers (kept with the record) \u25BE</summary>${noticeHTML()}</details>
   <div id="${p}GuardianBox" class="mt-2.5 space-y-2 rounded-[14px] bg-amber-50/80 p-2.5" ${minor ? "" : "hidden"}>
    <div class="text-[11.5px] font-bold text-amber-800">Under 18: a parent or guardian must agree</div>
@@ -4904,7 +4958,7 @@ var __NEWSTART = (() => {
       return !!(el && el.checked);
     };
     if (!on("Consent")) return { err: "Ask the consent question and tick Yes: without it the checks cannot be recorded (POPIA)." };
-    const out = { consent: true, optin: true, consentOn: todayStr(), consentV: NOTICE_VERSION };
+    const out = { consent: true, optin: on("Optin"), consentOn: todayStr(), consentV: NOTICE_VERSION };
     if (isMinor(age)) {
       const el = (
         /** @type {HTMLInputElement|null} */
@@ -4942,6 +4996,19 @@ var __NEWSTART = (() => {
     renderMain();
     toast("Consent recorded \u2713");
   }
+  function toggleOptin(id) {
+    const a = attendees.find((x) => x.id === id);
+    if (!a) return;
+    a.interests = a.interests || {};
+    a.interests.optin = !a.interests.optin;
+    if (!a.interests.optin) {
+      delete a.interests.followUp;
+      delete a.interests.followUpName;
+    }
+    persist();
+    renderMain();
+    toast(a.interests.optin ? "Follow-up allowed \u2713" : "No follow-up contact \u2014 the record is deleted with the readings 7 days after the visit.");
+  }
   function regError(html) {
     const el = $("#rgErr");
     if (!el) {
@@ -4974,7 +5041,7 @@ var __NEWSTART = (() => {
     const taken = attendees.find((x) => x.id === id);
     if (taken) return regError(`${id} already belongs to ${esc(taken.name)}. Use a different lanyard.`);
     const digits = phone.replace(/\D/g, "").slice(-9);
-    const dup = !force && attendees.find((x) => normName(x.name) === normName(name) || digits.length === 9 && String(x.phone || "").replace(/\D/g, "").slice(-9) === digits || email && String(x.email || "").toLowerCase() === email.toLowerCase());
+    const dup = !force && attendees.find((x) => x.id !== state.newVisitOf && (normName(x.name) === normName(name) || digits.length === 9 && String(x.phone || "").replace(/\D/g, "").slice(-9) === digits || email && String(x.email || "").toLowerCase() === email.toLowerCase()));
     if (dup) return regError(`${esc(dup.name)} may already be registered as <b>${esc(dup.id)}</b>.
    <span class="mt-2 flex gap-2"><button type="button" class="st-fix" style="background:#2b8074" data-action="switch-visitor" data-args="${dup.id}">Open ${esc(dup.id)}</button>
    <button type="button" class="st-fix" style="background:#6b8187" data-action="register-again">Register a new passport</button></span>`);
@@ -4983,6 +5050,7 @@ var __NEWSTART = (() => {
     state.activeId = a.id;
     state.regOpen = false;
     state.pendingBadge = null;
+    state.newVisitOf = null;
     state.sugFor = null;
     state._goal = null;
     switchTab("screen");
@@ -5051,6 +5119,7 @@ var __NEWSTART = (() => {
     };
     const ms = myStation(), one = ms && ms !== "bp" ? STATION_DEFS.concat(EXTRA_DEFS).find((x) => x.k === ms) : null;
     if (attendees.some((x) => x.id === a.id) && !hasConsent(a)) return `<section class="stagger space-y-3">${consentCard(a)}</section>`;
+    if (attendees.some((x) => x.id === a.id) && visitIsOld(a)) return `<section class="stagger space-y-3">${pastVisitCard(a)}</section>`;
     return `<section class="stagger space-y-3">
   <div id="redBanner" class="${redFlag(a) ? "" : "hidden"} flex items-start gap-2.5 rounded-2xl border border-rose-200/70 bg-rose-50/90 p-4 text-rose-700">
    <span class="flex h-8 w-8 flex-none items-center justify-center rounded-[12px] bg-rose-500/15 font-extrabold">!</span>
@@ -5080,6 +5149,36 @@ var __NEWSTART = (() => {
   ${surveyCard(a)}`}
   ${ms ? `<p class="text-center text-[12px] text-[#4f6870]">Saved automatically \u2713 Only your station is shown. <button class="tap-link" data-action="setMyStation" data-args="">Show all 8 checks</button></p>` : followUpCard(a)}
  </section>`;
+  }
+  function pastVisitCard(a) {
+    return `<div class="glass hue-tint hue-sky p-4">
+  <div class="microlabel">Past visit</div>
+  <div class="display text-base font-extrabold">${esc(firstName(a.name))}\u2019s visit was more than ${GRACE_DAYS} days ago</div>
+  <p class="mt-1 text-[11px] leading-snug text-[#5c747a]">Readings of a past visit are deleted after ${GRACE_DAYS} days, so this passport takes no new checks. Register today\u2019s visit on a new badge: their details are filled in, and they are asked for consent again.</p>
+  <button class="btn btn-primary mt-3 w-full py-3 text-sm" data-action="new-visit" data-args="${a.id}">Register as a new visit</button>
+ </div>`;
+  }
+  function newVisitFrom(id) {
+    const a = attendees.find((x) => x.id === id);
+    if (!a) return;
+    state.regOpen = true;
+    state.pendingBadge = null;
+    state.newVisitOf = a.id;
+    switchTab("home");
+    const put = (sel, v) => {
+      const el = (
+        /** @type {HTMLInputElement|null} */
+        $(sel)
+      );
+      if (el && v) el.value = String(v);
+    };
+    put("#rgName", a.name);
+    put("#rgAge", a.age || "");
+    put("#rgPhone", a.phone === "+27 \u2014" ? "" : a.phone);
+    put("#rgEmail", a.email);
+    const sx = document.querySelector(`[data-action="pick-sex"][data-sex="${a.sex}"]`);
+    if (sx) pickSex(sx);
+    showGuardian("rg", a.age);
   }
   var MS_KEY = "newstart.myStation";
   function myStation() {
@@ -5736,10 +5835,13 @@ var __NEWSTART = (() => {
       a = Object.assign({}, a, { interests: keep });
     }
     const id = String(a.id == null ? "" : a.id).replace(/[^A-Za-z0-9-]/g, "");
-    return (
+    const o = (
       /** @type {import('./types.js').Attendee} */
       Object.assign({ heightCm: 165, interests: {}, email: "", prayer: "", done: false }, a, { id, s, email: String(a.email == null ? "" : a.email).trim().slice(0, 200) })
     );
+    if (a.created_at != null && !isNaN(Date.parse(String(a.created_at)))) o.created_at = new Date(String(a.created_at)).toISOString();
+    else delete o.created_at;
+    return o;
   }
   function migrateVolunteer(v) {
     const o = Object.assign({
@@ -5825,8 +5927,29 @@ var __NEWSTART = (() => {
   }
 
   // src/results.js
+  function scoreTiles(tile, a, ha, proj, gone) {
+    return `${tile("Actual age", fmt1(a.age), "yrs old", "border-sky-200/70 bg-sky-50/80 text-sky-800")}
+    ${tile(
+      "Now",
+      gone ? "\u2014" : ha.health != null ? fmt1(ha.health) : "\u2014",
+      gone ? "readings deleted" : ha.complete ? `${ha.total > 0 ? "+" : ""}${fmt1(ha.total)} yrs` : ha.f.length + "/8 done",
+      ha.total > 0.4 ? "border-rose-200/70 bg-rose-50/70 text-rose-700" : "border-sage-200/80 bg-sage-50/90 text-sage-800"
+    )}
+    ${tile("90-day goal", gone ? "\u2014" : fmt1(proj.age), gone ? "readings deleted" : `win ${fmt1(proj.yearsWon)} yrs`, "border-lilac-200/80 bg-lilac-50/90 text-lilac-700", "scoreGoal")}`;
+  }
+  function yearsHTML(byYears, row) {
+    return `<div class="space-y-1.5">${byYears.slice(0, 3).map(row).join("")}</div>
+   ${byYears.length > 3 ? `<details class="pl-switch"><summary>Show all ${byYears.length} \u25BE</summary><div class="mt-2 space-y-1.5">${byYears.slice(3).map(row).join("")}</div></details>` : ""}`;
+  }
+  function workOnHTML(a, needs) {
+    return needs.length ? `<div class="mt-2.5 space-y-1.5">${needs.map((n, i) => `<div class="flex items-start gap-2.5 rounded-[16px] px-3 py-2 ${i ? "bg-white/50" : "bg-white/85 ring-1 ring-brand-400/25"}">
+      <span class="chip ${n.sev >= 3 ? "chip-flag" : "chip-watch"} mt-0.5 flex-none">${PROTOCOLS[n.k].tag}</span>
+      <span class="text-[11px] leading-snug text-[#33504f]">${esc(problemOf(a, n.k))}</span></div>`).join("")}</div>
+    <p class="mt-2.5 text-[11px] leading-snug text-[#5c747a]">Next, the Plan turns <b class="text-[#123033]">${PROTOCOLS[needs[0].k].tag.toLowerCase()}</b> into 3 clear actions.</p>` : `<p class="mt-1 text-[11.5px] leading-snug text-[#3d5c5e]">No numbers need attention today \u2713 The Plan shows habits that keep them that way.</p>`;
+  }
+  var goneNote = (cls) => `<p class="${cls}">Readings were deleted ${GRACE_DAYS} days after the visit. They were given on the printed card or by WhatsApp on the day.</p>`;
   function viewResults() {
-    const a = A(), ha = healthAge(a), { sys, dia } = simBP(a), proj = projection(a), pk = autoProtocol(a), first = esc(firstName(a.name));
+    const raw = A(), a = withoutOldReadings(raw), gone = visitIsOld(raw), ha = healthAge(a), { sys, dia } = simBP(a), proj = projection(a), pk = autoProtocol(a), first = esc(firstName(a.name));
     const tile = (l, v, sub, cls, id) => `<div class="rounded-[18px] border px-2 py-3 text-center ${cls}">
   <div class="text-[10px] font-bold opacity-65">${l}</div>
   <div class="display mt-1.5 text-xl leading-none font-extrabold" ${id ? `id="${id}"` : ""}>${v}</div>
@@ -5847,35 +5970,23 @@ var __NEWSTART = (() => {
    <div class="microlabel">Results</div>
    <div class="display text-base font-extrabold">${first}\u2019s health age</div>
    <p class="mt-1 text-[11px] leading-snug text-[#5c747a]">Worked out from the 8 checks, no maths needed.</p>
-   <div class="mt-3.5 grid grid-cols-3 gap-2">
-    ${tile("Actual age", fmt1(a.age), "yrs old", "border-sky-200/70 bg-sky-50/80 text-sky-800")}
-    ${tile(
-      "Now",
-      ha.health != null ? fmt1(ha.health) : "\u2014",
-      ha.complete ? `${ha.total > 0 ? "+" : ""}${fmt1(ha.total)} yrs` : ha.f.length + "/8 done",
-      ha.total > 0.4 ? "border-rose-200/70 bg-rose-50/70 text-rose-700" : "border-sage-200/80 bg-sage-50/90 text-sage-800"
-    )}
-    ${tile("90-day goal", fmt1(proj.age), `win ${fmt1(proj.yearsWon)} yrs`, "border-lilac-200/80 bg-lilac-50/90 text-lilac-700", "scoreGoal")}
-   </div>
-   ${!ha.complete ? `<div class="mt-3 rounded-2xl border border-amber-200/70 bg-amber-50/70 px-3 py-2 text-[10px] font-semibold leading-snug text-amber-800">
-     Finish all 8 checks for the exact score. Missing checks use typical values in the goal above.</div>` : ""}
+   ${gone ? goneNote("mt-2 rounded-2xl border border-sky-200/70 bg-sky-50/70 px-3 py-2 text-[10.5px] font-semibold leading-snug text-sky-800") : ""}
+   <div class="mt-3.5 grid grid-cols-3 gap-2">${scoreTiles(tile, a, ha, proj, gone)}</div>
+   ${gone || ha.complete ? "" : `<div class="mt-3 rounded-2xl border border-amber-200/70 bg-amber-50/70 px-3 py-2 text-[10px] font-semibold leading-snug text-amber-800">
+     Finish all 8 checks for the exact score. Missing checks use typical values in the goal above.</div>`}
   </div>
 
   <div class="glass p-4">
    <div class="microlabel">What to work on</div>
-   ${needs.length ? `<div class="mt-2.5 space-y-1.5">${needs.map((n, i) => `<div class="flex items-start gap-2.5 rounded-[16px] px-3 py-2 ${i ? "bg-white/50" : "bg-white/85 ring-1 ring-brand-400/25"}">
-      <span class="chip ${n.sev >= 3 ? "chip-flag" : "chip-watch"} mt-0.5 flex-none">${PROTOCOLS[n.k].tag}</span>
-      <span class="text-[11px] leading-snug text-[#33504f]">${esc(problemOf(a, n.k))}</span></div>`).join("")}</div>
-    <p class="mt-2.5 text-[11px] leading-snug text-[#5c747a]">Next, the Plan turns <b class="text-[#123033]">${PROTOCOLS[needs[0].k].tag.toLowerCase()}</b> into 3 clear actions.</p>` : `<p class="mt-1 text-[11.5px] leading-snug text-[#3d5c5e]">No numbers need attention today \u2713 The Plan shows habits that keep them that way.</p>`}
+   ${gone ? `<p class="mt-1 text-[11.5px] leading-snug text-[#3d5c5e]">This visit\u2019s readings are no longer kept, so there is nothing to work on from today. The plan below keeps the habits that help everyone.</p>` : workOnHTML(a, needs)}
   </div>
 
   <div class="glass p-4">
    <div class="microlabel mb-2.5">What adds the most years</div>
-   <div class="space-y-1.5">${byYears.slice(0, 3).map(row).join("")}</div>
-   ${byYears.length > 3 ? `<details class="pl-switch"><summary>Show all ${byYears.length} \u25BE</summary><div class="mt-2 space-y-1.5">${byYears.slice(3).map(row).join("")}</div></details>` : ""}
+   ${gone ? `<p class="text-[11.5px] leading-snug text-[#3d5c5e]">Deleted with the readings ${GRACE_DAYS} days after the visit.</p>` : yearsHTML(byYears, row)}
   </div>
 
-  <details class="glass pl-det" ${state.simOpen ? "open" : ""} data-on-toggle="sim-open"><summary>Show the 90-day win (counselling tool)</summary><div>
+  ${gone ? "" : `<details class="glass pl-det" ${state.simOpen ? "open" : ""} data-on-toggle="sim-open"><summary>Show the 90-day win (counselling tool)</summary><div>
    <p class="text-[11px] leading-snug text-[#5c747a]">Slide the three commitments with the visitor and watch blood pressure and health age respond.</p>
    <div class="sim-panel mt-3">
     <div class="flex items-center justify-between gap-2">
@@ -5903,7 +6014,7 @@ var __NEWSTART = (() => {
     ${simSlider("simH", "hydro", "3 \xB7 Neutral bath + early night", "simHBadge", 0, 2, 1, state.sim.hydro, "A warm, neutral bath (33\u201335\xB0C, never hot) before bed and lights out before 22:00 (Ministry of Healing ch. 17).")}
    </div>
    <p class="mt-3 text-center text-[10px] leading-snug text-[#8a9aa0]">Expo readings are a quick screening, not a diagnosis, and the volunteers are not health professionals. The blood-pressure and health-age figures are illustrative estimates for counselling, not a prediction. The plans draw, in our own words, on the health writings of Ellen G. White.${costOf(pk) ? ` The full plan\u2019s food costs about ${money(costOf(pk))} a day (store prices checked ${PRICE_DATE}; they change and vary by branch).` : ""}</p>
-  </div></details>
+  </div></details>`}
  </section>`;
   }
   function simSlider(id, key, label, badgeId, min, max, step, val, caption) {
@@ -6072,7 +6183,7 @@ var __NEWSTART = (() => {
     };
   }
   function viewPlan() {
-    const a = A(), sug = autoProtocol(a);
+    const raw = A(), a = withoutOldReadings(raw), gone = visitIsOld(raw), sug = autoProtocol(a);
     if (state.sugFor !== a.id || state.sugVal !== sug) {
       state.protocol = sug;
       state.sugFor = a.id;
@@ -6094,6 +6205,7 @@ var __NEWSTART = (() => {
    <div class="microlabel">${first}\u2019s plan \xB7 21 days</div>
    <div class="display mt-0.5 text-[19px] leading-tight font-extrabold text-[#0f2a2c]">${P.goal}</div>
    <p class="pl-problem">${esc(P.problem)}</p>
+   ${gone ? `<p class="mt-2 rounded-[14px] border border-sky-200/70 bg-sky-50/70 px-3 py-2 text-[10.5px] font-semibold leading-snug text-sky-800">Readings were deleted ${GRACE_DAYS} days after the visit. This plan is the general one that helps everyone.</p>` : ""}
    ${others.length ? `<div class="pl-also"><span>Also needs attention:</span>${others.map((n) => `<button class="fd-chip hue-${HUE_P[n.k]}" data-action="selectProtocol" data-args="${n.k}">${esc(PROTOCOLS[n.k].tag)} \u2192</button>`).join("")}</div>` : ""}
    <details class="pl-switch"><summary>Show a different plan \u25BE</summary>
     <div class="mt-2 grid grid-cols-2 gap-2">${Object.keys(PROTOCOLS).map((k) => `<button data-action="selectProtocol" data-args="${k}" class="btn py-2.5 text-[11px] ${k === P.pk ? "btn-hue hue-" + HUE_P[k] : "btn-glass"}">${PROTOCOLS[k].tag}</button>`).join("")}</div>
@@ -6101,7 +6213,7 @@ var __NEWSTART = (() => {
    ${churchPlanPicker(a)}
   </div>
 
-  ${P.urgent ? `<div class="pl-urgent" role="alert"><b>\u26A0 ${esc(P.urgent.t)}</b><span>${esc(P.urgent.w)}</span></div>` : ""}
+  ${P.urgent && !gone ? `<div class="pl-urgent" role="alert"><b>\u26A0 ${esc(P.urgent.t)}</b><span>${esc(P.urgent.w)}</span></div>` : ""}
   ${careNotes(a).length ? `<div class="glass p-4"><div class="pl-h">Also talk about</div>
    <ul class="mt-2 list-disc space-y-1.5 pl-4 text-[12px] leading-snug text-[#33504f]">${careNotes(a).map((n) => `<li>${esc(n)}</li>`).join("")}</ul></div>` : ""}
 
@@ -6370,8 +6482,8 @@ var __NEWSTART = (() => {
     ]];
     const yn = (v) => v === 1 ? "Yes" : v === 0 ? "No" : "";
     const ticked = (a, set) => Object.keys(set).filter((k) => a.interests[k]).map((k) => set[k]).join("; ");
-    attendees.forEach((a) => {
-      const ha = healthAge(a), s = a.s;
+    attendees.forEach((raw) => {
+      const a = withoutOldReadings(raw), ha = healthAge(a), s = a.s;
       const fl = [cat("bp", { sys: s.sys, dia: s.dia }), cat("sugar", s.sugar), cat("bmi", bmi(a))].filter((c) => c[0] === "flag" || c[0] === "watch").map((c) => c[1]).join("; ");
       const ok = optedIn(a);
       rows.push([
@@ -6414,7 +6526,7 @@ var __NEWSTART = (() => {
       ]);
     });
     downloadCSV(rows, "newstart-followup.csv");
-    toast("Follow-up sheet exported (CSV) \u2713");
+    toast("Follow-up sheet exported (CSV) \u2713 This file holds health data: delete it when you are done.");
   }
   var csvCell = (c) => {
     let s = String(c == null ? "" : c);
@@ -6821,7 +6933,10 @@ var __NEWSTART = (() => {
     prayer: a.prayer || "",
     done: !!a.done,
     /* sent only when written, so a database not yet given the chronic_list column still takes every other visitor */
-    ...a.chronicList ? { chronic_list: a.chronicList } : {}
+    ...a.chronicList ? { chronic_list: a.chronicList } : {},
+    /* the visit's date: kept so a record uploaded late still counts as its real visit and not as a new one (the 7-day
+       retention in schema.sql and the phone's own rule both read it). Omitted on a brand-new visitor, where now() is right. */
+    ...a.created_at ? { created_at: a.created_at } : {}
   });
   var rowToAtt = (r) => migrateAttendee({
     id: r.id,
@@ -6835,7 +6950,8 @@ var __NEWSTART = (() => {
     interests: r.interests || {},
     prayer: r.prayer || "",
     done: !!r.done,
-    chronicList: r.chronic_list || ""
+    chronicList: r.chronic_list || "",
+    created_at: r.created_at
   });
   var volToRow = (v) => ({
     id: v.id,
@@ -7584,7 +7700,8 @@ var __NEWSTART = (() => {
     return !!m && m.role === "admin" && m.status === "approved";
   };
   async function loadAccount() {
-    const r = await cloud.client.rpc("my_account");
+    const sentAt = Date.now(), r = await cloud.client.rpc("my_account");
+    if (r.data && typeof r.data === "object") noteServerTime(r.data.server_now, sentAt, Date.now());
     if (r.error || !r.data || typeof r.data !== "object") {
       cloud.acct = null;
       cloud.churchId = "";
@@ -7709,7 +7826,7 @@ var __NEWSTART = (() => {
   function churchPickHTML() {
     const link = (fn, t) => `<div class="mt-3 text-center"><button type="button" data-action="${fn}" class="text-[11px] font-extrabold text-brand-700">${t}</button></div>`;
     if (cloud.regChurch) return `<form data-action="registerChurch" class="mt-4 space-y-3">
-   <label class="block"><span class="microlabel">Church name</span><input id="rcName" required maxlength="120" placeholder="e.g. Grace Chapel" class="field mt-1"></label>
+   <label class="block"><span class="microlabel">Church or organisation name</span><input id="rcName" required maxlength="120" placeholder="e.g. Grace Chapel" class="field mt-1"></label>
    <label class="block"><span class="microlabel">Town or city</span><input id="rcCity" maxlength="80" placeholder="e.g. Durban" class="field mt-1"></label>
    <label class="block"><span class="microlabel">Church phone</span><input id="rcPhone" type="tel" inputmode="tel" maxlength="40" class="field mt-1"></label>
    <label class="block"><span class="microlabel">Church email</span><input id="rcEmail" type="email" inputmode="email" maxlength="254" class="field mt-1"></label>
@@ -7825,6 +7942,9 @@ var __NEWSTART = (() => {
     renderAcct();
     profileChanged();
   }
+  function emptyHealthNote(gone) {
+    return gone ? acctNote(`The readings of this visit were deleted ${GRACE_DAYS} days after it, as the notice said they would be. Ask your church for a new screening.`) : acctNote("No readings were recorded for this badge.");
+  }
   function healthHTML() {
     const m = cloud.acct.membership;
     if (m.status !== "approved") return "";
@@ -7835,6 +7955,7 @@ var __NEWSTART = (() => {
     }
     if (!cloud.health) return acctBox("My screening results", acctNote("Your linked results could not be loaded. If this keeps happening, ask your church to check the badge link."));
     const a = rowToAtt(cloud.health), s = a.s, b = bmi(a), has = (v) => v != null && v !== "";
+    const gone = readingsGone(cloud.health);
     const rows = [
       ["Blood pressure", s.sys && s.dia ? `${s.sys}/${s.dia}` : "", cat("bp", { sys: s.sys, dia: s.dia })],
       ["Blood sugar", has(s.sugar) ? `${s.sugar} mmol/L` : "", cat("sugar", s.sugar)],
@@ -7850,7 +7971,7 @@ var __NEWSTART = (() => {
     return acctBox("My screening results", `<div class="mono mt-1 text-[10px] text-[#6b8187]">${esc(a.id)} \xB7 ${esc(String(cloud.health.created_at || "").slice(0, 10))}</div>
   ${rows.length ? rows.map((r) => `<div class="flex items-center justify-between gap-2 border-t border-[#123033]/[.07] py-2">
     <span class="text-[12px] font-bold text-[#123033]">${r[0]}</span>
-    <span class="flex items-center gap-2"><span class="text-[12px] text-[#33504f]">${esc(r[1])}</span><span class="${chipClass(r[2][0])}">${esc(r[2][1])}</span></span></div>`).join("") : acctNote("No readings were recorded for this badge.")}
+    <span class="flex items-center gap-2"><span class="text-[12px] text-[#33504f]">${esc(r[1])}</span><span class="${chipClass(r[2][0])}">${esc(r[2][1])}</span></span></div>`).join("") : emptyHealthNote(gone)}
   ${red ? `<p class="mt-2 text-[11px] font-bold leading-relaxed text-rose-700">${danger ? "A reading was in the danger range (blood pressure 160/100 or more, or blood sugar 15 or more). Please see a clinic as soon as you can." : "A reading is in the red range. Please book a clinic visit this week."}</p>` : ""}
   ${acctNote(needs.length ? "What to work on first: " + needs.map((n) => esc(PROTOCOLS[n.k].tag)).join(", ") + "." : "Your numbers looked fine at the expo.")}
   ${acctNote("Keep taking any medicine you were prescribed. Only your clinic should change it.")}`);
@@ -8492,6 +8613,8 @@ var __NEWSTART = (() => {
       noteSince("att", ra);
       noteSince("vol", rv);
       if (full) cloud.lastFull = Date.now();
+      const pruned = applyRetention();
+      if (pruned && !attendees.some((a) => a.id === state.activeId)) state.activeId = (attendees[0] || {}).id || "";
       await pushDirty();
       afterMerge();
       saveSynced();
@@ -8646,6 +8769,24 @@ var __NEWSTART = (() => {
         state._volSeq = m + 1;
       }
     }
+  }
+  function applyRetention() {
+    if (!cloud.user && !cloud.mode) return 0;
+    if (!clockKnown()) return 0;
+    let n = 0;
+    for (let i = attendees.length - 1; i >= 0; i--) {
+      const a = attendees[i];
+      if (cloud.synced.att[a.id] === void 0 || isSeedRow("att", a) || !visitIsOld(a) || isDirty("att", a)) continue;
+      if (!followedUp(a)) {
+        attendees.splice(i, 1);
+        delete cloud.synced.att[a.id];
+        n++;
+      } else if (hasReadings(a)) {
+        clearReadings(a);
+        n++;
+      }
+    }
+    return n;
   }
   function cloudQueuePush() {
     if (!cloud.user || !cloud.client || cloud.blocked) return;
@@ -8896,6 +9037,8 @@ var __NEWSTART = (() => {
       switchTo(el.dataset.args);
     },
     "register-again": () => registerSubmit(null, true),
+    "new-visit": (el) => newVisitFrom(el.dataset.args),
+    toggleOptin: (el) => toggleOptin(el.dataset.args),
     "step": (el) => onStep(
       el.dataset.id,
       el.dataset.k,
@@ -8990,7 +9133,7 @@ var __NEWSTART = (() => {
   if (!window.NEWSTART_NO_CLOUD) cloudInit();
   var __internals = { dispatch, get installEvt() {
     return installEvt;
-  }, installApp, setInstallEvt, IS_APP, appCopyOf, installBlock, SB_LIB, H5Q, QRJS, SRI, authRedirect, loadScript, printCard, setVolTab, volunteers, attendees, state, SEED_VOL, BOOTHS, BADGE_TIERS, EXPO_UPCOMING, AVAIL, SKILLS, STATUS_UI, badgeTier, nextTier, tierProgress, volHours, volExpos, volYears, needsRegistration, helpersAt, boothLabel, boothHue, staffedCount, esc, render, setVol, openVolReg, startNewVolunteer, saveVolunteer, toggleDraftList, toggleDraftBooth, pickSecondBooth, toggleShift, logExpoEntry, saveExpoEntry, removeExpoEntry, exportVolCSV, persistNow, loadPersisted, resetDemo, AV, pickVolunteer, openSwitcher, openVolSwitcher, openVolModal, switchTab, daysTo, volRow, medalHTML, tierRemaining, registerSubmit, parseBadge, nextBadge, csvCell, closeVolReg, todayStr, switchToVol, activateBadge, onScanText, toggleReg, viewHome, viewCare, buildPrintCard, openWhatsApp, openScanner, viewResults, viewPlan, viewScreen, migrateAttendee, migrateVolunteer, onStep, onStationInput, onStationCommit, cat, healthAge, exportCSV, redFlag, doneCount, bmi, firstName, initials, careNotes, cloud, cloudInit, cloudSync, cloudPush, cloudDirtyList, cloudPending, cloudSignOut, cloudAuthEvent, cloudSignIn, onRemoteChange, KINDS, sigOf, isSeedRow, mergeRemote, renderCloudBody, setCloud, startRealtime, stopRealtime, saveSynced, loadSynced, viewNoVisitor, CLOUD_UI, attToRow, volToRow, rowToAtt, rowToVol, openCloud, closeCloud, afterMerge, showAllCare, filterVisitors, visitorsToShow, fetchRows, gateState, renderGate, gateDemo, togglePass, gateView, cloudSignUp, cloudResend, cloudForgot, cloudNewPassword, passwordProblem, validEmail, waNumber, waMessage, sendWhatsApp, openEmail, sendEmail, mailtoHref, toggleInterest, onPrayer, reservePouch, followUpCard, INT, queue, qs, queueJoin, queueCallNext, queueServe, queueDone, queueBack, queueRemove, qStats, qList, qMode, qCan, viewQueue, cheapDay, cheapLine, foodPriceOf, foodKeyOf, FOOD_PRICES, money, closeWhatsApp, planNeeds, bpStage, PROTOCOLS, BOOK_REF, autoProtocol, costOf, BOOK2_REF, BOOK3_REF, BOOK4_REF, refLabel, planBooks, planCredit, HELP_LINE, acctGate, acctGateHTML, loadAccount, openAcct, closeAcct, renderAcct, acctTabs, acctButtons, joinChurch, memberRow, churchAdminHTML, platformHTML, adminDataHTML, roleLabel, adminPostHTML, registerChurch, leaveChurch, saveMyDetails, churchSearch, setMember, linkMember, removeMember, setChurchStatus, manageChurch, saveChurch, inChurch, conflictOn, dropChurchData, adoptChurch, healthHTML, planFor, PRICE_DATE, ACTIONS: ACTIONS2, FOOD_WHY, urgentOf, DISCLAIMER, PRECAUTIONS, openFood, closeFood, problemOf, churchPlanList, chooseChurchPlan, editChurchPlan, saveChurchPlan, deleteChurchPlan, DEMO_CHURCH_PLANS, followupList, chooseFollowup, setFollowup, makeInvite, cancelInvites, pendingInvite, INVITE_KEY, health, noteHealth, healthReset, healthTest, statusPanelHTML, homeHealthHTML, acctHealthHTML, qStateBar, SERVE_TABS, viewProfile, profGate, gateBack, profPassword, profDeleteAsk, profDeleteTyped, profDeleteGo, profileChanged, passwordCheck, savePassword };
+  }, installApp, setInstallEvt, IS_APP, appCopyOf, installBlock, SB_LIB, H5Q, QRJS, SRI, authRedirect, loadScript, printCard, setVolTab, volunteers, attendees, state, SEED_VOL, BOOTHS, BADGE_TIERS, EXPO_UPCOMING, AVAIL, SKILLS, STATUS_UI, badgeTier, nextTier, tierProgress, volHours, volExpos, volYears, needsRegistration, helpersAt, boothLabel, boothHue, staffedCount, esc, render, setVol, openVolReg, startNewVolunteer, saveVolunteer, toggleDraftList, toggleDraftBooth, pickSecondBooth, toggleShift, logExpoEntry, saveExpoEntry, removeExpoEntry, exportVolCSV, persistNow, loadPersisted, resetDemo, AV, pickVolunteer, openSwitcher, openVolSwitcher, openVolModal, switchTab, daysTo, volRow, medalHTML, tierRemaining, registerSubmit, parseBadge, nextBadge, csvCell, closeVolReg, todayStr, switchToVol, activateBadge, onScanText, toggleReg, viewHome, viewCare, buildPrintCard, openWhatsApp, openScanner, viewResults, viewPlan, viewScreen, migrateAttendee, migrateVolunteer, onStep, onStationInput, onStationCommit, cat, healthAge, exportCSV, redFlag, doneCount, bmi, firstName, initials, careNotes, cloud, cloudInit, cloudSync, cloudPush, cloudDirtyList, cloudPending, cloudSignOut, cloudAuthEvent, cloudSignIn, onRemoteChange, KINDS, sigOf, isSeedRow, mergeRemote, renderCloudBody, setCloud, startRealtime, stopRealtime, saveSynced, loadSynced, viewNoVisitor, CLOUD_UI, attToRow, volToRow, rowToAtt, rowToVol, openCloud, closeCloud, afterMerge, showAllCare, filterVisitors, visitorsToShow, fetchRows, gateState, renderGate, gateDemo, togglePass, gateView, cloudSignUp, cloudResend, cloudForgot, cloudNewPassword, passwordProblem, validEmail, waNumber, waMessage, sendWhatsApp, openEmail, sendEmail, mailtoHref, toggleInterest, onPrayer, reservePouch, followUpCard, INT, queue, qs, queueJoin, queueCallNext, queueServe, queueDone, queueBack, queueRemove, qStats, qList, qMode, qCan, viewQueue, cheapDay, cheapLine, foodPriceOf, foodKeyOf, FOOD_PRICES, money, closeWhatsApp, planNeeds, bpStage, PROTOCOLS, BOOK_REF, autoProtocol, costOf, BOOK2_REF, BOOK3_REF, BOOK4_REF, refLabel, planBooks, planCredit, HELP_LINE, acctGate, acctGateHTML, loadAccount, openAcct, closeAcct, renderAcct, acctTabs, acctButtons, joinChurch, memberRow, churchAdminHTML, platformHTML, adminDataHTML, roleLabel, adminPostHTML, registerChurch, leaveChurch, saveMyDetails, churchSearch, setMember, linkMember, removeMember, setChurchStatus, manageChurch, saveChurch, inChurch, conflictOn, dropChurchData, adoptChurch, healthHTML, planFor, PRICE_DATE, ACTIONS: ACTIONS2, FOOD_WHY, urgentOf, DISCLAIMER, PRECAUTIONS, openFood, closeFood, problemOf, churchPlanList, chooseChurchPlan, editChurchPlan, saveChurchPlan, deleteChurchPlan, DEMO_CHURCH_PLANS, followupList, chooseFollowup, setFollowup, makeInvite, cancelInvites, pendingInvite, INVITE_KEY, health, noteHealth, healthReset, healthTest, statusPanelHTML, homeHealthHTML, acctHealthHTML, qStateBar, SERVE_TABS, viewProfile, profGate, gateBack, profPassword, profDeleteAsk, profDeleteTyped, profDeleteGo, profileChanged, passwordCheck, savePassword, applyRetention, graceDays: GRACE_DAYS, retentionYears: RETENTION_YEARS, retention: { visitIsOld, hasReadings, followedUp, clearReadings, withoutOldReadings, readingsGone, noteServerTime, clockKnown } };
   return __toCommonJS(main_exports);
 })();
 
