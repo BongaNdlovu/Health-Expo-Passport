@@ -49,6 +49,14 @@ export function journeyBottom(){
   </div>
  </div>`;
 }
+/* the team's follow-up line follows the recorded answer: contact allowed or not, then anything specific they asked for */
+function followUpLine(a,first,asked){
+ const list=asked.length?`<b>${asked.map(esc).join(', ')}</b>`:'';
+ if(!optedIn(a))return asked.length?`${first} ticked ${list}, but did not agree to be contacted, so no one will follow up.`
+  :`${first} did not agree to be contacted after the expo.`;
+ return asked.length?`${first} agreed to follow-up and asked for: ${list}.`
+  :`${first} agreed to follow-up, with nothing specific asked for yet.`;
+}
 /* last step: the plan goes home with the visitor */
 export function viewSend(){
  const a=A(),P=planFor(a),first=esc(firstName(a.name)),wa=waNumber(a.phone);
@@ -69,7 +77,7 @@ export function viewSend(){
   </div>
   <div class="glass p-4">
    <div class="microlabel">Follow-up for the team</div>
-   <p class="mt-1 text-[11.5px] leading-relaxed text-[#3d5c5e]">${asked.length?`${first} asked for: <b>${asked.map(esc).join(', ')}</b>.`:`${first} did not ask for a call back or classes.`}
+   <p class="mt-1 text-[11.5px] leading-relaxed text-[#3d5c5e]">${followUpLine(a,first,asked)}
     ${a.prayer?` Prayer request noted.`:''} <button class="tap-link" data-action="switchTab" data-args="screen">Change</button></p>
   </div>
   ${followupPicker(a)}

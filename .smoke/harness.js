@@ -496,6 +496,38 @@ g.resetDemo();
   Object.assign(C, { user: wasUser, mode: wasMode, synced: { att: syncedBefore, vol: C.synced.vol } });
 }
 
+/* a pledge needs a way to reach the person: a mobile number or an email address */
+g.resetDemo();
+{
+  const n = g.volunteers.length;
+  g.startNewVolunteer(); g.state.vf.name = 'No Contact'; g.state.vf.phone = ''; g.state.vf.email = ''; g.saveVolunteer();
+  ok('pledge: with no mobile and no email it is not saved', g.volunteers.length === n && !g.volunteers.some(v => v.name === 'No Contact'), String(g.volunteers.length - n));
+  g.state.vf.email = 'not-an-email'; g.saveVolunteer();
+  ok('pledge: a malformed email does not count as a contact', g.volunteers.length === n, '');
+  g.state.vf.email = 'nocontact@example.org'; g.saveVolunteer();
+  const byEmail = g.volunteers.find(v => v.name === 'No Contact');
+  ok('pledge: an email alone is enough', !!byEmail && byEmail.email === 'nocontact@example.org' && byEmail.status === 'prospect', '');
+  g.startNewVolunteer(); g.state.vf.name = 'Phone Only'; g.state.vf.phone = '082 000 3333'; g.state.vf.email = ''; g.saveVolunteer();
+  ok('pledge: a mobile alone is enough', g.volunteers.some(v => v.name === 'Phone Only'), '');
+  g.state.volRegOpen = true; g.render();
+  ok('pledge: the form says a mobile or email is needed', /A mobile number or an email address: at least one/.test($main.innerHTML) && !/Mobile \*</.test($main.innerHTML), '');
+}
+
+/* the send-home follow-up line follows the recorded follow-up answer */
+g.resetDemo();
+{
+  const v = g.migrateAttendee({ id: 'EXPO-740', name: 'Lindiwe Test', age: 38, s: {}, interests: { consent: true, optin: true } });
+  g.attendees.push(v); g.state.activeId = v.id; g.state.tab = 'send'; g.render();
+  ok('send home: follow-up agreed with nothing ticked does not say they asked for nothing', /agreed to follow-up, with nothing specific asked for yet/.test($main.innerHTML)
+    && !/did not ask for a call back/.test($main.innerHTML), '');
+  v.interests.nurse = true; g.render();
+  ok('send home: follow-up agreed with a nurse call lists it', /agreed to follow-up and asked for: <b>/.test($main.innerHTML), '');
+  v.interests.optin = false; g.render();
+  ok('send home: a tick without contact consent says no one will follow up', /did not agree to be contacted, so no one will follow up/.test($main.innerHTML), '');
+  v.interests.nurse = false; g.render();
+  ok('send home: no follow-up and nothing ticked says they did not agree to contact', /did not agree to be contacted after the expo/.test($main.innerHTML), '');
+}
+
 /* a returning visitor scanned with an old badge: no checks on the past visit, a new visit on a new badge instead */
 g.resetDemo();
 {
@@ -876,14 +908,15 @@ function makeServer() {
      Placed before the service-worker tests so it runs even when a later section stops the harness. */
   console.log('\n16b. Android app (Capacitor)');
   {
-    const opened = [], shared = [], printed = [], swRegistered = [];
+    const opened = [], shared = [], printed = [], swRegistered = [], saved = [];
     let whatsappInstalled = true;
     const Capacitor = {
       isNativePlatform: () => true,
       Plugins: {
         AppLauncher: { openUrl: async o => { opened.push(o.url); return { completed: whatsappInstalled }; } },
         Share: { share: async o => { shared.push(o.text); return {}; } },
-        CardPrinter: { print: async o => { printed.push(o.html); return {}; } },
+        CardPrinter: { print: async o => { printed.push(o.html); return {}; },
+          saveDownload: async o => { saved.push(o); return { where: 'Downloads' }; } },
       },
     };
     /* the app gets its own storage, so its saves can never change what the web checks after it see */
@@ -932,6 +965,13 @@ function makeServer() {
       msg = A.waMessage(a0); num = A.waNumber(a0.phone);
       A.sendWhatsApp(); await tick(); await tick();
     }
+    if (booted) { A.exportCSV(); A.exportVolCSV(); await tick(); await tick(); }
+    const javaSrc = fs.readFileSync(path.join(__dirname, '..', 'capacitor', 'android', 'app', 'src', 'main', 'java', 'org', 'newstart', 'expopassport', 'CardPrinterPlugin.java'), 'utf8');
+    ok('app: both CSV exports are saved through the native plugin (a blob download does nothing in the WebView)', saved.length === 2
+      && saved[0].name === 'newstart-followup.csv' && saved[1].name === 'newstart-volunteers.csv' && saved.every(o => o.mime === 'text/csv' && /^﻿"/.test(o.text)),
+      saved.map(o => o.name).join(','));
+    ok('app: the native plugin has saveDownload, writing to Downloads through MediaStore', /public void saveDownload\(PluginCall call\)/.test(javaSrc)
+      && /MediaStore\.Downloads\.EXTERNAL_CONTENT_URI/.test(javaSrc));
     ok('app: WhatsApp opens the WhatsApp app with the message ready', opened.length === 1 && opened[0] === 'whatsapp://send?phone=' + num + '&text=' + encodeURIComponent(msg) && shared.length === 0);
     whatsappInstalled = false;
     if (booted) { A.sendWhatsApp(); await tick(); await tick(); }
@@ -2736,6 +2776,21 @@ function makeServer() {
     g.dispatch(det, { type: 'toggle', target: det });
     ok('a <details> toggle reaches its data-on-toggle adapter (90-day win stays open across redraws)', g.state.simOpen === true);
     g.state.simOpen = false;
+
+    /* every data-action the screens draw must have an adapter: five buttons (WhatsApp, email, the queue's big
+       screen, a password Show, and the volunteer roster CSV) were dead because their names were missing here */
+    {
+      const reg = fs.readFileSync(path.join(__dirname, '..', 'src', 'action-registry.js'), 'utf8');
+      const keys = new Set([...reg.matchAll(/^\s{2}(?:'([^']+)'|([A-Za-z_$][\w$]*))\s*[:,]/gm)].map(m => m[1] || m[2]));
+      for (const m of reg.matchAll(/^\s{2}([A-Za-z_$][\w$]*(?:,\s*[A-Za-z_$][\w$]*)+),?\s*$/gm))
+        m[1].split(',').forEach(x => keys.add(x.trim()));
+      const screens = fs.readdirSync(path.join(__dirname, '..', 'src')).filter(f => f.endsWith('.js') && f !== 'actions.js')
+        .map(f => fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8')).join('\n');
+      const used = new Set([...screens.matchAll(/data-action="([A-Za-z0-9_-]+)"/g)].map(m => m[1]));
+      for (const m of screens.matchAll(/item\('([A-Za-z0-9_-]+)'/g)) used.add(m[1]);
+      const missing = [...used].filter(a => !keys.has(a));
+      ok('every button the screens draw has a registered action', missing.length === 0, missing.join(' '));
+    }
   }
 
   /* build output */

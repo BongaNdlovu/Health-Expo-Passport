@@ -3,11 +3,11 @@ import { closeAcct, cloudInit, cloudSignIn, cloudSignOut, cloudSync, gateBack, j
 import { churchSearchSoon, openChurchData, stepDown } from './account.js';
 import { cancelInvites, chooseChurchPlan, chooseFollowup, deleteChurchPlan, editChurchPlan, makeInvite, saveChurchPlan, setFollowup } from './churchPlans.js';
 import { copyInvite, shareInvite } from './churchPlans.js';
-import { closeCloud, cloudForgot, cloudNewPassword, cloudResend, cloudSignUp, gateDemo, gateView, healthTest, installApp, openCloud, renderCloudBody, renderGate } from './cloud.js';
+import { closeCloud, cloudForgot, cloudNewPassword, cloudResend, cloudSignUp, gateDemo, gateView, healthTest, installApp, openCloud, renderCloudBody, renderGate, togglePass } from './cloud.js';
 import { approveStaff } from './cloud.js';
 import { state } from './data.js';
 import { queueBack, queueCallNext, queueDone, queueRemove, queueServe } from './queue.js';
-import { closeBigScreen, closeQueuePick, openQueuePick, qFilterPick, qPickAdd, qSelect, queueSync } from './queue.js';
+import { closeBigScreen, closeQueuePick, openBigScreen, openQueuePick, qFilterPick, qPickAdd, qSelect, queueSync } from './queue.js';
 import { closeFood, exportCSV, openFood, showAllCare } from './results.js';
 import { onSim, selectProtocol, setFoodMetric, setFoodPlan, toggleFood } from './results.js';
 import { openScanner } from './scanner.js';
@@ -17,7 +17,7 @@ import { isServe } from './shell.js';
 import { cloud } from './state.js';
 import { filterVisitors, onPrayer, onStationCommit, onStationInput, onStep, registerSubmit, reservePouch, resetDemo, switchTab, toggleInterest, toggleReg } from './visitor.js';
 import { applyReading, finishVisit, goVisit, newVisitFrom, onChronicList, onHeight, pickSex, recordConsent, setAnswer, setMyStation, showGuardian, switchTo, toggleOptin, toggleTick } from './visitor.js';
-import { closeVolReg, closeWhatsApp, logExpoEntry, openSwitcher, openVolModal, openVolReg, openVolSwitcher, pickSecondBooth, pickVolunteer, printCard, removeExpoEntry, saveExpoEntry, saveVolunteer, sendEmail, sendWhatsApp, setVol, setVolTab, startNewVolunteer, switchToVol, toggleDraftBooth, toggleDraftList, toggleShift } from './volunteer.js';
+import { closeVolReg, closeWhatsApp, exportVolCSV, logExpoEntry, openEmail, openSwitcher, openVolModal, openVolReg, openVolSwitcher, openWhatsApp, pickSecondBooth, pickVolunteer, printCard, removeExpoEntry, saveExpoEntry, saveVolunteer, sendEmail, sendWhatsApp, setVol, setVolTab, startNewVolunteer, switchToVol, toggleDraftBooth, toggleDraftList, toggleShift } from './volunteer.js';
 import { closeSwitcher, closeVolModal, demoScan, filterSwitcher, filterVolSwitcher, manualGo, openWAFor, pickAttendee, pickPledge, recycleBadge, registerNew, setSwitchMode, showAllVol } from './volunteer.js';
 
 
@@ -30,9 +30,9 @@ export const ACTION_MAP = {
   /* -- plain functions (no arguments) -- */
   closeAcct, closeBigScreen, closeCloud, closeFood, closeQueuePick, closeScanner, closeSwitcher,
   closeVolModal, closeVolReg, closeWhatsApp, cloudInit, cloudResend, cloudSignOut, copyInvite,
-  exportCSV, finishVisit, gateBack, gateDemo, goVisit, healthTest, installApp, leaveChurch,
-  logExpoEntry, manualGo, openCloud, openFood, openScanner, openSwitcher, openVolModal,
-  openVolReg, openVolSwitcher, profDeleteAsk, profDeleteGo, recycleBadge, registerNew, resetDemo,
+  exportCSV, exportVolCSV, finishVisit, gateBack, gateDemo, goVisit, healthTest, installApp, leaveChurch,
+  logExpoEntry, manualGo, openBigScreen, openCloud, openEmail, openFood, openScanner, openSwitcher, openVolModal,
+  openVolReg, openVolSwitcher, openWhatsApp, profDeleteAsk, profDeleteGo, recycleBadge, registerNew, resetDemo,
   saveExpoEntry, saveVolunteer, sendEmail, sendWhatsApp, shareInvite, startNewVolunteer, stepDown,
   switchToVol, toggleReg,
 
@@ -160,4 +160,6 @@ export const ACTION_MAP = {
   'vol-modal-new': el => { closeVolModal(); startNewVolunteer(); },
   printCard: el => printCard(),
   reservePouch: el => reservePouch(),
+  /* -- shared password boxes -- */
+  'toggle-pass': el => togglePass(el),
 };

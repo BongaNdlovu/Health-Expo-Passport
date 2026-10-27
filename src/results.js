@@ -5,6 +5,7 @@ import { INT } from './data.js';
 import { DROPS, FOOD_PRICES, PRICE_DATE, SEX_RANGE, autoProtocol, bmi, cat, chipClass, clamp, costOf, esc, firstName, fmt1, healthAge, initials, money, pefPct, projection, redFlag, simBP, tweenGoal } from './helpers.js';
 import { ACTIONS, DISCLAIMER, FOOD_WHY, HEARD, HUE_P, PLAN_GOAL, PROTOCOLS, RECHECK, SEMINARS, SURVEY, attendees, cholUp, heavy, hueOf, planBooks, precautionsHTML, refLabel, state } from './data.js';
 import { persist } from './state.js';
+import { IS_APP } from './platform.js';
 import { jelly, renderMain, syncRanges, toast } from './shell.js';
 import { chosenChurchPlan, churchPlanFor, churchPlanPicker, viewChurchPlan } from './churchPlans.js';
 import { GRACE_DAYS, readingsGone, visitIsOld, withoutOldReadings } from './retention.js';
@@ -511,8 +512,7 @@ export function exportCSV(){
    ticked(a,INT),ticked(a,SEMINARS),ticked(a,HEARD),a.prayer,
    hasConsent(a)?'Yes':'Not recorded',a.interests.consentOn||'',a.interests.consentV||'',a.interests.guardianName||'',ok?'Yes':'No']);
  });
- downloadCSV(rows,'newstart-followup.csv');
- toast('Follow-up sheet exported (CSV) ✓ This file holds health data: delete it when you are done.');
+ downloadCSV(rows,'newstart-followup.csv','Follow-up sheet exported (CSV) ✓ This file holds health data: delete it when you are done.');
 }
 /* Quote every cell, and defuse spreadsheet formulas: a typed name like =HYPERLINK(...) would
    otherwise execute when the file is opened in Excel. Phone numbers starting "+27" stay as they are. */
@@ -521,8 +521,19 @@ export function exportCSV(){
 export const csvCell=c=>{let s=String(c==null?'':c);
  if(/^[=@\t\r]/.test(s)||(/^[+-]/.test(s)&&!/^(\+\d[\d\s().-]*|-?\d+([.,]\d+)?|\+27 —)$/.test(s)))s="'"+s;
  return `"${s.replace(/"/g,'""')}"`;};
-export function downloadCSV(rows,filename){
+/* Saves the CSV and says so only once it is saved. The Android app's WebView ignores a blob link's download, so there
+   the native plugin writes the file into Downloads (CardPrinterPlugin.saveDownload). */
+export function downloadCSV(rows,filename,okMsg){
  const csv=rows.map(r=>r.map(csvCell).join(',')).join('\n');
+ if(IS_APP){
+  const P=window.Capacitor.Plugins.CardPrinter;
+  if(!P||!P.saveDownload){toast('Saving files needs the latest version of the app');return;}
+  P.saveDownload({name:filename,text:'﻿'+csv,mime:'text/csv'})
+   .then(r=>toast(`${okMsg} Saved in ${r&&r.where||'Downloads'} as ${filename}.`))
+   .catch(e=>toast('Could not save the file: '+(e&&e.message||e)));
+  return;
+ }
+ toast(okMsg);
  const url=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}));
  const link=document.createElement('a');link.href=url;link.download=filename;
  document.body.appendChild(link);link.click();link.remove();

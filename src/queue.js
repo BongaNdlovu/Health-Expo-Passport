@@ -251,7 +251,7 @@ function renderBigScreen(){
    <div class="q-tv-meta">${s.wait.length?`${s.wait.length} waiting · about ${Math.max(1,Math.round(s.eta/60000))} min`:'No wait — walk right in'}</div>
   </div>`;}).join('');
 }
-function openBigScreen(){
+export function openBigScreen(){
  const tv=$('#tv');tv.classList.remove('hidden');renderBigScreen();
  try{const p=tv.requestFullscreen&&tv.requestFullscreen();if(p&&p.catch)p.catch(()=>{});}catch(e){}
  qWake();

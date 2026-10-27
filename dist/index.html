@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <!-- Same policy as dist/_headers (tools/build.js checks the two stay identical). The header needs a host that reads
      _headers (Cloudflare); this meta travels with the page, so the packaged Android app keeps the same protections. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-XcqlxawbP6EXJYC3f915DR9hWYV4EguqTi2jIZnfCTc=' 'sha256-Pa14nTt9TectlW3zlNDSepqWiT6aW3CKeJPjBQjgWSY=' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.supabase.in wss://*.supabase.in; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-XcqlxawbP6EXJYC3f915DR9hWYV4EguqTi2jIZnfCTc=' 'sha256-hZ5CDFv/8afT0HR8eifZu4SQ0qtLWAgikdcX0lU7yO8=' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.supabase.in wss://*.supabase.in; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <meta name="theme-color" content="#f6f8f6"/>
 <link rel="manifest" href="manifest.webmanifest">
@@ -3004,21 +3004,22 @@ var __NEWSTART = (() => {
   <div><div class="microlabel">${v && !needsRegistration(v) ? "Update registration" : "Pledge & register"}</div>
    <div class="display mt-0.5 text-[18px] font-extrabold text-[#0f2a2c]">${v && !needsRegistration(v) ? "Keep your details current" : "Volunteer for the expo"}</div>
    <p class="mt-1 text-[11px] leading-relaxed text-[#6b8187]">${EXPO_UPCOMING.name} \xB7 ${expoLine()}</p>
-   ${v && !needsRegistration(v) ? "" : `<p class="mt-1.5 text-[11.5px] font-semibold leading-snug text-[#33504f]">Only a name and mobile are needed now. Tap <b>Submit pledge</b> any time; the rest can wait until closer to the day.</p>`}</div>
+   ${v && !needsRegistration(v) ? "" : `<p class="mt-1.5 text-[11.5px] font-semibold leading-snug text-[#33504f]">Only a name and a mobile number or email are needed now. Tap <b>Submit pledge</b> any time; the rest can wait until closer to the day.</p>`}</div>
 
   <div class="glass p-4 space-y-3">
    <div class="microlabel">1 \xB7 Who you are</div>
    <label class="block"><span class="microlabel">Full name *</span>
     <input id="vfName" value="${esc(d.name)}" data-on-input="vf-name" class="field mt-1" placeholder="e.g. Thandi Mabaso" autocomplete="name"></label>
    <div class="grid grid-cols-2 gap-2">
-    <label class="block"><span class="microlabel">Mobile *</span>
+    <label class="block"><span class="microlabel">Mobile **</span>
      <input id="vfPhone" value="${esc(d.phone)}" data-on-input="vf-phone" type="tel" inputmode="tel" class="field mt-1" placeholder="082 000 0000" autocomplete="tel"></label>
     <label class="block"><span class="microlabel">T-shirt</span>
      <select id="vfShirt" data-on-change="vf-shirt" class="field mt-1">
       ${["", "S", "M", "L", "XL", "2XL", "3XL"].map((s) => `<option value="${s}" ${d.shirt === s ? "selected" : ""}>${s || "\u2014"}</option>`).join("")}</select></label>
    </div>
-   <label class="block"><span class="microlabel">Email</span>
-    <input id="vfEmail" value="${esc(d.email)}" data-on-input="vf-email" type="email" inputmode="email" class="field mt-1" placeholder="optional" autocomplete="email"></label>
+   <label class="block"><span class="microlabel">Email **</span>
+    <input id="vfEmail" value="${esc(d.email)}" data-on-input="vf-email" type="email" inputmode="email" class="field mt-1" placeholder="you@example.org" autocomplete="email"></label>
+   <p class="text-[11px] leading-snug text-[#6b8187]">** A mobile number or an email address: at least one, so the team can reach you.</p>
   </div>
 
   <div class="glass p-4">
@@ -3103,9 +3104,14 @@ var __NEWSTART = (() => {
       toast("Please enter a name");
       return;
     }
+    const hasPhone = /\d/.test(phone), email = String(d.email || "").trim();
+    if (!hasPhone && !validEmail(email)) {
+      toast("Please enter a mobile number or an email address, so the team can reach you");
+      return;
+    }
     const v = AV();
     const isNew = !v || state.volNew;
-    const registered = d.pref.length > 0 && phone.length > 0;
+    const registered = d.pref.length > 0;
     const today = todayStr();
     if (isNew) {
       let id;
@@ -3247,8 +3253,7 @@ var __NEWSTART = (() => {
         (v.history || []).map((h) => `${h.name} (${h.date}) ${boothLabel(h.booth)} ${fmt1(Number(h.hours) || 0)}h`).join(" | ")
       ]);
     });
-    downloadCSV(rows, "newstart-volunteers.csv");
-    toast("Volunteer roster exported \u2713");
+    downloadCSV(rows, "newstart-volunteers.csv", "Volunteer roster exported \u2713");
   }
   function onScanText(raw) {
     if (state.scanLock) return;
@@ -4178,6 +4183,18 @@ var __NEWSTART = (() => {
   </div>`;
     }).join("");
   }
+  function openBigScreen() {
+    const tv = $("#tv");
+    tv.classList.remove("hidden");
+    renderBigScreen();
+    try {
+      const p = tv.requestFullscreen && tv.requestFullscreen();
+      if (p && p.catch) p.catch(() => {
+      });
+    } catch (e) {
+    }
+    qWake();
+  }
   function closeBigScreen() {
     $("#tv").classList.add("hidden");
     try {
@@ -4691,6 +4708,11 @@ var __NEWSTART = (() => {
   </div>
  </div>`;
   }
+  function followUpLine(a, first, asked) {
+    const list = asked.length ? `<b>${asked.map(esc).join(", ")}</b>` : "";
+    if (!optedIn(a)) return asked.length ? `${first} ticked ${list}, but did not agree to be contacted, so no one will follow up.` : `${first} did not agree to be contacted after the expo.`;
+    return asked.length ? `${first} agreed to follow-up and asked for: ${list}.` : `${first} agreed to follow-up, with nothing specific asked for yet.`;
+  }
   function viewSend() {
     const a = A(), P = planFor(a), first = esc(firstName(a.name)), wa = waNumber(a.phone);
     const asked = Object.keys(INT).filter((k) => a.interests && a.interests[k] && k !== "pouch").map((k) => INT[k]);
@@ -4710,7 +4732,7 @@ var __NEWSTART = (() => {
   </div>
   <div class="glass p-4">
    <div class="microlabel">Follow-up for the team</div>
-   <p class="mt-1 text-[11.5px] leading-relaxed text-[#3d5c5e]">${asked.length ? `${first} asked for: <b>${asked.map(esc).join(", ")}</b>.` : `${first} did not ask for a call back or classes.`}
+   <p class="mt-1 text-[11.5px] leading-relaxed text-[#3d5c5e]">${followUpLine(a, first, asked)}
     ${a.prayer ? ` Prayer request noted.` : ""} <button class="tap-link" data-action="switchTab" data-args="screen">Change</button></p>
   </div>
   ${followupPicker(a)}
@@ -6525,16 +6547,25 @@ var __NEWSTART = (() => {
         ok ? "Yes" : "No"
       ]);
     });
-    downloadCSV(rows, "newstart-followup.csv");
-    toast("Follow-up sheet exported (CSV) \u2713 This file holds health data: delete it when you are done.");
+    downloadCSV(rows, "newstart-followup.csv", "Follow-up sheet exported (CSV) \u2713 This file holds health data: delete it when you are done.");
   }
   var csvCell = (c) => {
     let s = String(c == null ? "" : c);
     if (/^[=@\t\r]/.test(s) || /^[+-]/.test(s) && !/^(\+\d[\d\s().-]*|-?\d+([.,]\d+)?|\+27 —)$/.test(s)) s = "'" + s;
     return `"${s.replace(/"/g, '""')}"`;
   };
-  function downloadCSV(rows, filename) {
+  function downloadCSV(rows, filename, okMsg) {
     const csv = rows.map((r) => r.map(csvCell).join(",")).join("\n");
+    if (IS_APP) {
+      const P = window.Capacitor.Plugins.CardPrinter;
+      if (!P || !P.saveDownload) {
+        toast("Saving files needs the latest version of the app");
+        return;
+      }
+      P.saveDownload({ name: filename, text: "\uFEFF" + csv, mime: "text/csv" }).then((r) => toast(`${okMsg} Saved in ${r && r.where || "Downloads"} as ${filename}.`)).catch((e) => toast("Could not save the file: " + (e && e.message || e)));
+      return;
+    }
+    toast(okMsg);
     const url = URL.createObjectURL(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a");
     link.href = url;
@@ -8896,6 +8927,7 @@ var __NEWSTART = (() => {
     cloudSignOut,
     copyInvite,
     exportCSV,
+    exportVolCSV,
     finishVisit,
     gateBack,
     gateDemo,
@@ -8905,13 +8937,16 @@ var __NEWSTART = (() => {
     leaveChurch,
     logExpoEntry,
     manualGo,
+    openBigScreen,
     openCloud,
+    openEmail,
     openFood,
     openScanner,
     openSwitcher,
     openVolModal,
     openVolReg,
     openVolSwitcher,
+    openWhatsApp,
     profDeleteAsk,
     profDeleteGo,
     recycleBadge,
@@ -9104,7 +9139,9 @@ var __NEWSTART = (() => {
       startNewVolunteer();
     },
     printCard: (el) => printCard(),
-    reservePouch: (el) => reservePouch()
+    reservePouch: (el) => reservePouch(),
+    /* -- shared password boxes -- */
+    "toggle-pass": (el) => togglePass(el)
   };
 
   // src/main.js

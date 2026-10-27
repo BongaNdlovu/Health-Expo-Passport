@@ -570,21 +570,22 @@ function viewVolRegister(){
   <div><div class="microlabel">${v&&!needsRegistration(v)?'Update registration':'Pledge & register'}</div>
    <div class="display mt-0.5 text-[18px] font-extrabold text-[#0f2a2c]">${v&&!needsRegistration(v)?'Keep your details current':'Volunteer for the expo'}</div>
    <p class="mt-1 text-[11px] leading-relaxed text-[#6b8187]">${EXPO_UPCOMING.name} · ${expoLine()}</p>
-   ${v&&!needsRegistration(v)?'':`<p class="mt-1.5 text-[11.5px] font-semibold leading-snug text-[#33504f]">Only a name and mobile are needed now. Tap <b>Submit pledge</b> any time; the rest can wait until closer to the day.</p>`}</div>
+   ${v&&!needsRegistration(v)?'':`<p class="mt-1.5 text-[11.5px] font-semibold leading-snug text-[#33504f]">Only a name and a mobile number or email are needed now. Tap <b>Submit pledge</b> any time; the rest can wait until closer to the day.</p>`}</div>
 
   <div class="glass p-4 space-y-3">
    <div class="microlabel">1 · Who you are</div>
    <label class="block"><span class="microlabel">Full name *</span>
     <input id="vfName" value="${esc(d.name)}" data-on-input="vf-name" class="field mt-1" placeholder="e.g. Thandi Mabaso" autocomplete="name"></label>
    <div class="grid grid-cols-2 gap-2">
-    <label class="block"><span class="microlabel">Mobile *</span>
+    <label class="block"><span class="microlabel">Mobile **</span>
      <input id="vfPhone" value="${esc(d.phone)}" data-on-input="vf-phone" type="tel" inputmode="tel" class="field mt-1" placeholder="082 000 0000" autocomplete="tel"></label>
     <label class="block"><span class="microlabel">T-shirt</span>
      <select id="vfShirt" data-on-change="vf-shirt" class="field mt-1">
       ${['','S','M','L','XL','2XL','3XL'].map(s=>`<option value="${s}" ${d.shirt===s?'selected':''}>${s||'—'}</option>`).join('')}</select></label>
    </div>
-   <label class="block"><span class="microlabel">Email</span>
-    <input id="vfEmail" value="${esc(d.email)}" data-on-input="vf-email" type="email" inputmode="email" class="field mt-1" placeholder="optional" autocomplete="email"></label>
+   <label class="block"><span class="microlabel">Email **</span>
+    <input id="vfEmail" value="${esc(d.email)}" data-on-input="vf-email" type="email" inputmode="email" class="field mt-1" placeholder="you@example.org" autocomplete="email"></label>
+   <p class="text-[11px] leading-snug text-[#6b8187]">** A mobile number or an email address: at least one, so the team can reach you.</p>
   </div>
 
   <div class="glass p-4">
@@ -653,9 +654,12 @@ export function saveVolunteer(){
  const d=state.vf;
  const name=String(d.name||'').trim(),phone=String(d.phone||'').trim();
  if(!name){toast('Please enter a name');return;}
+ /* a pledge nobody can reach is no pledge: a mobile number or an email address, at least one */
+ const hasPhone=/\d/.test(phone),email=String(d.email||'').trim();
+ if(!hasPhone&&!validEmail(email)){toast('Please enter a mobile number or an email address, so the team can reach you');return;}
  const v=AV();
  const isNew=!v||state.volNew;
- const registered=d.pref.length>0&&phone.length>0;
+ const registered=d.pref.length>0;
  const today=todayStr();
  if(isNew){
   let id;do{id='VOL-'+state._volSeq++;}while(volunteers.some(x=>x.id===id));   /* never reuse a number already on this device */
@@ -720,8 +724,7 @@ export function exportVolCSV(){
    v.shirt||'',v.emergency||'',String(v.since||''),v.notes||'',
    (v.history||[]).map(h=>`${h.name} (${h.date}) ${boothLabel(h.booth)} ${fmt1(Number(h.hours)||0)}h`).join(' | ')]);
  });
- downloadCSV(rows,'newstart-volunteers.csv');
- toast('Volunteer roster exported ✓');
+ downloadCSV(rows,'newstart-volunteers.csv','Volunteer roster exported ✓');
 }
 
 export function onScanText(raw){
