@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <!-- Same policy as dist/_headers (tools/build.js checks the two stay identical). The header needs a host that reads
      _headers (Cloudflare); this meta travels with the page, so the packaged Android app keeps the same protections. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-XcqlxawbP6EXJYC3f915DR9hWYV4EguqTi2jIZnfCTc=' 'sha256-qVZVre75WvuN1ykT1pHbkqyztfBXK1UTpqYToEhd0r0=' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.supabase.in wss://*.supabase.in; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-XcqlxawbP6EXJYC3f915DR9hWYV4EguqTi2jIZnfCTc=' 'sha256-h0JYHqmvgcQyyl/N8woAZfD6r8OEKddZVF1zZQOpgmc=' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.supabase.in wss://*.supabase.in; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <meta name="theme-color" content="#f6f8f6"/>
 <link rel="manifest" href="manifest.webmanifest">
@@ -1272,7 +1272,8 @@ var __NEWSTART = (() => {
       pledgedOn: "2026-01-12",
       registeredOn: "2026-02-20",
       checkedIn: false,
-      role: "Booth lead",
+      role: "Team leader",
+      lead: true,
       history: [
         { expo: "EXPO-2024-03", name: "Autumn Health Expo", date: "2024-03-09", booth: "bp", hours: 7.5 },
         { expo: "EXPO-2024-09", name: "Spring Health Expo", date: "2024-09-14", booth: "bp", hours: 8 },
@@ -2631,6 +2632,10 @@ var __NEWSTART = (() => {
         <span class="mono text-[10px] font-extrabold ${got >= cap ? "text-brand-800" : got === 0 ? "text-rose-600" : "text-amber-700"}">${got}/${cap}</span>
        </div>
        <div class="covbar mt-1.5 ${cls}"><i style="width:${pct}%"></i></div>
+       ${(() => {
+        const leader = team.find((x) => x.lead);
+        return leader ? `<div class="mt-1 truncate text-[10px] font-bold text-[#33504f]">\u2605 ${esc(firstName(leader.name))} leads this station</div>` : '<div class="mt-1 text-[10px] font-semibold text-[#8a9aa0]">No leader yet</div>';
+      })()}
        ${got ? `<div class="mt-1 truncate text-[10px] font-semibold text-[#6b8187]">${team.slice(0, 12).map((v) => esc(firstName(v.name))).join(" \xB7 ")}${got > 12 ? ` \xB7 +${got - 12}` : ""}</div>` : `<div class="mt-1 text-[10px] font-semibold text-rose-600/90">Nobody yet \u2014 needs ${cap} helper${cap > 1 ? "s" : ""}</div>`}
       </div>`;
     }).join("")}
@@ -2679,6 +2684,7 @@ var __NEWSTART = (() => {
    <span class="block truncate text-[12px] font-bold text-[#123033]">${esc(v.name)}</span>
    <span class="mt-0.5 flex flex-wrap items-center gap-1">
     <span class="servechip ${STATUS_UI[v.status].cls}">${STATUS_UI[v.status].label}</span>
+    ${v.lead ? '<span class="servechip sc-warn">\u2605 Team leader</span>' : ""}
     <span class="rankpill hue-${t.hue}">${volLevel(v) ? `Lv ${volLevel(v)}` : esc(t.short)}</span>
     ${linkedVolIds() && linkedVolIds().has(v.id) ? '<span class="servechip sc-ok">account \u2713</span>' : ""}
     ${confirmed ? `<span class="text-[9.5px] font-bold text-[#6b8187]">${esc(boothLabel(v.booth))}</span>` : `<span class="text-[9.5px] font-bold text-[#6b8187]">wants ${esc(boothLabel((v.pref || [])[0] || ""))}</span>`}
@@ -2717,7 +2723,7 @@ var __NEWSTART = (() => {
    <div class="flex items-start gap-3">
      <span class="medal hue-${badgeTier(v).hue}"><span class="medal-v"><b class="medal-lv">${volLevel(v) || "\u2013"}</b><span class="medal-rk">${esc(badgeTier(v).short)}</span>${starGlyph(badgeTier(v).stars, "7px")}</span></span>
     <div class="min-w-0 flex-1">
-     <div class="microlabel">${esc(v.role || "Volunteer")}</div>
+     <div class="microlabel">${esc(v.lead ? "Team leader" : v.role || "Volunteer")}${v.lead ? " \xB7 " + esc(boothLabel(v.booth)) : ""}</div>
      <div class="display mt-0.5 truncate text-[16px] font-extrabold text-[#0f2a2c]">${esc(v.name)}</div>
      <div class="mono mt-0.5 text-[10px] font-bold text-[#667d83]">${v.id} \xB7 ${esc(v.shirt || "\u2014")} shirt</div>
      <div class="mt-1.5 flex flex-wrap gap-1.5">
@@ -2831,6 +2837,7 @@ var __NEWSTART = (() => {
     <div class="min-w-0 flex-1">
      <div class="text-[10px] font-extrabold uppercase tracking-wider" style="color:var(--ink)">Badge ${t.n} of ${BADGE_TIERS.length - 1}</div>
      <div class="display mt-0.5 text-[16px] leading-tight font-extrabold text-[#0f2a2c]">${esc(t.name)}</div>
+     ${v.lead && v.booth ? `<div class="mt-0.5 text-[10px] font-bold text-[#33504f]">Team leader \xB7 ${esc(boothLabel(v.booth))}</div>` : ""}
      <div class="mt-1 text-[10px] font-bold text-[#5b7178]">${volLevel(v) ? `Level ${volLevel(v)} of ${VOL_LEVEL_MAX} \xB7 ` : ""}Volunteering since ${esc(String(v.since || "\u2014").slice(0, 4))} \xB7 ${volYears(v)} yr${volYears(v) === 1 ? "" : "s"}</div>
      ${t.stars ? `<div class="mt-1 flex gap-0.5 text-[#bf9a40]">${"\u2605".repeat(t.stars)}<span class="text-[#c9d3d6]">${"\u2605".repeat(5 - t.stars)}</span></div>` : ""}
     </div>
@@ -3207,7 +3214,7 @@ var __NEWSTART = (() => {
   function renderServeSheet() {
   }
   function exportVolCSV() {
-    const rows = [["Volunteer ID", "Name", "Phone", "Email", "Status", "Badge level", "Badge", "Expos served", "Total hours", "Booth", "Second choice", "Shift", "Availability", "Skills", "T-shirt", "Emergency contact", "Volunteering since", "Notes", "Expo history"]];
+    const rows = [["Volunteer ID", "Name", "Phone", "Email", "Status", "Team leader", "Badge level", "Badge", "Expos served", "Total hours", "Booth", "Second choice", "Shift", "Availability", "Skills", "T-shirt", "Emergency contact", "Volunteering since", "Notes", "Expo history"]];
     volunteers.forEach((v) => {
       const t = badgeTier(v);
       rows.push([
@@ -3216,6 +3223,7 @@ var __NEWSTART = (() => {
         v.phone,
         v.email,
         STATUS_UI[v.status].label,
+        v.lead ? "Yes" : "",
         t.n,
         t.name,
         volExpos(v),
@@ -5772,7 +5780,8 @@ var __NEWSTART = (() => {
       checkedIn: false,
       role: "",
       history: [],
-      shift: ""
+      shift: "",
+      lead: false
     }, v || {});
     o.history = (Array.isArray(o.history) ? o.history : []).map((h) => {
       h = Object.assign({ expo: "", name: "Health Expo", date: "", booth: "", hours: 0 }, h && typeof h === "object" ? h : {});
@@ -6733,6 +6742,7 @@ var __NEWSTART = (() => {
     checked_in: !!v.checkedIn || v.status === "checkedin",
     role: v.role || "",
     shift: v.shift || "",
+    lead: !!v.lead,
     history: v.history || []
   });
   var rowToVol = (r) => migrateVolunteer({
@@ -6756,6 +6766,7 @@ var __NEWSTART = (() => {
     checkedIn: !!r.checked_in,
     role: r.role || "",
     shift: r.shift || "",
+    lead: !!r.lead,
     history: r.history || []
   });
   var KINDS = { att: {}, vol: {} };
@@ -7771,7 +7782,7 @@ var __NEWSTART = (() => {
     return acctBox("My pledge", `
   <div class="mt-1 flex flex-wrap items-center gap-1.5">
    <span class="servechip ${st ? st.cls : "sc-off"}">${esc(st ? st.label : p.status)}</span>
-   ${p.role ? `<span class="servechip sc-off">${esc(p.role)}</span>` : ""}
+   ${p.lead ? '<span class="servechip sc-warn">\u2605 Team leader</span>' : p.role ? `<span class="servechip sc-off">${esc(p.role)}</span>` : ""}
   </div>
   <div class="mt-2 text-[12px] font-bold text-[#123033]">${esc(p.name)}</div>
   <div class="mt-0.5 text-[11px] text-[#4f6870]">${p.booth ? "Placed at " + esc(boothLabel(p.booth)) : "Not placed yet \u2014 the admin chooses your station"}${p.shift ? " \xB7 " + esc(p.shift) : ""}</div>

@@ -272,6 +272,9 @@ function viewVolMuster(){
         <span class="mono text-[10px] font-extrabold ${got>=cap?'text-brand-800':got===0?'text-rose-600':'text-amber-700'}">${got}/${cap}</span>
        </div>
        <div class="covbar mt-1.5 ${cls}"><i style="width:${pct}%"></i></div>
+       ${(()=>{const leader=team.find(x=>x.lead);
+         return leader?`<div class="mt-1 truncate text-[10px] font-bold text-[#33504f]">★ ${esc(firstName(leader.name))} leads this station</div>`
+                      :'<div class="mt-1 text-[10px] font-semibold text-[#8a9aa0]">No leader yet</div>';})()}
        ${got?`<div class="mt-1 truncate text-[10px] font-semibold text-[#6b8187]">${team.slice(0,12).map(v=>esc(firstName(v.name))).join(' · ')}${got>12?` · +${got-12}`:''}</div>`:
              `<div class="mt-1 text-[10px] font-semibold text-rose-600/90">Nobody yet — needs ${cap} helper${cap>1?'s':''}</div>`}
       </div>`;}).join('')}
@@ -324,6 +327,7 @@ export function volRow(v,confirmed){
    <span class="block truncate text-[12px] font-bold text-[#123033]">${esc(v.name)}</span>
    <span class="mt-0.5 flex flex-wrap items-center gap-1">
     <span class="servechip ${STATUS_UI[v.status].cls}">${STATUS_UI[v.status].label}</span>
+    ${v.lead?'<span class="servechip sc-warn">★ Team leader</span>':''}
     <span class="rankpill hue-${t.hue}">${volLevel(v)?`Lv ${volLevel(v)}`:esc(t.short)}</span>
     ${linkedVolIds()&&linkedVolIds().has(v.id)?'<span class="servechip sc-ok">account ✓</span>':''}
     ${confirmed?`<span class="text-[9.5px] font-bold text-[#6b8187]">${esc(boothLabel(v.booth))}</span>`
@@ -365,7 +369,7 @@ function viewVolBooth(){
    <div class="flex items-start gap-3">
      <span class="medal hue-${badgeTier(v).hue}"><span class="medal-v"><b class="medal-lv">${volLevel(v)||'–'}</b><span class="medal-rk">${esc(badgeTier(v).short)}</span>${starGlyph(badgeTier(v).stars,'7px')}</span></span>
     <div class="min-w-0 flex-1">
-     <div class="microlabel">${esc(v.role||'Volunteer')}</div>
+     <div class="microlabel">${esc(v.lead?'Team leader':(v.role||'Volunteer'))}${v.lead?' · '+esc(boothLabel(v.booth)):''}</div>
      <div class="display mt-0.5 truncate text-[16px] font-extrabold text-[#0f2a2c]">${esc(v.name)}</div>
      <div class="mono mt-0.5 text-[10px] font-bold text-[#667d83]">${v.id} · ${esc(v.shirt||'—')} shirt</div>
      <div class="mt-1.5 flex flex-wrap gap-1.5">
@@ -474,6 +478,7 @@ function viewVolRecord(){
     <div class="min-w-0 flex-1">
      <div class="text-[10px] font-extrabold uppercase tracking-wider" style="color:var(--ink)">Badge ${t.n} of ${BADGE_TIERS.length-1}</div>
      <div class="display mt-0.5 text-[16px] leading-tight font-extrabold text-[#0f2a2c]">${esc(t.name)}</div>
+     ${v.lead&&v.booth?`<div class="mt-0.5 text-[10px] font-bold text-[#33504f]">Team leader · ${esc(boothLabel(v.booth))}</div>`:''}
      <div class="mt-1 text-[10px] font-bold text-[#5b7178]">${volLevel(v)?`Level ${volLevel(v)} of ${VOL_LEVEL_MAX} · `:''}Volunteering since ${esc(String(v.since||'—').slice(0,4))} · ${volYears(v)} yr${volYears(v)===1?'':'s'}</div>
      ${t.stars?`<div class="mt-1 flex gap-0.5 text-[#bf9a40]">${'★'.repeat(t.stars)}<span class="text-[#c9d3d6]">${'★'.repeat(5-t.stars)}</span></div>`:''}
     </div>
@@ -753,10 +758,10 @@ export function renderServeSheet(){}
 
 /* ---------- CSV export ---------- */
 export function exportVolCSV(){
- const rows=[['Volunteer ID','Name','Phone','Email','Status','Badge level','Badge','Expos served','Total hours','Booth','Second choice','Shift','Availability','Skills','T-shirt','Emergency contact','Volunteering since','Notes','Expo history']];
+ const rows=[['Volunteer ID','Name','Phone','Email','Status','Team leader','Badge level','Badge','Expos served','Total hours','Booth','Second choice','Shift','Availability','Skills','T-shirt','Emergency contact','Volunteering since','Notes','Expo history']];
  volunteers.forEach(v=>{
   const t=badgeTier(v);
-  rows.push([v.id,v.name,v.phone,v.email,STATUS_UI[v.status].label,t.n,t.name,volExpos(v),fmt1(volHours(v)),
+  rows.push([v.id,v.name,v.phone,v.email,STATUS_UI[v.status].label,v.lead?'Yes':'',t.n,t.name,volExpos(v),fmt1(volHours(v)),
    boothLabel(v.booth),(v.pref||[]).map(boothLabel).join('; '),v.shift||'',availLabels(v).join('; '),
    (v.skills||[]).map(k=>(SKILLS.find(s=>s[0]===k)||[k,k])[1]).join('; '),
    v.shirt||'',v.emergency||'',String(v.since||''),v.notes||'',

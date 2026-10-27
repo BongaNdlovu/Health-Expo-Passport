@@ -265,7 +265,7 @@ export function pledgeHTML(){
  return acctBox('My pledge',`
   <div class="mt-1 flex flex-wrap items-center gap-1.5">
    <span class="servechip ${st?st.cls:'sc-off'}">${esc(st?st.label:p.status)}</span>
-   ${p.role?`<span class="servechip sc-off">${esc(p.role)}</span>`:''}
+   ${p.lead?'<span class="servechip sc-warn">★ Team leader</span>':p.role?`<span class="servechip sc-off">${esc(p.role)}</span>`:''}
   </div>
   <div class="mt-2 text-[12px] font-bold text-[#123033]">${esc(p.name)}</div>
   <div class="mt-0.5 text-[11px] text-[#4f6870]">${p.booth?'Placed at '+esc(boothLabel(p.booth)):'Not placed yet — the admin chooses your station'}${p.shift?' · '+esc(p.shift):''}</div>

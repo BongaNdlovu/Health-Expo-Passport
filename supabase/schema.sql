@@ -159,6 +159,9 @@ drop trigger if exists volunteers_touch on public.volunteers;
 create trigger volunteers_touch before update on public.volunteers
   for each row execute function public.touch_updated_at();
 
+-- one team leader per station (see VOLUNTEER HUB: TEAM LEADERS below); added here because my_pledge() reads it
+alter table public.volunteers add column if not exists lead boolean not null default false;
+
 -- ---------------------------------------------------------------- indexes (the app pages through rows by
 -- created_at and pulls "changes since" by updated_at; these keep both fast with many thousands of rows)
 create index if not exists attendees_created_idx  on public.attendees  (created_at, id);
@@ -1209,7 +1212,7 @@ as $$
   select jsonb_build_object('id', v.id, 'name', v.name, 'phone', v.phone, 'email', v.email, 'status', v.status,
     'pledge_expos', v.pledge_expos, 'skills', v.skills, 'pref', v.pref, 'pref2', v.pref2,
     'availability', v.availability, 'shirt', v.shirt, 'emergency', v.emergency, 'notes', v.notes,
-    'pledged_on', v.pledged_on, 'since', v.since, 'booth', v.booth, 'role', v.role, 'shift', v.shift)
+    'pledged_on', v.pledged_on, 'since', v.since, 'booth', v.booth, 'role', v.role, 'shift', v.shift, 'lead', v.lead)
   from public.memberships m
   join public.churches c on c.id = m.church_id and c.status = 'active'
   join public.volunteers v on v.church_id = m.church_id and v.id = m.volunteer_id
@@ -1350,6 +1353,34 @@ revoke all on function public.withdraw_my_pledge() from public, anon;
 grant execute on function public.withdraw_my_pledge() to authenticated;
 revoke all on function public.link_volunteer(uuid, text) from public, anon;
 grant execute on function public.link_volunteer(uuid, text) to authenticated;
+
+-- ================================================================ VOLUNTEER HUB: TEAM LEADERS
+-- One team leader per station. volunteers.lead says who; the title the screens show stays in volunteers.role
+-- ("Team leader" is written when a leader is made, and the trigger below keeps the two in step on a move).
+-- The unique index makes the database itself refuse a second leader at one station. Safe to re-run.
+
+create unique index if not exists volunteers_one_lead_idx on public.volunteers (church_id, booth) where lead;
+
+-- A leader moved to another station is not the leader of their new station: a change of booth that the update
+-- itself did not pair with a change of lead clears lead. Phase 3's placement functions pair the two when they
+-- swap people, so a swap keeps exactly one leader per station.
+create or replace function public.volunteers_lead_move()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.booth is distinct from old.booth and new.lead and new.lead is not distinct from old.lead then
+    new.lead := false;
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.volunteers_lead_move() from public, anon, authenticated;
+drop trigger if exists volunteers_lead_move on public.volunteers;
+create trigger volunteers_lead_move before update on public.volunteers
+  for each row execute function public.volunteers_lead_move();
 
 -- ================================================================ INVITE LINKS
 -- A church admin shares a link (…/?join=CODE). Whoever signs in with it joins that church at once, approved, as a

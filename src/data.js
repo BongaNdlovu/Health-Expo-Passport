@@ -112,7 +112,7 @@ export const SEED_VOL=[
  {id:'VOL-1001',name:'Thandi Mabaso',phone:'+27 82 441 0091',email:'thandi@example.co.za',
   status:'registered',pledgeExpos:4,skills:['clinic','counselling'],pref:['bp','vitals'],pref2:'sugar',
   booth:'bp',availability:['saturday','weekday-pm'],shirt:'M',emergency:'Sipho 082 441 0091',
-  since:'2021-09-01',notes:'',pledgedOn:'2026-01-12',registeredOn:'2026-02-20',checkedIn:false,role:'Booth lead',
+  since:'2021-09-01',notes:'',pledgedOn:'2026-01-12',registeredOn:'2026-02-20',checkedIn:false,role:'Team leader',lead:true,
   history:[{expo:'EXPO-2024-03',name:'Autumn Health Expo',date:'2024-03-09',booth:'bp',hours:7.5},
            {expo:'EXPO-2024-09',name:'Spring Health Expo',date:'2024-09-14',booth:'bp',hours:8},
            {expo:'EXPO-2025-03',name:'Autumn Health Expo',date:'2025-03-08',booth:'vitals',hours:6.5},

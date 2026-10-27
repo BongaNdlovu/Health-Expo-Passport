@@ -71,7 +71,7 @@ export function migrateAttendee(a){
 export function migrateVolunteer(v){
  const o=Object.assign({phone:'',email:'',status:'prospect',pledgeExpos:1,skills:[],pref:[],pref2:'',
   booth:null,availability:[],shirt:'',emergency:'',since:'',notes:'',pledgedOn:null,registeredOn:null,
-  checkedIn:false,role:'',history:[],shift:''},v||{});
+  checkedIn:false,role:'',history:[],shift:'',lead:false},v||{});
  o.history=(Array.isArray(o.history)?o.history:[]).map(h=>{
   h=Object.assign({expo:'',name:'Health Expo',date:'',booth:'',hours:0},h&&typeof h==='object'?h:{});
   /* database JSON: keep each part to the plain kind of text or number it is meant to be */

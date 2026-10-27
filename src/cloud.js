@@ -54,13 +54,13 @@ export const volToRow=v=>({id:v.id,name:v.name,phone:v.phone||'',email:v.email||
  pledge_expos:Number(v.pledgeExpos)||1,skills:v.skills||[],pref:v.pref||[],pref2:v.pref2||'',booth:nulIfEmpty(v.booth),
  availability:v.availability||[],shirt:v.shirt||'',emergency:v.emergency||'',since:v.since||'',notes:v.notes||'',
  pledged_on:nulIfEmpty(v.pledgedOn),registered_on:nulIfEmpty(v.registeredOn),checked_in:!!v.checkedIn||v.status==='checkedin',
- role:v.role||'',shift:v.shift||'',history:v.history||[]});
+ role:v.role||'',shift:v.shift||'',lead:!!v.lead,history:v.history||[]});
 /** Converts a database row back into a Volunteer. @param {Record<string,any>} r */
 export const rowToVol=r=>migrateVolunteer({id:r.id,name:r.name,phone:r.phone||'',email:r.email||'',status:r.status,
  pledgeExpos:r.pledge_expos||1,skills:r.skills||[],pref:r.pref||[],pref2:r.pref2||'',booth:r.booth||null,
  availability:r.availability||[],shirt:r.shirt||'',emergency:r.emergency||'',since:r.since||'',notes:r.notes||'',
  pledgedOn:r.pledged_on||null,registeredOn:r.registered_on||null,checkedIn:!!r.checked_in,role:r.role||'',
- shift:r.shift||'',history:r.history||[]});
+ shift:r.shift||'',lead:!!r.lead,history:r.history||[]});
 /* filled in by initKinds() from the boot sequence: import cycles can run this module before data.js
    has initialized its arrays, so the row kinds must not be built at module-eval time */
 export let KINDS={att:{},vol:{}};

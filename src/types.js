@@ -29,12 +29,14 @@
  *   since: string, notes: string,
  *   history: { expo: string, date: string, hours: number, role?: string }[],
  *   pledgedOn?: string, registeredOn?: string, checkedIn?: boolean, role?: string, shift?: string,
+ *   lead?: boolean,                   // the station's team leader (VOLUNTEER HUB: TEAM LEADERS)
  * }} Volunteer */
 
 /** One membership row as my_account() returns it. @typedef {{
  *   church_id: string, role: 'member'|'staff'|'admin', status: 'pending'|'approved',
  *   full_name: string, phone: string, area: string, birth_date?: string,
  *   attendee_id?: string, followup: boolean, admin_rank?: number,
+ *   volunteer_id?: string,            // the member's own pledge, linked by an admin or self-pledged
  * }} Membership */
 
 /** The church block of my_account(). @typedef {{

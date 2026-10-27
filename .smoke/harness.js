@@ -424,6 +424,7 @@ ok('CSV produced', typeof csvBlob === 'string' && csvBlob.length > 100);
 csvBlob = csvBlob.replace(/^﻿/, '');   /* BOM so Excel reads UTF-8 names correctly */
 ok('CSV header present', csvBlob.startsWith('"Volunteer ID","Name"'));
 ok('CSV quotes embedded correctly', !/","[^"]*$/.test(csvBlob.split('\n')[0]));
+ok('the roster CSV carries a Team leader column, filled for the leader', csvBlob.includes('"Team leader"') && /"Team leader"|"Yes"/.test(csvBlob) && /,"Yes",/.test(csvBlob), csvBlob.split('\n')[0]);
 ok('one CSV row per volunteer', csvBlob.trim().split('\n').length === g.volunteers.length + 1,
   (csvBlob.trim().split('\n').length - 1) + ' rows vs ' + g.volunteers.length + ' volunteers');
 
@@ -2605,6 +2606,21 @@ function makeServer() {
       g.state.tab = 'home'; g.render();
     }
 
+    /* team leaders: the star on the roster, the named leader per station, and the title on the leader's own screens */
+    {
+      g.resetDemo();
+      g.state.tab = 'serve'; g.state.volTab = 'muster'; g.render();
+      const muster = $main.innerHTML;
+      ok('muster names the team leader per station, or says there is none',
+        /★ Thandi leads this station/.test(muster) && /No leader yet/.test(muster));
+      ok('the roster marks the leader with a star chip', /★ Team leader/.test(muster));
+      g.state.volId = 'VOL-1001'; g.state.volTab = 'booth'; g.render();
+      ok('the leader\'s own booth screen reads Team leader · Blood Pressure', /Team leader · Blood Pressure/.test($main.innerHTML));
+      g.state.volTab = 'record'; g.render();
+      ok('the badge card carries the title and station too', /Team leader · Blood Pressure/.test($main.innerHTML));
+      g.resetDemo();
+    }
+
 
     /* live connections: reconnecting must not pile up handlers */
     device(); C.client = srv.client;
@@ -2724,7 +2740,13 @@ function makeServer() {
     const as = async (uid, sql, p) => { await db.exec(`reset role; select set_config('request.jwt.claim.sub', '${uid || ''}', false); set role ${uid ? 'authenticated' : 'anon'};`);
       try { return { rows: (await db.query(sql, p || [])).rows }; } catch (e) { return { error: e }; } finally { await db.exec('reset role'); } };
     const sys = async (sql, p) => (await db.query(sql, p || [])).rows;
-    const refused = async (uid, sql, p) => !!(await as(uid, sql, p)).error;
+    const refused = async (uid, sql, p) => {
+      const out = !!(await as(uid, sql, p)).error;
+      /* a refused statement aborts its transaction; the next query on this shared connection must not be the
+         victim of the recovery, so absorb it here (seen as silently skipped statements without this) */
+      await db.query('select 1').catch(() => {});
+      return out;
+    };
     await db.exec(`create role anon nologin; create role authenticated nologin; create schema auth;
       create table auth.users (id uuid primary key default gen_random_uuid(), email text unique, raw_user_meta_data jsonb not null default '{}'::jsonb, email_confirmed_at timestamptz, created_at timestamptz not null default now());
       create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
@@ -2809,6 +2831,25 @@ function makeServer() {
 
     /* ---- phase 2: one team leader per station ---- */
     console.log('\n18d. Volunteer hub: team leaders');
+    /* VOL-2001 (mem1's linked pledge) becomes the leader of Blood Pressure */
+    await sys(`update public.volunteers set status = 'registered', booth = 'bp', lead = true, role = 'Team leader' where church_id = $1 and id = 'VOL-2001'`, [CH]);
+    r = await as(U.mem1, `select public.my_pledge() p`);
+    ok('the member\'s own pledge shows the leader title and station', !r.error && r.rows[0].p.lead === true && r.rows[0].p.booth === 'bp', JSON.stringify(r.rows[0] && r.rows[0].p));
+    await sys(`update public.volunteers set booth = 'bp', status = 'registered' where church_id = $1 and id = $2`, [CH, vol2]);
+    ok('the database itself refuses a second leader at one station',
+      await refused(U.staff, `update public.volunteers set lead = true where church_id = $1 and id = $2`, [CH, vol2])
+        && (await sys(`select lead from public.volunteers where church_id = $1 and id = $2`, [CH, vol2]))[0].lead === false);
+    const moved = await as(U.staff, `update public.volunteers set booth = 'kitchen' where church_id = $1 and id = 'VOL-2001'`, [CH]);
+    row = (await sys(`select lead, role from public.volunteers where church_id = $1 and id = 'VOL-2001'`, [CH]))[0];
+    ok('moving a leader to another station clears their leadership (an update that changes only the booth)',
+      row.lead === false, JSON.stringify(row) + (moved.error ? ' · move error: ' + moved.error.message : ''));
+    r = await as(U.mem1, `select public.my_pledge() p`);
+    ok('the member sees the loss of the title straight away', !r.error && r.rows[0].p.lead === false);
+    await as(U.staff, `update public.volunteers set booth = 'bp', lead = true where church_id = $1 and id = 'VOL-2001'`, [CH]);
+    const bothRow = (await sys(`select lead, booth from public.volunteers where id = 'VOL-2001'`))[0];
+    ok('an update that sets both booth and lead together is allowed (what the swap uses)',
+      bothRow.lead === true, JSON.stringify(bothRow));
+
     /* pending implementation */
 
   })().catch(e => ok('volunteer hub database tests ran to the end', false, e && e.stack || e));
