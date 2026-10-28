@@ -395,7 +395,8 @@ export async function placeMove(booth){
  const r=await volRpc('place_volunteer',{p_vol:v.id,p_booth:booth});
  if(!r)return;
  await afterPlace();rerenderPlace();
- const back=()=>volRpc('place_volunteer',{p_vol:v.id,p_booth:from||''}).then(r2=>{if(r2)afterPlace();});
+ /* from is empty when this was a first placement: undoing that is a release, not a move to nowhere */
+ const back=()=>(from?volRpc('place_volunteer',{p_vol:v.id,p_booth:from}):volRpc('release_volunteer',{p_vol:v.id})).then(r2=>{if(r2)afterPlace();});
  toastUndo(`${firstName(v.name)} → ${boothLabel(booth)} ✓`,back);
 }
 export async function placeSwap(otherId){
@@ -807,20 +808,21 @@ export function saveVolunteer(){
  const isNew=!v||state.volNew;
  const registered=d.pref.length>0;
  const today=todayStr();
+ /* in the shared database, where a person stands is the admin's or the station leader's call — the place-guard
+    trigger refuses anybody else writing booth, on a new row as well as on an edit. A plain staff pledge keeps
+    its choices and an admin places them; the demo and the admins' own form keep the one-tap registration. */
+ const cloudStaff=!!(cloud.user&&cloud.acct&&cloud.acct.membership&&cloud.acct.membership.status==='approved');
+ const mayPlaceHere=!cloudStaff||isAdminAcct()||!!myLeadBooth();
+ const placed=registered&&mayPlaceHere;
  if(isNew){
   let id;do{id='VOL-'+state._volSeq++;}while(volunteers.some(x=>x.id===id));   /* never reuse a number already on this device */
   const rec=migrateVolunteer({id,name,phone,email:d.email,pledgeExpos:d.pledgeExpos,skills:d.skills,
    pref:d.pref,pref2:d.pref2,availability:d.avail,shirt:d.shirt,emergency:d.emergency,notes:d.notes,
-   status:registered?'registered':'prospect',booth:registered?d.pref[0]:null,
-   since:today,pledgedOn:today,registeredOn:registered?today:null,history:[]});
+   status:placed?'registered':'prospect',booth:placed?d.pref[0]:null,
+   since:today,pledgedOn:today,registeredOn:placed?today:null,history:[]});
   volunteers.push(rec);state.volId=id;
-  toast(registered?`${firstName(name)} registered at ${boothLabel(rec.booth)} ✓`:`Pledge received — ${firstName(name)} ✓`);
+  toast(placed?`${firstName(name)} registered at ${boothLabel(rec.booth)} ✓`:`Pledge received — ${firstName(name)} ✓`);
  }else{
-  /* in the shared database, where a person stands is the admin's or the station leader's call — the place-guard
-     trigger refuses anybody else writing booth. A plain staff edit touches only the pledge fields; the demo and
-     the admins' own form keep the old one-tap registration. */
-  const cloudStaff=!!(cloud.user&&cloud.acct&&cloud.acct.membership&&cloud.acct.membership.status==='approved');
-  const mayPlaceHere=!cloudStaff||isAdminAcct()||!!myLeadBooth();
   Object.assign(v,{name,phone,email:d.email,pledgeExpos:d.pledgeExpos,skills:[...d.skills],
    pref:[...d.pref],pref2:d.pref2,availability:[...d.avail],shirt:d.shirt,emergency:d.emergency,notes:d.notes});
   if(mayPlaceHere){

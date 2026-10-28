@@ -127,7 +127,7 @@ export function acctGateHTML(st){
   ${out}${meFormHTML('gm')}${leave}${admin}`;
  return `${title('My account')}
   ${acctNote(esc(m.full_name||a.email||'')+' · '+roleLabel(m)+' of <b class="text-[#33504f]">'+esc(c.name)+'</b>')}
-  ${healthHTML()}${pledgeHTML()}${myTeamHTML()}${meFormHTML('gm')}<div class="pf">${profPasswordBox()}</div>
+  ${healthHTML()}${notifBoxHTML()}${pledgeHTML()}${myTeamHTML()}${meFormHTML('gm')}<div class="pf">${profPasswordBox()}</div>
   <button data-action="cloudSignOut" class="btn btn-glass mt-4 w-full py-2.5 text-xs text-[#5b7178]">Sign out</button>${leave}${admin}<div class="pf mt-3">${profDeleteHTML()}</div>`;
 }
 function churchPickHTML(){
@@ -256,6 +256,11 @@ export function healthHTML(){
    The member's pledge is a volunteers row linked through memberships.volunteer_id. cloud.pledge: undefined = not
    loaded yet, null = no pledge, object = the row my_pledge() returned. The form reuses sections 1–3 of the staff
    pledge form (volunteer.js pledgeFormParts) with its own draft, state.mf, so the two never write each other. */
+/* a plain member only ever sees the gate screen: the bell and the hub must be reachable from there too */
+function notifBoxHTML(){
+ const n=cloud.notifN||0;
+ return acctBox('Notifications',`<button data-action="openNotifs" class="btn btn-soft w-full py-2.5 text-xs"><span id="gateNotifN">${n>0?`${n} new notification${n>1?'s':''}`:'Open notifications'}</span></button>`);
+}
 export function pledgeHTML(){
  const m=cloud.acct&&cloud.acct.membership;
  if(!m||m.status!=='approved')return '';
@@ -408,11 +413,15 @@ export function notifRefresh(){
   const d=$('#'+id);if(!d)continue;
   if(cloud.user&&n>0){d.style.display='flex';d.textContent=n>9?'9+':String(n);}else d.style.display='none';
  }
+ const g=$('#gateNotifN');          /* the member gate is a screen of its own: it carries the count too */
+ if(g)g.textContent=n>0?`${n} new notification${n>1?'s':''}`:'Open notifications';
 }
 export async function notifCount(){
  if(!cloud.client||!cloud.user){cloud.notifN=0;notifRefresh();return;}
- const r=await cloud.client.from('notifications').select('id,read_at',{count:'exact',head:true}).eq('user_id',cloud.user.id).eq('read_at',null);
- if(r.error)return;                        /* offline: the bell keeps the last known count */
+ /* PostgREST has no `eq.null`: the NULL test is `is.null`. (`eq('read_at',null)` sends read_at=eq.null, which
+    the database rejects as an invalid timestamp, so the count never loaded.) */
+ const r=await cloud.client.from('notifications').select('id,read_at',{count:'exact',head:true}).eq('user_id',cloud.user.id).is('read_at',null);
+ if(r.error){notifRefresh();return;}       /* offline: keep the last known count, but still show the bell */
  cloud.notifN=typeof r.count==='number'?r.count:(Array.isArray(r.data)?r.data.length:0);
  notifRefresh();
 }
@@ -440,9 +449,11 @@ export function openNotifs(){
 }
 async function loadNotifs(){
  if(!cloud.client||!cloud.user)return;
- const r=await cloud.client.from('notifications').select('id,kind,title,body,created_at,read_at').eq('user_id',cloud.user.id).order('created_at').range(0,49);
+ /* newest first: an ascending order + range(0,49) would fetch the OLDEST fifty and "mark all read" could then
+    never clear the newest unread ones */
+ const r=await cloud.client.from('notifications').select('id,kind,title,body,created_at,read_at').eq('user_id',cloud.user.id).order('created_at',{ascending:false}).range(0,49);
  if(r.error){cloud.notifs=null;cloud.notifsOffline=isOfflineErr(r.error.message);renderNotifs();return;}
- const rows=r.data||[];rows.reverse();      /* newest first */
+ const rows=r.data||[];
  cloud.notifs=rows;renderNotifs();
 }
 const KIND_L={membership:'Account',placement:'Placement',lead:'Team leader',church:'Church',pledge:'Pledge',team:'My team',shift:'Shift'};
@@ -929,6 +940,9 @@ export async function cloudSignOut(force){
 }
 
 /* ---------- pull, merge, push ---------- */
+/* The place-guard trigger answers 42501 with hint 'place_guard'. The message test keeps a database that has not
+   been updated yet working. Either way it is one row another desk has moved, not a bad sign-in. */
+const isPlaceRefusal=e=>!!e&&e.code==='42501'&&(e.hint==='place_guard'||/may place volunteers|choose team leaders/i.test(e.message||''));
 function cloudError(err,where){
  console.warn('cloud sync:',err);
  healthFromError(where||'sync',err);
@@ -939,7 +953,8 @@ function cloudError(err,where){
  }
  if(err&&(err.code==='PGRST205'||err.code==='PGRST202'||/schema cache|could not find the (table|function)/i.test(msg)))
   {cloud.blocked=true;setCloud('error','The database tables are not set up yet. Run supabase/schema.sql in the Supabase SQL editor.');return;}
- if(err&&(err.code==='42501'||/row-level security|permission denied/i.test(msg)))
+ /* the place guard also answers 42501, but that is one row another desk has already moved, not a bad sign-in */
+ if(err&&(err.code==='42501'||/row-level security|permission denied/i.test(msg))&&!isPlaceRefusal(err))
   {cloud.blocked=true;setCloud('error','This sign-in is not on the staff list yet. Ask the administrator to add it (step 3 at the bottom of supabase/schema.sql).');return;}
  setCloud('error',msg||'Sync failed');
  clearTimeout(cloud.retryT);cloud.retryT=setTimeout(()=>cloudSync(),60000);
@@ -1047,16 +1062,32 @@ async function pushDirty(){
   }
  }
 }
-async function pushOne(kind,o){
+async function pushOne(kind,o,again){
  const k=KINDS[kind],row=k.toRow(o),s=sigOf(row),fresh=cloud.synced[kind][o.id]===undefined;
  const q=fresh?cloud.client.from(k.table).insert(inChurch(row)):cloud.client.from(k.table).upsert(inChurch(row),{onConflict:conflictOn()});
  const {error}=await q;
  if(!error){cloud.synced[kind][o.id]=s;return;}
  if(fresh&&error.code==='23505')return resolveConflict(kind,o,s);
- if(/^2[23]/.test(error.code||'')){                         /* data the database refuses: skip this row, keep syncing the rest */
+ /* one row's station was changed on another desk: take the server's placement, keep this phone's other edits,
+    and try once more. Never let it stop the rest of the desk (it used to set cloud.blocked). */
+ const placeRefused=isPlaceRefusal(error);
+ if(placeRefused&&!again&&kind==='vol'&&await resolvePlacement(o))return;
+ if(/^2[23]/.test(error.code||'')||placeRefused){           /* data the database refuses: skip this row, keep syncing the rest */
   cloud.rejected[o.id]=s;toast(`${o.id} was not uploaded: ${error.message}`);return;
  }
  throw error;
+}
+/* the server's placement wins over a stale copy; the local name, notes and other edits are kept */
+async function resolvePlacement(o){
+ let q=cloud.client.from('volunteers').select('*').eq('id',o.id);
+ if(cloud.churchId)q=q.eq('church_id',cloud.churchId);      /* ids repeat across churches; RLS already scopes this */
+ let r;try{r=await q.maybeSingle();}catch(e){return false;}
+ if(r.error||!r.data)return false;
+ const srv=KINDS.vol.fromRow(r.data);
+ o.booth=srv.booth;o.lead=!!srv.lead;o.role=srv.role||'';o.status=srv.status||o.status;
+ o.registeredOn=srv.registeredOn;o.checkedIn=!!srv.checkedIn;
+ await pushOne('vol',o,true);
+ return true;
 }
 /* the id is already taken on the server */
 /* Visitor numbers are given by each phone, so two desks registering at the same moment can pick the same one. They are

@@ -863,8 +863,9 @@ function makeServer() {
     insert(row) { this.op = 'insert'; this.row = row; return this; }
     upsert(row, opts) { this.op = 'upsert'; this.row = row; srv.lastConflict = opts && opts.onConflict; return this; }
     eq(c, v) { this.f.push([c, v]); return this; }
+    is(c, v) { this.f.push([c, v]); return this; }          /* PostgREST's IS NULL */
     gte(c, v) { this.gte_.push([c, v]); return this; }
-    order(c) { this.sort.push(c); return this; }
+    order(c, o) { this.sort.push([c, !o || o.ascending !== false]); return this; }
     range(a, b) { this.rng = [a, b]; return this; }
     maybeSingle() { this.one = true; return this; }
     then(res, rej) { return this.run().then(res, rej); }
@@ -877,7 +878,7 @@ function makeServer() {
         let rows = srv.staff ? [...tbl.values()] : [];        /* RLS: non-staff silently see nothing */
         this.f.forEach(([c, v]) => { rows = rows.filter(r => r[c] === v); });
         this.gte_.forEach(([c, v]) => { rows = rows.filter(r => String(r[c]) >= String(v)); });
-        if (this.sort.length) rows.sort((a, b) => { for (const c of this.sort) { const x = String(a[c]), y = String(b[c]); if (x !== y) return x < y ? -1 : 1; } return 0; });
+        if (this.sort.length) rows.sort((a, b) => { for (const [c, asc] of this.sort) { const x = String(a[c]), y = String(b[c]); if (x !== y) return (x < y ? -1 : 1) * (asc ? 1 : -1); } return 0; });
         /* PostgREST caps every response at max-rows (1000 by default), whatever range was asked for */
         const [from, to] = this.rng || [0, Infinity];
         rows = rows.slice(from, Math.min(to + 1, from + srv.maxRows));
@@ -885,6 +886,20 @@ function makeServer() {
       }
       if (!srv.staff) return { data: null, error: { code: '42501', message: 'new row violates row-level security policy' } };
       if (!valid(this.t, this.row)) return { data: null, error: { code: '23514', message: 'violates check constraint' } };
+      /* the place guard's 42501: once (another desk moved the row) or every time (the database keeps refusing it).
+         srv.guardStyle words the error: 'both' (hint and message, the default), 'hint' (message reworded) or
+         'message' (an older database that sends no hint) */
+      const guardError = () => {
+        const style = srv.guardStyle || 'both';
+        return { data: null, error: { code: '42501',
+          message: style === 'hint' ? 'Placement refused' : "Only the church's admins and the station's team leader may place volunteers",
+          ...(style === 'message' ? {} : { hint: 'place_guard' }) } };
+      };
+      if (srv.refuseOnce && srv.refuseOnce.has(this.row.id)) {
+        srv.refuseOnce.delete(this.row.id);
+        return guardError();
+      }
+      if (srv.refuseAlways && srv.refuseAlways.has(this.row.id)) return guardError();
       if (this.op === 'insert') {
         if (tbl.has(this.row.id)) return { data: null, error: { code: '23505', message: 'duplicate key value' } };
         const ts = created();
@@ -1327,6 +1342,66 @@ function makeServer() {
   await sleep(100);
   ok('a refused row is skipped, the rest still upload', srv.tables.attendees.has('EXPO-340') && !srv.tables.attendees.has('EXPO-1'));
   ok('…without looping on it', g.cloudPending() === 0 && C.status === 'online', C.status + ' ' + g.cloudPending());
+
+  /* a placement refusal (42501 from the place guard) is one row, not a bad sign-in */
+  device(); await signIn();
+  {
+    /* a signed-in device drops the demo copy, so build the two rows this test needs */
+    const mk = (id, name, booth) => g.migrateVolunteer({ id, name, phone: '082 000 0001', email: '', status: 'registered',
+      pledgeExpos: 1, skills: [], pref: [], pref2: '', booth, availability: [], shirt: '', emergency: '', since: '2026-01-01',
+      notes: '', pledgedOn: '2026-01-01', registeredOn: '2026-01-01', checkedIn: false, role: '', shift: '', lead: false, history: [] });
+    const v = mk('VOL-8101', 'Stale Booth', 'sugar'), w = mk('VOL-8102', 'No Server Row', 'kids');
+    g.volunteers.push(v, w);
+    const originalName = v.name;
+    v.name = 'Renamed Here';
+    const serverRow = { ...g.volToRow({ ...v, name: originalName, booth: 'bp' }), created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' };
+    srv.tables.volunteers.set(v.id, serverRow);
+    C.synced.vol[v.id] = g.sigOf(g.volToRow({ ...v, name: originalName, booth: 'bp' }));
+    srv.refuseOnce = new Set([v.id]);
+    await g.cloudPush();
+    ok('a placement refusal takes the server station, keeps the local edits and does not block the desk',
+      C.blocked === false && v.booth === 'bp' && v.name === 'Renamed Here' && !C.rejected[v.id],
+      JSON.stringify({ booth: v.booth, name: v.name, blocked: C.blocked, rejected: Object.keys(C.rejected) }));
+    ok('the desk comes back online after a placement refusal', C.status === 'online', C.status);
+    srv.tables.volunteers.delete(w.id);
+    C.synced.vol[w.id] = g.sigOf({ ...g.volToRow(w), booth: 'plan' });
+    srv.refuseOnce = new Set([w.id]);
+    await g.cloudPush();
+    ok('a placement refusal with no server row is skipped, not looped, and still does not block',
+      !!C.rejected[w.id] && C.blocked === false, JSON.stringify({ blocked: C.blocked, rejected: Object.keys(C.rejected) }));
+    /* a refusal that repeats (the real database refuses the same row every time): one retry, then skipped, no loop */
+    const serverCopy = (r, booth) => ({ ...g.volToRow({ ...r, booth }), created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' });
+    const x = mk('VOL-8103', 'Always Refused', 'sugar');
+    g.volunteers.push(x);
+    srv.tables.volunteers.set(x.id, serverCopy(x, 'bp'));
+    C.synced.vol[x.id] = g.sigOf(g.volToRow({ ...x, booth: 'bp' }));
+    x.name = 'Edited Here';
+    srv.refuseAlways = new Set([x.id]);
+    const callsBefore = srv.calls.length;
+    await g.cloudPush();
+    const sent = srv.calls.slice(callsBefore).filter(c => c === 'upsert:volunteers:' + x.id).length;
+    ok('a placement refusal that repeats is tried twice at most, then skipped, and does not block the desk',
+      sent === 2 && !!C.rejected[x.id] && C.blocked === false,
+      JSON.stringify({ sent, blocked: C.blocked, rejected: Object.keys(C.rejected) }));
+    srv.refuseAlways = null;
+    /* recognised by the hint even if the message is reworded, and by the message on a database that sends no hint */
+    for (const [style, id] of [['hint', 'VOL-8104'], ['message', 'VOL-8105']]) {
+      const y = mk(id, 'Style ' + style, 'sugar');
+      g.volunteers.push(y);
+      srv.tables.volunteers.set(y.id, serverCopy(y, 'bp'));
+      C.synced.vol[y.id] = g.sigOf(g.volToRow({ ...y, booth: 'bp' }));
+      y.name = 'Edited ' + style;
+      srv.guardStyle = style;
+      srv.refuseOnce = new Set([y.id]);
+      await g.cloudPush();
+      ok('a placement refusal worded "' + style + '" is one row, not a bad sign-in',
+        C.blocked === false && y.booth === 'bp' && !C.rejected[y.id],
+        JSON.stringify({ blocked: C.blocked, booth: y.booth, rejected: Object.keys(C.rejected) }));
+    }
+    srv.guardStyle = null;
+    srv.refuseOnce = null;
+    srv.refuseAlways = null;
+  }
 
   /* tables missing */
   device(); const saved = srv.tables.attendees; srv.tables.attendees = undefined;
@@ -2696,6 +2771,29 @@ function makeServer() {
       g.openNotifs(); await sleep(120);
       ok('offline the sheet says so instead of pretending', /Connect to see new notifications/.test($el('notifBody').innerHTML), $el('notifBody').innerHTML.slice(0, 120));
       srv.offline = false;
+      /* a count that fails must not leave the bell hidden for ever (it used to return before notifRefresh) */
+      $el('notifBell').classList.add('hidden');
+      srv.tables.notifications = undefined;
+      await g.notifCount();
+      ok('a failed unread count still reveals the bell', !$el('notifBell').classList.contains('hidden'));
+      /* newest first: 60 rows, the page must be 11..60, not 1..50 */
+      srv.tables.notifications = new Map(Array.from({ length: 60 }, (_, i) => {
+        const id = i + 1;
+        return [id, { id, user_id: 'u-notif', kind: 'x', title: 'T' + String(id).padStart(2, '0'), body: '',
+          created_at: new Date(Date.UTC(2026, 0, 1, 0, 0, i)).toISOString(), read_at: id <= 10 ? 'read' : null }];
+      }));
+      g.openNotifs(); await sleep(120);
+      const nh2 = $el('notifBody').innerHTML;
+      ok('the hub fetches the newest 50, not the oldest 50', nh2.includes('T60') && !nh2.includes('T01'), nh2.slice(0, 160));
+      ok('mark all read targets the newest loaded row', nh2.includes('data-args="60"'), nh2.slice(0, 160));
+      /* a plain member only sees the gate screen: the hub must be reachable from there */
+      const savedAcct = C.acct;
+      C.acct = { email: 'm@ex.org', membership: { role: 'member', status: 'approved', full_name: 'Mem' }, church: { id: 'c1', name: 'Church', status: 'active' } };
+      C.pledge = null; C.myTeam = [];
+      const gateHTML = g.acctGateHTML('member');
+      ok('a plain member opens the notifications hub from their gate screen',
+        /data-action="openNotifs"/.test(gateHTML) && /gateNotifN/.test(gateHTML));
+      C.acct = savedAcct; C.pledge = undefined; C.myTeam = undefined;
       notifReset(g); srv.tables.notifications = new Map(); srv.staff = false; C.user = null;
       ok('no new polling: the app still has exactly two timers (sync and queue ticks)',
         (srcText.match(/setInterval\(/g) || []).length === 2, (srcText.match(/setInterval\(/g) || []).length);
@@ -2922,8 +3020,8 @@ function makeServer() {
     /* only admins and the station's leader may move people now, so this move runs as the admin */
     const moved = await as(U.adm, `update public.volunteers set booth = 'kitchen' where church_id = $1 and id = 'VOL-2001'`, [CH]);
     row = (await sys(`select lead, role from public.volunteers where church_id = $1 and id = 'VOL-2001'`, [CH]))[0];
-    ok('moving a leader to another station clears their leadership (an update that changes only the booth)',
-      row.lead === false, JSON.stringify(row) + (moved.error ? ' · move error: ' + moved.error.message : ''));
+    ok('moving a leader to another station clears their leadership and its role text (an update that changes only the booth)',
+      row.lead === false && row.role === '', JSON.stringify(row) + (moved.error ? ' · move error: ' + moved.error.message : ''));
     r = await as(U.mem1, `select public.my_pledge() p`);
     ok('the member sees the loss of the title straight away', !r.error && r.rows[0].p.lead === false);
     await as(U.adm, `update public.volunteers set booth = 'bp', lead = true where church_id = $1 and id = 'VOL-2001'`, [CH]);
@@ -2956,8 +3054,9 @@ function makeServer() {
       JSON.stringify(afterSwap));
     /* mem2's linked row now leads bp — and mem2 is a plain member with no staff role */
     r = await as(U.mem2, `select * from public.my_team()`);
-    ok('my_team works for a leader who is only a member (no staff access), and names their people',
-      !r.error && r.rows.some(x => x.id === 'VOL-1003') && r.rows.every(x => x.status !== undefined), r.error && r.error.message);
+    ok('my_team works for a leader who is only a member (no staff access), names their people and not themselves',
+      !r.error && r.rows.some(x => x.id === 'VOL-1003') && !r.rows.some(x => x.id === 'VOL-1002')
+        && r.rows.every(x => x.status !== undefined), r.error && r.error.message);
     ok('my_team never carries notes, emergency contacts or history',
       r.rows.length > 0 && r.rows.every(x => !('notes' in x) && !('emergency' in x) && !('history' in x)), JSON.stringify(r.rows[0]));
     await sys(`insert into public.volunteers (church_id, id, name, phone, pref, notes, emergency) values ($1,'VOL-3002','Chooser','082 555 0002','{bp}','secret','mum 911')`, [CH]);
@@ -3015,7 +3114,10 @@ function makeServer() {
     await sys(`insert into public.volunteers (church_id, id, name, phone) values ($1,'VOL-4002','No Account','082 666 0002')`, [CH]);
     markBefore = await mark();
     await as(U.adm, `select * from public.place_volunteer('VOL-4002','bp')`);
-    ok('an unlinked volunteer generates no notification for anybody', (await mark()) === markBefore, 'an extra row appeared for a user with no link');
+    const nNoAccount = (await notifs(U.mem1)).filter(x => x.id > markBefore);
+    ok('an unlinked volunteer gets no row of their own, but the station leader is told they joined',
+      nNoAccount.length === 1 && nNoAccount[0].kind === 'team' && /joined your team/.test(nNoAccount[0].title),
+      JSON.stringify(nNoAccount));
     /* mem2 becomes a member of the church so their rows can be compared */
     await as(U.adm, `select public.set_member($1,'member','approved')`, [U.mem2]);
     r = await as(U.mem1, `select public.mark_notifications_read(null) n`);
