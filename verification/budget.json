@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "description": "Size and external-origin budget for the self-contained dist/index.html.",
+  "baseline": {
+    "appPath": "dist/index.html",
+    "sha256": "C48D77F6346A983FDBE33C287A3178D22CD38EFCDA0DA2DD9646ABCF3F3282A9",
+    "rawBytes": 567499,
+    "cssChars": 84700,
+    "inlineJsChars": 466164,
+    "gzipBytes": 150090,
+    "gzipLevel": 9,
+    "gzipMethod": "node:zlib.gzipSync(buffer, { level: 9 })"
+  },
+  "budgets": {
+    "rawBytes": {
+      "pct": 2,
+      "limit": 578848
+    },
+    "cssChars": {
+      "pct": 2,
+      "limit": 86394
+    },
+    "inlineJsChars": {
+      "pct": 1,
+      "limit": 470825
+    }
+  },
+  "externalOrigins": {
+    "allowlist": [
+      "http://www.w3.org",
+      "https://*.supabase.co",
+      "https://*.supabase.in",
+      "https://cdn.jsdelivr.net",
+      "https://cdnjs.cloudflare.com",
+      "https://fonts.googleapis.com",
+      "https://fonts.gstatic.com",
+      "https://wa.me",
+      "https://winter-bonus-626a.ndlovufanelesibonge8.workers.dev",
+      "https://wlsrgihkijlvjyfxvhfl.supabase.co"
+    ],
+    "note": "Conservative scan of every absolute http(s) URL in the built page. Any origin not listed here fails the check, even if the URL is only a comment, namespace or CSP source."
+  }
+}
