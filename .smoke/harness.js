@@ -1092,12 +1092,12 @@ function makeServer() {
       && !/navDrop/.test(html) && !/nav-drop/.test(html) && !/_pillT/.test(srcText) && /_pillRaf/.test(srcText));
     ok('nav: the pill tint stays subtle on every tab (a strong hue read as a stray coloured circle on the active tab)',
       /\.nav-pill\{background-color:var\(--t2\);background-image:linear-gradient\(160deg,rgba\(255,255,255,\.95\),rgba\(255,255,255,\.55\)\)\}/.test(html));
-    ok('speed: the whole page is still between interactions — blobs, waves and shimmers are static, bars grow with transforms, nothing runs forever',
-      /\.blob\{position:absolute;border-radius:50%;opacity:\.75\}/.test(html) && !/\.blob\{[^}]*filter:blur/.test(html)
+    ok('speed: the page is still between interactions — the ambient blob layer is off, no drifting waves or shimmers, bars grow with transforms, nothing runs forever',
+      /\.ambient\{display:none\}/.test(html)
       && !/drift\d|@keyframes morph|waveT|waveX|shimmer/.test(html) && !/animation:[^;}]*\b(waveT|waveX|drift|shimmer)/.test(html)
       && /@keyframes fillIn\{from\{transform:scaleX\(0\)\}\}/.test(html) && /@keyframes fdgrow\{from\{transform:scaleX\(0\)\}\}/.test(html)
       && !/width:0[;}]/.test(html.match(/@keyframes (fillIn|fdgrow)\{[^}]*\}/g).join(''))
-      && !/is-scrolling/.test(html) && !/amb\.style\.transform/.test(body) && !/will-change:transform\}/.test(html.match(/\.blob\{[^}]*\}/g).join('')));
+      && !/is-scrolling/.test(html) && !/amb\.style\.transform/.test(body));
     g.state.tab = 'home';
     g.switchTab('plan');
     ok('screens: tapping a tab lands on it and renders the new screen at once',

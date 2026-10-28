@@ -193,3 +193,22 @@ export function jelly(el){if(!el)return;el.classList.remove('jelly');void el.off
  Promise.all(anims.map(a=>a.ready)).then(()=>setTimeout(leave,1600),leave);
  setTimeout(leave,5000);
 })();
+
+/* ================= APPEARANCE & THEME ================= */
+/* One data-theme attribute drives every colour through the --hx tokens. The default stays light until
+   every screen is migrated (Phase 6); then the default flips to dark to match the reference. */
+export function getTheme(){
+ try{return localStorage.getItem('newstart.theme')==='dark'?'dark':'light';}catch(e){return 'light';}
+}
+export function setTheme(t){
+ const theme=t==='dark'?'dark':'light';
+ try{localStorage.setItem('newstart.theme',theme);}catch(e){}
+ if(document.documentElement)document.documentElement.dataset.theme=theme;
+ const meta=document.querySelector('meta[name="theme-color"]');
+ if(meta)meta.setAttribute('content',theme==='dark'?'#0b0e0c':'#f4f3ee');
+}
+export function toggleTheme(){
+ const next=getTheme()==='dark'?'light':'dark';
+ setTheme(next);
+ return next;
+}
