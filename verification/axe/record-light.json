@@ -1,0 +1,1 @@
+﻿{"scenario":"record","theme":"light","violations":[],"incomplete":[{"id":"color-contrast","impact":"serious","help":"Elements must meet minimum color contrast ratio thresholds","nodes":79,"targets":[".text-\\[15px\\]",".h-7",".btn-primary","span[role=\"img\"] > .medal-v > .medal-lv",".medal-rk",".uppercase.tracking-wider.text-\\[10px\\]"]}]}

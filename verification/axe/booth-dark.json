@@ -1,0 +1,1 @@
+﻿{"scenario":"booth","theme":"dark","violations":[],"incomplete":[{"id":"color-contrast","impact":"serious","help":"Elements must meet minimum color contrast ratio thresholds","nodes":32,"targets":[".text-\\[15px\\]",".h-7","button[data-args=\"booth\"]",".medal-lv",".medal-rk",".min-w-0.flex-1 > .microlabel"]}]}

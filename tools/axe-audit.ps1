@@ -10,7 +10,7 @@
 #>
 [CmdletBinding()]
 param(
-  [ValidateSet('home','queue','care','serve','me','gate','muster','screen','results','plan','send')]
+  [ValidateSet('home','queue','care','serve','me','gate','muster','pledge','booth','record','screen','results','plan','send')]
   [string]$Scenario = 'home',
   [ValidateSet('light','dark')]
   [string]$Theme = 'light'
@@ -27,6 +27,7 @@ $base = [regex]::Replace($base,
 
 $gate = $Scenario -eq 'gate'
 $journey = $Scenario -in @('screen','results','plan','send')
+$team = $Scenario -in @('pledge','booth','record')
 $tab = $Scenario
 $scenarioJs = if ($gate) {
 @'
@@ -45,6 +46,12 @@ var root=document;
 @'
 var I=window.__NEWSTART.__internals;
 I.gateDemo();I.setTheme('__THEME__');I.state.activeId=I.attendees[0].id;I.state.tab='__TAB__';I.render();
+var root=document;
+'@
+} elseif ($team) {
+@'
+var I=window.__NEWSTART.__internals;
+I.gateDemo();I.setTheme('__THEME__');I.state.tab='serve';I.state.volTab='__TAB__';I.render();
 var root=document;
 '@
 } else {
