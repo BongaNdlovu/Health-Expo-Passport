@@ -1603,9 +1603,21 @@ function makeServer() {
   const scale = fullMs / smallMs;
   ok('change detection grows in step with the rows (3900 rows vs 390: ' + scale.toFixed(1) + 'x)', scale < 16 && g.attendees.length === N && g.volunteers.length === VN,
     fullMs.toFixed(1) + ' ms vs ' + smallMs.toFixed(1) + ' ms');
-  const persT = Date.now(); g.persistNow(); const persMs = Date.now() - persT;
+  /* One wall-clock sample in a process holding 3,000 visitors is dominated by GC pauses, not by the save.
+     Force a write on each pass (a harmless note field, restored afterwards) and take the median of five.
+     The 300 ms bar is unchanged. */
+  const persSamples = [];
+  const keptNote = g.attendees[0].note;
+  for (let i = 0; i < 5; i++) {
+    g.attendees[0].note = 'perf-' + i;
+    const t = Date.now(); g.persistNow(); persSamples.push(Date.now() - t);
+  }
+  if (keptNote === undefined) delete g.attendees[0].note; else g.attendees[0].note = keptNote;
+  g.persistNow();
+  persSamples.sort((a, b) => a - b);
+  const persMs = persSamples[2];
   const payloadKB = Math.round(store.get('newstart.passport.v2').length / 1024);
-  ok('saving to the device is fast (' + persMs + ' ms, ' + payloadKB + ' KB of the ~5000 KB limit)', persMs < 300 && payloadKB < 4000, persMs + 'ms ' + payloadKB + 'KB');
+  ok('saving to the device is fast (' + persMs + ' ms median of 5, ' + payloadKB + ' KB of the ~5000 KB limit)', persMs < 300 && payloadKB < 4000, persMs + 'ms ' + payloadKB + 'KB');
 
   g.state.tab = 'home'; g.state.vq = ''; g.render();
   const homeRows = ($main.innerHTML.match(/data-action="switchTo"/g) || []).length;
