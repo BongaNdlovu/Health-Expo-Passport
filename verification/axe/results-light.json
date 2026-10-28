@@ -1,0 +1,1 @@
+﻿{"scenario":"results","theme":"light","violations":[],"incomplete":[{"id":"color-contrast","impact":"serious","help":"Elements must meet minimum color contrast ratio thresholds","nodes":58,"targets":[".text-\\[15px\\]",".h-7",".jr-av",".is-past > .jr-dot",".is-on > .jr-dot",".is-on > .jr-lbl"]}]}

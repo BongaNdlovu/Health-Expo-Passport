@@ -1,0 +1,1 @@
+﻿{"scenario":"send","theme":"light","violations":[],"incomplete":[{"id":"color-contrast","impact":"serious","help":"Elements must meet minimum color contrast ratio thresholds","nodes":35,"targets":[".text-\\[15px\\]",".h-7",".jr-av",".is-past.jr-step[data-args=\"screen\"] > .jr-dot","button[data-args=\"results\"] > .jr-dot",".is-past.jr-step[data-args=\"plan\"] > .jr-dot"]}]}

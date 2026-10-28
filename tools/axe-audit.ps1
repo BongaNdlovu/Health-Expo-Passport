@@ -10,7 +10,7 @@
 #>
 [CmdletBinding()]
 param(
-  [ValidateSet('home','queue','care','serve','me','gate','muster')]
+  [ValidateSet('home','queue','care','serve','me','gate','muster','screen','results','plan','send')]
   [string]$Scenario = 'home',
   [ValidateSet('light','dark')]
   [string]$Theme = 'light'
@@ -26,6 +26,7 @@ $base = [regex]::Replace($base,
   '$1default-src ''self'' ''unsafe-inline'' data: blob: https:; connect-src https: wss:; img-src ''self'' data: blob: https:$2', 1)
 
 $gate = $Scenario -eq 'gate'
+$journey = $Scenario -in @('screen','results','plan','send')
 $tab = $Scenario
 $scenarioJs = if ($gate) {
 @'
@@ -38,6 +39,12 @@ var root=document.getElementById('authGate');
 @'
 var I=window.__NEWSTART.__internals;
 I.gateDemo();I.setTheme('__THEME__');I.state.tab='serve';I.state.volTab='muster';I.render();
+var root=document;
+'@
+} elseif ($journey) {
+@'
+var I=window.__NEWSTART.__internals;
+I.gateDemo();I.setTheme('__THEME__');I.state.activeId=I.attendees[0].id;I.state.tab='__TAB__';I.render();
 var root=document;
 '@
 } else {
@@ -54,6 +61,7 @@ $audit = @'
 window.addEventListener('load',function(){setTimeout(async function(){
  var out={scenario:'__TAB__',theme:'__THEME__',violations:[],incomplete:[]};
  try{
+  var st=document.createElement('style');st.textContent='*{animation:none!important;transition:none!important}#main,#main *{opacity:1!important}';document.head.appendChild(st);
   __SCENARIO__
   var r=await axe.run(root,{runOnly:{type:'tag',values:['wcag2a','wcag2aa']}});
   function clean(list){return list.map(function(v){return {id:v.id,impact:v.impact,help:v.help,nodes:v.nodes.length,targets:v.nodes.slice(0,6).map(function(n){return n.target.join(' ');})};});}

@@ -1,0 +1,1 @@
+﻿{"scenario":"screen","theme":"light","violations":[],"incomplete":[{"id":"color-contrast","impact":"serious","help":"Elements must meet minimum color contrast ratio thresholds","nodes":120,"targets":[".text-\\[15px\\]",".h-7",".jr-av",".is-on > .jr-dot",".is-on > .jr-lbl",".jr-step[data-args=\"results\"][data-action=\"switchTab\"] > .jr-dot"]}]}

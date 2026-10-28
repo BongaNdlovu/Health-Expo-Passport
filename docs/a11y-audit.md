@@ -12,7 +12,7 @@ powershell -File tools/axe-audit.ps1 -Scenario home -Theme dark
 
 ## Result
 
-**14 screen × theme combinations. 0 violations.**
+**22 screen × theme combinations. 0 violations.**
 
 | Screen | Light | Dark |
 |---|---:|---:|
@@ -23,6 +23,10 @@ powershell -File tools/axe-audit.ps1 -Scenario home -Theme dark
 | Team / volunteer hub | 0 | 0 |
 | Team / Muster | 0 | 0 |
 | Profile | 0 | 0 |
+| Journey / Check | 0 | 0 |
+| Journey / Results | 0 | 0 |
+| Journey / Plan | 0 | 0 |
+| Journey / Send home | 0 | 0 |
 
 Earlier this run the audit found three real issues, now fixed:
 
@@ -33,13 +37,17 @@ Earlier this run the audit found three real issues, now fixed:
    `--hx-ink-2`.
 3. **Volunteer “Viewing …” strip, Muster in dark** — brown/dark inline colours on the dark bar.
    Now `--hx-ink-2` / `--hx-ink`; Muster added to the audited matrix.
-4. **Input borders and dim text** — raised to the 3:1 UI-component and 4.5:1 text bars.
+4. **Journey chrome, Plan/Send in dark** — header name, step labels, plan links, action titles and
+   send rows used light-theme hex values. Replaced with tokens; Check/Results/Plan/Send added to the
+   matrix (22 combinations).
+5. **Input borders and dim text** — raised to the 3:1 UI-component and 4.5:1 text bars.
 
 ## Scope / limits
 
 - Automated WCAG 2 A/AA only. It does not replace a manual keyboard, screen-reader or cognitive
   review; several axe “incomplete” contrast checks (gradients/overlays) are not manually resolved.
-- Only the six main screens were audited, at one viewport (500×1000), in their default state.
-  Modals, the journey tabs, and dynamic validation/error states are not covered by this matrix.
+- Only the main tabs, the gate and the four journey steps were audited, at one viewport
+  (500×1000), in their default state. Modals, the Team sub-tabs other than Muster, Food, church/admin
+  screens and dynamic validation/error states are not covered by this matrix yet.
 - Tap-target and focus checks are CSS-level (44 px hit areas, mint focus ring, gate `inert`), not
   re-measured by axe.
