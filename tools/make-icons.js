@@ -22,9 +22,9 @@ const segDist = (px, py, [ax, ay], [bx, by]) => {
 };
 const onMark = (x, y, w) => ECG.slice(1).some((p, i) => segDist(x, y, ECG[i], p) <= w);
 
-/* NEWSTART teal gradient, top-left to bottom-right */
+/* NEWSTART logo green gradient, top-left to bottom-right */
 const lerp = (a, b, t) => a + (b - a) * t;
-const teal = t => [lerp(0x58, 0x2a, t), lerp(0xb5, 0x7a, t), lerp(0xa7, 0x70, t)];
+const green = t => [lerp(0x34, 0x15, t), lerp(0xd3, 0x80, t), lerp(0x75, 0x3d, t)];
 
 /* colour of one sample point (u,v in 0..1 across the icon) → [r,g,b,a] 0..255 */
 function sample(u, v, { radius, markScale, stroke }) {
@@ -36,7 +36,7 @@ function sample(u, v, { radius, markScale, stroke }) {
   const x = (u - 0.5) * 2 / markScale;
   const y = (0.5 - v) * 2 / markScale;
   if (onMark(x, y, stroke / 2)) return [255, 255, 255, 255];
-  return [...teal((u + v) / 2), 255];
+  return [...green((u + v) / 2), 255];
 }
 
 /* ---- rasterise with 4x4 supersampling ---------------------------------------- */
