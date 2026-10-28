@@ -1092,8 +1092,8 @@ function makeServer() {
       && !/navDrop/.test(html) && !/nav-drop/.test(html) && !/_pillT/.test(srcText) && /_pillRaf/.test(srcText));
     ok('nav: the pill tint stays subtle on every tab (a strong hue read as a stray coloured circle on the active tab)',
       /\.nav-pill\{background-color:var\(--t2\);background-image:linear-gradient\(160deg,rgba\(255,255,255,\.95\),rgba\(255,255,255,\.55\)\)\}/.test(html));
-    ok('speed: the page is still between interactions — the ambient blob layer is off, no drifting waves or shimmers, bars grow with transforms, nothing runs forever',
-      /\.ambient\{display:none\}/.test(html)
+    ok('speed: the page is still between interactions — no ambient blob layer, no drifting waves or shimmers, bars grow with transforms, nothing runs forever',
+      !/class="ambient"/.test(html) && !/\.ambient\{/.test(html)
       && !/drift\d|@keyframes morph|waveT|waveX|shimmer/.test(html) && !/animation:[^;}]*\b(waveT|waveX|drift|shimmer)/.test(html)
       && /@keyframes fillIn\{from\{transform:scaleX\(0\)\}\}/.test(html) && /@keyframes fdgrow\{from\{transform:scaleX\(0\)\}\}/.test(html)
       && !/width:0[;}]/.test(html.match(/@keyframes (fillIn|fdgrow)\{[^}]*\}/g).join(''))

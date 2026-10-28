@@ -112,7 +112,7 @@ function movePill(){
  const it=/** @type {HTMLElement} */ (document.querySelector('.nav-item-active')),p=$('#navPill'),box=/** @type {HTMLElement} */ ($('#navItems'));
  if(!it||!p||!box)return;
  const hue=(it.className.match(/hue-\w+/)||[''])[0];
- p.className='nav-pill '+hue;document.querySelector('.ambient').className='ambient '+hue;
+ p.className='nav-pill '+hue;
  const x=it.offsetLeft+box.offsetLeft,w=it.offsetWidth,h=it.offsetHeight,y=box.offsetTop,T=`translate3d(${x}px,${y}px,0)`;
  p.style.height=h+'px';
  if(_pill.x===null||(_pill.x===x&&_pill.w===w)){p.style.transition='none';p.style.width=w+'px';p.style.transform=T;}
