@@ -85,5 +85,6 @@ export function bannerHTML(o){
  return `<div class="hx-banner">
   <div class="hx-banner-top"><span>${esc(o.eyebrow||'')}</span><em>${esc(o.meta||'')}</em></div>
   <div class="hx-banner-bottom"><strong>${esc(o.title||'')}</strong>${o.cta||''}</div>
+  ${o.sub?`<span class="hx-banner-note">${esc(o.sub)}</span>`:''}
  </div>`;
 }

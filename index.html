@@ -983,6 +983,7 @@
   .hx-banner-top em{font-style:normal;opacity:.75;font-size:11px}
   .hx-banner-bottom{display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
   .hx-banner-bottom strong{font-size:16px;font-weight:700;letter-spacing:-.3px;line-height:1.15}
+  .hx-banner-note{font-size:10.5px;font-weight:600;color:rgba(255,255,255,.78);line-height:1.3}
 
   /* ---- hero top bar, practice banner, sheet chrome (mockup composition) ---- */
   .hx-hero-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -1004,8 +1005,12 @@
   .hx-theme-dark{display:none}
   html[data-theme="dark"] .hx-theme-light{display:none}
   html[data-theme="dark"] .hx-theme-dark{display:inline}
-  .hx-round{width:30px;height:30px;padding:0;border-radius:50%;display:grid;place-items:center;cursor:pointer;
+  .hx-round{position:relative;width:30px;height:30px;padding:0;border-radius:50%;display:grid;place-items:center;cursor:pointer;
     border:1px solid var(--hx-line);background:var(--hx-surface);color:var(--hx-ink-2)}
+  .hx-notif-dot{position:absolute;right:-3px;top:-3px;min-width:14px;height:14px;padding:0 3px;border-radius:999px;
+    background:#dc3522;color:#fff;font-size:8.5px;font-weight:800;line-height:14px;text-align:center;display:none;place-items:center}
+  .hx-cloud-dot{position:absolute;right:-1px;bottom:-1px;width:8px;height:8px;border-radius:50%;
+    background:#9db0b4;box-shadow:0 0 0 1.5px var(--hx-surface)}
   .hx-round svg{width:13px;height:13px}
   .hx-round-ivory{border-color:rgba(20,24,21,.12);background:rgba(20,24,21,.05);color:#141715}
   .hx-practice{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 15px;
@@ -1099,17 +1104,17 @@
              class="relative flex h-9 w-9 flex-none items-center justify-center rounded-[14px] text-white"
              style="background:linear-gradient(135deg,#58b5a7,#2f8b7f);box-shadow:0 8px 18px -10px rgba(37,120,110,.9),inset 0 1px 0 rgba(255,255,255,.35)">
           <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12zM7.5 12h2.25l1.5-3 2 5 1.5-2h2.25"/></svg>
-          <span id="cloudDot" style="position:absolute;right:-3px;top:-3px;width:11px;height:11px;border-radius:9999px;background:#9db0b4;border:2px solid #fff"></span>
+          <span id="cloudDot" data-cloud-dot style="position:absolute;right:-3px;top:-3px;width:11px;height:11px;border-radius:9999px;background:#9db0b4;border:2px solid #fff"></span>
         </button>
         <div class="hdr-title leading-tight" style="white-space:nowrap">
           <div class="display text-[15px] font-extrabold tracking-tight text-[#123033]">Health Expo Passport</div>
         </div>
       </div>
       <div class="hdr-tools flex items-center gap-2">
-        <button id="notifBell" data-action="openNotifs" aria-label="Notifications" title="Notifications"
+        <button id="notifBell" data-action="openNotifs" data-notif-bell-hide aria-label="Notifications" title="Notifications"
           class="btn btn-glass relative hidden h-9 w-9 flex-none items-center justify-center rounded-[14px]">
           <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
-          <span id="notifDot" style="display:none;position:absolute;right:-4px;top:-4px;min-width:17px;height:17px;padding:0 4px;border-radius:9999px;background:#d88a55;border:2px solid #fff;color:#fff;font-size:9px;font-weight:800;line-height:13px;text-align:center"></span>
+          <span id="notifDot" data-notif-dot style="display:none;position:absolute;right:-4px;top:-4px;min-width:17px;height:17px;padding:0 4px;border-radius:9999px;background:#d88a55;border:2px solid #fff;color:#fff;font-size:9px;font-weight:800;line-height:13px;text-align:center"></span>
         </button>
         <button id="headerChip" data-action="switcher-open" aria-label="Switch visitor or volunteer"
           class="btn btn-glass h-9 gap-1.5 rounded-full py-0 pl-1 pr-2.5"></button>

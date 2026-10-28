@@ -138,7 +138,13 @@ export function viewHome(){
       <button data-action="toggleTheme" class="hx-theme" aria-label="Switch light or dark">
        ${I.sun}<span class="hx-theme-light">Light</span><span class="hx-theme-dark">Dark</span>
       </button>
-      <button data-action="openNotifs" class="hx-round" aria-label="Notifications">${I.bell}</button>
+      <button data-action="openCloud" class="hx-round" aria-label="Cloud sync" title="Cloud sync">
+       <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17.5 19a4.5 4.5 0 0 0 .5-9 6 6 0 0 0-11.6 1.5A3.5 3.5 0 0 0 6.5 19z"/></svg>
+       <span id="homeCloudDot" class="hx-cloud-dot"></span>
+      </button>
+      <button data-action="openNotifs" class="hx-round" aria-label="Notifications">
+       ${I.bell}<span id="homeNotifDot" class="hx-notif-dot"></span>
+      </button>
      </span>
     </div>
     <div style="text-align:center;margin-top:6px">
@@ -196,7 +202,10 @@ export function viewHome(){
   <div class="hx-ivory">
    <div class="hx-ivory-head">
     <div><h3>Visitors today</h3><p class="hx-ivory-sub">Tap a visitor row to inspect live vitals</p></div>
-    <button data-action="openSwitcher" class="hx-round hx-round-ivory" aria-label="Filter visitors">${I.chevD}</button>
+    <div style="display:flex;gap:6px;flex:none">
+     <button data-action="toggleReg" class="hx-round hx-round-ivory" aria-label="Register a new visitor" aria-expanded="${!!state.regOpen}">${I.plus}</button>
+     <button data-action="openSwitcher" class="hx-round hx-round-ivory" aria-label="Find or switch visitor">${I.chevD}</button>
+    </div>
    </div>
    ${cloud.user?`<div id="homeHealth">${homeHealthHTML()}</div>`:''}
    <div class="hx-sheet-meta"><strong>Screening Spectrum</strong><span>VN: ${attendees.length} Active · 4 Steps</span></div>
@@ -214,6 +223,7 @@ export function viewHome(){
   <button data-action="openVolModal" class="hx-banner" style="width:100%;text-align:left;font:inherit;cursor:pointer">
    <span class="hx-banner-top"><span>${esc(EXPO_UPCOMING.name)}</span><em>${esc(hiredCountLabel())}</em></span>
    <span class="hx-banner-bottom"><strong>Pledge &amp; Booth Registration</strong>${splitBtnHTML({label:'Details',variant:'mint'})}</span>
+   <span class="hx-banner-note">Pledge to help · pick your booth${esc(pendingLabel())}</span>
   </button>
  </section>`;
 }
@@ -233,14 +243,14 @@ export function visitorsToShow(query){
  return act&&!recent.includes(act)?[act,...recent.slice(0,LIST_CAP-1)]:recent;
 }
 function visitorRowHTML(x){
- const act=x.id===state.activeId;
+ const act=x.id===state.activeId,d=doneCount(x);
  const cbp=cat('bp',{sys:x.s.sys,dia:x.s.dia}),csg=cat('sugar',x.s.sugar);
  const dot=redFlag(x)?'#dc3522':(cbp[0]==='watch'||csg[0]==='watch')?'#d97706':'#22c55e';
  const line=`BP ${x.s.sys??'—'}/${x.s.dia??'—'} · ${cbp[1]}`;
  const n=JOURNEY.indexOf(defaultStep(x))+1;
  return `<button data-action="switchTo" data-args="${x.id}" class="hx-row${act?' is-on':''}" style="font:inherit;text-align:left">
   <span class="hx-row-main"><span class="hx-row-dot" style="background:${dot}"></span>
-   <span><strong class="hx-row-name">${esc(x.name)}</strong><span class="hx-row-sub">${esc(x.id)} · ${esc(line)}</span></span></span>
+   <span><strong class="hx-row-name">${esc(x.name)}${x.done?' ✓':''}</strong><span class="hx-row-sub">${esc(x.id)} · ${esc(line)} · ${d}/8 checks</span></span></span>
   <span class="hx-row-badge">${n} / 4</span></button>`;
 }
 function visitorListHTML(query){

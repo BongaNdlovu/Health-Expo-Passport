@@ -402,11 +402,12 @@ export async function teamShift(id,shift){
    front — never a timer. Arrivals arrive live: staff ride the existing newstart-live channel (startRealtime), a
    member who has no channel opens one for their own rows only. Offline keeps the last known count. */
 export function notifRefresh(){
- const b=$('#notifBell');if(!b)return;
- b.classList.toggle('hidden',!cloud.user);
- const d=$('#notifDot');if(!d)return;
  const n=cloud.notifN||0;
- if(cloud.user&&n>0){d.style.display='flex';d.textContent=n>9?'9+':String(n);}else d.style.display='none';
+ const b=$('#notifBell');if(b)b.classList.toggle('hidden',!cloud.user);
+ for(const id of ['notifDot','homeNotifDot']){
+  const d=$('#'+id);if(!d)continue;
+  if(cloud.user&&n>0){d.style.display='flex';d.textContent=n>9?'9+':String(n);}else d.style.display='none';
+ }
 }
 export async function notifCount(){
  if(!cloud.client||!cloud.user){cloud.notifN=0;notifRefresh();return;}

@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <!-- Same policy as dist/_headers (tools/build.js checks the two stay identical). The header needs a host that reads
      _headers (Cloudflare); this meta travels with the page, so the packaged Android app keeps the same protections. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-hgUPi7Y2iI77XI9Qw6IEOC8/OowKupAKF4UbLcd/qN4=' 'sha256-hvAqgljYCmFDJnlUAODG/jLFUzQA03x3CeT0yULUWEI=' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.supabase.in wss://*.supabase.in; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-hgUPi7Y2iI77XI9Qw6IEOC8/OowKupAKF4UbLcd/qN4=' 'sha256-usKWfzhEsNZU/OS+kMN9VqOG/XPTmj9Vlt/Q2E6+P3s=' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.supabase.in wss://*.supabase.in; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <meta name="theme-color" content="#f4f3ee"/>
 <link rel="manifest" href="manifest.webmanifest">
@@ -983,6 +983,7 @@
   .hx-banner-top em{font-style:normal;opacity:.75;font-size:11px}
   .hx-banner-bottom{display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
   .hx-banner-bottom strong{font-size:16px;font-weight:700;letter-spacing:-.3px;line-height:1.15}
+  .hx-banner-note{font-size:10.5px;font-weight:600;color:rgba(255,255,255,.78);line-height:1.3}
 
   /* ---- hero top bar, practice banner, sheet chrome (mockup composition) ---- */
   .hx-hero-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -1004,8 +1005,12 @@
   .hx-theme-dark{display:none}
   html[data-theme="dark"] .hx-theme-light{display:none}
   html[data-theme="dark"] .hx-theme-dark{display:inline}
-  .hx-round{width:30px;height:30px;padding:0;border-radius:50%;display:grid;place-items:center;cursor:pointer;
+  .hx-round{position:relative;width:30px;height:30px;padding:0;border-radius:50%;display:grid;place-items:center;cursor:pointer;
     border:1px solid var(--hx-line);background:var(--hx-surface);color:var(--hx-ink-2)}
+  .hx-notif-dot{position:absolute;right:-3px;top:-3px;min-width:14px;height:14px;padding:0 3px;border-radius:999px;
+    background:#dc3522;color:#fff;font-size:8.5px;font-weight:800;line-height:14px;text-align:center;display:none;place-items:center}
+  .hx-cloud-dot{position:absolute;right:-1px;bottom:-1px;width:8px;height:8px;border-radius:50%;
+    background:#9db0b4;box-shadow:0 0 0 1.5px var(--hx-surface)}
   .hx-round svg{width:13px;height:13px}
   .hx-round-ivory{border-color:rgba(20,24,21,.12);background:rgba(20,24,21,.05);color:#141715}
   .hx-practice{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 15px;
@@ -1099,17 +1104,17 @@
              class="relative flex h-9 w-9 flex-none items-center justify-center rounded-[14px] text-white"
              style="background:linear-gradient(135deg,#58b5a7,#2f8b7f);box-shadow:0 8px 18px -10px rgba(37,120,110,.9),inset 0 1px 0 rgba(255,255,255,.35)">
           <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12zM7.5 12h2.25l1.5-3 2 5 1.5-2h2.25"/></svg>
-          <span id="cloudDot" style="position:absolute;right:-3px;top:-3px;width:11px;height:11px;border-radius:9999px;background:#9db0b4;border:2px solid #fff"></span>
+          <span id="cloudDot" data-cloud-dot style="position:absolute;right:-3px;top:-3px;width:11px;height:11px;border-radius:9999px;background:#9db0b4;border:2px solid #fff"></span>
         </button>
         <div class="hdr-title leading-tight" style="white-space:nowrap">
           <div class="display text-[15px] font-extrabold tracking-tight text-[#123033]">Health Expo Passport</div>
         </div>
       </div>
       <div class="hdr-tools flex items-center gap-2">
-        <button id="notifBell" data-action="openNotifs" aria-label="Notifications" title="Notifications"
+        <button id="notifBell" data-action="openNotifs" data-notif-bell-hide aria-label="Notifications" title="Notifications"
           class="btn btn-glass relative hidden h-9 w-9 flex-none items-center justify-center rounded-[14px]">
           <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
-          <span id="notifDot" style="display:none;position:absolute;right:-4px;top:-4px;min-width:17px;height:17px;padding:0 4px;border-radius:9999px;background:#d88a55;border:2px solid #fff;color:#fff;font-size:9px;font-weight:800;line-height:13px;text-align:center"></span>
+          <span id="notifDot" data-notif-dot style="display:none;position:absolute;right:-4px;top:-4px;min-width:17px;height:17px;padding:0 4px;border-radius:9999px;background:#d88a55;border:2px solid #fff;color:#fff;font-size:9px;font-weight:800;line-height:13px;text-align:center"></span>
         </button>
         <button id="headerChip" data-action="switcher-open" aria-label="Switch visitor or volunteer"
           class="btn btn-glass h-9 gap-1.5 rounded-full py-0 pl-1 pr-2.5"></button>
@@ -2601,6 +2606,7 @@ var __NEWSTART = (() => {
     printer: svgW('<path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5z"/>'),
     wa: '<svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.299.045-.677.063-1.092-.069-.252-.08-.575-.187-.988-.365-1.739-.751-2.874-2.502-2.961-2.617-.087-.116-.708-.94-.708-1.793s.448-1.273.607-1.446c.159-.173.346-.217.462-.217l.332.006c.106.005.249-.04.39.298.144.347.491 1.2.534 1.287.043.087.072.188.014.304-.058.116-.087.188-.173.289l-.26.304c-.087.086-.177.18-.076.354.101.174.449.741.964 1.201.662.591 1.221.774 1.394.86s.274.072.376-.043c.101-.116.433-.506.549-.68.116-.173.231-.145.39-.087s1.011.477 1.184.564.289.13.332.202c.045.072.045.419-.1.824z"/></svg>',
     pulse: svgW('<path stroke-linecap="round" stroke-linejoin="round" d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M3.22 12H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27"/>'),
+    plus: svgW('<path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14"/>'),
     drop: svgW('<path stroke-linecap="round" stroke-linejoin="round" d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>'),
     scale: svgW('<path stroke-linecap="round" stroke-linejoin="round" d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path stroke-linecap="round" stroke-linejoin="round" d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M7 21h10"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v18"/><path stroke-linecap="round" stroke-linejoin="round" d="M3 7h18"/>'),
     chev: svgW('<path stroke-linecap="round" stroke-linejoin="round" d="M9 18l6-6-6-6"/>'),
@@ -2740,6 +2746,10 @@ var __NEWSTART = (() => {
   }
   var staffedCount = () => volunteers.filter((v) => !needsRegistration(v)).length;
   var hiredCountLabel = () => `${staffedCount()}/${EXPO_UPCOMING.need} helpers`;
+  var pendingLabel = () => {
+    const n = volunteers.filter(needsRegistration).length;
+    return n ? ` \xB7 ${n} awaiting registration` : "";
+  };
   function availLabels(v) {
     return (v.availability || []).map((a) => (AVAIL.find((x) => x[0] === a) || [a, a])[1]);
   }
@@ -5180,7 +5190,13 @@ var __NEWSTART = (() => {
       <button data-action="toggleTheme" class="hx-theme" aria-label="Switch light or dark">
        ${I.sun}<span class="hx-theme-light">Light</span><span class="hx-theme-dark">Dark</span>
       </button>
-      <button data-action="openNotifs" class="hx-round" aria-label="Notifications">${I.bell}</button>
+      <button data-action="openCloud" class="hx-round" aria-label="Cloud sync" title="Cloud sync">
+       <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17.5 19a4.5 4.5 0 0 0 .5-9 6 6 0 0 0-11.6 1.5A3.5 3.5 0 0 0 6.5 19z"/></svg>
+       <span id="homeCloudDot" class="hx-cloud-dot"></span>
+      </button>
+      <button data-action="openNotifs" class="hx-round" aria-label="Notifications">
+       ${I.bell}<span id="homeNotifDot" class="hx-notif-dot"></span>
+      </button>
      </span>
     </div>
     <div style="text-align:center;margin-top:6px">
@@ -5238,7 +5254,10 @@ var __NEWSTART = (() => {
   <div class="hx-ivory">
    <div class="hx-ivory-head">
     <div><h3>Visitors today</h3><p class="hx-ivory-sub">Tap a visitor row to inspect live vitals</p></div>
-    <button data-action="openSwitcher" class="hx-round hx-round-ivory" aria-label="Filter visitors">${I.chevD}</button>
+    <div style="display:flex;gap:6px;flex:none">
+     <button data-action="toggleReg" class="hx-round hx-round-ivory" aria-label="Register a new visitor" aria-expanded="${!!state.regOpen}">${I.plus}</button>
+     <button data-action="openSwitcher" class="hx-round hx-round-ivory" aria-label="Find or switch visitor">${I.chevD}</button>
+    </div>
    </div>
    ${cloud.user ? `<div id="homeHealth">${homeHealthHTML()}</div>` : ""}
    <div class="hx-sheet-meta"><strong>Screening Spectrum</strong><span>VN: ${attendees.length} Active \xB7 4 Steps</span></div>
@@ -5256,6 +5275,7 @@ var __NEWSTART = (() => {
   <button data-action="openVolModal" class="hx-banner" style="width:100%;text-align:left;font:inherit;cursor:pointer">
    <span class="hx-banner-top"><span>${esc(EXPO_UPCOMING.name)}</span><em>${esc(hiredCountLabel())}</em></span>
    <span class="hx-banner-bottom"><strong>Pledge &amp; Booth Registration</strong>${splitBtnHTML({ label: "Details", variant: "mint" })}</span>
+   <span class="hx-banner-note">Pledge to help \xB7 pick your booth${esc(pendingLabel())}</span>
   </button>
  </section>`;
   }
@@ -5274,14 +5294,14 @@ var __NEWSTART = (() => {
     return act && !recent.includes(act) ? [act, ...recent.slice(0, LIST_CAP - 1)] : recent;
   }
   function visitorRowHTML(x) {
-    const act = x.id === state.activeId;
+    const act = x.id === state.activeId, d = doneCount(x);
     const cbp = cat("bp", { sys: x.s.sys, dia: x.s.dia }), csg = cat("sugar", x.s.sugar);
     const dot = redFlag(x) ? "#dc3522" : cbp[0] === "watch" || csg[0] === "watch" ? "#d97706" : "#22c55e";
     const line = `BP ${x.s.sys ?? "\u2014"}/${x.s.dia ?? "\u2014"} \xB7 ${cbp[1]}`;
     const n = JOURNEY.indexOf(defaultStep(x)) + 1;
     return `<button data-action="switchTo" data-args="${x.id}" class="hx-row${act ? " is-on" : ""}" style="font:inherit;text-align:left">
   <span class="hx-row-main"><span class="hx-row-dot" style="background:${dot}"></span>
-   <span><strong class="hx-row-name">${esc(x.name)}</strong><span class="hx-row-sub">${esc(x.id)} \xB7 ${esc(line)}</span></span></span>
+   <span><strong class="hx-row-name">${esc(x.name)}${x.done ? " \u2713" : ""}</strong><span class="hx-row-sub">${esc(x.id)} \xB7 ${esc(line)} \xB7 ${d}/8 checks</span></span></span>
   <span class="hx-row-badge">${n} / 4</span></button>`;
   }
   function visitorListHTML(query) {
@@ -7436,8 +7456,10 @@ var __NEWSTART = (() => {
     cloud.status = status;
     cloud.err = err || "";
     const ui = CLOUD_UI[status] || CLOUD_UI.off;
-    const dot = $("#cloudDot");
-    if (dot) dot.style.background = ui[0];
+    for (const id of ["cloudDot", "homeCloudDot"]) {
+      const dot = $("#" + id);
+      if (dot) dot.style.background = ui[0];
+    }
     const m = $("#cloudModal");
     if (m && !m.classList.contains("hidden")) renderCloudBody();
     renderGate();
@@ -8536,16 +8558,17 @@ var __NEWSTART = (() => {
     if (await acctRpc("set_shift", { p_vol: id, p_shift: shift || "" }, "Shift saved \u2713")) cloud.myTeam = void 0, await loadMyTeam();
   }
   function notifRefresh() {
-    const b = $("#notifBell");
-    if (!b) return;
-    b.classList.toggle("hidden", !cloud.user);
-    const d = $("#notifDot");
-    if (!d) return;
     const n = cloud.notifN || 0;
-    if (cloud.user && n > 0) {
-      d.style.display = "flex";
-      d.textContent = n > 9 ? "9+" : String(n);
-    } else d.style.display = "none";
+    const b = $("#notifBell");
+    if (b) b.classList.toggle("hidden", !cloud.user);
+    for (const id of ["notifDot", "homeNotifDot"]) {
+      const d = $("#" + id);
+      if (!d) continue;
+      if (cloud.user && n > 0) {
+        d.style.display = "flex";
+        d.textContent = n > 9 ? "9+" : String(n);
+      } else d.style.display = "none";
+    }
   }
   async function notifCount() {
     if (!cloud.client || !cloud.user) {

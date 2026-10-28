@@ -144,7 +144,7 @@ export const CLOUD_UI={
 export function setCloud(status,err){
  cloud.status=status;cloud.err=err||'';
  const ui=CLOUD_UI[status]||CLOUD_UI.off;
- const dot=$('#cloudDot');if(dot)dot.style.background=ui[0];
+ for(const id of ['cloudDot','homeCloudDot']){const dot=$('#'+id);if(dot)dot.style.background=ui[0];}
  const m=$('#cloudModal');if(m&&!m.classList.contains('hidden'))renderCloudBody();
  renderGate();profileChanged();
 }
