@@ -1,0 +1,1 @@
+﻿{"scenario":"notifs","theme":"dark","violations":[],"incomplete":[{"id":"color-contrast","impact":"serious","help":"Elements must meet minimum color contrast ratio thresholds","nodes":1,"targets":["#notifBody > .mt-1\\.5.leading-relaxed.text-\\[\\#5c747a\\]"]}]}

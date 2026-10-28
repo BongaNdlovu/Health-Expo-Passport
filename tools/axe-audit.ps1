@@ -10,7 +10,7 @@
 #>
 [CmdletBinding()]
 param(
-  [ValidateSet('home','queue','care','serve','me','gate','muster','pledge','booth','record','screen','results','plan','send')]
+  [ValidateSet('home','queue','care','serve','me','gate','muster','pledge','booth','record','screen','results','plan','send','switcher','notifs','reg','food')]
   [string]$Scenario = 'home',
   [ValidateSet('light','dark')]
   [string]$Theme = 'light'
@@ -52,6 +52,30 @@ var root=document;
 @'
 var I=window.__NEWSTART.__internals;
 I.gateDemo();I.setTheme('__THEME__');I.state.tab='serve';I.state.volTab='__TAB__';I.render();
+var root=document;
+'@
+} elseif ($Scenario -eq 'switcher') {
+@'
+var I=window.__NEWSTART.__internals;
+I.gateDemo();I.setTheme('__THEME__');I.openSwitcher();
+var root=document.getElementById('switcherModal')||document;
+'@
+} elseif ($Scenario -eq 'notifs') {
+@'
+var I=window.__NEWSTART.__internals;
+I.gateDemo();I.setTheme('__THEME__');I.openNotifs();
+var root=document.getElementById('notifSheet')||document;
+'@
+} elseif ($Scenario -eq 'reg') {
+@'
+var I=window.__NEWSTART.__internals;
+I.gateDemo();I.setTheme('__THEME__');I.state.tab='home';I.state.regOpen=true;I.render();
+var root=document;
+'@
+} elseif ($Scenario -eq 'food') {
+@'
+var I=window.__NEWSTART.__internals;
+I.gateDemo();I.setTheme('__THEME__');I.state.activeId=I.attendees[0].id;I.openFood();
 var root=document;
 '@
 } else {

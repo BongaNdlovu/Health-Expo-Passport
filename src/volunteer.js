@@ -885,7 +885,7 @@ export function exportVolCSV(){
 export function showModal(sel){const el=$(sel);clearTimeout(el._t);el.classList.remove('hidden','is-closing');el.classList.add('flex');}
 export function hideModal(sel){const el=$(sel);if(el.classList.contains('hidden'))return;el.classList.add('is-closing');clearTimeout(el._t);el._t=setTimeout(()=>{el.classList.add('hidden');el.classList.remove('flex','is-closing');},260);}
 function modeToggle(mode){
- const B=(k,l)=>`<button data-action="setSwitchMode" data-args="${k}" class="flex-1 rounded-full py-1.5 text-[11px] font-extrabold transition ${mode===k?'bg-white text-[#1f6b62] shadow-sm':'text-[#5b7178]'}">${l}</button>`;
+ const B=(k,l)=>`<button data-action="setSwitchMode" data-args="${k}" class="flex-1 rounded-full py-1.5 text-[11px] font-extrabold transition ${mode===k?'sw-on':'text-[#5b7178]'}">${l}</button>`;
  return `<div class="flex gap-1 rounded-full bg-[#123033]/[.06] p-1">${B('visitor','Visitors')}${B('volunteer','Volunteers')}</div>`;
 }
 export function setSwitchMode(m){state.switchMode=m;openSwitcher();}
