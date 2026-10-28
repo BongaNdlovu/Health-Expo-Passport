@@ -5,3 +5,6 @@ vendor/** -text
 # index.html carries a CSP hash of its inline fontPick script. tools/build.js hashes the exact bytes, so a CRLF
 # checkout makes the build refuse to run. Keep this file LF on every platform.
 index.html text eol=lf
+
+# generated with LF by tools/build.js; keep it LF so the CSP header does not churn
+dist/_headers text eol=lf

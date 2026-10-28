@@ -20,3 +20,9 @@ capacitor/android/app-release-signed.apk.idsig
 # Local tool caches
 node_modules/
 .wrangler/
+
+# Local iteration/debug captures (committed evidence lives in verification/shots and verification/android)
+verification/shots/jdbg*.png
+verification/shots/jover*.png
+verification/shots/journey[1-3]-*.png
+verification/shots/home-(new|parity|v[2-4])*.png
