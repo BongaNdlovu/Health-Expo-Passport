@@ -1,0 +1,1 @@
+﻿{"scenario":"tv","theme":"light","violations":[],"incomplete":[{"id":"color-contrast","impact":"serious","help":"Elements must meet minimum color contrast ratio thresholds","nodes":34,"targets":[".q-tv-title","#tvState","#tvClock",".q-tv-x",".q-tv-tile.q-tv-ok:nth-child(1) > .q-tv-name",".q-tv-tile.q-tv-ok:nth-child(1) > .q-tv-lab:nth-child(2)"]}]}

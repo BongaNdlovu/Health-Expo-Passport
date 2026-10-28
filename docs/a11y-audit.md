@@ -12,7 +12,7 @@ powershell -File tools/axe-audit.ps1 -Scenario home -Theme dark
 
 ## Result
 
-**36 screen × theme combinations. 0 violations.**
+**46 screen × theme combinations. 0 violations.**
 
 | Screen | Light | Dark |
 |---|---:|---:|
@@ -34,6 +34,11 @@ powershell -File tools/axe-audit.ps1 -Scenario home -Theme dark
 | Notifications | 0 | 0 |
 | Registration form | 0 | 0 |
 | Food plan | 0 | 0 |
+| Cloud sign-in modal | 0 | 0 |
+| Account sheet (signed out) | 0 | 0 |
+| Queue picker | 0 | 0 |
+| Volunteer placement | 0 | 0 |
+| Big screen / TV | 0 | 0 |
 
 Earlier this run the audit found three real issues, now fixed:
 
@@ -52,15 +57,17 @@ Earlier this run the audit found three real issues, now fixed:
    and a darker amber; all four Team sub-tabs are in the matrix (28 combinations).
 6. **Visitor switcher active tab in dark** — `bg-white` with a dark teal label. Replaced with the
    token-backed `.sw-on` state; overlays (switcher, notifications, registration, food) added to the
-   matrix (36 combinations).
-7. **Input borders and dim text** — raised to the 3:1 UI-component and 4.5:1 text bars.
+   matrix.
+7. **Service sheets** — cloud sign-in, signed-out account sheet, queue picker, volunteer placement and
+   the big-screen TV were added to the matrix (46 combinations) and are clean.
+8. **Input borders and dim text** — raised to the 3:1 UI-component and 4.5:1 text bars.
 
 ## Scope / limits
 
 - Automated WCAG 2 A/AA only. It does not replace a manual keyboard, screen-reader or cognitive
   review; several axe “incomplete” contrast checks (gradients/overlays) are not manually resolved.
-- The main tabs, gate, four Team sub-tabs, four journey steps and four common overlays were audited at
-  one viewport (500×1000), in their default state. Account/church/admin sheets, queue picker, volunteer
-  placement, cloud modal, TV mode and dynamic validation/error states are not in this matrix yet.
+- The primary tabs, gate, four Team sub-tabs, four journey steps and nine common sheets were audited
+  at one viewport (500×1000), in their default state. Signed-in church/admin account tabs, print
+  layout, dynamic validation/error states and a manual screen-reader pass are not in this matrix yet.
 - Tap-target and focus checks are CSS-level (44 px hit areas, mint focus ring, gate `inert`), not
   re-measured by axe.

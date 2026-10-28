@@ -1,0 +1,1 @@
+﻿{"scenario":"cloud","theme":"light","violations":[],"incomplete":[{"id":"color-contrast","impact":"serious","help":"Elements must meet minimum color contrast ratio thresholds","nodes":3,"targets":[".text-base",".mt-1","#cloudGo"]}]}

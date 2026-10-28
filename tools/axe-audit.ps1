@@ -10,7 +10,7 @@
 #>
 [CmdletBinding()]
 param(
-  [ValidateSet('home','queue','care','serve','me','gate','muster','pledge','booth','record','screen','results','plan','send','switcher','notifs','reg','food')]
+  [ValidateSet('home','queue','care','serve','me','gate','muster','pledge','booth','record','screen','results','plan','send','switcher','notifs','reg','food','cloud','acct','queuePick','place','tv')]
   [string]$Scenario = 'home',
   [ValidateSet('light','dark')]
   [string]$Theme = 'light'
@@ -78,6 +78,36 @@ var I=window.__NEWSTART.__internals;
 I.gateDemo();I.setTheme('__THEME__');I.state.activeId=I.attendees[0].id;I.openFood();
 var root=document;
 '@
+} elseif ($Scenario -eq 'cloud') {
+@'
+var I=window.__NEWSTART.__internals;
+I.gateDemo();I.setTheme('__THEME__');I.openCloud();
+var root=document.getElementById('cloudModal')||document;
+'@
+} elseif ($Scenario -eq 'acct') {
+@'
+var I=window.__NEWSTART.__internals;
+I.gateDemo();I.setTheme('__THEME__');I.openAcct();
+var root=document.getElementById('acctSheet')||document;
+'@
+} elseif ($Scenario -eq 'queuePick') {
+@'
+var I=window.__NEWSTART.__internals;
+I.gateDemo();I.setTheme('__THEME__');I.queueJoin(I.attendees[0].id);
+var root=document.getElementById('queueModal')||document;
+'@
+} elseif ($Scenario -eq 'place') {
+@'
+var I=window.__NEWSTART.__internals;
+I.gateDemo();I.setTheme('__THEME__');I.openPlaceSheet(I.volunteers[0].id);
+var root=document.getElementById('placeSheet')||document;
+'@
+} elseif ($Scenario -eq 'tv') {
+@'
+var I=window.__NEWSTART.__internals;
+I.gateDemo();I.setTheme('__THEME__');I.openBigScreen();
+var root=document.getElementById('tv')||document;
+'@
 } else {
 @'
 var I=window.__NEWSTART.__internals;
@@ -126,6 +156,6 @@ New-Item -ItemType Directory -Path $dir -Force | Out-Null
 $file = Join-Path $dir "$Scenario-$Theme.json"
 $json | Set-Content -Encoding utf8 $file
 $data = $json | ConvertFrom-Json
-if ($data.error) { Write-Output ("ERROR " + $data.error) }
+if ($data.error) { Write-Output ("ERROR " + $data.error); exit 1 }
 Write-Output ("$Scenario/$Theme violations: " + $data.violations.Count)
 $data.violations | ForEach-Object { Write-Output ("  " + $_.impact + "  " + $_.id + " x" + $_.nodes + "  " + ($_.targets -join ' | ')) }

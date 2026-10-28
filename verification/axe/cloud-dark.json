@@ -1,0 +1,1 @@
+﻿{"scenario":"cloud","theme":"dark","violations":[],"incomplete":[{"id":"color-contrast","impact":"serious","help":"Elements must meet minimum color contrast ratio thresholds","nodes":5,"targets":[".text-base",".mt-1","#cloudEmail","#cloudPass","#cloudGo"]}]}

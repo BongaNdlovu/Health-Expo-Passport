@@ -8,12 +8,12 @@
 - Size: **3,464,372 bytes**
 - Signature: APK Signature Scheme **v2 + v3**, certificate SHA-256
   `16f97c41caecaa0e6dbe21795a7d95fa7ef6abd486dd1f289239e5d2b74431d1`
-- Web payload: the minified single-file page (`dist/index.html`, 501,379 bytes), CSP hashes intact
+- Web payload: the minified single-file page (`dist/index.html`, 501,310 bytes), CSP hashes intact
 - Plugins: app-launcher 8.0.1, share 8.0.3, **status-bar 8.0.4** (new)
-- Final rebuild: includes the self-contained dock pill and the volunteer “Viewing …” contrast fix;
-  reinstalled and re-verified on the same AVD. This rebuild is byte-identical to the release
-  `dist/index.html` (501,379 bytes), SHA-256 of the APK
-  `8A058C27AFE711DED9F9C636BD04435122C30D8DF4B9CEEFDCE0C652C1E0FE43`.
+- Final rebuild: includes the journey token pass, self-contained dock pill, volunteer “Viewing …”
+  contrast and switcher active-tab fixes; reinstalled and re-verified on the same AVD. This rebuild is
+  byte-identical to the release `dist/index.html` (501,310 bytes), SHA-256 of the APK
+  `9964E5694D7A674A0E2E24482C9764E4B36BD8C5B05854037E3FF1A73D05E6BA`.
 
 ## Device
 
@@ -32,7 +32,9 @@
 | Home (dark, real persisted visitor) | hero, tiles, red-flag banner, visitors sheet, dock | `verification/android/home-dark-final.png` |
 | Tap **Queue** | queue station board | `verification/android/queue.png` |
 | Tap **Team → Muster** | active pill, volunteer board, legible viewing strip | `verification/android/r9-muster.png` |
-| Final byte-identical rebuild | dark gate, status-bar sync | `verification/android/r10-final.png` |
+| Open a visitor → Check/Results | migrated journey header, steps, cards, dock footer | `verification/android/final-journey.png` |
+| Change visitor | token active tab, searchable list | `verification/android/final-switcher.png` |
+| Final byte-identical rebuild | dark gate, status-bar sync | `verification/android/final-gate2.png` |
 
 The status bar is now driven by `@capacitor/status-bar` from `setTheme()` / boot: dark theme → light
 icons, light theme → dark icons. The gate makes `#app` `inert` so nothing behind it can be focused.
