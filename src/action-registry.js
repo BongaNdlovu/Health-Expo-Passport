@@ -10,8 +10,7 @@ import { queueBack, queueCallNext, queueDone, queueRemove, queueServe } from './
 import { closeBigScreen, closeQueuePick, openBigScreen, openQueuePick, qFilterPick, qPickAdd, qSelect, queueSync } from './queue.js';
 import { closeFood, exportCSV, openFood, showAllCare } from './results.js';
 import { onSim, selectProtocol, setFoodMetric, setFoodPlan, toggleFood } from './results.js';
-import { render } from './shell.js';
-import { isServe } from './shell.js';
+import { isServe, render, toggleTheme } from './shell.js';
 import { cloud } from './state.js';
 import { filterVisitors, onPrayer, onStationCommit, onStationInput, onStep, registerSubmit, reservePouch, resetDemo, switchTab, toggleInterest, toggleReg } from './visitor.js';
 import { applyReading, finishVisit, goVisit, newVisitFrom, onChronicList, onHeight, pickSex, recordConsent, setAnswer, setMyStation, showGuardian, switchTo, toggleOptin, toggleTick } from './visitor.js';
@@ -190,4 +189,5 @@ export const ACTION_MAP = {
   reservePouch: el => reservePouch(),
   /* -- shared password boxes -- */
   'toggle-pass': el => togglePass(el),
+  toggleTheme: () => toggleTheme(),
 };

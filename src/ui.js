@@ -29,17 +29,18 @@ export function rulerHTML(pct){
 }
 
 /**
- * Jewelled vitals tile.
- * @param {{label?:string, icon?:string, value?:string|number, status?:string, tone?:'ruby'|'amber'|'cobalt'|'mint'}} [o]
+ * Jewelled vitals tile. `pill` adds the split High/Watch badge from the reference.
+ * @param {{label?:string, icon?:string, value?:string|number, status?:string, tone?:'ruby'|'amber'|'cobalt'|'mint', pill?:boolean}} [o]
  */
 export function tileHTML(o){
  o=o||{};
  const tones=['ruby','amber','cobalt','mint'];
  const tone=tones.indexOf(o.tone)>=0?o.tone:'mint';
+ const foot=o.pill?`<span class="hx-tile-foot">${splitBtnHTML({label:o.status||'—'})}</span>`:`<div class="hx-tile-status">${esc(o.status||'')}</div>`;
  return `<div class="hx-tile hx-tile-${tone}">
   <div class="hx-tile-head"><span class="hx-tile-label">${esc(o.label||'')}</span><span class="hx-tile-icon" aria-hidden="true">${o.icon||''}</span></div>
   <div class="hx-tile-value">${esc(o.value==null?'—':o.value)}</div>
-  <div class="hx-tile-status">${esc(o.status||'')}</div>
+  ${foot}
  </div>`;
 }
 

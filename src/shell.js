@@ -32,6 +32,9 @@ export function isServe(){return state.tab==='serve';}
 
 export function render(){
  renderHeaderChip();renderNav();
+ /* The mockup has no separate app header on the hub: the visitor pill and tools live inside the hero. */
+ const hdr=/** @type {HTMLElement|null} */(document.querySelector('#app > header'));
+ if(hdr)hdr.style.display=state.tab==='home'?'none':'';
  /* hide/show with an inline style rather than a class, so the two render paths
     (visitor views vs the serve section) cannot fight over one shared classList */
  const el=$('#main');

@@ -1080,7 +1080,7 @@ function makeServer() {
       /<header [^>]*padding-top:max\(\.75rem,calc\(var\(--safe-area-inset-top,0px\) \+ \.5rem\)/.test(html) && /<nav [^>]*padding-bottom:max\(\.75rem,calc\(var\(--safe-area-inset-bottom,0px\) \+ \.5rem\)/.test(html));
     g.state.tab = 'home'; g.render();
     ok('screens: a long visitor name wraps on the Home card instead of being cut',
-      /\.hero \.display\.truncate\{white-space:normal;display:-webkit-box;-webkit-line-clamp:2/.test(css) && /class="display truncate/.test($main.innerHTML));
+      /\.hx-name\{[^}]*overflow-wrap:anywhere/.test(html) && /class="hx-name"/.test($main.innerHTML));
     ok('screens: cards arrive within half a second and progress bars fill in half a second',
       /\.stagger>\*,\.pour>\*\{animation-duration:\.3s\}/.test(css) && /nth-child\(n\+5\)\{animation-delay:\.12s\}/.test(css) && /\.bar-fill\{animation-duration:\.5s\}/.test(css));
     ok('screens: tab switches are plain renders — no view-transition snapshots for a weak phone to capture and animate',

@@ -12,6 +12,7 @@ import { cloud, migrateAttendee, persist, seedDemo } from './state.js';
 import { GRACE_DAYS, RETENTION_YEARS, visitIsOld } from './retention.js';
 import { homeHealthHTML, installEvt, validEmail } from './cloud.js';
 import { hiredCountLabel, pendingLabel, todayStr } from './volunteer.js';
+import { bannerHTML, capsuleHTML, ctaHTML, ecgHTML, rulerHTML, spectrumHTML, splitBtnHTML, tileHTML } from './ui.js';
 /* The visitor journey: Check → Results entry, registration, the paper record and the survey. Split from the original single-file app; bundled back into one file by tools/build.js. */
 /* ================= THE VISITOR JOURNEY: Check → Results → Plan → Send home ================= */
 /* where a visitor's passport should open: the step they were on, else the first one not done */
@@ -105,42 +106,68 @@ export function switchTab(t){
 export function viewHome(){
  const a=A(),dc=doneCount(a),first=esc(firstName(a.name));
  const cbp=cat('bp',{sys:a.s.sys,dia:a.s.dia}),csg=cat('sugar',a.s.sugar),cbm=cat('bmi',bmi(a));
- const tone=c=>c==='flag'?'tile-flag':c==='watch'?'tile-watch':'tile-ok';
- const metric=(l,v,c)=>`<div class="tile hue-${{BP:'blush',Sugar:'sand',BMI:'sky'}[l]} ${tone(c)}"><span class="tile-l">${l}</span><span class="tile-v">${v}</span></div>`;
  const step=state.stepFor===a.id&&JOURNEY.includes(state.step)?state.step:defaultStep(a);
+ const stepIdx=JOURNEY.indexOf(step),pct=Math.round(((stepIdx+1)/4)*100);
+  const num=String(a.id||'').replace(/^EXPO-/,'');
+ const tri={flag:0,watch:0,ok:0,none:0};
+ for(const x of attendees){
+  const cs=[cat('bp',{sys:x.s.sys,dia:x.s.dia}),cat('sugar',x.s.sugar),cat('bmi',bmi(x))];
+  if(redFlag(x)||cs.some(z=>z[0]==='flag'))tri.flag++;
+  else if(cs.some(z=>z[0]==='watch'))tri.watch++;
+  else if(cs.every(z=>z[0]==='ok'))tri.ok++;
+  else tri.none++;
+ }
+ const spec=[tri.flag,tri.watch,tri.ok,tri.none,0];
+ const ctaLabel=a.done?`Open ${firstName(a.name)}’s passport`:`Continue: ${JOURNEY_LABEL[step]}`;
  return `<section class="stagger space-y-3.5">
-  ${cloud.demo&&!cloud.user?`<div class="vw-bar" style="cursor:default"><span><b>Practice mode</b> · demo visitors, nothing is shared</span><button class="vw-sw" data-action="openCloud">Sign in</button></div>`:''}
-
-  ${!attendees.length?`<div class="hero p-5 text-center">
-   <div class="display text-[17px] font-extrabold text-[#0f2a2c]">Welcome</div>
-   <p class="mx-auto mt-1.5 max-w-[32ch] text-[11.5px] leading-relaxed text-[#5b7178]">${cloud.mode?'The shared database is empty. ':''}Register a new visitor to begin.</p>
-  </div>`:`<div class="hero p-5"><div class="wave-clip" aria-hidden="true"><div class="wave w1"></div><div class="wave w2"></div></div>
-   <div class="microlabel">Now serving</div>
-   <div class="mt-2 flex items-center justify-between gap-3">
-    <div class="flex min-w-0 items-center gap-3">
-     <span class="flex h-12 w-12 flex-none items-center justify-center rounded-[18px] text-sm font-extrabold av hue-${hueOf(a.id)}">${initials(a.name)}</span>
-     <div class="min-w-0">
-      <div class="display truncate text-[19px] leading-tight font-extrabold text-[#0f2a2c]">${esc(a.name)}</div>
-      <div class="mono mt-0.5 text-[11px] text-[#5c747a]">${esc(a.id)} · ${a.age}y ${esc(a.sex)}</div>
-     </div>
+  ${!attendees.length?`<div class="hx-hero" style="text-align:center">
+   <div class="hx-eyebrow">Community screening</div>
+   <div class="hx-id" style="font-size:36px;letter-spacing:-1px">No visitors yet</div>
+   <p style="margin:4px auto 0;max-width:32ch;font-size:11.5px;line-height:1.5;color:var(--hx-hero-sub)">${cloud.mode?'The shared database is empty. ':''}Register a new visitor to begin.</p>
+   <button data-action="toggleReg" class="btn btn-primary mt-4 w-full py-3 text-sm">+ Register first visitor</button>
+  </div>`:`<div class="hx-hero">
+   <div style="position:absolute;inset:0;top:50%;transform:translateY(-50%)">${ecgHTML()}</div>
+   <div style="position:relative">
+    <div class="hx-hero-top">
+     <button data-action="switcher-open" class="hx-staff" aria-label="Switch visitor">
+      <span class="av hue-${hueOf(a.id)} hx-staff-av">${initials(a.name)}</span>
+      <span class="hx-staff-meta"><b>${esc(firstName(a.name))}</b><span>· ${esc(a.id)}</span></span>
+      ${I.chevD}
+     </button>
+     <span class="hx-hero-tools">
+      <button data-action="toggleTheme" class="hx-theme" aria-label="Switch light or dark">
+       ${I.sun}<span class="hx-theme-light">Light</span><span class="hx-theme-dark">Dark</span>
+      </button>
+      <button data-action="openNotifs" class="hx-round" aria-label="Notifications">${I.bell}</button>
+     </span>
     </div>
-    <span class="flex-none rounded-full px-2.5 py-1 text-[10px] font-extrabold ${a.done?'bg-brand-500/15 text-brand-800':'bg-white/70 text-[#5b7178]'}">
-      ${a.done?'Completed ✓':`Step ${JOURNEY.indexOf(step)+1} of 4`}</span>
+    <div style="text-align:center;margin-top:6px">
+     <div class="hx-eyebrow">Now serving visitor</div>
+     <div class="hx-id">${esc(num)}</div>
+     <div class="hx-name">${esc(a.name)} <span>· ${a.age}y ${esc(a.sex)}</span></div>
+     <div style="margin-top:10px">${capsuleHTML(a.done?'Completed · all checks recorded':`Step ${stepIdx+1} of 4 · ${JOURNEY_LABEL[step]}`)}</div>
+     ${rulerHTML(pct)}
+    </div>
    </div>
-   <div class="mt-4 flex gap-2">
-    ${metric('BP',`${a.s.sys??'—'}/${a.s.dia??'—'}`,cbp[0])}
-    ${metric('Sugar',a.s.sugar??'—',csg[0])}
-    ${metric('BMI',bmi(a)?fmt1(bmi(a)):'—',cbm[0])}
-   </div>
-   ${redFlag(a)?`<div class="mt-4 flex items-start gap-2 rounded-2xl border border-rose-200/70 bg-rose-50/80 px-3 py-2.5 text-[11px] font-bold leading-snug text-rose-700">
-     <span class="mt-px">⚠</span><span>Clinical red flag: skip the fitness test and refer to the triage nurse now.</span></div>`:''}
-   <button data-action="goVisit" class="btn btn-primary mt-4 w-full py-3 text-sm">${a.done?`Open ${first}’s passport`:`Continue: ${JOURNEY_LABEL[step]} →`}</button>
-  </div>`}
-
-  <div class="grid grid-cols-2 gap-2">
-   <button data-action="openSwitcher" class="btn btn-primary py-3.5 text-[13px]">Find a visitor</button>
-   <button data-action="toggleReg" class="btn ${state.regOpen?'btn-glass':'btn-soft'} py-3.5 text-[13px]" aria-expanded="${!!state.regOpen}">${state.regOpen?'Close form':'+ New visitor'}</button>
   </div>
+
+  ${cloud.demo&&!cloud.user?`<div class="hx-practice">
+   <div class="hx-practice-copy"><b>Practice Mode Active</b><span>Demo visitors · Safe offline training</span></div>
+   <button data-action="openCloud" class="hx-practice-go" aria-label="Sign in">${splitBtnHTML({label:'Sign in'})}</button>
+  </div>`:''}
+
+  <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
+   ${tileHTML({label:'Blood pressure',icon:I.pulse,value:`${a.s.sys??'—'}/${a.s.dia??'—'}`,status:cbp[1],tone:'ruby',pill:true})}
+   ${tileHTML({label:'Blood sugar',icon:I.drop,value:a.s.sugar==null?'—':fmt1(a.s.sugar),status:csg[1],tone:'amber',pill:true})}
+   ${tileHTML({label:'Body BMI',icon:I.scale,value:bmi(a)?fmt1(bmi(a)):'—',status:cbm[1],tone:'cobalt',pill:true})}
+  </div>
+
+  ${redFlag(a)?`<div style="display:flex;gap:8px;padding:10px 12px;border-radius:16px;background:var(--hx-rose-bg);border:1px solid var(--hx-rose-line);color:var(--hx-rose);font-size:11px;font-weight:700;line-height:1.35">
+    <span>⚠</span><span>Clinical red flag: skip the fitness test and refer to the triage nurse now.</span></div>`:''}
+
+  <button data-action="goVisit" style="display:block;width:100%;border:0;background:none;padding:0;cursor:pointer" aria-label="${esc(ctaLabel)}">
+   ${ctaHTML({label:ctaLabel})}
+  </button>`}
 
   ${state.regOpen?`<div class="glass p-4">
    <div class="display text-sm font-extrabold">New visitor</div>
@@ -166,33 +193,31 @@ export function viewHome(){
    </form>
   </div>`:''}
 
-  <div class="glass p-4">
-   <div class="mb-2 flex items-start justify-between gap-3">
-    <div class="min-w-0"><div class="microlabel">Visitors today</div>
-     <div class="mt-0.5 text-[11px] font-semibold text-[#4f6870]">${cloud.user?'Shared between desks':'Saved on this device'}</div></div>
-    <div class="flex flex-none items-center gap-3">
-     ${cloud.user||cloud.mode?'':`<button data-action="resetDemo" class="tap-link" style="color:#4f6870">Reset demo</button>`}
-     ${installEvt?`<button data-action="installApp" class="tap-link">Install app</button>`:''}
-     <button data-action="openCloud" class="tap-link">${cloud.user?'Sync':'Sign in'}</button>
-    </div>
+  <div class="hx-ivory">
+   <div class="hx-ivory-head">
+    <div><h3>Visitors today</h3><p class="hx-ivory-sub">Tap a visitor row to inspect live vitals</p></div>
+    <button data-action="openSwitcher" class="hx-round hx-round-ivory" aria-label="Filter visitors">${I.chevD}</button>
    </div>
    ${cloud.user?`<div id="homeHealth">${homeHealthHTML()}</div>`:''}
+   <div class="hx-sheet-meta"><strong>Screening Spectrum</strong><span>VN: ${attendees.length} Active · 4 Steps</span></div>
+   ${spectrumHTML(spec)}
    ${attendees.length>LIST_CAP?`<input id="vq" type="search" placeholder="Search ${attendees.length} visitors by name, badge or phone" value="${esc(state.vq||'')}"
      data-on-input="visitors-filter" class="field mb-2" autocomplete="off">`:''}
-   <div id="visitorList" class="space-y-1">${visitorListHTML(state.vq)}</div>
+   <div id="visitorList">${visitorListHTML(state.vq)}</div>
+   <div class="hx-sheet-actions">
+    ${cloud.user||cloud.mode?'':`<button data-action="resetDemo">Reset demo</button>`}
+    ${installEvt?`<button data-action="installApp">Install app</button>`:''}
+    <button data-action="openCloud">${cloud.user?'Sync':'Sign in'}</button>
+   </div>
   </div>
 
-  <button data-action="openVolModal" class="glass hue-tint hue-peach flex w-full items-center gap-3 p-3.5 text-left">
-   <span class="flex h-10 w-10 flex-none items-center justify-center rounded-[15px] tint hue-peach">${I.team}</span>
-   <span class="min-w-0 flex-1">
-    <span class="microlabel">Incoming expo · ${hiredCountLabel()}</span>
-    <span class="mt-0.5 block text-[13px] font-extrabold leading-snug text-[#0f2a2c]">${esc(EXPO_UPCOMING.name)}</span>
-    <span class="mt-0.5 block text-[10px] font-semibold text-[#6b8187]">Pledge to help · pick your booth${pendingLabel()}</span>
-   </span>
-   <svg class="h-4 w-4 flex-none text-[#8a9aa0]" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+  <button data-action="openVolModal" class="hx-banner" style="width:100%;text-align:left;font:inherit;cursor:pointer">
+   <span class="hx-banner-top"><span>${esc(EXPO_UPCOMING.name)}</span><em>${esc(hiredCountLabel())}</em></span>
+   <span class="hx-banner-bottom"><strong>Pledge &amp; Booth Registration</strong>${splitBtnHTML({label:'Details',variant:'mint'})}</span>
   </button>
  </section>`;
 }
+
 /* With hundreds of visitors, drawing everyone on every tap would make the phone crawl, so long lists show the
    most recent few (plus whoever is open) and a search box finds the rest. Short lists show everyone as before. */
 export const LIST_CAP=25;
@@ -208,13 +233,15 @@ export function visitorsToShow(query){
  return act&&!recent.includes(act)?[act,...recent.slice(0,LIST_CAP-1)]:recent;
 }
 function visitorRowHTML(x){
- const d=doneCount(x),act=x.id===state.activeId;
- return `<button data-action="switchTo" data-args="${x.id}" class="flex w-full items-center gap-3 rounded-2xl px-2 py-2.5 text-left transition-all duration-300 ${act?'bg-brand-500/10 ring-1 ring-brand-400/25':'hover:bg-white/60 active:scale-[.99]'}">
-     <span class="flex h-9 w-9 flex-none items-center justify-center rounded-[13px] text-[11px] font-extrabold transition-all duration-300 ${act?'av':'tint'} hue-${hueOf(x.id)}">${initials(x.name)}</span>
-     <span class="min-w-0 flex-1"><span class="block truncate text-[13px] font-bold">${esc(x.name)}${x.done?' <span class="text-brand-600">✓</span>':''}</span>
-     <span class="mono block text-[10px] text-[#6b8187]">${esc(x.id)}</span></span>
-     <span class="flex flex-none gap-0.5">${Array.from({length:8},(_,i)=>`<span class="h-1.5 w-1.5 rounded-full transition-colors duration-300 ${i<d?'bg-brand-500':'bg-[#123033]/10'}"></span>`).join('')}</span>
-     <span class="text-[#9db0b4]">›</span></button>`;
+ const act=x.id===state.activeId;
+ const cbp=cat('bp',{sys:x.s.sys,dia:x.s.dia}),csg=cat('sugar',x.s.sugar);
+ const dot=redFlag(x)?'#dc3522':(cbp[0]==='watch'||csg[0]==='watch')?'#d97706':'#22c55e';
+ const line=`BP ${x.s.sys??'—'}/${x.s.dia??'—'} · ${cbp[1]}`;
+ const n=JOURNEY.indexOf(defaultStep(x))+1;
+ return `<button data-action="switchTo" data-args="${x.id}" class="hx-row${act?' is-on':''}" style="font:inherit;text-align:left">
+  <span class="hx-row-main"><span class="hx-row-dot" style="background:${dot}"></span>
+   <span><strong class="hx-row-name">${esc(x.name)}</strong><span class="hx-row-sub">${esc(x.id)} · ${esc(line)}</span></span></span>
+  <span class="hx-row-badge">${n} / 4</span></button>`;
 }
 function visitorListHTML(query){
  const rows=visitorsToShow(query),q=String(query||'').trim();
