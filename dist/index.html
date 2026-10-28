@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <!-- Same policy as dist/_headers (tools/build.js checks the two stay identical). The header needs a host that reads
      _headers (Cloudflare); this meta travels with the page, so the packaged Android app keeps the same protections. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-hgUPi7Y2iI77XI9Qw6IEOC8/OowKupAKF4UbLcd/qN4=' 'sha256-d57dYNvIDiiFfgzy5rZzdR3Twv19ArQdqusmV3CKvXw=' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.supabase.in wss://*.supabase.in; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-hgUPi7Y2iI77XI9Qw6IEOC8/OowKupAKF4UbLcd/qN4=' 'sha256-hvAqgljYCmFDJnlUAODG/jLFUzQA03x3CeT0yULUWEI=' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.supabase.in wss://*.supabase.in; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <meta name="theme-color" content="#f4f3ee"/>
 <link rel="manifest" href="manifest.webmanifest">
@@ -145,7 +145,6 @@
     box-shadow:0 10px 26px -22px rgba(18,38,26,.35),inset 0 1px 0 rgba(255,255,255,.9);
     border-radius:20px;
   }
-  .hairline{border-color:var(--hx-line)}
 
   /* ============ TYPE ============ */
   .microlabel{font-size:.63rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--hx-ink-3)}
@@ -256,8 +255,6 @@
   @keyframes popIn{from{opacity:0;transform:translateY(10px) scale(.96)}to{opacity:1;transform:none}}
   .pop-in{animation:popIn .34s cubic-bezier(.34,1.4,.64,1) both}
 
-  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-  .fade-in{animation:fadeIn .3s ease both}
 
   @keyframes sheetUp{from{opacity:0;transform:translateY(28px) scale(.985)}to{opacity:1;transform:none}}
   .sheet-up{animation:sheetUp .42s cubic-bezier(.22,1,.36,1) both}
@@ -265,9 +262,6 @@
   @keyframes modalIn{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}
   .modal-in{animation:modalIn .38s cubic-bezier(.22,1,.36,1) both}
 
-
-  @keyframes pulseDot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.8)}}
-  .pulse-dot{animation:pulseDot 1.8s ease-in-out infinite}
 
 
   @media (prefers-reduced-motion:reduce){
@@ -299,8 +293,6 @@
   .pc-box{flex:none;width:3.6mm;height:3.6mm;border:1.4px solid #2b877c;border-radius:.8mm;margin-top:.4mm}
   .pc-problem{margin:0 0 1.2mm;font-size:7.6pt;font-weight:600;line-height:1.35;color:#123033}
   .pc-line{margin:.2mm 0 .8mm;font-size:7.2pt;line-height:1.35;color:#334155}
-  .pc-item{display:flex;justify-content:space-between;gap:2mm;font-size:8pt;color:#334155;padding:1mm 0;border-bottom:1px dashed #e2e8f0}
-  .pc-item em{font-style:normal;color:#94a3b8;font-size:7pt}
   .pc-foot{margin-top:auto;padding-top:1.5mm}
   .pc-safety{background:#fffaf0;border:1px solid #f6e3bb;border-radius:1.6mm;padding:1.4mm 2mm;font-size:6.6pt;line-height:1.35;color:#8a5a12}
   .pc-verse{margin-top:1.4mm;font-size:6.8pt;font-style:italic;color:#5c747a;line-height:1.4}
@@ -320,15 +312,10 @@
   }
 
   /* ============ v3 · LIQUID GLASS REFRESH ============ */
-  body{color:#17332f}
   :focus-visible{outline:2px solid #3f9d8f;outline-offset:2px}
   .field:focus-visible,.step-input:focus-visible{outline:none}
 
   .glass,.glass-thin,.hero{position:relative;isolation:isolate}
-  .glass::before,.hero::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:-1;
-    background:radial-gradient(240px circle at var(--mx,18%) var(--my,0%),rgba(255,255,255,.75),rgba(255,255,255,0) 65%),
-      linear-gradient(118deg,rgba(255,255,255,.4),rgba(255,255,255,0) 32%,rgba(255,255,255,0) 68%,rgba(190,232,222,.28))}
-
   .microlabel{font-size:.7rem;font-weight:700;letter-spacing:.015em;text-transform:none;color:#5c747a}
   .tile-l{font-size:10px;font-weight:700;letter-spacing:.015em;text-transform:none;color:#667d83}
 
@@ -382,13 +369,6 @@
   .ico,.tint{background:linear-gradient(150deg,var(--t1),var(--t2));color:var(--ink)}
   .av{background:linear-gradient(135deg,var(--s1),var(--s2));color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 8px 16px -10px var(--s2)}
   .btn-hue{background:linear-gradient(135deg,var(--s1),var(--s2));color:#fff;box-shadow:0 14px 26px -14px var(--s2),inset 0 1.5px 0 rgba(255,255,255,.4),inset 0 -1px 0 rgba(0,0,0,.06)}
-  .glass.hue-tint{background:linear-gradient(160deg,color-mix(in srgb,var(--t1) 78%,transparent),rgba(255,255,255,.42) 78%)}
-  .tile[class*=hue-]{background:linear-gradient(160deg,color-mix(in srgb,var(--t1) 88%,transparent),rgba(255,255,255,.5))}
-  .hue-tint .step-input:focus{border-color:var(--s1);box-shadow:0 0 0 4px color-mix(in srgb,var(--s1) 22%,transparent)}
-  .chip-ok{background:rgba(106,164,106,.14);border-color:rgba(106,164,106,.28);color:#36633f}
-  .tile-ok .tile-v{color:#3f6e48}
-  .nav-pill{background-color:var(--t2);background-image:linear-gradient(160deg,rgba(255,255,255,.95),rgba(255,255,255,.55))}
-  .nav-item-active{color:var(--ink)}
   input[type=range]::-webkit-slider-runnable-track{background:linear-gradient(90deg,var(--s1,#6fbfb1) var(--pct,50%),rgba(23,51,47,.09) var(--pct,50%))}
   input[type=range]::-moz-range-progress{background:var(--s1,#6fbfb1)}
 
@@ -397,9 +377,6 @@
      frame the pill moved, and read as a stray blob on the active tab) */
   .nav-goo{position:absolute;inset:0;border-radius:inherit;pointer-events:none}
   .nav-goo .nav-pill{box-shadow:inset 0 1.5px 0 #fff,inset 0 -1px 0 rgba(63,157,143,.22)}
-  .wave{position:absolute;left:0;right:0;bottom:0;height:66px;z-index:-1;pointer-events:none;background-repeat:repeat-x;background-size:200px 100%}
-  .w1{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 64' preserveAspectRatio='none'%3E%3Cpath d='M0 28Q50 8 100 28T200 28V64H0Z' fill='%23aedcd0' fill-opacity='.5'/%3E%3C/svg%3E")}
-  .w2{height:54px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 64' preserveAspectRatio='none'%3E%3Cpath d='M0 30Q50 50 100 30T200 30V64H0Z' fill='%23c9def3' fill-opacity='.6'/%3E%3C/svg%3E")}
   @keyframes jelly{0%{transform:scale(1)}28%{transform:scale(1.22,.8)}52%{transform:scale(.92,1.12)}74%{transform:scale(1.04,.98)}100%{transform:scale(1)}}
   .jelly{animation:jelly .55s cubic-bezier(.34,1.2,.5,1)}
   @keyframes dropIn{0%{transform:scale(.3,.5) translateY(32px);opacity:0}35%{transform:scale(1.12,.86) translateY(-4px);opacity:1}60%{transform:scale(.96,1.05)}100%{transform:none}}
@@ -408,7 +385,6 @@
   /* tab switches are plain renders: the old view-transition wipe captured and animated full-page
      snapshot layers, which low-end phones struggled with — the cards' own light entry animation
      and the nav pill's slide (both plain transform/opacity) are all the motion a switch needs */
-  @media (prefers-reduced-motion:reduce){.wave{animation:none}}
 
   /* ============ v6 · LIQUID FINISH ============ */
   /* progress / meter bars fill up from empty like a rising liquid */
@@ -445,9 +421,6 @@
   @media (prefers-reduced-motion:reduce){.stagger>*,.pour>*{animation:none!important}}   /* they asked for less motion: screens appear at once */
   /* modal scrim: fade only, no animated backdrop blur */
   @keyframes scrim{from{opacity:0}}
-  /* the waves are painted once and stay still (two layers sliding forever cost more than they add) */
-  .wave-clip{position:absolute;left:0;right:0;bottom:0;height:66px;overflow:hidden;border-radius:0 0 26px 26px;z-index:-1;pointer-events:none}
-  .wave{left:0;right:auto;width:calc(100% + 200px);background-position:0 0}
   .lite .stagger>*,.lite .pour>*{animation-duration:.25s!important}
   /* phones: screens arrive with a plain .18s fade (opacity only, the cheapest thing a GPU can animate), and the
      background blobs change colour at once instead of over 1.6s of full-screen repaints */
@@ -480,7 +453,6 @@
   .sc-ok{background:rgba(58,165,151,.12);border-color:rgba(58,165,151,.24);color:#1f6b62}
   .sc-warn{background:rgba(214,158,45,.14);border-color:rgba(214,158,45,.28);color:#8a5a12}
   .sc-off{background:rgba(18,48,51,.05);border-color:rgba(18,48,51,.08);color:#4f6870}
-  .sc-hot{background:rgba(217,105,92,.13);border-color:rgba(217,105,92,.26);color:#b04a42}
 
   .boothpick{position:relative;text-align:left;border-radius:18px;padding:.5rem .55rem .55rem;
     background:rgba(255,255,255,.62);border:1px solid rgba(255,255,255,.95);
@@ -2839,7 +2811,7 @@ var __NEWSTART = (() => {
     const v = AV();
     return `<section class="stagger space-y-3.5 pb-2">
 
-  <div class="hero p-5"><div class="wave-clip" aria-hidden="true"><div class="wave w1"></div><div class="wave w2"></div></div>
+  <div class="hero p-5">
    <div class="flex items-start justify-between gap-2">
     <div class="microlabel">Incoming expo</div>
     <span class="servechip ${openNow ? "sc-ok" : "sc-warn"}">${openNow ? "Registration open" : "Pledges open"}</span>
@@ -2859,7 +2831,7 @@ var __NEWSTART = (() => {
 
   ${serveTabs()}
 
-  ${v ? `<div class="glass hue-tint hue-${badgeTier(v).hue} p-3.5">
+  ${v ? `<div class="glass hue-${badgeTier(v).hue} p-3.5">
    <div class="flex items-center gap-3">
     ${medalHTML(v)}
     <div class="min-w-0 flex-1">
@@ -3150,7 +3122,7 @@ var __NEWSTART = (() => {
     if (!v) return emptyVolState();
     if (needsRegistration(v)) return `<section class="stagger space-y-3.5 pb-2">
   ${serveTabs()}
-  <div class="glass hue-tint hue-peach p-5 text-center">
+  <div class="glass hue-peach p-5 text-center">
    <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full tint hue-peach text-[15px] font-extrabold">${initials(v.name)}</div>
    <div class="display mt-2.5 text-[16px] font-extrabold text-[#0f2a2c]">No booth yet, ${esc(firstName(v.name))}</div>
    <p class="mx-auto mt-1.5 max-w-[30ch] text-[11px] leading-relaxed text-[#5b7178]">You have pledged${(v.pref || []).length ? ` for <b>${esc(boothLabel(v.pref[0]))}</b>` : ""}. Complete registration and we will confirm your booth and shift.</p>
@@ -3168,7 +3140,7 @@ var __NEWSTART = (() => {
   </div>
   ${serveTabs()}
 
-  <div class="glass hue-tint hue-${boothHue(v.booth)} p-4">
+  <div class="glass hue-${boothHue(v.booth)} p-4">
    <div class="flex items-start gap-3">
      <span class="medal hue-${badgeTier(v).hue}"><span class="medal-v"><b class="medal-lv">${volLevel(v) || "\u2013"}</b><span class="medal-rk">${esc(badgeTier(v).short)}</span>${starGlyph(badgeTier(v).stars, "7px")}</span></span>
     <div class="min-w-0 flex-1">
@@ -3280,7 +3252,7 @@ var __NEWSTART = (() => {
    <div class="display mt-0.5 text-[17px] font-extrabold text-[#0f2a2c]">${esc(firstName(v.name))}\u2019s ${volExpos(v)} expo${volExpos(v) === 1 ? "" : "s"}</div></div>
   ${serveTabs()}
 
-  <div class="glass hue-tint hue-${t.hue} p-4">
+  <div class="glass hue-${t.hue} p-4">
    <div class="flex items-center gap-3.5">
     ${medalHTML(v)}
     <div class="min-w-0 flex-1">
@@ -4780,7 +4752,7 @@ var __NEWSTART = (() => {
    ${x.how.length ? `<div class="ac-how"><b>How</b><ul>${x.how.map((h) => `<li>${esc(h)}</li>`).join("")}</ul></div>` : ""}
   </li>`;
     return `<section class="stagger space-y-3.5">
-  <div class="glass hue-tint hue-${hue} p-4">
+  <div class="glass hue-${hue} p-4">
    <div class="microlabel">${first}\u2019s plan \xB7 from ${esc(p.credit)}</div>
    <div class="display mt-0.5 text-[19px] leading-tight font-extrabold text-[#0f2a2c]">${esc(P.goal)}</div>
    <p class="pl-problem">${esc(P.problem)}</p>
@@ -5422,7 +5394,7 @@ var __NEWSTART = (() => {
     return { it: out };
   }
   function consentCard(a) {
-    return `<div class="glass hue-tint hue-blush p-4">
+    return `<div class="glass hue-blush p-4">
   <div class="microlabel">Consent needed</div>
   <div class="display text-base font-extrabold">Ask ${esc(firstName(a.name))} first</div>
   <p class="mt-1 text-[11px] leading-snug text-[#5c747a]">No consent is recorded for this passport, so its checks stay closed.</p>
@@ -5534,7 +5506,7 @@ var __NEWSTART = (() => {
   }
   function viewScreen() {
     const a = A(), d = doneCount(a), cbp = cat("bp", { sys: a.s.sys, dia: a.s.dia });
-    const bpCard = `<div class="glass hue-tint hue-blush p-4">
+    const bpCard = `<div class="glass hue-blush p-4">
   <div class="flex items-center justify-between">
    <div class="flex items-center gap-2.5">
     <span class="flex h-8 w-8 items-center justify-center rounded-[12px] text-[10px] font-extrabold ico">BP</span>
@@ -5550,7 +5522,7 @@ var __NEWSTART = (() => {
     const cardOf = (x) => {
       const chip = chipOf(a, x.k);
       const extra = `<span id="note-${x.k}" class="mono text-[10px] text-[#6b8187]">${chipNote(a, x.k)}</span>`;
-      return `<div class="glass hue-tint hue-${x.hue} flex flex-col gap-3 p-4">
+      return `<div class="glass hue-${x.hue} flex flex-col gap-3 p-4">
    <div class="flex items-center gap-2.5">
     <span class="flex h-8 w-8 flex-none items-center justify-center rounded-[12px] text-[10px] font-extrabold ico">${x.letter}</span>
     <div class="min-w-0 flex-1"><div class="text-[13px] font-bold leading-tight">${x.label}</div><div class="text-[10px] text-[#6b8187]">${x.hint}</div></div>
@@ -5597,7 +5569,7 @@ var __NEWSTART = (() => {
  </section>`;
   }
   function pastVisitCard(a) {
-    return `<div class="glass hue-tint hue-sky p-4">
+    return `<div class="glass hue-sky p-4">
   <div class="microlabel">Past visit</div>
   <div class="display text-base font-extrabold">${esc(firstName(a.name))}\u2019s visit was more than ${GRACE_DAYS} days ago</div>
   <p class="mt-1 text-[11px] leading-snug text-[#5c747a]">Readings of a past visit are deleted after ${GRACE_DAYS} days, so this passport takes no new checks. Register today\u2019s visit on a new badge: their details are filled in, and they are asked for consent again.</p>
@@ -5655,7 +5627,7 @@ var __NEWSTART = (() => {
   <span class="flex gap-1.5">${b(1, "Yes")}${b(0, "No")}</span></div>`;
   }
   function historyCard(a) {
-    return `<div class="glass hue-tint hue-lilac space-y-2.5 p-4">
+    return `<div class="glass hue-lilac space-y-2.5 p-4">
   <div class="text-[13px] font-bold leading-tight">Medical history</div>
   ${MED_YN.filter(([k]) => k !== "bpMed" && (k !== "preg" || a.sex !== "Male")).map(([k, l]) => ynHTML(a, k, l)).join("")}
   ${a.s.chronic === 1 ? `<label class="block"><span class="microlabel">Which chronic illnesses?</span>
@@ -6706,7 +6678,7 @@ var __NEWSTART = (() => {
    ${x.cost ? `<span class="ac-cost">\u2248 ${money(x.cost)} a day</span>` : ""}
   </li>`;
     return `<section class="stagger space-y-3.5">
-  <div class="glass hue-tint hue-${hue} p-4">
+  <div class="glass hue-${hue} p-4">
    <div class="microlabel">${first}\u2019s plan \xB7 21 days</div>
    <div class="display mt-0.5 text-[19px] leading-tight font-extrabold text-[#0f2a2c]">${P.goal}</div>
    <p class="pl-problem">${esc(P.problem)}</p>

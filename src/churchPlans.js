@@ -93,7 +93,7 @@ export function viewChurchPlan(a,cp){
    ${x.how.length?`<div class="ac-how"><b>How</b><ul>${x.how.map(h=>`<li>${esc(h)}</li>`).join('')}</ul></div>`:''}
   </li>`;
  return `<section class="stagger space-y-3.5">
-  <div class="glass hue-tint hue-${hue} p-4">
+  <div class="glass hue-${hue} p-4">
    <div class="microlabel">${first}’s plan · from ${esc(p.credit)}</div>
    <div class="display mt-0.5 text-[19px] leading-tight font-extrabold text-[#0f2a2c]">${esc(P.goal)}</div>
    <p class="pl-problem">${esc(P.problem)}</p>

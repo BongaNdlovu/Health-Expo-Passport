@@ -161,7 +161,7 @@ function viewVolPledge(){
  const v=AV();
  return `<section class="stagger space-y-3.5 pb-2">
 
-  <div class="hero p-5"><div class="wave-clip" aria-hidden="true"><div class="wave w1"></div><div class="wave w2"></div></div>
+  <div class="hero p-5">
    <div class="flex items-start justify-between gap-2">
     <div class="microlabel">Incoming expo</div>
     <span class="servechip ${openNow?'sc-ok':'sc-warn'}">${openNow?'Registration open':'Pledges open'}</span>
@@ -181,7 +181,7 @@ function viewVolPledge(){
 
   ${serveTabs()}
 
-  ${v?`<div class="glass hue-tint hue-${badgeTier(v).hue} p-3.5">
+  ${v?`<div class="glass hue-${badgeTier(v).hue} p-3.5">
    <div class="flex items-center gap-3">
     ${medalHTML(v)}
     <div class="min-w-0 flex-1">
@@ -449,7 +449,7 @@ function viewVolBooth(){
  const v=AV(); if(!v)return emptyVolState();
  if(needsRegistration(v))return `<section class="stagger space-y-3.5 pb-2">
   ${serveTabs()}
-  <div class="glass hue-tint hue-peach p-5 text-center">
+  <div class="glass hue-peach p-5 text-center">
    <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full tint hue-peach text-[15px] font-extrabold">${initials(v.name)}</div>
    <div class="display mt-2.5 text-[16px] font-extrabold text-[#0f2a2c]">No booth yet, ${esc(firstName(v.name))}</div>
    <p class="mx-auto mt-1.5 max-w-[30ch] text-[11px] leading-relaxed text-[#5b7178]">You have pledged${(v.pref||[]).length?` for <b>${esc(boothLabel(v.pref[0]))}</b>`:''}. Complete registration and we will confirm your booth and shift.</p>
@@ -468,7 +468,7 @@ function viewVolBooth(){
   </div>
   ${serveTabs()}
 
-  <div class="glass hue-tint hue-${boothHue(v.booth)} p-4">
+  <div class="glass hue-${boothHue(v.booth)} p-4">
    <div class="flex items-start gap-3">
      <span class="medal hue-${badgeTier(v).hue}"><span class="medal-v"><b class="medal-lv">${volLevel(v)||'–'}</b><span class="medal-rk">${esc(badgeTier(v).short)}</span>${starGlyph(badgeTier(v).stars,'7px')}</span></span>
     <div class="min-w-0 flex-1">
@@ -575,7 +575,7 @@ function viewVolRecord(){
    <div class="display mt-0.5 text-[17px] font-extrabold text-[#0f2a2c]">${esc(firstName(v.name))}’s ${volExpos(v)} expo${volExpos(v)===1?'':'s'}</div></div>
   ${serveTabs()}
 
-  <div class="glass hue-tint hue-${t.hue} p-4">
+  <div class="glass hue-${t.hue} p-4">
    <div class="flex items-center gap-3.5">
     ${medalHTML(v)}
     <div class="min-w-0 flex-1">

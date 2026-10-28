@@ -1090,8 +1090,8 @@ function makeServer() {
     ok('nav: the pill slides in one spring, self-corrects once the layout settles, and there is no SVG goo filter re-filtering the bar every frame or trailing droplet blob',
       /\.nav-goo\{position:absolute;inset:0;border-radius:inherit;pointer-events:none\}/.test(html) && !/url\(#goo\)/.test(html) && !/id="goo"/.test(html)
       && !/navDrop/.test(html) && !/nav-drop/.test(html) && !/_pillT/.test(srcText) && /_pillRaf/.test(srcText));
-    ok('nav: the pill tint stays subtle on every tab (a strong hue read as a stray coloured circle on the active tab)',
-      /\.nav-pill\{background-color:var\(--t2\);background-image:linear-gradient\(160deg,rgba\(255,255,255,\.95\),rgba\(255,255,255,\.55\)\)\}/.test(html));
+    ok('nav: the dock pill is the mockup mint gradient, not the old hue wash',
+      /html\[data-theme\] \.nav-pill\{background:linear-gradient\(180deg,var\(--hx-mint-dock-a\),var\(--hx-mint-dock-b\)\)/.test(html));
     ok('speed: the page is still between interactions — no ambient blob layer, no drifting waves or shimmers, bars grow with transforms, nothing runs forever',
       !/class="ambient"/.test(html) && !/\.ambient\{/.test(html)
       && !/drift\d|@keyframes morph|waveT|waveX|shimmer/.test(html) && !/animation:[^;}]*\b(waveT|waveX|drift|shimmer)/.test(html)

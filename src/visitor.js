@@ -330,7 +330,7 @@ function readConsent(p,age){
 }
 /* a passport with no consent on record (registered before this step, or from an older device): ask before any check */
 function consentCard(a){
- return `<div class="glass hue-tint hue-blush p-4">
+ return `<div class="glass hue-blush p-4">
   <div class="microlabel">Consent needed</div>
   <div class="display text-base font-extrabold">Ask ${esc(firstName(a.name))} first</div>
   <p class="mt-1 text-[11px] leading-snug text-[#5c747a]">No consent is recorded for this passport, so its checks stay closed.</p>
@@ -410,7 +410,7 @@ function stepperHTML(a,k,label,min,max,step,def){
 }
 export function viewScreen(){
  const a=A(),d=doneCount(a),cbp=cat('bp',{sys:a.s.sys,dia:a.s.dia});
- const bpCard=`<div class="glass hue-tint hue-blush p-4">
+ const bpCard=`<div class="glass hue-blush p-4">
   <div class="flex items-center justify-between">
    <div class="flex items-center gap-2.5">
     <span class="flex h-8 w-8 items-center justify-center rounded-[12px] text-[10px] font-extrabold ico">BP</span>
@@ -426,7 +426,7 @@ export function viewScreen(){
  const cardOf=x=>{
   const chip=chipOf(a,x.k);
   const extra=`<span id="note-${x.k}" class="mono text-[10px] text-[#6b8187]">${chipNote(a,x.k)}</span>`;
-  return `<div class="glass hue-tint hue-${x.hue} flex flex-col gap-3 p-4">
+  return `<div class="glass hue-${x.hue} flex flex-col gap-3 p-4">
    <div class="flex items-center gap-2.5">
     <span class="flex h-8 w-8 flex-none items-center justify-center rounded-[12px] text-[10px] font-extrabold ico">${x.letter}</span>
     <div class="min-w-0 flex-1"><div class="text-[13px] font-bold leading-tight">${x.label}</div><div class="text-[10px] text-[#6b8187]">${x.hint}</div></div>
@@ -476,7 +476,7 @@ export function viewScreen(){
 }
 /* A returning visitor opened by an old number: that visit is closed, so the checks start on a new passport */
 function pastVisitCard(a){
- return `<div class="glass hue-tint hue-sky p-4">
+ return `<div class="glass hue-sky p-4">
   <div class="microlabel">Past visit</div>
   <div class="display text-base font-extrabold">${esc(firstName(a.name))}’s visit was more than ${GRACE_DAYS} days ago</div>
   <p class="mt-1 text-[11px] leading-snug text-[#5c747a]">Readings of a past visit are deleted after ${GRACE_DAYS} days, so this passport takes no new checks. Register today’s visit on a new badge: their details are filled in, and they are asked for consent again.</p>
@@ -510,7 +510,7 @@ function ynHTML(a,k,label){
 }
 /* top right of the paper record: pregnant, major operations, chronic illnesses (and which) */
 function historyCard(a){
- return `<div class="glass hue-tint hue-lilac space-y-2.5 p-4">
+ return `<div class="glass hue-lilac space-y-2.5 p-4">
   <div class="text-[13px] font-bold leading-tight">Medical history</div>
   ${MED_YN.filter(([k])=>k!=='bpMed'&&(k!=='preg'||a.sex!=='Male')).map(([k,l])=>ynHTML(a,k,l)).join('')}
   ${a.s.chronic===1?`<label class="block"><span class="microlabel">Which chronic illnesses?</span>

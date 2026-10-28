@@ -262,7 +262,7 @@ export function viewPlan(){
    ${x.cost?`<span class="ac-cost">≈ ${money(x.cost)} a day</span>`:''}
   </li>`;
  return `<section class="stagger space-y-3.5">
-  <div class="glass hue-tint hue-${hue} p-4">
+  <div class="glass hue-${hue} p-4">
    <div class="microlabel">${first}’s plan · 21 days</div>
    <div class="display mt-0.5 text-[19px] leading-tight font-extrabold text-[#0f2a2c]">${P.goal}</div>
    <p class="pl-problem">${esc(P.problem)}</p>
