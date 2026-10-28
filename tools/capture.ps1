@@ -55,6 +55,9 @@ param(
 
     [switch]$Demo,
 
+    [ValidateSet('home', 'visit', 'queue', 'care', 'serve', 'me')]
+    [string]$Tab = 'home',
+
     [switch]$Freeze = $true,
 
     [string]$AppPath = 'dist/index.html'
@@ -310,7 +313,7 @@ try {
     $captureScript = @'
 <script id="__capture_actions">
 (function () {
-  var cfg = { theme: __THEME__, demo: __DEMO__, freeze: __FREEZE__ };
+  var cfg = { theme: __THEME__, demo: __DEMO__, freeze: __FREEZE__, tab: __TAB__ };
   var status = window.__NEWSTART_CAPTURE_STATUS__ = {
     ok: false,
     ready: false,
@@ -424,22 +427,35 @@ try {
       throw new Error('Gate capture requested, but the sign-in gate is missing or hidden.');
     }
 
-    status.ready = true;
-    status.ok = true;
-    status.phase = 'done';
-    status.setTheme = status.themeApplied;
+    function finishCapture() {
+      if (cfg.tab && cfg.tab !== 'home') {
+        if (!api.state || typeof api.render !== 'function') throw new Error('Tab requested, but state/render are not exposed.');
+        api.state.tab = cfg.tab;
+        api.render();
+        status.tab = cfg.tab;
+        status.tabAfter = api.state.tab;
+      }
+      status.ready = true;
+      status.ok = true;
+      status.phase = 'done';
+      status.setTheme = status.themeApplied;
+    }
+    /* the app's boot render can land just after this hook; switch once the layout has settled */
+    if (cfg.tab && cfg.tab !== 'home') setTimeout(finishCapture, 700);
+    else finishCapture();
   } catch (err) {
     fail(err && err.stack ? err.stack : err);
   }
 })();
 </script>
 '@
-    $captureScript = $captureScript.Replace('__THEME__', $themeJs).Replace('__DEMO__', $demoJs).Replace('__FREEZE__', $freezeJs)
+    $tabJs = "'" + $Tab + "'"
+    $captureScript = $captureScript.Replace('__THEME__', $themeJs).Replace('__DEMO__', $demoJs).Replace('__FREEZE__', $freezeJs).Replace('__TAB__', $tabJs)
     $html = $html.Insert($lastBodyIndex, $captureScript + [Environment]::NewLine)
     [System.IO.File]::WriteAllText($tempApp, $html, (New-Object System.Text.UTF8Encoding($false)))
 
     $appUri = (New-Object System.Uri($tempApp)).AbsoluteUri.Replace('&', '&amp;').Replace('"', '&quot;')
-    $configJson = '{"theme":"' + $Theme + '","demo":' + $demoJs + ',"freeze":' + $freezeJs + '}'
+    $configJson = '{"theme":"' + $Theme + '","demo":' + $demoJs + ',"freeze":' + $freezeJs + ',"tab":"' + $Tab + '"}'
     $wrapperTemplate = @'
 <!DOCTYPE html>
 <html lang="en">
