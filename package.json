@@ -10,6 +10,7 @@
   "scripts": {
     "build": "node tools/build.js",
     "test": "node --expose-gc .smoke/harness.js",
+    "test:hub": "node tools/test-volunteer-hub.js",
     "typecheck": "tsc --noEmit -p jsconfig.json"
   }
 }

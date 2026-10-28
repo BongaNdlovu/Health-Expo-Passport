@@ -319,10 +319,13 @@ alter table public.attendees add constraint attendees_limits check (
   and jsonb_typeof(interests) = 'object' and octet_length(interests::text) <= 1000   -- the paper form's seminar and "heard via" ticks, plus the follow-up name
 ) not valid;
 
+-- a station key is a short key, never a paragraph (earlier builds let a placement write any text)
+update public.volunteers set booth = left(booth, 40) where length(booth) > 40;
 alter table public.volunteers drop constraint if exists volunteers_limits;
 alter table public.volunteers add constraint volunteers_limits check (
   length(name) <= 200 and length(phone) <= 40 and length(email) <= 254 and length(notes) <= 2000 and length(emergency) <= 500
   and length(shirt) <= 20 and length(role) <= 100 and length(shift) <= 100 and length(since) <= 10 and length(pref2) <= 40
+  and (booth is null or length(booth) <= 40)
   and jsonb_typeof(history) = 'array' and octet_length(history::text) <= 20000
 ) not valid;
 
@@ -1374,6 +1377,10 @@ begin
   if new.booth is distinct from old.booth and new.lead and new.lead is not distinct from old.lead then
     new.lead := false;
   end if;
+  /* the display title follows the flag: nobody keeps "Team leader" after losing the title */
+  if old.lead and not new.lead and new.role = 'Team leader' then
+    new.role := '';
+  end if;
   return new;
 end;
 $$;
@@ -1413,27 +1420,52 @@ as $$
 $$;
 revoke all on function public.can_place(text, text) from public, anon, authenticated;
 
--- nobody outside these functions changes where a person stands: a direct update of booth or lead by anybody else
--- is refused (the staff sync sends whole rows, but only the placement columns are guarded; edits of names and
--- contact details still go through). Leaders' rights are read live, so losing the title loses the rights at once.
+-- nobody outside these functions changes where a person stands: a direct write of booth or lead by anybody else
+-- is refused, on insert as well as on update (the staff sync sends whole rows, but only the placement columns are
+-- guarded; edits of names and contact details still go through). A change of lead is an admin decision; the
+-- placement functions mark their transaction with newstart.lead_ok because a swap moves the title with the station
+-- even when a team leader (not an admin) is the one swapping. Leaders' rights are read live, so losing the title
+-- loses the rights at once.
 create or replace function public.volunteers_place_guard()
 returns trigger
 language plpgsql
 security definer
 set search_path = ''
 as $$
+declare v_lead_ok boolean := coalesce(current_setting('newstart.lead_ok', true), '') = 'on';
 begin
-  if (new.booth is distinct from old.booth or new.lead is distinct from old.lead)
-     and (select auth.uid()) is not null
+  if (select auth.uid()) is null then return new; end if;
+  if tg_op = 'INSERT' then
+    /* An upsert (insert ... on conflict do update) fires this BEFORE INSERT trigger for the row it is about to
+       update. That row is judged by the update branch below, against its real old values, exactly like a plain
+       update. A plain insert of an id that exists fails on the primary key anyway, so nothing slips through here.
+       The lookup ignores RLS (security definer); if it cannot see the row the check below simply runs, which is
+       the stricter outcome. */
+    if exists (select 1 from public.volunteers v where v.church_id = new.church_id and v.id = new.id) then
+      return new;
+    end if;
+    if new.lead and not (public.is_admin() or v_lead_ok) then
+      raise exception 'Only the church''s admins choose team leaders' using errcode = '42501', hint = 'place_guard';
+    end if;
+    if new.booth is not null and not (public.is_admin() or public.can_place(null, new.booth)) then
+      raise exception 'Only the church''s admins and the station''s team leader may place volunteers' using errcode = '42501', hint = 'place_guard';
+    end if;
+    return new;
+  end if;
+  if new.lead is distinct from old.lead
+     and not (public.is_admin() or v_lead_ok) then
+    raise exception 'Only the church''s admins choose team leaders' using errcode = '42501', hint = 'place_guard';
+  end if;
+  if new.booth is distinct from old.booth
      and not (public.is_admin() or public.can_place(old.booth, new.booth)) then
-    raise exception 'Only the church''s admins and the station''s team leader may place volunteers' using errcode = '42501';
+    raise exception 'Only the church''s admins and the station''s team leader may place volunteers' using errcode = '42501', hint = 'place_guard';
   end if;
   return new;
 end;
 $$;
 revoke all on function public.volunteers_place_guard() from public, anon, authenticated;
 drop trigger if exists volunteers_place_guard on public.volunteers;
-create trigger volunteers_place_guard before update on public.volunteers
+create trigger volunteers_place_guard before insert or update on public.volunteers
   for each row execute function public.volunteers_place_guard();
 
 -- the caller's church for volunteer-hub actions: any approved member of an active church (leaders are not staff)
@@ -1464,11 +1496,11 @@ begin
   select * into v_row from public.volunteers v where v.church_id = v_church and v.id = p_vol for update;
   if not found then raise exception 'No such volunteer in your church.'; end if;
   if length(btrim(coalesce(p_booth, ''))) = 0 then raise exception 'Choose a station.'; end if;
-  if not (public.is_admin() or public.can_place(v_row.booth, btrim(p_booth))) then
+  if not (public.is_admin() or public.can_place(v_row.booth, left(btrim(p_booth), 40))) then
     raise exception 'Only the church''s admins and the station''s team leader may place volunteers' using errcode = '42501';
   end if;
   update public.volunteers v set
-    booth = btrim(p_booth),
+    booth = left(btrim(p_booth), 40),
     status = case when v.status = 'prospect' then 'registered' else v.status end,
     registered_on = coalesce(v.registered_on, current_date)
   where v.church_id = v_church and v.id = p_vol
@@ -1504,6 +1536,7 @@ begin
           or (public.can_place(v_a.booth, v_b.booth) and public.can_place(v_b.booth, v_a.booth))) then
     raise exception 'A team leader may only swap within their own station, or one of their people with somebody unplaced' using errcode = '42501';
   end if;
+  perform set_config('newstart.lead_ok', 'on', true);
   v_a_lead := v_a.lead; v_b_lead := v_b.lead;
   update public.volunteers v set lead = false
    where v.church_id = v_church and v.id in (v_a.id, v_b.id) and v.lead;
@@ -1511,6 +1544,9 @@ begin
    where v.church_id = v_church and v.id in (v_a.id, v_b.id);
   update public.volunteers v set lead = true, role = 'Team leader'
    where v.church_id = v_church and ((v.id = v_a.id and v_b_lead) or (v.id = v_b.id and v_a_lead));
+  /* somebody who arrives at a station is registered, exactly as place_volunteer would have made them */
+  update public.volunteers v set status = 'registered', registered_on = coalesce(v.registered_on, current_date)
+   where v.church_id = v_church and v.id in (v_a.id, v_b.id) and v.booth is not null and v.status = 'prospect';
   return query select * from public.volunteers v where v.church_id = v_church and v.id in (v_a.id, v_b.id);
 end;
 $$;
@@ -1524,17 +1560,20 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
-declare v_church uuid := public.hub_church();
+declare v_church uuid := public.hub_church(); v_booth text := left(btrim(coalesce(p_booth, '')), 40);
 begin
   if v_church is null then raise exception 'Join a church first.' using errcode = '42501'; end if;
-  if not public.is_admin() then raise exception 'Only the church''s admins choose team leaders' using errcode = '42501'; end if;
-  if length(btrim(coalesce(p_booth, ''))) = 0 then raise exception 'Choose a station.'; end if;
+  if not public.is_admin() then
+    raise exception 'Only the church''s admins choose team leaders' using errcode = '42501';
+  end if;
+  if length(v_booth) = 0 then raise exception 'Choose a station.'; end if;
   perform pg_advisory_xact_lock(hashtext('vol:' || v_church::text));
+  perform set_config('newstart.lead_ok', 'on', true);
   update public.volunteers v set lead = false, role = ''
-   where v.church_id = v_church and v.booth = btrim(p_booth) and v.lead;
+   where v.church_id = v_church and v.booth = v_booth and v.lead;
   if coalesce(btrim(p_vol), '') <> '' then
     update public.volunteers v set lead = true, role = 'Team leader'
-     where v.church_id = v_church and v.id = btrim(p_vol) and v.booth = btrim(p_booth);
+     where v.church_id = v_church and v.id = btrim(p_vol) and v.booth = v_booth;
     if not found then raise exception 'Place them at the station first, then make them the leader.'; end if;
   end if;
 end;
@@ -1558,8 +1597,9 @@ begin
   if not (public.is_admin() or public.can_place(v_row.booth, null)) then
     raise exception 'Only the church''s admins and the station''s team leader may release volunteers' using errcode = '42501';
   end if;
+  perform set_config('newstart.lead_ok', 'on', true);
   update public.volunteers v set
-    booth = null, status = 'prospect', lead = false,
+    booth = null, status = 'prospect', lead = false, checked_in = false,
     role = case when v.lead then '' else v.role end, updated_at = now()
   where v.church_id = v_church and v.id = p_vol
   returning * into v_row;
@@ -1606,7 +1646,7 @@ as $$
   join public.churches c on c.id = m.church_id and c.status = 'active'
   join public.volunteers me on me.church_id = m.church_id and me.id = m.volunteer_id and me.lead and me.booth is not null
   join public.volunteers v on v.church_id = m.church_id
-   and (v.booth = me.booth
+   and ((v.booth = me.booth and v.id <> me.id)
         or (v.booth is null and (me.booth = any (v.pref) or v.pref2 = me.booth)))
   where m.user_id = (select auth.uid()) and m.status = 'approved'
   order by (v.booth is null), lower(v.name)
@@ -1641,6 +1681,10 @@ create policy "own notifications" on public.notifications
 drop policy if exists "own notifications read" on public.notifications;
 create policy "own notifications read" on public.notifications
   for update to authenticated using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+/* RLS applies to rows, not columns: a column grant is what stops a member rewriting a notification's text */
+revoke all on public.notifications from anon, authenticated;
+grant select on public.notifications to authenticated;
+grant update (read_at) on public.notifications to authenticated;
 create index if not exists notifications_user_idx on public.notifications (user_id, created_at desc);
 
 -- the station's display name, for notification text (the keys the app's BOOTHS list uses)
@@ -1698,10 +1742,11 @@ begin
       select v.id from public.volunteers v where v.church_id = new.church_id and v.booth = new.booth and v.lead and v.id <> new.id);
     select l.user_id into v_old_lead from public.memberships l where l.church_id = old.church_id and l.volunteer_id = (
       select v.id from public.volunteers v where v.church_id = old.church_id and v.booth = old.booth and v.lead and v.id <> old.id);
-    if new.booth is not null and v_new_lead is not null and v_new_lead <> v_user then
+    /* v_user is null for an unlinked volunteer; `<> v_user` would then be NULL and the leader would never hear */
+    if new.booth is not null and v_new_lead is not null and (v_user is null or v_new_lead <> v_user) then
       perform public.notify(new.church_id, v_new_lead, 'team', 'Someone joined your team at ' || public.booth_title(new.booth), 'Open My team to see who and set their shift.');
     end if;
-    if old.booth is not null and v_old_lead is not null and v_old_lead <> v_user and v_old_lead is distinct from v_new_lead then
+    if old.booth is not null and v_old_lead is not null and (v_user is null or v_old_lead <> v_user) and v_old_lead is distinct from v_new_lead then
       perform public.notify(old.church_id, v_old_lead, 'team', 'Someone left your team at ' || public.booth_title(old.booth), 'The admin moved them to another station.');
     end if;
   end if;
@@ -1721,6 +1766,38 @@ revoke all on function public.volunteers_notify() from public, anon, authenticat
 drop trigger if exists volunteers_notify on public.volunteers;
 create trigger volunteers_notify after update on public.volunteers
   for each row execute function public.volunteers_notify();
+
+-- a volunteer typed in already placed (the staff form's insert, or a sync from another desk) gets the same
+-- placement word the update trigger sends. No team row here: pledge_notify already tells the station leader
+-- about a new pledge, so one event still means one message.
+create or replace function public.volunteers_notify_new()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_user uuid;
+begin
+  select m.user_id into v_user from public.memberships m
+   where m.church_id = new.church_id and m.volunteer_id = new.id;
+  if v_user is null then return null; end if;
+  if new.booth is not null then
+    perform public.notify(new.church_id, v_user, 'placement',
+      'You are placed at ' || public.booth_title(new.booth),
+      'Your team leader will confirm your shift on the day.');
+  end if;
+  if new.lead and new.booth is not null then
+    perform public.notify(new.church_id, v_user, 'lead',
+      'You lead ' || public.booth_title(new.booth) || ' ★',
+      'Open My team to add people and set their shifts.');
+  end if;
+  return null;
+end;
+$$;
+revoke all on function public.volunteers_notify_new() from public, anon, authenticated;
+drop trigger if exists volunteers_notify_new on public.volunteers;
+create trigger volunteers_notify_new after insert on public.volunteers
+  for each row execute function public.volunteers_notify_new();
 
 -- membership approved or role changed
 create or replace function public.memberships_notify()
@@ -1777,17 +1854,19 @@ security definer
 set search_path = ''
 as $$
 begin
+  /* the title column refuses more than 120 characters; a 200-character name must not abort the pledge itself */
   if not exists (select 1 from public.notifications n
                  where n.church_id = new.church_id and n.kind = 'pledge'
-                   and n.title = 'New pledge: ' || new.name and n.created_at > now() - interval '1 hour') then
+                   and n.title = left('New pledge: ' || new.name, 120) and n.created_at > now() - interval '1 hour') then
     insert into public.notifications (church_id, user_id, kind, title, body)
-    select new.church_id, m.user_id, 'pledge', 'New pledge: ' || new.name,
-           'They asked for ' || array_to_string(new.pref, ', ') || '.'
+    select new.church_id, m.user_id, 'pledge', left('New pledge: ' || new.name, 120),
+           case when cardinality(new.pref) = 0 then 'They did not choose a station yet.'
+                else 'They asked for ' || (select string_agg(public.booth_title(x), ', ') from unnest(new.pref) x) || '.' end
     from public.memberships m
     where m.church_id = new.church_id and m.role = 'admin' and m.status = 'approved';
     insert into public.notifications (church_id, user_id, kind, title, body)
-    select distinct new.church_id, lm.user_id, 'pledge', 'New pledge for your station: ' || new.name,
-           'They asked for ' || coalesce(public.booth_title(new.booth), 'a station') || '.'
+    select distinct new.church_id, lm.user_id, 'pledge', left('New pledge for your station: ' || new.name, 120),
+           'They asked for ' || public.booth_title(l.booth) || '.'
     from public.volunteers l
     join public.memberships lm on lm.church_id = l.church_id and lm.volunteer_id = l.id
     where l.church_id = new.church_id and l.lead and l.booth = any (coalesce(new.pref, '{}'));
