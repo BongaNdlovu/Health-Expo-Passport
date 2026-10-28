@@ -8,12 +8,12 @@
 - Size: **3,464,372 bytes**
 - Signature: APK Signature Scheme **v2 + v3**, certificate SHA-256
   `16f97c41caecaa0e6dbe21795a7d95fa7ef6abd486dd1f289239e5d2b74431d1`
-- Web payload: the minified single-file page (`dist/index.html`, 501,310 bytes), CSP hashes intact
+- Web payload: the minified single-file page (`dist/index.html`, 501,323 bytes), CSP hashes intact
 - Plugins: app-launcher 8.0.1, share 8.0.3, **status-bar 8.0.4** (new)
 - Final rebuild: includes the journey token pass, self-contained dock pill, volunteer “Viewing …”
   contrast and switcher active-tab fixes; reinstalled and re-verified on the same AVD. This rebuild is
-  byte-identical to the release `dist/index.html` (501,310 bytes), SHA-256 of the APK
-  `9964E5694D7A674A0E2E24482C9764E4B36BD8C5B05854037E3FF1A73D05E6BA`.
+  byte-identical to the release `dist/index.html` (501,323 bytes), SHA-256 of the APK
+  `ADA630EC2FEA08FFEFE3FD04C4AF81CF3DBBA6E0A7C5E751AC8274E1AF33DC09`.
 
 ## Device
 

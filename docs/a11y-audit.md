@@ -3,16 +3,19 @@
 ## Method
 
 `tools/axe-audit.ps1` builds a temporary, CSP-relaxed copy of `dist/index.html`, injects axe-core
-(dev dependency, never shipped), renders one screen/theme in headless Chrome at 500×1000, and runs
-`axe.run` with the tags `wcag2a` and `wcag2aa`. JSON results are written to `verification/axe/`.
+(dev dependency, never shipped), renders one screen/theme/state in headless Chrome at 500×1000, and
+runs `axe.run` with the tags `wcag2a` and `wcag2aa`. JSON results are written to `verification/axe/`.
+Signed-in account/church/admin states use prefilled mock account/member/platform data (no Supabase
+credentials); print uses `tools/print-audit.js` with Puppeteer print-media emulation.
 
 ```powershell
 powershell -File tools/axe-audit.ps1 -Scenario home -Theme dark
+node tools/print-audit.js
 ```
 
 ## Result
 
-**46 screen × theme combinations. 0 violations.**
+**58 screen/state × theme combinations. 0 violations.**
 
 | Screen | Light | Dark |
 |---|---:|---:|
@@ -39,6 +42,12 @@ powershell -File tools/axe-audit.ps1 -Scenario home -Theme dark
 | Queue picker | 0 | 0 |
 | Volunteer placement | 0 | 0 |
 | Big screen / TV | 0 | 0 |
+| Account / My account (mock) | 0 | 0 |
+| Church admin (mock) | 0 | 0 |
+| Platform admin (mock) | 0 | 0 |
+| Gate / invalid credentials | 0 | 0 |
+| Gate / offline | 0 | 0 |
+| Registration / validation error | 0 | 0 |
 
 Earlier this run the audit found three real issues, now fixed:
 
@@ -60,14 +69,23 @@ Earlier this run the audit found three real issues, now fixed:
    matrix.
 7. **Service sheets** — cloud sign-in, signed-out account sheet, queue picker, volunteer placement and
    the big-screen TV were added to the matrix (46 combinations) and are clean.
-8. **Input borders and dim text** — raised to the 3:1 UI-component and 4.5:1 text bars.
+8. **Signed-in/error states** — prefilled `cloud.acct` mock fixtures for My account, Church admin and
+   Platform admin, plus invalid-credential, offline and registration-validation errors. All 12 runs
+   clean; `#cloudErr` now uses `role="alert"` (the gate and registration errors already did).
+9. **Print** — `tools/print-audit.js` renders the real A6 card with print media, runs axe against it
+   and writes PDFs. Light and dark both have one card and **0 violations**:
+   `verification/print/print-{light,dark}.{json,pdf}`.
+10. **Input borders and dim text** — raised to the 3:1 UI-component and 4.5:1 text bars.
 
 ## Scope / limits
 
 - Automated WCAG 2 A/AA only. It does not replace a manual keyboard, screen-reader or cognitive
   review; several axe “incomplete” contrast checks (gradients/overlays) are not manually resolved.
-- The primary tabs, gate, four Team sub-tabs, four journey steps and nine common sheets were audited
-  at one viewport (500×1000), in their default state. Signed-in church/admin account tabs, print
-  layout, dynamic validation/error states and a manual screen-reader pass are not in this matrix yet.
+- The primary tabs, gate, four Team sub-tabs, four journey steps and service sheets were audited at
+  one viewport (500×1000), in their default state. Signed-in account/church/admin coverage uses
+  **mock data**, not a real Supabase staging account; real-auth E2E is still pending. Print is audited
+  in print media and has PDFs, but pagination has not been checked on a physical printer.
+- The go-to manual screen-reader/keyboard protocol is `docs/manual-a11y-protocol.md`; its results are
+  not filled in yet.
 - Tap-target and focus checks are CSS-level (44 px hit areas, mint focus ring, gate `inert`), not
   re-measured by axe.

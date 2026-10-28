@@ -466,7 +466,7 @@ export function renderCloudBody(){
   ${cloud.client?`<form data-action="cloudSignIn" class="mt-3 space-y-3">
     <input id="cloudEmail" type="email" inputmode="email" autocomplete="username" required placeholder="Staff email" class="field" value="${esc(keep)}">
     <input id="cloudPass" type="password" autocomplete="current-password" required placeholder="Password" class="field">
-    <p id="cloudErr" class="text-[11px] font-bold text-rose-600">${esc(cloud.formErr)}</p>
+    <p id="cloudErr" role="alert" class="text-[11px] font-bold text-rose-600">${esc(cloud.formErr)}</p>
     <button id="cloudGo" class="btn btn-primary w-full py-3 text-sm">Sign in</button></form>`
    :`<p class="mt-3 text-[11px] font-bold text-amber-800">${esc(ui[1])}</p>`}${installBlock()}`;
 }

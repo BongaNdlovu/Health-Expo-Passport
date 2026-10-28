@@ -10,7 +10,7 @@
 #>
 [CmdletBinding()]
 param(
-  [ValidateSet('home','queue','care','serve','me','gate','muster','pledge','booth','record','screen','results','plan','send','switcher','notifs','reg','food','cloud','acct','queuePick','place','tv')]
+  [ValidateSet('home','queue','care','serve','me','gate','muster','pledge','booth','record','screen','results','plan','send','switcher','notifs','reg','food','cloud','acct','queuePick','place','tv','acctMe','acctChurch','acctAdmin','gateError','gateOffline','regError')]
   [string]$Scenario = 'home',
   [ValidateSet('light','dark')]
   [string]$Theme = 'light'
@@ -29,6 +29,7 @@ $gate = $Scenario -eq 'gate'
 $journey = $Scenario -in @('screen','results','plan','send')
 $team = $Scenario -in @('pledge','booth','record')
 $tab = $Scenario
+$acctTab = if ($Scenario -eq 'acctChurch') { 'church' } elseif ($Scenario -eq 'acctAdmin') { 'admin' } else { 'me' }
 $scenarioJs = if ($gate) {
 @'
 var I=window.__NEWSTART.__internals;
@@ -108,6 +109,40 @@ var I=window.__NEWSTART.__internals;
 I.gateDemo();I.setTheme('__THEME__');I.openBigScreen();
 var root=document.getElementById('tv')||document;
 '@
+} elseif ($Scenario -eq 'acctMe' -or $Scenario -eq 'acctChurch' -or $Scenario -eq 'acctAdmin') {
+@'
+var I=window.__NEWSTART.__internals;
+I.gateDemo();I.setTheme('__THEME__');
+var c=I.cloud;
+c.user={id:'u-admin',email:'admin@example.org'};
+c.acct={email:'admin@example.org',platform_admin:true,membership:{church_id:'ch-a',role:'admin',status:'approved',full_name:'Grace Admin'},church:{id:'ch-a',name:'Grace Chapel',city:'Durban',phone:'',email:'',status:'active'}};
+c.churchId='ch-a';c.ready=true;c.demo=false;c.adminData=null;
+var mlist=[{user_id:'u-pend',email:'pend@example.org',full_name:'Pending Person',phone:'',area:'',role:'member',status:'pending',attendee_id:null,confirmed:true,created_at:'2026-10-01'},{user_id:'u-staff',email:'st@example.org',full_name:'Staff Person',phone:'082',area:'Umlazi',role:'staff',status:'approved',attendee_id:'EXPO-042',confirmed:true,created_at:'2026-09-01'}];
+var plats=[{id:'ch-a',name:'Grace Chapel',city:'Durban',status:'active',members:2,staff:1,pending:1,visitors:5,volunteers:2},{id:'ch-b',name:'Hope Church',city:'Pinetown',status:'pending',members:1,staff:0,pending:0,visitors:0,volunteers:0}];
+var audit=[{at:'2026-10-20T09:15:00Z',church:'Grace Chapel',actor:'st@example.org',tbl:'attendees',op:'UPDATE',row_id:'EXPO-042'}];
+I.openAcct('__ACCT__');
+c.members={cid:'ch-a',list:mlist};c.plat=plats;c.audit=audit;c.adminData=null;
+I.renderAcct();
+var root=document.getElementById('acctSheet')||document;
+'@
+} elseif ($Scenario -eq 'gateError') {
+@'
+var I=window.__NEWSTART.__internals;var c=I.cloud;
+c.status='signedout';c.client={};c.view='login';c.ready=false;c.demo=false;c.formErr='Invalid email or password.';c.err='';
+I.setTheme('__THEME__');I.renderGate();var root=document.getElementById('authGate');
+'@
+} elseif ($Scenario -eq 'gateOffline') {
+@'
+var I=window.__NEWSTART.__internals;var c=I.cloud;
+c.status='offline';c.client={};c.view='login';c.ready=false;c.demo=false;c.formErr='';c.err='Cannot reach the server. Check your connection.';
+I.setTheme('__THEME__');I.renderGate();var root=document.getElementById('authGate');
+'@
+} elseif ($Scenario -eq 'regError') {
+@'
+var I=window.__NEWSTART.__internals;
+I.gateDemo();I.setTheme('__THEME__');I.state.tab='home';I.state.regOpen=true;I.render();I.registerSubmit({preventDefault:function(){}});
+var root=document;
+'@
 } else {
 @'
 var I=window.__NEWSTART.__internals;
@@ -115,7 +150,7 @@ I.gateDemo();I.setTheme('__THEME__');I.state.tab='__TAB__';I.render();
 var root=document;
 '@
 }
-$scenarioJs = $scenarioJs.Replace('__THEME__', $Theme).Replace('__TAB__', $tab)
+$scenarioJs = $scenarioJs.Replace('__THEME__', $Theme).Replace('__TAB__', $tab).Replace('__ACCT__', $acctTab)
 
 $audit = @'
 <script>
