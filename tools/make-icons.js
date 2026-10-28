@@ -1,44 +1,42 @@
-/* Draws the app icons (a white heart with a pulse line on the NEWSTART teal) and writes them as PNG files.
+/* Draws the app icons: a white ECG activity line on the NEWSTART teal, matching the in-app logo.
    No dependencies: pixels are computed here and encoded with Node's zlib.
-   Run:  node tools/make-icons.js            (writes icons/*.png) */
+   Run:  node tools/make-icons.js
+   Writes the PWA icons and the Android mipmap launcher icons. */
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
-const out = path.join(__dirname, '..', 'icons');
+const root = path.join(__dirname, '..');
+const out = path.join(root, 'icons');
+const res = path.join(root, 'capacitor', 'android', 'app', 'src', 'main', 'res');
 fs.mkdirSync(out, { recursive: true });
 
-/* ---- shapes, in a -1..1 square ------------------------------------------------ */
-/* classic heart curve: (x²+y²−1)³ − x²y³ ≤ 0, y pointing up */
-const inHeart = (x, y) => Math.pow(x * x + y * y - 1, 3) - x * x * y * y * y <= 0;
-/* pulse line through the heart, as a polyline with round ends */
-const PULSE = [[-1.02, 0.02], [-0.38, 0.02], [-0.2, 0.5], [0.08, -0.52], [0.3, 0.02], [1.02, 0.02]];
+/* ---- the ECG activity glyph, in a -1..1 square ------------------------------- */
+/* Lucide Activity: M22 12 h-4 l-3 9 L9 3 l-3 9 H2, centred in a 24-unit box */
+const ECG = [[22, 12], [18, 12], [15, 21], [9, 3], [6, 12], [2, 12]]
+  .map(([x, y]) => [x / 12 - 1, 1 - y / 12]);
 const segDist = (px, py, [ax, ay], [bx, by]) => {
-  const dx = bx - ax, dy = by - ay, t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)));
+  const dx = bx - ax, dy = by - ay;
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)));
   return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 };
-const onPulse = (x, y, w) => PULSE.slice(1).some((p, i) => segDist(x, y, PULSE[i], p) <= w);
+const onMark = (x, y, w) => ECG.slice(1).some((p, i) => segDist(x, y, ECG[i], p) <= w);
 
 /* NEWSTART teal gradient, top-left to bottom-right */
 const lerp = (a, b, t) => a + (b - a) * t;
 const teal = t => [lerp(0x58, 0x2a, t), lerp(0xb5, 0x7a, t), lerp(0xa7, 0x70, t)];
 
 /* colour of one sample point (u,v in 0..1 across the icon) → [r,g,b,a] 0..255 */
-function sample(u, v, { radius, heartScale }) {
+function sample(u, v, { radius, markScale, stroke }) {
   /* rounded-square mask */
   if (radius > 0) {
     const cx = Math.abs(u - 0.5) - (0.5 - radius), cy = Math.abs(v - 0.5) - (0.5 - radius);
     if (cx > 0 && cy > 0 && Math.hypot(cx, cy) > radius) return [0, 0, 0, 0];
   }
-  const bg = teal((u + v) / 2);
-  /* heart coordinates: centred, y up, shifted slightly so the visual weight is centred */
-  const x = (u - 0.5) / heartScale * 2, y = -((v - 0.5) / heartScale * 2) + 0.08;
-  if (inHeart(x, y)) {
-    if (onPulse(x, y, 0.075)) return [...teal(0.55), 255];
-    return [255, 255, 255, 255];
-  }
-  /* soft glow behind the heart */
-  return [...bg, 255];
+  const x = (u - 0.5) * 2 / markScale;
+  const y = (0.5 - v) * 2 / markScale;
+  if (onMark(x, y, stroke / 2)) return [255, 255, 255, 255];
+  return [...teal((u + v) / 2), 255];
 }
 
 /* ---- rasterise with 4x4 supersampling ---------------------------------------- */
@@ -51,7 +49,8 @@ function render(size, opts) {
       r += R * A; g += G * A; b += B * A; a += A;
     }
     const o = (j * size + i) * 4, n = ss * ss;
-    px[o] = a ? Math.round(r / a) : 0; px[o + 1] = a ? Math.round(g / a) : 0; px[o + 2] = a ? Math.round(b / a) : 0; px[o + 3] = Math.round(a / n);
+    px[o] = a ? Math.round(r / a) : 0; px[o + 1] = a ? Math.round(g / a) : 0;
+    px[o + 2] = a ? Math.round(b / a) : 0; px[o + 3] = Math.round(a / n);
   }
   return px;
 }
@@ -67,20 +66,41 @@ function png(size, px) {
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(size, 0); ihdr.writeUInt32BE(size, 4); ihdr[8] = 8; ihdr[9] = 6; /* 8-bit RGBA */
   const raw = Buffer.alloc((size * 4 + 1) * size);
-  for (let y = 0; y < size; y++) { raw[y * (size * 4 + 1)] = 0; px.copy(raw, y * (size * 4 + 1) + 1, y * size * 4, (y + 1) * size * 4); }
-  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw, { level: 9 })), chunk('IEND', Buffer.alloc(0))]);
+  for (let y = 0; y < size; y++) {
+    raw[y * (size * 4 + 1)] = 0;
+    px.copy(raw, y * (size * 4 + 1) + 1, y * size * 4, (y + 1) * size * 4);
+  }
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', zlib.deflateSync(raw, { level: 9 })),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
 }
 
-/* any = rounded with transparent corners; maskable = full bleed with the heart inside the 80% safe zone;
-   apple = full bleed, opaque (iOS rounds the corners itself) */
-const jobs = [
-  ['icon-192.png', 192, { radius: 0.22, heartScale: 0.62 }],
-  ['icon-512.png', 512, { radius: 0.22, heartScale: 0.62 }],
-  ['icon-maskable-512.png', 512, { radius: 0, heartScale: 0.5 }],
-  ['icon-180.png', 180, { radius: 0, heartScale: 0.6 }],
-  ['favicon-32.png', 32, { radius: 0.22, heartScale: 0.7 }],
+const write = (file, size, opts) => {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, png(size, render(size, opts)));
+};
+
+/* PWA / web icons: rounded square, mark inside the safe area */
+const pwa = [
+  ['icon-192.png', 192, { radius: 0.22, markScale: 0.9, stroke: 0.14 }],
+  ['icon-512.png', 512, { radius: 0.22, markScale: 0.9, stroke: 0.14 }],
+  ['icon-maskable-512.png', 512, { radius: 0, markScale: 0.72, stroke: 0.14 }],
+  ['icon-180.png', 180, { radius: 0, markScale: 0.85, stroke: 0.14 }],
+  ['favicon-32.png', 32, { radius: 0.22, markScale: 0.9, stroke: 0.16 }],
 ];
-for (const [name, size, opts] of jobs) {
-  fs.writeFileSync(path.join(out, name), png(size, render(size, opts)));
+for (const [name, size, opts] of pwa) {
+  write(path.join(out, name), size, opts);
   console.log('wrote icons/' + name + ' (' + size + 'x' + size + ')');
+}
+
+/* Android: legacy launcher + adaptive maskable, at every density */
+const densities = [['mdpi', 48, 108], ['hdpi', 72, 162], ['xhdpi', 96, 216], ['xxhdpi', 144, 324], ['xxxhdpi', 192, 432]];
+for (const [d, launcher, maskable] of densities) {
+  const dir = path.join(res, 'mipmap-' + d);
+  write(path.join(dir, 'ic_launcher.png'), launcher, { radius: 0.22, markScale: 0.9, stroke: 0.14 });
+  write(path.join(dir, 'ic_maskable.png'), maskable, { radius: 0, markScale: 0.72, stroke: 0.14 });
+  console.log('wrote mipmap-' + d + '/ic_launcher.png + ic_maskable.png');
 }
