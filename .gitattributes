@@ -1,3 +1,7 @@
 # The app bundles these libraries byte for byte: tools/build-app.js checks them against the integrity hashes in
 # index.html, so git must never change their line endings.
 vendor/** -text
+
+# index.html carries a CSP hash of its inline fontPick script. tools/build.js hashes the exact bytes, so a CRLF
+# checkout makes the build refuse to run. Keep this file LF on every platform.
+index.html text eol=lf
