@@ -1607,17 +1607,26 @@ function makeServer() {
      Force a write on each pass (a harmless note field, restored afterwards) and take the median of five.
      The 300 ms bar is unchanged. */
   const persSamples = [];
+  const persCpu = [];
   const keptNote = g.attendees[0].note;
+  const keptUser = g.cloud.user;
+  const jsonT = Date.now(); JSON.stringify(g.attendees); const jsonMs = Date.now() - jsonT;
   for (let i = 0; i < 5; i++) {
+    if (global.gc) global.gc();
+    g.cloud.user = null;
     g.attendees[0].note = 'perf-' + i;
-    const t = Date.now(); g.persistNow(); persSamples.push(Date.now() - t);
+    const c0 = process.cpuUsage(); const t = Date.now(); g.persistNow();
+    persSamples.push(Date.now() - t);
+    const c = process.cpuUsage(c0); persCpu.push((c.user + c.system) / 1000);
   }
+  g.cloud.user = keptUser;
   if (keptNote === undefined) delete g.attendees[0].note; else g.attendees[0].note = keptNote;
   g.persistNow();
   persSamples.sort((a, b) => a - b);
   const persMs = persSamples[2];
+  const cpuMs = persCpu.sort((a, b) => a - b)[2];
   const payloadKB = Math.round(store.get('newstart.passport.v2').length / 1024);
-  ok('saving to the device is fast (' + persMs + ' ms median of 5, ' + payloadKB + ' KB of the ~5000 KB limit)', persMs < 300 && payloadKB < 4000, persMs + 'ms ' + payloadKB + 'KB');
+  ok('saving to the device is fast (' + persMs + ' ms wall / ' + cpuMs.toFixed(1) + ' ms cpu median of 5 [' + persSamples.join(',') + '], json ' + jsonMs + 'ms, ' + payloadKB + ' KB of the ~5000 KB limit)', persMs < 300 && payloadKB < 4000, persMs + 'ms ' + payloadKB + 'KB');
 
   g.state.tab = 'home'; g.state.vq = ''; g.render();
   const homeRows = ($main.innerHTML.match(/data-action="switchTo"/g) || []).length;

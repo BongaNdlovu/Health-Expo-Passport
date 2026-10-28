@@ -1,0 +1,1 @@
+﻿{"scenario":"serve","theme":"light","violations":[],"incomplete":[{"id":"color-contrast","impact":"serious","help":"Elements must meet minimum color contrast ratio thresholds","nodes":6,"targets":[".tracking-tight",".h-7","#navCount",".nav-badge-alert","#navVol",".nav-item-active > .nav-lbl"]}]}

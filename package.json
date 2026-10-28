@@ -2,12 +2,13 @@
   "name": "health-expo-passport",
   "private": true,
   "devDependencies": {
+    "axe-core": "^4.14.0",
     "esbuild": "^0.28.2",
     "typescript": "^7.0.2"
   },
   "scripts": {
     "build": "node tools/build.js",
-    "test": "node .smoke/harness.js",
+    "test": "node --expose-gc .smoke/harness.js",
     "typecheck": "tsc --noEmit -p jsconfig.json"
   }
 }

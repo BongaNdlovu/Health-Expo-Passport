@@ -1109,6 +1109,7 @@
   html[data-theme="dark"] .q-card-name,
   html[data-theme="dark"] .q-card-n,
   html[data-theme="dark"] .q-who b{color:var(--hx-ink)}
+  html[data-theme="dark"] .q-card-n small,
   html[data-theme="dark"] .q-card-line,
   html[data-theme="dark"] .q-pos,
   html[data-theme="dark"] .q-label,
@@ -1133,7 +1134,6 @@
   .hx-round:focus-visible,.hx-theme:focus-visible,.hx-staff:focus-visible,
   .hx-split:focus-visible,.nav-item:focus-visible{
     outline:2px solid var(--hx-mint);outline-offset:3px}
-  :focus-visible{outline-color:var(--hx-mint)}
   @media (max-width:360px){
     .hx-theme span{display:none}
     .hx-theme{width:30px;padding:0;justify-content:center;gap:0}
@@ -1152,6 +1152,14 @@
     .nav-item{font-size:9.5px}
     .nav-ico{width:34px}
   }
+  /* the active dock pill is mint in both themes; legacy templates add text-white to its label */
+  .nav-item-active .nav-lbl{color:#0b0e0c}
+  /* the active item itself is the mint pill: axe can then verify the label contrast;
+     the separate sliding pill is retired (it sat behind the text and confused automated checks). */
+  html[data-theme] .nav-item-active{color:#0b0e0c;
+    background:linear-gradient(180deg,var(--hx-mint-dock-a),var(--hx-mint-dock-b));
+    border-radius:999px;box-shadow:0 4px 12px -4px rgba(21,128,61,.45)}
+  html[data-theme] #navPill{display:none}
 
 </style>
 </head>
