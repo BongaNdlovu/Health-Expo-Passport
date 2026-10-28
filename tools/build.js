@@ -26,7 +26,12 @@ const minifiedShell = shell.replace(/<style([^>]*)>([\s\S]*?)<\/style>/g, (all, 
   try { return '<style' + attrs + '>' + esbuild.transformSync(css, { loader: 'css', minify: true }).code + '</style>'; }
   catch (e) { console.warn('CSS minify skipped: ' + e.message); return all; }
 });
-const version = crypto.createHash('sha1').update(bundle).update(fs.readFileSync(path.join(root, 'manifest.webmanifest'))).digest('hex').slice(0, 10);
+/* The cache version fingerprints everything the service worker precaches or serves: the app bundle, the page shell
+   (styles and markup), the manifest and the icons. Hashing only the bundle and manifest left a change to colours or
+   icons under the old cache name, so installed apps kept serving the old files. */
+const versionHash = crypto.createHash('sha1').update(bundle).update(minifiedShell).update(fs.readFileSync(path.join(root, 'manifest.webmanifest')));
+for (const f of fs.readdirSync(path.join(root, 'icons')).sort()) versionHash.update(f).update(fs.readFileSync(path.join(root, 'icons', f)));
+const version = versionHash.digest('hex').slice(0, 10);
 
 /* ---- CSP ---------------------------------------------------------------------------------------------
    No 'unsafe-inline' for scripts: the page has exactly two inline scripts and each is allowed by its own
