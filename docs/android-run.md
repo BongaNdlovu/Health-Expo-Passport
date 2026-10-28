@@ -11,7 +11,9 @@
 - Web payload: the minified single-file page (`dist/index.html`, 501,379 bytes), CSP hashes intact
 - Plugins: app-launcher 8.0.1, share 8.0.3, **status-bar 8.0.4** (new)
 - Final rebuild: includes the self-contained dock pill and the volunteer “Viewing …” contrast fix;
-  reinstalled and re-verified on the same AVD.
+  reinstalled and re-verified on the same AVD. This rebuild is byte-identical to the release
+  `dist/index.html` (501,379 bytes), SHA-256 of the APK
+  `8A058C27AFE711DED9F9C636BD04435122C30D8DF4B9CEEFDCE0C652C1E0FE43`.
 
 ## Device
 
@@ -30,6 +32,7 @@
 | Home (dark, real persisted visitor) | hero, tiles, red-flag banner, visitors sheet, dock | `verification/android/home-dark-final.png` |
 | Tap **Queue** | queue station board | `verification/android/queue.png` |
 | Tap **Team → Muster** | active pill, volunteer board, legible viewing strip | `verification/android/r9-muster.png` |
+| Final byte-identical rebuild | dark gate, status-bar sync | `verification/android/r10-final.png` |
 
 The status bar is now driven by `@capacitor/status-bar` from `setTheme()` / boot: dark theme → light
 icons, light theme → dark icons. The gate makes `#app` `inert` so nothing behind it can be focused.
