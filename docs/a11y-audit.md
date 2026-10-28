@@ -12,7 +12,7 @@ powershell -File tools/axe-audit.ps1 -Scenario home -Theme dark
 
 ## Result
 
-**12 screen × theme combinations. 0 violations.**
+**14 screen × theme combinations. 0 violations.**
 
 | Screen | Light | Dark |
 |---|---:|---:|
@@ -21,6 +21,7 @@ powershell -File tools/axe-audit.ps1 -Scenario home -Theme dark
 | Queue | 0 | 0 |
 | Care | 0 | 0 |
 | Team / volunteer hub | 0 | 0 |
+| Team / Muster | 0 | 0 |
 | Profile | 0 | 0 |
 
 Earlier this run the audit found three real issues, now fixed:
@@ -30,7 +31,9 @@ Earlier this run the audit found three real issues, now fixed:
    item itself, with dark ink text; the separate `#navPill` is retired.
 2. **Queue “waiting” small text in dark** — hardcoded `#4f6870` on the dark card. Now uses
    `--hx-ink-2`.
-3. **Input borders and dim text** — raised to the 3:1 UI-component and 4.5:1 text bars.
+3. **Volunteer “Viewing …” strip, Muster in dark** — brown/dark inline colours on the dark bar.
+   Now `--hx-ink-2` / `--hx-ink`; Muster added to the audited matrix.
+4. **Input borders and dim text** — raised to the 3:1 UI-component and 4.5:1 text bars.
 
 ## Scope / limits
 

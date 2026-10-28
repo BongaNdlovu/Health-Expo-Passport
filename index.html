@@ -75,7 +75,7 @@
     --hx-r-card:22px;
     --hx-r-field:16px;
   }
-  html[data-theme="dark"]{
+  html[data-theme=dark]{
     color-scheme:dark;
     --hx-canvas:#0b0e0c;
     --hx-surface:#171b18;
@@ -953,7 +953,6 @@
     box-shadow:0 10px 24px -14px rgba(0,0,0,.35)}
   .hx-cta-circle{width:48px;height:48px;border-radius:50%;flex:none;display:grid;place-items:center;color:var(--hx-on-mint);
     background:linear-gradient(145deg,var(--hx-mint-cta-a),var(--hx-mint-cta-b));box-shadow:0 10px 22px -14px rgba(21,128,61,.6)}
-  .hx-cta-dark .hx-cta-main{background:#141815;color:#fff}
 
   .hx-ivory{border-radius:26px;padding:16px 15px;color:#141715;border:1px solid rgba(20,24,21,.06);
     background:linear-gradient(180deg,#f5f4ef,#eeede6);box-shadow:0 16px 36px -26px rgba(0,0,0,.35)}
@@ -990,7 +989,7 @@
   .hx-staff{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:4px 10px 4px 4px;
     border-radius:999px;border:1px solid rgba(255,255,255,.08);background:#141815;color:#fff;
     font:inherit;cursor:pointer;max-width:72%}
-  html[data-theme="dark"] .hx-staff{background:#242823;border-color:rgba(255,255,255,.10)}
+  html[data-theme=dark] .hx-staff{background:#242823;border-color:rgba(255,255,255,.10)}
   .hx-staff-av{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;
     font-size:11px;font-weight:800;color:#fff;flex:none}
   .hx-staff-meta{display:flex;align-items:baseline;gap:4px;font-size:11.5px;font-weight:650;white-space:nowrap;overflow:hidden}
@@ -1003,8 +1002,8 @@
     font:inherit;font-size:11.5px;font-weight:700;cursor:pointer}
   .hx-theme svg{width:12px;height:12px}
   .hx-theme-dark{display:none}
-  html[data-theme="dark"] .hx-theme-light{display:none}
-  html[data-theme="dark"] .hx-theme-dark{display:inline}
+  html[data-theme=dark] .hx-theme-light{display:none}
+  html[data-theme=dark] .hx-theme-dark{display:inline}
   .hx-round{position:relative;width:30px;height:30px;padding:0;border-radius:50%;display:grid;place-items:center;cursor:pointer;
     border:1px solid var(--hx-line);background:var(--hx-surface);color:var(--hx-ink-2)}
   .hx-notif-dot{position:absolute;right:-3px;top:-3px;min-width:14px;height:14px;padding:0 3px;border-radius:999px;
@@ -1032,7 +1031,7 @@
 
   /* CTA inverts with the theme, exactly as the two references do. */
   .hx-cta-main{background:#141815;color:#fff}
-  html[data-theme="dark"] .hx-cta-main{background:#fff;color:#111814}
+  html[data-theme=dark] .hx-cta-main{background:#fff;color:#111814}
 
   /* Dock: the reference capsule, not the old teal pill. */
   html[data-theme] #navBar{background:var(--hx-dock);border:1px solid var(--hx-dock-line);
@@ -1063,16 +1062,16 @@
   .hx-gate-submit{display:flex;width:100%;border:0;background:none;padding:0;margin-top:4px;font:inherit;cursor:pointer}
   .hx-gate-submit:disabled{opacity:.6;cursor:wait}
   .hx-gate .btn-primary{background:#141815;color:#fff;border-radius:999px;min-height:44px;box-shadow:none}
-  html[data-theme="dark"] .hx-gate .btn-primary{background:#fff;color:#111814}
+  html[data-theme=dark] .hx-gate .btn-primary{background:#fff;color:#111814}
   .hx-gate .btn-glass{background:var(--hx-surface-2);border-color:var(--hx-line);color:var(--hx-ink)}
   .hx-gate .btn-soft{background:var(--hx-mint-soft);color:var(--hx-mint-deep);border-color:var(--hx-mint-line)}
-  html[data-theme="dark"] .hx-gate .text-\[\#0f2a2c\],
-  html[data-theme="dark"] .hx-gate .text-\[\#123033\],
-  html[data-theme="dark"] .hx-gate .text-\[\#33504f\]{color:var(--hx-ink)}
-  html[data-theme="dark"] .hx-gate .text-\[\#5c747a\],
-  html[data-theme="dark"] .hx-gate .text-\[\#4f6870\],
-  html[data-theme="dark"] .hx-gate .text-\[\#6b8187\],
-  html[data-theme="dark"] .hx-gate .text-\[\#8a9aa0\]{color:var(--hx-ink-2)}
+  html[data-theme=dark] .hx-gate .text-\[\#0f2a2c\],
+  html[data-theme=dark] .hx-gate .text-\[\#123033\],
+  html[data-theme=dark] .hx-gate .text-\[\#33504f\]{color:var(--hx-ink)}
+  html[data-theme=dark] .hx-gate .text-\[\#5c747a\],
+  html[data-theme=dark] .hx-gate .text-\[\#4f6870\],
+  html[data-theme=dark] .hx-gate .text-\[\#6b8187\],
+  html[data-theme=dark] .hx-gate .text-\[\#8a9aa0\]{color:var(--hx-ink-2)}
   .hx-gate-sandbox{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .hx-gate-tile{position:relative;display:flex;flex-direction:column;justify-content:space-between;gap:8px;
     min-height:128px;padding:12px 11px;border-radius:22px;border:1px solid rgba(255,255,255,.18);
@@ -1090,42 +1089,42 @@
   /* ---- Dark-mode bridge for screens not yet structurally migrated ----
      The legacy templates use ~330 hardcoded hex utilities. Remapping the most-used ones to tokens keeps
      every screen legible in dark while its markup waits in the migration queue. Scoped to dark only. */
-  html[data-theme="dark"] :is(.text-\[\#123033\],.text-\[\#33504f\],.text-\[\#0f2a2c\]){color:var(--hx-ink)}
-  html[data-theme="dark"] :is(.text-\[\#5b7178\],.text-\[\#5c747a\],.text-\[\#4f6870\],.text-\[\#3d5c5e\]){color:var(--hx-ink-2)}
-  html[data-theme="dark"] :is(.text-\[\#6b8187\],.text-\[\#667d83\],.text-\[\#8a9aa0\],.text-\[\#b3c2c5\]){color:var(--hx-ink-3)}
-  html[data-theme="dark"] .text-\[\#8a5a12\]{color:var(--hx-warn)}
-  html[data-theme="dark"] :is(.bg-white\/60,.bg-white\/50,.bg-white\/70,.bg-white\/85,.bg-white\/40){background-color:rgba(255,255,255,.06)}
-  html[data-theme="dark"] .bg-white{background-color:var(--hx-surface)}
-  html[data-theme="dark"] .bg-\[\#123033\]{background-color:var(--hx-surface-3)}
-  html[data-theme="dark"] .border-\[\#123033\]{border-color:var(--hx-line)}
-  html[data-theme="dark"] :is(.text-brand-600,.text-brand-700,.text-brand-800,.text-brand-900){color:var(--hx-mint-deep)}
-  html[data-theme="dark"] :is(.text-rose-600,.text-rose-700){color:var(--hx-rose)}
-  html[data-theme="dark"] :is(.text-amber-600,.text-amber-700,.text-amber-800){color:var(--hx-warn)}
-  html[data-theme="dark"] :is(.text-sky-700,.text-sky-800){color:#7dd3fc}
+  html[data-theme=dark] :is(.text-\[\#123033\],.text-\[\#33504f\],.text-\[\#0f2a2c\]){color:var(--hx-ink)}
+  html[data-theme=dark] :is(.text-\[\#5b7178\],.text-\[\#5c747a\],.text-\[\#4f6870\],.text-\[\#3d5c5e\]){color:var(--hx-ink-2)}
+  html[data-theme=dark] :is(.text-\[\#6b8187\],.text-\[\#667d83\],.text-\[\#8a9aa0\]){color:var(--hx-ink-3)}
+  html[data-theme=dark] .text-\[\#8a5a12\]{color:var(--hx-warn)}
+  html[data-theme=dark] :is(.bg-white\/60,.bg-white\/50,.bg-white\/70,.bg-white\/85,.bg-white\/40){background-color:rgba(255,255,255,.06)}
+  html[data-theme=dark] .bg-white{background-color:var(--hx-surface)}
+  html[data-theme=dark] .bg-\[\#123033\]{background-color:var(--hx-surface-3)}
+  html[data-theme=dark] .border-\[\#123033\]{border-color:var(--hx-line)}
+  html[data-theme=dark] :is(.text-brand-600,.text-brand-700,.text-brand-800,.text-brand-900){color:var(--hx-mint-deep)}
+  html[data-theme=dark] :is(.text-rose-600,.text-rose-700){color:var(--hx-rose)}
+  html[data-theme=dark] :is(.text-amber-600,.text-amber-700,.text-amber-800){color:var(--hx-warn)}
+  html[data-theme=dark] .text-sky-800{color:#7dd3fc}
 
   /* screen-specific surfaces still on their pre-token CSS */
-  html[data-theme="dark"] :is(.q-card,.q-row,.ac-card,.snd-item,.jr,.sim-panel,.fd-tile,.fd-row,.vw-bar){background:var(--hx-surface);border-color:var(--hx-line)}
-  html[data-theme="dark"] .q-card-sel{border-color:var(--hx-mint)}
-  html[data-theme="dark"] .q-card-name,
-  html[data-theme="dark"] .q-card-n,
-  html[data-theme="dark"] .q-who b{color:var(--hx-ink)}
-  html[data-theme="dark"] .q-card-n small,
-  html[data-theme="dark"] .q-card-line,
-  html[data-theme="dark"] .q-pos,
-  html[data-theme="dark"] .q-label,
-  html[data-theme="dark"] .q-note,
-  html[data-theme="dark"] .q-empty{color:var(--hx-ink-2)}
-  html[data-theme="dark"] .bg-rose-50\/70,
-  html[data-theme="dark"] .bg-rose-50\/80,
-  html[data-theme="dark"] .bg-rose-50\/90{background:var(--hx-rose-bg);border-color:var(--hx-rose-line);color:var(--hx-rose)}
-  html[data-theme="dark"] .bg-amber-50\/70,
-  html[data-theme="dark"] .bg-amber-50\/80{background:var(--hx-warn-bg);border-color:var(--hx-warn-line);color:var(--hx-warn)}
-  html[data-theme="dark"] .bg-lilac-50\/90{background:rgba(168,85,247,.14);border-color:rgba(168,85,247,.28);color:#d8b4fe}
-  html[data-theme="dark"] .bg-sage-50\/90{background:var(--hx-mint-soft);border-color:var(--hx-mint-line);color:var(--hx-mint-deep)}
-  html[data-theme="dark"] .bg-sky-50\/70,
-  html[data-theme="dark"] .bg-sky-50\/80{background:rgba(56,189,248,.12);border-color:rgba(56,189,248,.25);color:#7dd3fc}
-  html[data-theme="dark"] .text-lilac-700{color:#d8b4fe}
-  html[data-theme="dark"] .text-sage-800{color:var(--hx-mint-deep)}
+  html[data-theme=dark] :is(.q-card,.q-row,.ac-card,.snd-item,.jr,.sim-panel,.fd-tile,.fd-row,.vw-bar){background:var(--hx-surface);border-color:var(--hx-line)}
+  html[data-theme=dark] .vw-bar{color:var(--hx-ink-2)}
+  html[data-theme=dark] .vw-bar b{color:var(--hx-ink)}
+  html[data-theme=dark] .q-card-sel{border-color:var(--hx-mint)}
+  html[data-theme=dark] .q-card-name,
+  html[data-theme=dark] .q-card-n,
+  html[data-theme=dark] .vw-bar b,
+  html[data-theme=dark] .q-who b{color:var(--hx-ink)}
+  html[data-theme=dark] .vw-bar,
+  html[data-theme=dark] .q-card-n small,
+  html[data-theme=dark] .q-card-line,
+  html[data-theme=dark] .q-pos,
+  html[data-theme=dark] .q-label,
+  html[data-theme=dark] .q-note,
+  html[data-theme=dark] .q-empty{color:var(--hx-ink-2)}
+  html[data-theme=dark] :is(.bg-rose-50\/70,.bg-rose-50\/80,.bg-rose-50\/90){background:var(--hx-rose-bg);border-color:var(--hx-rose-line);color:var(--hx-rose)}
+  html[data-theme=dark] :is(.bg-amber-50\/70,.bg-amber-50\/80){background:var(--hx-warn-bg);border-color:var(--hx-warn-line);color:var(--hx-warn)}
+  html[data-theme=dark] .bg-lilac-50\/90{background:rgba(168,85,247,.14);border-color:rgba(168,85,247,.28);color:#d8b4fe}
+  html[data-theme=dark] .bg-sage-50\/90{background:var(--hx-mint-soft);border-color:var(--hx-mint-line);color:var(--hx-mint-deep)}
+  html[data-theme=dark] :is(.bg-sky-50\/70,.bg-sky-50\/80){background:rgba(56,189,248,.12);border-color:rgba(56,189,248,.25);color:#7dd3fc}
+  html[data-theme=dark] .text-lilac-700{color:#d8b4fe}
+  html[data-theme=dark] .text-sage-800{color:var(--hx-mint-deep)}
 
   /* ---- AA: 44px hit areas without changing the picture, focus, 320px ---- */
   .hx-staff,.hx-theme{position:relative}

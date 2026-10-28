@@ -10,7 +10,7 @@
 #>
 [CmdletBinding()]
 param(
-  [ValidateSet('home','queue','care','serve','me','gate')]
+  [ValidateSet('home','queue','care','serve','me','gate','muster')]
   [string]$Scenario = 'home',
   [ValidateSet('light','dark')]
   [string]$Theme = 'light'
@@ -33,6 +33,12 @@ var I=window.__NEWSTART.__internals;
 var c=I.cloud;c.status='signedout';c.client={};c.view='login';c.ready=false;c.demo=false;c.gateForce=false;
 I.setTheme('__THEME__');I.renderGate();
 var root=document.getElementById('authGate');
+'@
+} elseif ($Scenario -eq 'muster') {
+@'
+var I=window.__NEWSTART.__internals;
+I.gateDemo();I.setTheme('__THEME__');I.state.tab='serve';I.state.volTab='muster';I.render();
+var root=document;
 '@
 } else {
 @'
