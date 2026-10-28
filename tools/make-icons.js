@@ -1,4 +1,4 @@
-/* Draws the app icons: a white ECG activity line on the NEWSTART teal, matching the in-app logo.
+/* Draws the app icons: a white ECG activity line on the NEWSTART green, matching the in-app logo.
    No dependencies: pixels are computed here and encoded with Node's zlib.
    Run:  node tools/make-icons.js
    Writes the PWA icons and the Android mipmap launcher icons. */
