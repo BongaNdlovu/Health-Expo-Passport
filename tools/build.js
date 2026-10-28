@@ -17,7 +17,15 @@ const shell = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const bundle = esbuild.buildSync({
   entryPoints: [path.join(root, 'src', 'main.js')],
   bundle: true, format: 'iife', globalName: '__NEWSTART', write: false, logLevel: 'warning',
+  /* Ship less without touching behaviour: whitespace/syntax only, identifiers stay readable in stack
+     traces. The old build shipped a ~466 KB unminified IIFE inside every page. */
+  minifyWhitespace: true, minifySyntax: true, minifyIdentifiers: false,
 }).outputFiles[0].text;
+/* The page is one inline-styled file; minify the shipped copy of each style block, not the source. */
+const minifiedShell = shell.replace(/<style([^>]*)>([\s\S]*?)<\/style>/g, (all, attrs, css) => {
+  try { return '<style' + attrs + '>' + esbuild.transformSync(css, { loader: 'css', minify: true }).code + '</style>'; }
+  catch (e) { console.warn('CSS minify skipped: ' + e.message); return all; }
+});
 const version = crypto.createHash('sha1').update(bundle).update(fs.readFileSync(path.join(root, 'manifest.webmanifest'))).digest('hex').slice(0, 10);
 
 /* ---- CSP ---------------------------------------------------------------------------------------------
@@ -55,7 +63,7 @@ const CSP_DIST = policy("script-src 'self' " + hashOf(inlineBundle) + ' https://
 }
 
 /* replacer functions, not strings: a "$&" or "$'" inside the bundle must be inserted literally */
-const built = shell.replace('<script type="module" src="./src/main.js"></script>', () => '<script>' + inlineBundle + '</script>')
+const built = minifiedShell.replace('<script type="module" src="./src/main.js"></script>', () => '<script>' + inlineBundle + '</script>')
   .replace(/(<meta http-equiv="Content-Security-Policy" content=")[^"]*(")/, (all, a, b) => a + CSP_DIST + b);
 if (!built.includes('__NEWSTART') || built.includes('<script type="module"')) throw new Error('bundle injection failed');
 
