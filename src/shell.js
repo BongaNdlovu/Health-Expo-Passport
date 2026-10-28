@@ -200,6 +200,17 @@ export function jelly(el){if(!el)return;el.classList.remove('jelly');void el.off
 /* ================= APPEARANCE & THEME ================= */
 /* One data-theme attribute drives every colour through the --hx tokens. The default stays light until
    every screen is migrated (Phase 6); then the default flips to dark to match the reference. */
+function paintStatusBar(theme){
+ const cap=/** @type {any} */ (window).Capacitor;
+ const sb=cap&&cap.Plugins&&cap.Plugins.StatusBar;
+ if(!sb)return;
+ try{
+  const style=sb.setStyle&&sb.setStyle({style:theme==='dark'?'DARK':'LIGHT'});
+  if(style&&style.catch)style.catch(()=>{});
+  const bg=sb.setBackgroundColor&&sb.setBackgroundColor({color:theme==='dark'?'#0b0e0c':'#f4f3ee'});
+  if(bg&&bg.catch)bg.catch(()=>{});
+ }catch(e){}
+}
 export function getTheme(){
  try{return localStorage.getItem('newstart.theme')==='dark'?'dark':'light';}catch(e){return 'light';}
 }
@@ -209,9 +220,11 @@ export function setTheme(t){
  if(document.documentElement)document.documentElement.dataset.theme=theme;
  const meta=document.querySelector('meta[name="theme-color"]');
  if(meta)meta.setAttribute('content',theme==='dark'?'#0b0e0c':'#f4f3ee');
+ paintStatusBar(theme);
 }
 export function toggleTheme(){
  const next=getTheme()==='dark'?'light':'dark';
  setTheme(next);
  return next;
 }
+paintStatusBar(getTheme());

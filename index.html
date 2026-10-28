@@ -1090,48 +1090,21 @@
   /* ---- Dark-mode bridge for screens not yet structurally migrated ----
      The legacy templates use ~330 hardcoded hex utilities. Remapping the most-used ones to tokens keeps
      every screen legible in dark while its markup waits in the migration queue. Scoped to dark only. */
-  html[data-theme="dark"] .text-\[\#123033\],
-  html[data-theme="dark"] .text-\[\#33504f\],
-  html[data-theme="dark"] .text-\[\#0f2a2c\]{color:var(--hx-ink)}
-  html[data-theme="dark"] .text-\[\#5b7178\],
-  html[data-theme="dark"] .text-\[\#5c747a\],
-  html[data-theme="dark"] .text-\[\#4f6870\],
-  html[data-theme="dark"] .text-\[\#3d5c5e\]{color:var(--hx-ink-2)}
-  html[data-theme="dark"] .text-\[\#6b8187\],
-  html[data-theme="dark"] .text-\[\#667d83\],
-  html[data-theme="dark"] .text-\[\#8a9aa0\],
-  html[data-theme="dark"] .text-\[\#b3c2c5\]{color:var(--hx-ink-3)}
+  html[data-theme="dark"] :is(.text-\[\#123033\],.text-\[\#33504f\],.text-\[\#0f2a2c\]){color:var(--hx-ink)}
+  html[data-theme="dark"] :is(.text-\[\#5b7178\],.text-\[\#5c747a\],.text-\[\#4f6870\],.text-\[\#3d5c5e\]){color:var(--hx-ink-2)}
+  html[data-theme="dark"] :is(.text-\[\#6b8187\],.text-\[\#667d83\],.text-\[\#8a9aa0\],.text-\[\#b3c2c5\]){color:var(--hx-ink-3)}
   html[data-theme="dark"] .text-\[\#8a5a12\]{color:var(--hx-warn)}
-  html[data-theme="dark"] .bg-white\/60,
-  html[data-theme="dark"] .bg-white\/50,
-  html[data-theme="dark"] .bg-white\/70,
-  html[data-theme="dark"] .bg-white\/85,
-  html[data-theme="dark"] .bg-white\/40{background-color:rgba(255,255,255,.06)}
+  html[data-theme="dark"] :is(.bg-white\/60,.bg-white\/50,.bg-white\/70,.bg-white\/85,.bg-white\/40){background-color:rgba(255,255,255,.06)}
   html[data-theme="dark"] .bg-white{background-color:var(--hx-surface)}
   html[data-theme="dark"] .bg-\[\#123033\]{background-color:var(--hx-surface-3)}
   html[data-theme="dark"] .border-\[\#123033\]{border-color:var(--hx-line)}
-  html[data-theme="dark"] .text-brand-600,
-  html[data-theme="dark"] .text-brand-700,
-  html[data-theme="dark"] .text-brand-800,
-  html[data-theme="dark"] .text-brand-900{color:var(--hx-mint-deep)}
-  html[data-theme="dark"] .text-rose-600,
-  html[data-theme="dark"] .text-rose-700{color:var(--hx-rose)}
-  html[data-theme="dark"] .text-amber-600,
-  html[data-theme="dark"] .text-amber-700,
-  html[data-theme="dark"] .text-amber-800{color:var(--hx-warn)}
-  html[data-theme="dark"] .text-sky-700,
-  html[data-theme="dark"] .text-sky-800{color:#7dd3fc}
+  html[data-theme="dark"] :is(.text-brand-600,.text-brand-700,.text-brand-800,.text-brand-900){color:var(--hx-mint-deep)}
+  html[data-theme="dark"] :is(.text-rose-600,.text-rose-700){color:var(--hx-rose)}
+  html[data-theme="dark"] :is(.text-amber-600,.text-amber-700,.text-amber-800){color:var(--hx-warn)}
+  html[data-theme="dark"] :is(.text-sky-700,.text-sky-800){color:#7dd3fc}
 
   /* screen-specific surfaces still on their pre-token CSS */
-  html[data-theme="dark"] .q-card,
-  html[data-theme="dark"] .q-row,
-  html[data-theme="dark"] .ac-card,
-  html[data-theme="dark"] .snd-item,
-  html[data-theme="dark"] .jr,
-  html[data-theme="dark"] .sim-panel,
-  html[data-theme="dark"] .fd-tile,
-  html[data-theme="dark"] .fd-row,
-  html[data-theme="dark"] .vw-bar{background:var(--hx-surface);border-color:var(--hx-line)}
+  html[data-theme="dark"] :is(.q-card,.q-row,.ac-card,.snd-item,.jr,.sim-panel,.fd-tile,.fd-row,.vw-bar){background:var(--hx-surface);border-color:var(--hx-line)}
   html[data-theme="dark"] .q-card-sel{border-color:var(--hx-mint)}
   html[data-theme="dark"] .q-card-name,
   html[data-theme="dark"] .q-card-n,
@@ -1152,6 +1125,33 @@
   html[data-theme="dark"] .bg-sky-50\/80{background:rgba(56,189,248,.12);border-color:rgba(56,189,248,.25);color:#7dd3fc}
   html[data-theme="dark"] .text-lilac-700{color:#d8b4fe}
   html[data-theme="dark"] .text-sage-800{color:var(--hx-mint-deep)}
+
+  /* ---- AA: 44px hit areas without changing the picture, focus, 320px ---- */
+  .hx-staff,.hx-theme{position:relative}
+  .hx-theme::after,.hx-staff::after{content:"";position:absolute;left:0;right:0;top:-7px;bottom:-7px;border-radius:inherit}
+  .hx-round::after{content:"";position:absolute;inset:-7px;border-radius:50%}
+  .hx-round:focus-visible,.hx-theme:focus-visible,.hx-staff:focus-visible,
+  .hx-split:focus-visible,.nav-item:focus-visible{
+    outline:2px solid var(--hx-mint);outline-offset:3px}
+  :focus-visible{outline-color:var(--hx-mint)}
+  @media (max-width:360px){
+    .hx-theme span{display:none}
+    .hx-theme{width:30px;padding:0;justify-content:center;gap:0}
+    .hx-hero-top{gap:6px}
+    .hx-staff{max-width:58%;min-width:0;overflow:hidden}
+    .hx-staff-meta{min-width:0;overflow:hidden}
+    .hx-tile{padding:10px 8px}
+    .hx-tile-value{font-size:16px;letter-spacing:-.5px}
+    .hx-tile-head{gap:2px}
+    .hx-tile-icon{width:18px;height:18px}
+    .hx-tile-foot .hx-split{gap:1px;min-height:22px}
+    .hx-tile-foot .hx-split-label{height:22px;padding:0 7px;font-size:9.5px}
+    .hx-tile-foot .hx-split-circle{width:22px;height:22px}
+  }
+  @media (max-width:340px){
+    .nav-item{font-size:9.5px}
+    .nav-ico{width:34px}
+  }
 
 </style>
 </head>

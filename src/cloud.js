@@ -233,6 +233,8 @@ export function renderGate(){
  if(!el||!body)return;
  const st=gateState();
  el.classList.toggle('hidden',st==='hidden');el.classList.toggle('flex',st!=='hidden');
+ /* the gate is a full-screen modal: nothing behind it may take focus or a tap */
+ const app=document.getElementById('app');if(app){if(st==='hidden')app.removeAttribute('inert');else app.setAttribute('inert','');}
  const sandbox=$('#gateSandbox');if(sandbox)sandbox.style.display=cloud.mode?'none':'';
  if(st==='hidden'){cloud.gateKey='';return;}
  const key=[st,cloud.formErr,cloud.err,cloud.status,cloud.viewEmail,cloud.acctV].join('|');
