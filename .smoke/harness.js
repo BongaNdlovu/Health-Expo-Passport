@@ -1379,7 +1379,7 @@ function makeServer() {
   await g.cloudInit();
   srv.authCb('INITIAL_SESSION', null); await sleep(30);
   ok('no saved session → login form', g.gateState() === 'form' && gateShown() && $el('authGateBody').innerHTML.includes('gatePass') && $el('authGateBody').innerHTML.includes('gateEmail'));
-  ok('form has email + password fields and a sign-in button', /type="email"/.test($el('authGateBody').innerHTML) && /type="password"/.test($el('authGateBody').innerHTML) && $el('authGateBody').innerHTML.includes('Sign in'));
+  ok('form has email + password fields and a sign-in button', /type="email"/.test($el('authGateBody').innerHTML) && /type="password"/.test($el('authGateBody').innerHTML) && /id="gateGo"/.test($el('authGateBody').innerHTML) && $el('authGateBody').innerHTML.includes('Sign In to Expo'));
   const viaGate = { preventDefault() {}, target: { dataset: { pre: 'gate' } } };
   $el('gateEmail').value = ' staff@example.org '; $el('gatePass').value = 'nope';
   await g.cloudSignIn(viaGate);

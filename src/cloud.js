@@ -225,7 +225,7 @@ export function gateView(v){
  cloud.view=v;cloud.formErr='';cloud.gateKey='';renderGate();
 }
 function gateFail(m){cloud.formErr=m;cloud.gateKey='';renderCloudBody();renderGate();}
-export function gateBusy(pre,label){const b=$('#'+pre+'Go');if(b){b.disabled=true;b.textContent=label;}}
+export function gateBusy(pre,label){const b=$('#'+pre+'Go');if(b){b.disabled=true;const l=b.querySelector('.hx-cta-main');if(l)l.textContent=label;else b.textContent=label;}}
 export const isNet=m=>/fetch|network|load failed/i.test(String(m||''))||!navigator.onLine;
 
 export function renderGate(){
@@ -233,12 +233,13 @@ export function renderGate(){
  if(!el||!body)return;
  const st=gateState();
  el.classList.toggle('hidden',st==='hidden');el.classList.toggle('flex',st!=='hidden');
+ const sandbox=$('#gateSandbox');if(sandbox)sandbox.style.display=cloud.mode?'none':'';
  if(st==='hidden'){cloud.gateKey='';return;}
  const key=[st,cloud.formErr,cloud.err,cloud.status,cloud.viewEmail,cloud.acctV].join('|');
  if(key===cloud.gateKey)return;
  cloud.gateKey=key;
  const keepEmail=($('#gateEmail')||{}).value||cloud.viewEmail||'',keepName=($('#gateName')||{}).value||'';
- const title=t=>`<div class="display text-[17px] font-extrabold text-[#0f2a2c]">${t}</div>`;
+ const title=t=>`<div class="display hx-gate-title text-[17px] font-extrabold">${t}</div>`;
  const note=(t,cls)=>`<p class="mt-1.5 text-[11px] leading-relaxed ${cls||'text-[#5c747a]'}">${t}</p>`;
  const link=(fn,t)=>`<button type="button" data-action="${fn}" class="text-[11px] font-extrabold text-brand-700">${t}</button>`;
  const err=`<p id="gateErr" role="alert" class="text-[11px] font-bold text-rose-600">${esc(cloud.formErr)}</p>`;
@@ -247,18 +248,17 @@ export function renderGate(){
  const fileWarn=/^https?:$/.test(location.protocol)?'':note('Heads-up: this page was opened from a file, so the links in the emails cannot bring you back here. Open the app from its web address instead.','text-amber-800');
  let html='';
  if(st==='form'){
-  html=`${title('Staff sign-in')}${note('Sign in with your staff email and password to open the passport.')}
+  html=`${title('Staff Sign-In')}${note('Enter your staff email and password.')}
    ${pendingInvite()?note('<b>You have a church invite link.</b> Sign in, or create an account, and you join the church straight away: no searching and no waiting.','text-brand-900'):''}
    <form data-action="cloudSignIn" data-pre="gate" class="mt-4 space-y-3">
     ${emailField}${pwField('gatePass','Password','current-password')}
     ${err}
-    <button id="gateGo" class="btn btn-primary w-full py-3 text-sm">Sign in</button>
+    <button id="gateGo" type="submit" class="hx-cta hx-gate-submit">
+     <span class="hx-cta-main">Sign In to Expo</span><span class="hx-cta-circle" aria-hidden="true">→</span>
+    </button>
    </form>
-   <div class="mt-3 flex items-center justify-between">${link("gateView('forgot')",'Forgot password?')}${link("gateView('signup')",'Create an account')}</div>
-   ${cloud.mode?'':`<div class="mt-4 border-t border-[#123033]/[.07] pt-3 text-center">
-    <button type="button" data-action="gateDemo" class="btn btn-soft w-full py-3 text-xs">Practise first, with demo visitors</button>
-    <p class="mt-1.5 text-[11px] text-[#4f6870]">Nothing is shared or saved to the database. Good for training before the expo.</p></div>`}`;
-   /* (only on a phone that has never held real shared data, so practice can never show real visitors) */
+   <div class="mt-3 flex items-center justify-between">${link("gateView('forgot')",'Forgot password?')}${link("gateView('signup')",'Create an account')}</div>`;
+   /* the demo entry lives in the sandbox tiles under the card, not duplicated here */
  }else if(st==='signup'){
   html=`${title('Create your account')}${note('Use your own email. We will send a link to confirm it. After that, an administrator approves your account before you can see any visitor data.')}
    <form data-action="cloudSignUp" data-pre="gate" class="mt-4 space-y-3">
