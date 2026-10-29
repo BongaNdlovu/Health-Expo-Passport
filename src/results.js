@@ -241,12 +241,21 @@ export function urgentOf(a,pk){
 export function planFor(a,pk){
  if(!pk){const cp=chosenChurchPlan(a);if(cp)return churchPlanFor(a,cp);}
  pk=pk||pkOf(a);
- const all=(ACTIONS[pk]||[]).filter(x=>!x.when||x.when(a)),isFirst=x=>!!(x.first&&x.first(a));
- const fix=x=>({...x,how:x.how.map(h=>typeof h==='function'?h(a):h).filter(Boolean),
-  cost:(x.foods||[]).reduce((t,k)=>{const f=foodList().find(f=>f.k===k);return t+(f?f.daily:0);},0)});
- const list=[...all.filter(isFirst),...all.filter(x=>!isFirst(x))].map(fix);
+ const actions=k=>{
+  const all=(ACTIONS[k]||[]).filter(x=>!x.when||x.when(a)),isFirst=x=>!!(x.first&&x.first(a));
+  const fix=x=>({...x,how:x.how.map(h=>typeof h==='function'?h(a):h).filter(Boolean),
+   cost:(x.foods||[]).reduce((t,c)=>{const f=foodList().find(f=>f.k===c);return t+(f?f.daily:0);},0)});
+  return [...all.filter(isFirst),...all.filter(x=>!isFirst(x))].map(fix);
+ };
+ const list=actions(pk);
+ /* One plan, not nine. Whatever else the checks flagged is folded in here as a secondary objective of the
+    same plan, so the visitor leaves with one thing to follow instead of a menu of separate plans. */
+ const secondary=planNeeds(a).filter(n=>n.k!==pk&&PROTOCOLS[n.k]).map(n=>{
+  const [act]=actions(n.k);
+  return act?{k:n.k,tag:PROTOCOLS[n.k].tag,why:n.why,act}:null;
+ }).filter(Boolean);
  return {pk,p:PROTOCOLS[pk],goal:PLAN_GOAL[pk],problem:problemOf(a,pk),urgent:urgentOf(a,pk),
-  top:list.slice(0,3),more:list.slice(3),recheck:RECHECK[pk]};
+  top:list.slice(0,3),more:list.slice(3),secondary,recheck:RECHECK[pk]};
 }
 export function viewPlan(){
  const raw=A(),a=withoutOldReadings(raw),gone=visitIsOld(raw),sug=autoProtocol(a);
@@ -259,18 +268,15 @@ export function viewPlan(){
    <div class="ac-top"><span class="ac-n">${i+1}</span><div class="ac-do">${esc(x.do)}</div></div>
    <p class="ac-why"><b>Why</b>${esc(x.why)}${ref(x.ref)}</p>
    <div class="ac-how"><b>How</b><ul>${x.how.map(h=>`<li>${esc(h)}</li>`).join('')}</ul></div>
-   ${x.cost?`<span class="ac-cost">≈ ${money(x.cost)} a day</span>`:''}
+   
   </li>`;
  return `<section class="stagger space-y-3.5">
   <div class="glass hue-${hue} p-4">
-   <div class="microlabel">${first}’s plan · 21 days</div>
+   <div class="microlabel">${first}’s plan · 90 days</div>
    <div class="display mt-0.5 text-[19px] leading-tight font-extrabold text-[#0f2a2c]">${P.goal}</div>
    <p class="pl-problem">${esc(P.problem)}</p>
    ${gone?`<p class="mt-2 rounded-[14px] border border-sky-200/70 bg-sky-50/70 px-3 py-2 text-[10.5px] font-semibold leading-snug text-sky-800">Readings were deleted ${GRACE_DAYS} days after the visit. This plan is the general one that helps everyone.</p>`:''}
-   ${others.length?`<div class="pl-also"><span>Also needs attention:</span>${others.map(n=>`<button class="fd-chip hue-${HUE_P[n.k]}" data-action="selectProtocol" data-args="${n.k}">${esc(PROTOCOLS[n.k].tag)} →</button>`).join('')}</div>`:''}
-   <details class="pl-switch"><summary>Show a different plan ▾</summary>
-    <div class="mt-2 grid grid-cols-2 gap-2">${Object.keys(PROTOCOLS).map(k=>`<button data-action="selectProtocol" data-args="${k}" class="btn py-2.5 text-[11px] ${k===P.pk?'btn-hue hue-'+HUE_P[k]:'btn-glass'}">${PROTOCOLS[k].tag}</button>`).join('')}</div>
-   </details>
+   ${others.length?`<div class="pl-also"><span>Also in this plan:</span>${others.map(n=>`<span class="fd-chip hue-${HUE_P[n.k]}">${esc(PROTOCOLS[n.k]?PROTOCOLS[n.k].tag:n.k)}</span>`).join('')}</div>`:''}
    ${churchPlanPicker(a)}
   </div>
 
@@ -282,6 +288,12 @@ export function viewPlan(){
    <div class="pl-h">Do these 3 things</div>
    <ol class="ac-list">${P.top.map(card).join('')}</ol>
   </div>
+
+  ${P.secondary&&P.secondary.length?`<div class="glass p-4">
+   <div class="pl-h">Also in your plan</div>
+   <p class="mt-1 text-[11px] leading-snug text-[#5c747a]">The checks flagged these too. They belong to the same 90 days, not a separate plan.</p>
+   <ul class="pl-more mt-2">${P.secondary.map(s=>`<li><b>${esc(s.act.do)}</b>${ref(s.act.ref)}<span>${esc(s.why)}</span></li>`).join('')}</ul>
+  </div>`:''}
 
   ${P.more.length?`<div class="glass p-4">
    <div class="microlabel">When these feel easy, add</div>
@@ -296,7 +308,7 @@ export function viewPlan(){
   ${precautionsHTML()}
 
   ${p.items.length?`<button class="pl-food" data-action="openFood">
-   <span class="min-w-0 flex-1"><b>Food for this plan · ≈ ${money(costOf(P.pk))} a day</b>
+   <span class="min-w-0 flex-1"><b>Food for this plan · store prices</b>
    <span>Store prices checked ${PRICE_DATE}; they vary by branch. What each food costs, and why it is in the plan.</span></span><span aria-hidden="true">→</span></button>`:''}
 
   <details class="glass pl-det"><summary>The full day, step by step</summary><div>
@@ -314,17 +326,14 @@ export function viewPlan(){
   </div></details>
  </section>`;
 }
-export function selectProtocol(k){
- state.protocol=k;renderMain();
- const s=$('#main').firstElementChild;
- if(s){s.classList.remove('pour');void s.offsetWidth;s.classList.add('pour');}
-}
 
 /* ================= VIEW: FOOD (opened from the Plan tab) =================
-   Every shopping-list food once, with an animated bar for what it costs (a day, over the 21 days, or across the
-   stores) and, on tap, why it is in the plan and how its price was worked out. Prices: FOOD_PRICES (written by
+   Every shopping-list food once, ordered by what it costs on the shelf (cheapest first) with the stores that
+   sell it, and, on tap, why it is in the plan and how its price was worked out. Prices: FOOD_PRICES (written by
    tools/update-prices.js) and each item's `daily`; reasons: FOOD_WHY. */
-const FOOD_METRICS=[['day','Per day'],['21','21 days'],['store','Store prices']];
+/* the price on the shelf: each priced part’s median added up, so the list can be ordered by what somebody
+   actually pays at the till rather than by a per-day share of it */
+export const shelfOf=f=>f.price&&f.price.parts.length?f.price.parts.reduce((t,p)=>t+p.med,0):null;
 export const shortFood=n=>n.split(/ \(| \/ /)[0];
 export const foodKeyOf=name=>{for(const k in FOOD_PRICES)if(FOOD_PRICES[k].names.includes(name))return k;return 'x-'+name.toLowerCase().replace(/[^a-z0-9]+/g,'-');};
 let _foods=null;
@@ -341,12 +350,11 @@ function foodList(){
 }
 export function openFood(){
  const pk=state.protocol&&PROTOCOLS[state.protocol]&&PROTOCOLS[state.protocol].items.length?state.protocol:'all';
- state.food={open:true,plan:pk,metric:(state.food&&state.food.metric)||'day'};
+ state.food={open:true,plan:pk};
  state._foodAnim=true;renderMain();window.scrollTo(0,0);
 }
 export function closeFood(){if(state.food)state.food.open=false;renderMain();window.scrollTo(0,0);}
 export function setFoodPlan(k){state.food.plan=k;state._foodAnim=true;renderMain();}
-export function setFoodMetric(m){state.food.metric=m;state._foodAnim=true;renderMain();}
 /* opening a food only shows/hides its panel: no redraw, so the bars do not grow again */
 export function toggleFood(k){
  const b=document.getElementById('fh-'+k),d=document.getElementById('fd-'+k);if(!b||!d)return;
@@ -373,31 +381,29 @@ function foodDetail(f,plan){
    :'<div class="fd-why"><span>No reason is recorded for this food yet. A reviewer should add one.</span></div>'}
   ${cares.map(c=>`<div class="fd-care">⚠ ${esc(c)}</div>`).join('')}
   <div class="fd-money"><b>How much:</b> ${amount.toLowerCase().startsWith(f.dose.toLowerCase())?esc(amount):esc(f.dose)+(amount!==f.dose?` (priced as ${esc(amount)})`:'')}.<br>
-   <b>Cost:</b> about ${money(f.daily)} a day, ${money(f.daily*21)} for 21 days, at the typical (median) store price.<br>
+   <b>Store price:</b> ${shelfOf(f)!=null?`about R${shelfOf(f).toFixed(2)} for ${esc(amount)}, at the typical (median) price`:esc(f.store)}.<br>
    ${parts.length?`<b>Where the price comes from:</b> ${parts.map(p=>`${p.label?esc(p.label)+': ':''}median R${p.med.toFixed(2)} ${esc(p.unit)} from ${p.n} store price${p.n>1?'s':''}`).join('; ')} at ${esc(stores.join(', '))}.`
     :`<b>Where the price comes from:</b> ${esc(f.store)}.`}
    ${P&&P.note?`<br><b>Note:</b> ${esc(P.note)}.`:''}</div>`;
 }
 export function viewFood(){
- const F=state.food,plan=F.plan,metric=F.metric,anim=!!state._foodAnim;state._foodAnim=false;
- const foods=foodList().filter(f=>plan==='all'||f.plans.includes(plan)).sort((a,b)=>b.daily-a.daily);
+ const F=state.food,plan=F.plan,anim=!!state._foodAnim;state._foodAnim=false;
+ const foods=foodList().filter(f=>plan==='all'||f.plans.includes(plan))
+  .sort((a,b)=>{const x=shelfOf(a),y=shelfOf(b);return x==null?(y==null?0:1):y==null?-1:x-y;});
+ const priced=foods.filter(f=>shelfOf(f)!=null);
  const hue=plan==='all'?'mint':HUE_P[plan];
- const val=f=>metric==='21'?f.daily*21:f.daily,max=Math.max(...foods.map(val),0.01);
- const day=foods.reduce((t,f)=>t+f.daily,0);
  const tile=(v,l)=>`<div class="fd-tile"><b>${v}</b><span>${l}</span></div>`;
- const tiles=plan==='all'
-  ?tile(foods.length,'Foods')+tile(money(foods[foods.length-1].daily),'Cheapest a day: '+esc(shortFood(foods[foods.length-1].name)))+tile(money(foods[0].daily),'Dearest a day: '+esc(shortFood(foods[0].name)))
-  :tile(money(day),'Per day')+tile(money(day*21),'21 days')+tile(foods.length,'Foods');
+ const rand=v=>'R'+v.toFixed(2);
+ const tiles=tile(foods.length,'Foods')
+  +(priced.length?tile(rand(shelfOf(priced[0])),'Cheapest: '+esc(shortFood(priced[0].name))):'')
+  +(priced.length>1?tile(rand(shelfOf(priced[priced.length-1])),'Dearest: '+esc(shortFood(priced[priced.length-1].name))):'');
  const rows=foods.map((f,i)=>{
   const fh=plan==='all'?HUE_P[f.plans[0]]:hue,parts=f.price?f.price.parts:[];
-  const chart=metric==='store'
-   ?(parts.length?`<span class="fd-trio">${parts.map((p,j)=>foodMiniBars(p,i+j*3)).join('')}</span>`:`<span class="fd-one">${esc(f.store)}</span>`)
-   :`<span class="fd-track"><i class="fd-bar" style="--w:${(val(f)/max).toFixed(3)};--d:${i}"></i></span>`;
-  const right=metric==='store'?`<span class="fd-more">Why? ▾</span>`
-   :`<span class="fd-val">${money(val(f))}<small>${metric==='21'?'21 days':'a day'}</small></span>`;
+  const chart=parts.length?`<span class="fd-trio">${parts.map((p,j)=>foodMiniBars(p,i+j*3)).join('')}</span>`:`<span class="fd-one">${esc(f.store)}</span>`;
+  const right=`<span class="fd-more">Why? ▾</span>`;
   return `<li class="fd-row hue-${fh}">
    <button id="fh-${f.k}" class="fd-head" data-action="toggleFood" data-args="${f.k}" aria-expanded="false" aria-controls="fd-${f.k}">
-    <span class="fd-name">${esc(f.name)}<small>${esc(f.dose)}${plan==='all'?' · '+f.plans.map(k=>esc(PROTOCOLS[k].tag)).join(', '):''}${metric!=='store'?' · <span class="fd-more">Why? ▾</span>':''}</small></span>
+    <span class="fd-name">${esc(f.name)}<small>${esc(f.dose)}${plan==='all'?' · '+f.plans.map(k=>esc(PROTOCOLS[k].tag)).join(', '):''}</small></span>
     ${right}${chart}
    </button>
    <div id="fd-${f.k}" class="fd-detail" hidden>${foodDetail(f,plan)}</div>
@@ -413,21 +419,16 @@ export function viewFood(){
     ${Object.keys(PROTOCOLS).filter(k=>PROTOCOLS[k].items.length).map(k=>`<button class="fd-chip hue-${HUE_P[k]}" aria-pressed="${k===plan}" data-action="setFoodPlan" data-args="${k}">${esc(PROTOCOLS[k].tag)}</button>`).join('')}
     <button class="fd-chip hue-mint" aria-pressed="${plan==='all'}" data-action="setFoodPlan" data-args="all">All foods</button>
    </div>
-   <div class="fd-seg mt-2.5" role="group" aria-label="What the bars show">
-    ${FOOD_METRICS.map(([k,l])=>`<button aria-pressed="${k===metric}" data-action="setFoodMetric" data-args="${k}">${l}</button>`).join('')}
-   </div>
    <div class="fd-tiles mt-3">${tiles}</div>
   </div>
 
   <div class="glass px-4 pb-4 pt-2">
    <ul class="fd-list ${anim?'fd-anim':''}">${rows}</ul>
-   <p class="fd-foot">${metric==='store'
-    ?'Each food’s own prices per unit: the cheapest, the middle (median) and the dearest verified price found online, and the store. The dearest is often a different brand or pack size. '
-    :'Bars compare the foods at the amount in the plan, at the middle (median) store price. '}Store prices were checked online on ${PRICE_DATE}; they change and vary by branch, so check your own shop. The books give no prices.</p>
+   <p class="fd-foot">Each food’s own prices per unit: the cheapest, the middle (median) and the dearest verified price found online, and the store that sells it. The dearest is often a different brand or pack size. Store prices were checked online on ${PRICE_DATE}; they change and vary by branch, so check your own shop. The books give no prices.</p>
    <p class="fd-foot">Why each food — in our own words, from the health writings of Ellen G. White, or marked “general advice”.</p>
   </div>
 
-  ${p?`<div class="fd-pouch"><div style="flex:1"><b>Tight budget? Church co-op starter pouch — R25</b><span>Bulk staples pre-packed for 21 days, ready at the exit table.</span></div></div>
+  ${p?`<div class="fd-pouch"><div style="flex:1"><b>Tight budget? Church co-op starter pouch — R25</b><span>Bulk staples, ready at the exit table.</span></div></div>
   <div class="rounded-[22px] border border-amber-200/70 bg-amber-50/80 p-3.5 text-[11px] leading-relaxed text-amber-900">
    <b>Safety:</b> ${esc(DISCLAIMER)} Never stop prescribed pills suddenly, and ask your clinic before big changes in food if you take regular medicine.${p.note?` <b>This plan:</b> ${esc(p.note)}`:''}</div>`:''}
  </section>`;

@@ -13,7 +13,7 @@ export function ecgHTML(){
   <svg viewBox="0 0 340 70" preserveAspectRatio="none" focusable="false">
    <path class="hx-ecg-track" d="${ECG_PATH}"/>
   </svg>
-  <span class="hx-ecg-scan"></span>
+  <span class="hx-ecg-scan"></span><span class="hx-ecg-beat"></span>
  </div>`;
 }
 

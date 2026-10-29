@@ -445,7 +445,7 @@ function onNotifRow(row){
  if(cloud.notifOpen)renderNotifs();
 }
 export function openNotifs(){
- cloud.notifOpen=true;showModal('#notifSheet');cloud.notifs=undefined;renderNotifs();
+ cloud.notifOpen=true;showModal('#notifSheet',notifClose);cloud.notifs=undefined;renderNotifs();
 }
 async function loadNotifs(){
  if(!cloud.client||!cloud.user)return;

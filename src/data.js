@@ -76,7 +76,7 @@ export const BOOTHS=[
  {k:'bp',      label:'Blood Pressure',         letter:'BP',hue:'blush',cap:4, blurb:'Cuff readings, red-flag triage and calm reassurance.'},
  {k:'sugar',   label:'Blood Sugar & Chol.',    letter:'SU',hue:'sand', cap:3, blurb:'Glucose and cholesterol finger-prick testing.'},
  {k:'kitchen', label:'Kitchen Pharmacy',       letter:'KP',hue:'sage', cap:3, blurb:'Cooking school, tastings and the R25 pouch.'},
- {k:'plan',    label:'Health Counselling',   letter:'NS',hue:'lilac',cap:4, blurb:'Walk visitors through their 21-day plan.'},
+ {k:'plan',    label:'Health Counselling',   letter:'NS',hue:'lilac',cap:4, blurb:'Walk visitors through their 90-day plan.'},
  {k:'prayer',  label:'Prayer & Chaplaincy',    letter:'PR',hue:'aqua', cap:2, blurb:'Quiet corner, prayer requests, spiritual care.'},
  {k:'kids',    label:'Kids Corner',            letter:'KC',hue:'peach',cap:2, blurb:'Keep the children safe and busy while parents queue.'},
  {k:'logistics',label:'Logistics & Setup',     letter:'LG',hue:'sage', cap:3, blurb:'Tables, gazebos, water, pack-up and transport.'},
@@ -205,7 +205,7 @@ const ITEM_SLAW={name:'Cabbage & carrots (raw salad)',dose:'300g a day',store:'C
 const ITEM_TOMATO={name:'Tomatoes',dose:'2 medium',store:'R24–R35 per kg (median R33) at Checkers, Pick n Pay, SPAR, Shoprite, Woolworths (checked 19 Oct 2026)',daily:4.95};
 const HOT_BATH_CARE='Never a hot bath with high blood pressure, heart trouble or diabetes, and test the water with your elbow if your feet have lost feeling.';
 export const PROTOCOLS={
- bp:{tag:'Blood pressure',tagline:'21-day blood-pressure plan',title:'High Blood Pressure — Home Plan',
+ bp:{tag:'Blood pressure',tagline:'90-day blood-pressure plan',title:'High Blood Pressure — Home Plan',
   src:'Ellen G. White — The Ministry of Healing: chs. 8, 17, 20, 26 · Counsels on Diet and Foods: §§ 111, 138, 245, 267, 268, 475, 514, 518, 726, 731 · Healthful Living: §§ 570, 571, 717',
   mech:'Built on Ellen White’s counsel: plain water, little salt, simple plant foods with plenty of fruit and vegetables, daily walks in the open air, deep breathing and rest.',
   steps:[
@@ -240,7 +240,7 @@ export const PROTOCOLS={
    ITEM_TOMATO,
    {name:'Potatoes (with skin)',dose:'250g for soup',store:'R11–R15 per kg (median R12) at Checkers, Pick n Pay, SPAR, Shoprite, Woolworths (checked 19 Oct 2026)',daily:3.12}]},
 
- sugar:{tag:'Blood sugar',tagline:'21-day blood-sugar plan',title:'High Blood Sugar — Home Plan',
+ sugar:{tag:'Blood sugar',tagline:'90-day blood-sugar plan',title:'High Blood Sugar — Home Plan',
   src:'Ellen G. White — The Ministry of Healing: chs. 17, 26 · Counsels on Diet and Foods: §§ 146, 168, 191, 245, 267, 268, 504, 518, 726, 731 · Healthful Living: § 571',
   mech:'Built on Ellen White’s counsel on eating: simple whole plant foods at set times with nothing in between, little sugar, a light early supper, and a walk every day.',
   steps:[
@@ -664,7 +664,7 @@ export const ACTIONS={
   {do:'A cup of chamomile or linden tea in a quiet moment',why:'Chamomile and linden flower teas are traditional calming teas.',ref:'G',
    how:['Warm and unsweetened, sitting down','Allergic to ragweed? Choose linden instead']}],
 };
-/* When to check again: the step that closes the 21 days. */
+/* When to check again: the step that closes the 90 days. */
 export const RECHECK={bp:['Have your blood pressure checked again in 3 weeks, at a clinic or pharmacy.','S'],
  sugar:['Have your blood sugar checked again in 3 weeks, at your clinic.',''],
  bmi:['Check your weight again in 3 weeks, on the same scale.',''],

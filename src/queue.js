@@ -6,6 +6,7 @@ import { renderMain, renderNav, toast } from './shell.js';
 import { esc, firstName, initials } from './helpers.js';
 import { healthFromError, healthLive, isMissingErr, missingName } from './cloud.js';
 import { hideModal, showModal } from './volunteer.js';
+import { overlayClosed, overlayOpened } from './overlay.js';
 import { visitorsToShow } from './visitor.js';
 /* The live queue shared between desks. Split from the original single-file app; bundled back into one file by tools/build.js. */
 /* ================= LIVE QUEUE =================
@@ -197,7 +198,7 @@ export function openQueuePick(st){
  qs.pick=st;qs.pickQ='';
  $('#queueHead').innerHTML=`<h3 class="display text-base font-extrabold">Add to ${esc((BOOTH(st)||{}).label||st)}</h3>
   <input id="qq" type="search" placeholder="Search by name, badge or phone" data-on-input="queue-filter" class="field mt-2.5" autocomplete="off">`;
- qRenderPick();showModal('#queueModal');
+ qRenderPick();showModal('#queueModal',closeQueuePick);
 }
 export function closeQueuePick(){hideModal('#queueModal');qs.pick='';}
 export function qFilterPick(v){qs.pickQ=v;qRenderPick();}
@@ -253,6 +254,7 @@ function renderBigScreen(){
 }
 export function openBigScreen(){
  const tv=$('#tv');tv.classList.remove('hidden');renderBigScreen();
+ overlayOpened('#tv',closeBigScreen);
  try{const p=tv.requestFullscreen&&tv.requestFullscreen();if(p&&p.catch)p.catch(()=>{});}catch(e){}
  qWake();
 }
@@ -260,6 +262,7 @@ export function closeBigScreen(){
  $('#tv').classList.add('hidden');
  try{if(document.fullscreenElement){const p=document.exitFullscreen();if(p&&p.catch)p.catch(()=>{});}}catch(e){}
  if(qs.wake){try{qs.wake.release();}catch(e){}qs.wake=null;}
+ overlayClosed('#tv');
 }
 /* keep a TV from going to sleep */
 async function qWake(){try{if(navigator.wakeLock&&tvOpen()&&!qs.wake){qs.wake=await navigator.wakeLock.request('screen');qs.wake.addEventListener('release',()=>{qs.wake=null;});}}catch(e){}}

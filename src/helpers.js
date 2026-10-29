@@ -73,24 +73,43 @@ export function chipNote(a,k){
 }
 export const chipClass=c=>c==='flag'?'chip chip-flag':c==='watch'?'chip chip-watch':c==='ok'?'chip chip-ok':'chip chip-none';
 
-/* Health-age engine */
+/* Health-age engine.
+   Method: the recognised "heart age" idea — read somebody's measurements back as the age of a person whose
+   measurements sit at reference level. Every measure therefore moves the number BOTH ways: better than the
+   reference takes years off, worse puts them on, so somebody fit can be younger than their years.
+   Reference levels: systolic 125 mmHg and BMI 22.5 are the levels the Framingham non-laboratory heart-age
+   model treats as reference (D'Agostino 2008, the basis of the NHS/JBS3 and Heart Foundation calculators).
+   The rest are ordinary clinical targets: diastolic 80, glucose 5.5 mmol/L, total cholesterol 5.0, five a
+   day, 30 min a day, 8 glasses, 7-9 hours asleep.
+   This is a screening ESTIMATE for teaching, not a validated risk score. The published models also need
+   smoking status, which this expo does not ask for, so their coefficients cannot honestly be applied here.
+   Credit for beating a target is deliberately small and capped: going further below a target is not linearly
+   healthier, and for glucose and BMI it is harmful. The total is capped either way so no single reading runs
+   away with the answer. */
+const HA_CAP=15;
+const span=(v,lo,hi)=>v<lo?lo-v:v>hi?v-hi:0;
 function factorsOf(m){
- const f=[];
- if(m.sys&&m.dia) f.push(['Blood pressure',`${m.sys}/${m.dia}`,Math.max(0,(m.sys-120)*0.08+(m.dia-80)*0.10)]);
- if(m.sugar!=null) f.push(['Blood sugar',`${m.sugar} mmol/L`,Math.max(0,(m.sugar-5.5)*0.6)]);
- if(m.chol!=null) f.push(['Cholesterol',`${m.chol} mmol/L`,Math.max(0,(m.chol-5)*0.3)]);
- if(m.bmi!=null) f.push(['Body weight (BMI)',fmt1(m.bmi),Math.max(0,(m.bmi-23)*0.15)]);
- if(m.veg!=null) f.push(['Fruit & veg',`${m.veg} servings/day`,Math.max(0,(5-m.veg)*0.10)]);
- if(m.walk!=null) f.push(['Exercise',`${m.walk} min/day`,Math.max(0,(30-m.walk)*0.02)]);
- if(m.water!=null) f.push(['Water',`${m.water} glasses/day`,Math.max(0,(8-m.water)*0.06)]);
- if(m.sleep!=null) f.push(['Sleep',`${m.sleep} hrs/night`,m.sleep<8?Math.max(0,(8-m.sleep)*0.25):Math.max(0,(m.sleep-9)*0.15)]);
+ const f=[],yr=(name,shown,years,lo,hi)=>f.push([name,shown,clamp(years,lo,hi)]);
+ if(m.sys&&m.dia) yr('Blood pressure',`${m.sys}/${m.dia}`,(m.sys-125)*0.08+(m.dia-80)*0.10,-3,8);
+ /* below about 4.5 mmol/L is a low reading, not a better one, so the credit stops there */
+ if(m.sugar!=null) yr('Blood sugar',`${m.sugar} mmol/L`,(m.sugar-5.5)*0.6,-0.6,6);
+ if(m.chol!=null) yr('Cholesterol',`${m.chol} mmol/L`,(m.chol-5)*0.3,-1.5,5);
+ /* BMI reads both ways: too light carries its own risk, so under 18.5 is a penalty, not a credit */
+ if(m.bmi!=null) yr('Body weight (BMI)',fmt1(m.bmi),
+   m.bmi<18.5?(18.5-m.bmi)*0.25:m.bmi>22.5?(m.bmi-22.5)*0.15:-(22.5-m.bmi)*0.10,-0.4,6);
+ if(m.veg!=null) yr('Fruit & veg',`${m.veg} servings/day`,(5-m.veg)*0.10,-0.3,1.5);
+ if(m.walk!=null) yr('Exercise',`${m.walk} min/day`,(30-m.walk)*0.02,-1.2,1.5);
+ if(m.water!=null) yr('Water',`${m.water} glasses/day`,(8-m.water)*0.06,-0.3,0.8);
+ if(m.sleep!=null) yr('Sleep',`${m.sleep} hrs/night`,
+   span(m.sleep,7,9)*(m.sleep<7?0.25:0.15)||-0.2,-0.2,3);
  return f;
 }
 export function healthAge(a){
  const f=factorsOf({...a.s,bmi:bmi(a)});
- const total=f.reduce((t,x)=>t+x[2],0);
+ const total=clamp(f.reduce((t,x)=>t+x[2],0),-HA_CAP,HA_CAP);
  const complete=doneCount(a)===8;
- return {f,total,complete,health:complete?a.age+total:null};
+ /* a health age still has to be a plausible adult age, however good the readings are */
+ return {f,total,complete,health:complete?Math.max(18,+(a.age+total).toFixed(1)):null};
 }
 export const DROPS={kSys:[0,4,8,11],kDia:[0,2,4,6],hSys:[0,3,5],hDia:[0,2,3]};
 export function simBP(a){

@@ -42,7 +42,7 @@ const EXPORTS = [
   'gateState', 'renderGate', 'gateDemo', 'togglePass',
   'gateView', 'cloudSignUp', 'cloudResend', 'cloudForgot', 'cloudNewPassword', 'passwordProblem', 'validEmail',
   'waNumber', 'waMessage', 'sendWhatsApp', 'openEmail', 'sendEmail', 'mailtoHref', 'toggleInterest', 'onPrayer', 'reservePouch', 'followUpCard', 'INT',
-  'queue', 'qs', 'queueJoin', 'queueCallNext', 'queueServe', 'queueDone', 'queueBack', 'queueRemove', 'qStats', 'qList', 'qMode', 'qCan', 'viewQueue',
+  'queue', 'qs', 'queueJoin', 'queueCallNext', 'queueServe', 'queueDone', 'queueBack', 'queueRemove', 'openBigScreen', 'closeBigScreen', 'qStats', 'qList', 'qMode', 'qCan', 'viewQueue',
   'cheapDay', 'cheapLine', 'foodPriceOf', 'foodKeyOf', 'FOOD_PRICES', 'money', 'closeWhatsApp',
   'planNeeds', 'bpStage', 'PROTOCOLS', 'BOOK_REF', 'autoProtocol', 'costOf',
   'BOOK2_REF', 'BOOK3_REF', 'BOOK4_REF', 'refLabel', 'planBooks', 'planCredit', 'HELP_LINE',
@@ -116,11 +116,15 @@ const localStorage = {
 };
 
 let rafQueue = [];
+/* the app's popstate listeners, and what it does with history (the big screen closes on Android Back) */
+const popHandlers = [], histPushed = [], histBacks = [];
 const sandbox = {
   document, localStorage,
   NEWSTART_NO_CLOUD: true,    /* the cloud tests start it explicitly, against a fake server */
   navigator: { hardwareConcurrency: 8, deviceMemory: 8, mediaDevices: null, userAgent: 'node', onLine: true },
   location: { href: 'http://localhost/', protocol: 'http:', origin: 'http://localhost', pathname: '/' },
+  /* back() fires popstate, as a browser does — the app relies on that to clear its own guard flag */
+  history: { pushState: s => histPushed.push(s), back: () => { histBacks.push(1); popHandlers.forEach(f => f({ state: null })); } },
   matchMedia: () => ({ matches: false, addEventListener() {} }),
   requestAnimationFrame: fn => { rafQueue.push(fn); return rafQueue.length; },
   cancelAnimationFrame() {},
@@ -130,7 +134,7 @@ const sandbox = {
   Blob: function () {},
   Date, Math, JSON, console, performance: { now: () => Date.now() },
   innerWidth: 390, innerHeight: 844, scrollY: 0, scrollTo() {},
-  addEventListener() {}, removeEventListener() {},
+  addEventListener(type, fn) { if (type === 'popstate') popHandlers.push(fn); }, removeEventListener() {},
   alert() {}, confirm: () => true, prompt: () => null,
   getComputedStyle: () => ({ getPropertyValue: () => '' }),
   BarcodeDetector: undefined,
@@ -738,6 +742,23 @@ ok('BP 120/80 is normal', g.cat('bp', { sys: 120, dia: 80 })[0] === 'ok');
 ok('sugar 15 is a red flag', g.redFlag({ s: { sugar: 15 } }));
 ok('incomplete attendee gets no health age', g.healthAge({ age: 40, s: { sys: 120, dia: 80 } }).health === null);
 
+/* health age reads both ways: the recognised heart-age idea, so being fit takes years off */
+{
+  const mk = o => ({ age: 40, heightCm: 175, s: { sys: 120, dia: 78, sugar: 5.2, chol: 4.6, weight: 68.9, veg: 5, walk: 30, water: 8, sleep: 8, ...o } });
+  const fit = g.healthAge(mk({ sys: 115, dia: 72, sugar: 4.8, chol: 4.0, weight: 64.3, veg: 6, walk: 45 }));
+  ok('a fit person is younger than their years', fit.health < 40 && fit.total < 0, JSON.stringify({ health: fit.health, total: +fit.total.toFixed(2) }));
+  const poor = g.healthAge(mk({ sys: 165, dia: 102, sugar: 9.5, chol: 7.2, weight: 104, veg: 1, walk: 0, water: 3, sleep: 5 }));
+  ok('poor readings add years', poor.health > 40 && poor.total > 0, JSON.stringify({ health: poor.health, total: +poor.total.toFixed(2) }));
+  const low = g.healthAge(mk({ sugar: 2.5 }));
+  ok('a dangerously low sugar buys no extra credit', low.f.find(x => x[0] === 'Blood sugar')[2] >= -0.6);
+  const thin = g.healthAge(mk({ weight: 48 }));
+  ok('underweight counts against, not for', thin.f.find(x => x[0] === 'Body weight (BMI)')[2] > 0,
+    JSON.stringify(thin.f.find(x => x[0] === 'Body weight (BMI)')));
+  const extreme = g.healthAge(mk({ sys: 220, dia: 140, sugar: 25, chol: 12, weight: 160, veg: 0, walk: 0, water: 0, sleep: 3 }));
+  ok('one extreme reading cannot run away with the answer', extreme.total <= 15, String(extreme.total));
+  ok('a health age is never an implausible age', g.healthAge({ ...mk({ sys: 100, dia: 60, sugar: 4, chol: 2, weight: 60, veg: 9, walk: 120, water: 10, sleep: 8 }), age: 19 }).health >= 18);
+}
+
 console.log('\n14. Volunteer navigation & logging');
 g.resetDemo(); g.state.tab = 'home'; g.render();
 g.startNewVolunteer();
@@ -968,9 +989,13 @@ function makeServer() {
   {
     const opened = [], shared = [], printed = [], swRegistered = [], saved = [];
     let whatsappInstalled = true;
+    /* @capacitor/app: the hardware Back key arrives as this listener inside the app */
+    const backListeners = [], exits = [];
     const Capacitor = {
       isNativePlatform: () => true,
       Plugins: {
+        App: { addListener: (ev, fn) => { if (ev === 'backButton') backListeners.push(fn); return Promise.resolve({ remove() {} }); },
+          exitApp: () => { exits.push(1); return Promise.resolve(); } },
         AppLauncher: { openUrl: async o => { opened.push(o.url); return { completed: whatsappInstalled }; } },
         Share: { share: async o => { shared.push(o.text); return {}; } },
         CardPrinter: { print: async o => { printed.push(o.html); return {}; },
@@ -1016,6 +1041,20 @@ function makeServer() {
     ok('app: no service worker is registered inside the app', booted && swRegistered.length === 0);
     appBox.navigator.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)';
     ok('app: no "Add to Home Screen" steps are shown inside the app', booted && A.installBlock() === '');
+    /* Back: Capacitor routes the hardware key to @capacitor/app, so the app must answer it itself.
+       Registering the listener is also what stops the plugin's default swallowing Back at the top level. */
+    ok('app: the hardware Back key is handled by the app', backListeners.length === 1, String(backListeners.length));
+    {
+      const exits0 = exits.length, backs0 = histBacks.length;
+      backListeners[0]();
+      ok('app: Back with no overlay open exits the app', exits.length === exits0 + 1 && histBacks.length === backs0);
+      A.openBigScreen();
+      backListeners[0]();
+      ok('app: Back with an overlay open steps history instead of exiting',
+        exits.length === exits0 + 1 && histBacks.length === backs0 + 1,
+        JSON.stringify({ exits: exits.length - exits0, backs: histBacks.length - backs0 }));
+      A.closeBigScreen();
+    }
 
     let msg = '', num = '';
     if (booted) {
@@ -3391,7 +3430,7 @@ function makeServer() {
   mailDave.email = '';
   const href = g.mailtoHref(mailDave, 'David@Example.ORG');
   ok('the email link is a mailto: with the address, a subject and the exact plan text as the body',
-    href.startsWith('mailto:David%40Example.ORG?subject=') && decodeURIComponent(href.split('&body=')[1]) === g.waMessage(mailDave) && href.includes('21-day%20plan'), href.slice(0, 80));
+    href.startsWith('mailto:David%40Example.ORG?subject=') && decodeURIComponent(href.split('&body=')[1]) === g.waMessage(mailDave) && href.includes('90-day%20plan'), href.slice(0, 80));
   g.state.activeId = 'EXPO-042'; g.state.tab = 'send'; g.render();
   ok('the Send tab offers the email option next to WhatsApp',
     /data-action="openEmail"/.test($main.innerHTML) && /Email the plan/.test($main.innerHTML) && $main.innerHTML.includes('none saved'));
@@ -3423,14 +3462,16 @@ function makeServer() {
   const bestDay = g.PROTOCOLS.bp.items.reduce((t, i) => t + g.cheapDay(i), 0), typDay = g.costOf('bp');
   ok('pricing: the message tells the visitor where each food is cheapest, at what price',
     /WHERE TO BUY IT CHEAPEST \(store prices checked/.test(msgP) && /cheapest at SPAR \(R29\.99 per kg\)/.test(msgP) && msgP.includes('60g breakfast'), msgP.slice(msgP.indexOf('WHERE TO BUY'), msgP.indexOf('WHERE TO BUY') + 120));
-  ok('pricing: the cheapest-store day total is lower than the typical one, and both are quoted',
-    bestDay > 0 && bestDay < typDay && msgP.includes(g.money(bestDay)) && msgP.includes(g.money(typDay)), 'best=' + bestDay + ' typical=' + typDay);
+  /* the visitor is sent shop prices, not per-day arithmetic: the totals were removed on purpose */
+  ok('pricing: the message gives store prices and no per-day totals',
+    msgP.includes('WHERE TO BUY IT CHEAPEST') && !msgP.includes(g.money(bestDay)) && !msgP.includes(g.money(typDay)) && !/a day/.test(msgP.split('WHERE TO BUY IT CHEAPEST')[1] || ''),
+    'best=' + bestDay + ' typical=' + typDay);
   const slaw = planItems.find(i => /Cabbage/.test(i.name));
   ok('pricing: multi-part foods name a cheapest store for each part',
     !!slaw && g.cheapLine(slaw).includes('carrots cheapest at') && g.cheapLine(slaw).includes('cabbage cheapest at'), slaw && g.cheapLine(slaw));
   g.state.activeId = 'EXPO-042'; g.openWhatsApp();
-  ok('pricing: the send preview shows the cheapest stores and both totals',
-    $el('waBody').innerHTML.includes('Where to buy it cheapest') && $el('waBody').innerHTML.includes(g.money(bestDay)));
+  ok('pricing: the send preview shows where to buy it cheapest',
+    $el('waBody').innerHTML.includes('Where to buy it cheapest'));
   g.closeWhatsApp();
 
   /* ---- 20b. the queue: join, call next, serve, done, back, remove ---- */
@@ -3499,6 +3540,51 @@ function makeServer() {
   let csvText = null; sandbox.Blob = function (parts) { csvText = parts.join(''); };
   g.exportCSV(); sandbox.Blob = function () {};
   ok('the follow-up CSV carries interests and the prayer note', csvText.includes('Stress & peace') && csvText.includes('endregion') === false && csvText.includes('</textarea>'));
+
+  /* ---- 20c. Android Back closes the big screen instead of leaving the app ---- */
+  console.log('\n20c. The big screen and Back');
+  {
+    const tvEl = document.querySelector('#tv'), backed = () => tvEl.classList.contains('hidden');
+    const pushed0 = histPushed.length, back0 = histBacks.length, fire = () => popHandlers.forEach(f => f({ state: null }));
+    g.openBigScreen();
+    ok('the big screen opens as a history entry', !backed() && histPushed.length === pushed0 + 1);
+    fire();   /* Android Back */
+    ok('Android Back closes the big screen and does not step history again', backed() && histBacks.length === back0);
+    g.openBigScreen(); g.closeBigScreen();
+    ok('the X closes it and removes its own history entry', backed() && histBacks.length === back0 + 1);
+    fire();   /* the popstate that history.back() causes must not close or reopen anything */
+    ok('the echo of that history.back() is ignored', backed() && histPushed.length === pushed0 + 2);
+    g.openBigScreen(); fire();
+    ok('Back after a reopen closes it again', backed() && histPushed.length === pushed0 + 3 && histBacks.length === back0 + 1);
+
+    /* the same entry serves the sheets, through showModal/hideModal.
+       An earlier section leaves this sheet open, so close it first and start from a known state. */
+    g.notifClose();
+    const sheet = $el('notifSheet'), pushedA = histPushed.length;
+    g.openNotifs();
+    ok('a sheet opens as a history entry', histPushed.length === pushedA + 1 && g.cloud.notifOpen === true);
+    g.openNotifs();
+    ok('re-opening an open sheet does not push a second entry', histPushed.length === pushedA + 1);
+    fire();
+    ok('Back closes the sheet and resets the state it owns',
+      g.cloud.notifOpen === false && sheet.classList.contains('is-closing'), JSON.stringify({ open: g.cloud.notifOpen }));
+    const backsB = histBacks.length;
+    fire();
+    ok('Back with nothing open does not step history', histBacks.length === backsB);
+
+    /* paint-bound animation guard: the changed set must stay on the compositor */
+    ok('the button transition is transform/opacity only',
+      /\.btn\{position:relative;overflow:hidden;transition:transform \.18s[^}]*opacity \.18s\}/.test(html)
+      && !/transition:transform \.45s cubic-bezier\(\.34,1\.56,\.64,1\),box-shadow/.test(html));
+    ok('the queue pulse no longer animates box-shadow',
+      /@keyframes qpulse\{/.test(html) && !/@keyframes qpulse\{[^}]*box-shadow/.test(html));
+    ok('the heartbeat glow animates opacity only',
+      /@keyframes hxBeat\{/.test(html) && !/@keyframes hxBeat\{[^}]*(box-shadow|filter)/.test(html));
+    ok('the heartbeat glow is off under lite and reduced motion',
+      /html\.lite[^{]*\.hx-ecg-beat/.test(html) && /prefers-reduced-motion[^}]*hx-ecg-beat/.test(html));
+    ok('both copies of the ECG carry the heartbeat span',
+      (html.match(/hx-ecg-beat"><\/span>/g) || []).length >= 1 && /hx-ecg-beat/.test(srcText));
+  }
 
   /* pouch reservation (the button lives on the last step, Send, since the plan screen was redesigned) */
   g.resetDemo(); g.state.activeId = 'EXPO-088'; g.state.tab = 'send'; g.render();
@@ -3666,13 +3752,19 @@ function makeServer() {
 
   /* the Plan screen */
   g.state.activeId = 'EXPO-042'; g.state.sugFor = null; g.state.tab = 'plan'; g.render();
-  ok('Plan screen leads with David\'s main problem, with his other needs as tappable choices', $main.innerHTML.includes('Blood pressure 142/90: high (stage 1). Healthy is under 120/80.')
-    && $main.innerHTML.includes('Also needs attention') && /data-action="selectProtocol" data-args="sugar"/.test($main.innerHTML));
+  /* one plan, not nine: the other needs are folded into this plan, not offered as separate plans */
+  ok('Plan screen leads with the main problem and folds the other needs into the same plan',
+    $main.innerHTML.includes('Blood pressure 142/90: high (stage 1). Healthy is under 120/80.')
+    && $main.innerHTML.includes('Also in this plan') && $main.innerHTML.includes('Also in your plan')
+    && !/data-action="selectProtocol"/.test($main.innerHTML) && !/Show a different plan/.test($main.innerHTML));
   ok('…shows the plan steps with their sources', /Counsels on Diet §\d+/.test($main.innerHTML) && $main.innerHTML.includes('Source: ' + PL.bp.src));
   ok('…lists what the plan is based on, and credits the Ellen White books it uses', $main.innerHTML.includes('What this plan is based on') && $main.innerHTML.includes('The Ministry of Healing (Ellen G. White, 1905') && $main.innerHTML.includes('Healthful Living (Ellen G. White'));
   ok('…labels Healthful Living references by paragraph', /Healthful Living §\d+/.test($main.innerHTML));
   ok('…no help box on the blood-pressure plan', !/Need help now\?/.test($main.innerHTML));
-  ok('…labels prices as dated store prices that vary by branch', new RegExp('≈ R[\\d.]+ a day[\\s\\S]{0,120}Store prices checked ' + g.PRICE_DATE + '; they vary by branch').test($main.innerHTML) && !/Cheapest places/.test($main.innerHTML));
+  ok('…labels prices as dated store prices that vary by branch',
+    $main.innerHTML.includes('Food for this plan · store prices')
+    && $main.innerHTML.includes('Store prices checked ' + g.PRICE_DATE + '; they vary by branch')
+    && !/Cheapest places/.test($main.innerHTML));
   ok('…no longer claims "Doctor-reviewed"', !/Doctor-reviewed/.test($main.innerHTML));
   ok('…shows the plan-specific safety note and the do-not-stop-pills rule', /Never stop prescribed pills suddenly/.test($main.innerHTML) && /kidney disease/.test($main.innerHTML));
   for (const k of ['sugar', 'bmi', 'sleep', 'mind']) {
@@ -3702,7 +3794,8 @@ function makeServer() {
   ok('the WhatsApp message carries the church plan, its church and the pills rule, and no book credit', cpMsg.includes('EASING STIFF, PAINFUL JOINTS') && cpMsg.includes('Move every joint gently each morning') && cpMsg.includes('Practice church')
     && /do not stop them suddenly/.test(cpMsg) && !/Ministry of Healing/.test(cpMsg), cpMsg.slice(0, 300));
   g.buildPrintCard();
-  ok('the take-home card carries the church plan and credits the church', $el('printArea').innerHTML.includes(g.esc('Move every joint gently each morning')) && /From: Practice church/.test($el('printArea').innerHTML)
+  ok('the take-home card carries the church plan and still credits the church',
+    $el('printArea').innerHTML.includes(g.esc('Move every joint gently each morning')) && /From: Practice church/.test($el('printArea').innerHTML)
     && /Never stop prescribed pills suddenly/.test($el('printArea').innerHTML));
   g.chooseChurchPlan('');
   ok('“Use the app’s plan instead” goes back to the app\'s plan', !cpDav.interests.churchPlan && /Do these 3 things/.test($main.innerHTML) && /Counsels on Diet §/.test($main.innerHTML));
@@ -3777,21 +3870,32 @@ function makeServer() {
   const msg2 = g.waMessage(g.attendees.find(a => a.id === 'EXPO-042'));
   /* since the plans became "do these 3 things" (PLANS.md), the message, preview and card carry the plan's top three actions */
   const top3 = g.planFor(g.attendees.find(a => a.id === 'EXPO-042')).top.map(x => x.do);
-  ok('WhatsApp message carries the plan\'s three actions and its book source', top3.length === 3 && top3.every(d => msg2.includes(d)) && msg2.includes(PL.bp.src) && msg2.includes('The Ministry of Healing'), top3.join(' | '));
+  /* the books stay on the staff screen; what the visitor is sent carries no references */
+  ok('WhatsApp message carries the three actions and no book references',
+    top3.length === 3 && top3.every(d => msg2.includes(d)) && !msg2.includes(PL.bp.src)
+    && !/The Ministry of Healing|Counsels on Diet|Healthful Living|Plan source:/.test(msg2), top3.join(' | '));
   /* the old plan suggested these; "No stock cubes" (advice to avoid them) is fine */
   ok('WhatsApp message no longer suggests hibiscus, beetroot, foot baths or stock cubes', !/hibiscus|beetroot|foot bath/i.test(msg2) && !/(?<!No )stock cube/i.test(msg2));
   ok('WhatsApp message still carries the do-not-stop-pills warning', /do not stop them suddenly/.test(msg2));
   g.openWhatsApp();
-  ok('WhatsApp preview shows the same actions and source', top3.every(d => $el('waBody').innerHTML.includes(g.esc(d))) && $el('waBody').innerHTML.includes(PL.bp.src));
+  ok('WhatsApp preview shows the same actions and no references',
+    top3.every(d => $el('waBody').innerHTML.includes(g.esc(d))) && !$el('waBody').innerHTML.includes(PL.bp.src));
   g.buildPrintCard();
-  ok('take-home card shows the plan\'s actions, the dated store-price note and the book credit', top3.every(d => $el('printArea').innerHTML.includes(g.esc(d))) && /store prices checked \d+ \w+ \d{4}; may vary by branch/.test($el('printArea').innerHTML) && /The Ministry of Healing/.test($el('printArea').innerHTML));
+  ok('take-home card shows the actions and the dated store-price note, without book credits',
+    top3.every(d => $el('printArea').innerHTML.includes(g.esc(d)))
+    && /store prices checked \d+ \w+ \d{4}; may vary by branch/.test($el('printArea').innerHTML)
+    && !/The Ministry of Healing|Counsels on Diet|Healthful Living/.test($el('printArea').innerHTML));
   g.attendees.find(a => a.id === 'EXPO-042').interests.stress = true; g.attendees.find(a => a.id === 'EXPO-042').s.sys = 118; g.attendees.find(a => a.id === 'EXPO-042').s.dia = 76;
   g.attendees.find(a => a.id === 'EXPO-042').s.sugar = 5; g.attendees.find(a => a.id === 'EXPO-042').s.chol = 4.5; g.attendees.find(a => a.id === 'EXPO-042').s.weight = 70; g.attendees.find(a => a.id === 'EXPO-042').s.sleep = 8;
   const mindMsg = g.waMessage(g.attendees.find(a => a.id === 'EXPO-042'));
   const mindTop = g.planFor(g.attendees.find(a => a.id === 'EXPO-042')).top.map(x => x.do);
-  ok('the WhatsApp message for the stress plan carries its actions, both books and the help line', g.autoProtocol(g.attendees.find(a => a.id === 'EXPO-042')) === 'mind' && mindTop.length === 3 && mindTop.every(d => mindMsg.includes(d)) && mindMsg.includes('The Ministry of Healing') && /0800 567 567/.test(mindMsg));
+  ok('the WhatsApp message for the stress plan carries its actions and the help line, no books',
+    g.autoProtocol(g.attendees.find(a => a.id === 'EXPO-042')) === 'mind' && mindTop.length === 3
+    && mindTop.every(d => mindMsg.includes(d)) && /0800 567 567/.test(mindMsg)
+    && !/The Ministry of Healing|Counsels on Diet/.test(mindMsg));
   g.buildPrintCard();
-  ok('the take-home card for the stress plan carries the help line too', /0800 567 567/.test($el('printArea').innerHTML) && /The Ministry of Healing/.test($el('printArea').innerHTML));
+  ok('the take-home card for the stress plan carries the help line too',
+    /0800 567 567/.test($el('printArea').innerHTML) && !/The Ministry of Healing/.test($el('printArea').innerHTML));
   g.resetDemo(); g.state.activeId = 'EXPO-042'; g.state.sugFor = null;
   ok('take-home card keeps the clinic warning', /Never stop prescribed pills suddenly/.test($el('printArea').innerHTML) && /Not a replacement for your clinic/.test($el('printArea').innerHTML));
   g.state.tab = 'results'; g.render();

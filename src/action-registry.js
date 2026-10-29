@@ -9,7 +9,7 @@ import { state } from './data.js';
 import { queueBack, queueCallNext, queueDone, queueRemove, queueServe } from './queue.js';
 import { closeBigScreen, closeQueuePick, openBigScreen, openQueuePick, qFilterPick, qPickAdd, qSelect, queueSync } from './queue.js';
 import { closeFood, exportCSV, openFood, showAllCare } from './results.js';
-import { onSim, selectProtocol, setFoodMetric, setFoodPlan, toggleFood } from './results.js';
+import { onSim, setFoodPlan, toggleFood } from './results.js';
 import { isServe, render, toggleTheme } from './shell.js';
 import { cloud } from './state.js';
 import { filterVisitors, onPrayer, onStationCommit, onStationInput, onStep, registerSubmit, reservePouch, resetDemo, switchTab, toggleInterest, toggleReg } from './visitor.js';
@@ -55,8 +55,6 @@ export const ACTION_MAP = {
   queueServe: el => queueServe(el.dataset.args),
   recordConsent: el => recordConsent(el.dataset.args),
   removeMember: el => removeMember(el.dataset.args),
-  selectProtocol: el => selectProtocol(el.dataset.args),
-  setFoodMetric: el => setFoodMetric(el.dataset.args),
   setFoodPlan: el => setFoodPlan(el.dataset.args),
   setMyStation: el => setMyStation(el.dataset.args),
   setSwitchMode: el => setSwitchMode(el.dataset.args),

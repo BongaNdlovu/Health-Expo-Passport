@@ -319,8 +319,10 @@
   .microlabel{font-size:.7rem;font-weight:700;letter-spacing:.015em;text-transform:none;color:var(--hx-ink)}
   .tile-l{font-size:10px;font-weight:700;letter-spacing:.015em;text-transform:none;color:#667d83}
 
-  .btn{position:relative;overflow:hidden;will-change:auto;transition:transform .45s cubic-bezier(.34,1.56,.64,1),box-shadow .3s,background .3s,color .3s}
-  .btn:active{transform:scale(.95);transition-duration:.1s}
+  /* transform/opacity only: transitioning box-shadow, background and colour repainted every button on
+     hover, focus and theme change. .45s also outlasted the tap, so a quick press felt loose. */
+  .btn{position:relative;overflow:hidden;transition:transform .18s cubic-bezier(.34,1.56,.64,1),opacity .18s}
+  .btn:active{transform:scale(.95);transition-duration:.08s}
   .step-btn{position:relative;overflow:hidden}
   .rip{position:absolute;border-radius:50%;pointer-events:none;transform:scale(0);
     background:radial-gradient(circle,rgba(255,255,255,.7),rgba(255,255,255,0) 70%);animation:ripple .7s cubic-bezier(.22,1,.36,1) forwards}
@@ -574,8 +576,14 @@
   .q-state-bad{background:rgba(217,105,92,.12);color:#a4483f}
   .q-state-info{background:rgba(18,48,51,.06);color:#436063}
   .q-dot{width:9px;height:9px;flex:none;border-radius:50%;background:currentColor}
-  .q-state-live .q-dot{animation:qpulse 1.8s ease-in-out infinite}
-  @keyframes qpulse{0%,100%{box-shadow:0 0 0 0 rgba(47,158,111,.5)}50%{box-shadow:0 0 0 5px rgba(47,158,111,0)}}
+  /* the ring was an animated box-shadow, which repaints forever while the queue is live;
+     the same ring as a scaled, fading pseudo-element stays on the compositor */
+  .q-state-live .q-dot{position:relative}
+  .q-state-live .q-dot::after{content:"";position:absolute;inset:0;border-radius:50%;pointer-events:none;
+    border:2px solid rgba(47,158,111,.5);animation:qpulse 1.8s ease-in-out infinite}
+  @keyframes qpulse{0%,100%{transform:scale(1);opacity:.5}50%{transform:scale(2.2);opacity:0}}
+  html.lite .q-state-live .q-dot::after{animation:none;opacity:0}
+  @media (prefers-reduced-motion:reduce){.q-state-live .q-dot::after{animation:none;opacity:0}}
   .q-totals{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.4rem;margin-top:.7rem}
   .q-total{border-radius:16px;background:rgba(18,48,51,.045);padding:.55rem .25rem;text-align:center}
   .q-total b{display:block;font-family:'Plus Jakarta Sans',Inter,sans-serif;font-size:1.25rem;line-height:1;font-weight:800;color:#0f2a2c}
@@ -907,8 +915,15 @@
     background:linear-gradient(90deg,transparent,rgba(52,211,117,.55),transparent);
     animation:hxScan 2.6s linear infinite}
   @keyframes hxScan{to{transform:translateX(560%)}}
-  html.lite .hx-ecg-scan,html.page-hidden .hx-ecg-scan{animation:none;opacity:0}
-  @media (prefers-reduced-motion:reduce){.hx-ecg-scan{animation:none;opacity:0}}
+  /* lub-dub: two quick swells then rest, on the same 2.6s cycle as the scan so they stay in step.
+     Opacity only — a box-shadow or filter glow repaints the hero every frame on a weak phone. */
+  .hx-ecg-beat{position:absolute;inset:0;pointer-events:none;opacity:0;
+    background:radial-gradient(60% 120% at 50% 50%,rgba(52,211,117,.38),transparent 70%);
+    animation:hxBeat 2.6s ease-in-out infinite}
+  @keyframes hxBeat{0%,100%{opacity:0}6%{opacity:.85}13%{opacity:.2}20%{opacity:.6}34%{opacity:0}}
+  html.lite .hx-ecg-scan,html.page-hidden .hx-ecg-scan,
+  html.lite .hx-ecg-beat,html.page-hidden .hx-ecg-beat{animation:none;opacity:0}
+  @media (prefers-reduced-motion:reduce){.hx-ecg-scan,.hx-ecg-beat{animation:none;opacity:0}}
 
   .hx-capsule{display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:4px 12px;border-radius:999px;
     background:var(--hx-mint-soft);border:1px solid var(--hx-mint-line);color:var(--hx-mint-deep);
@@ -1319,7 +1334,7 @@
     <div class="hx-ecg" aria-hidden="true">
      <svg viewBox="0 0 340 70" preserveAspectRatio="none" focusable="false">
       <path class="hx-ecg-track" d="M 0 35 L 50 35 L 64 35 L 72 31 Q 78 28 84 35 L 96 35 L 102 41 L 114 8 L 126 62 L 136 31 Q 148 24 162 35 L 195 35 L 210 35 L 218 31 Q 224 28 230 35 L 242 35 L 248 41 L 260 8 L 272 62 L 282 31 Q 294 24 308 35 L 340 35"/>
-     </svg><span class="hx-ecg-scan"></span>
+     </svg><span class="hx-ecg-scan"></span><span class="hx-ecg-beat"></span>
     </div>
    </div>
    <div style="position:relative">

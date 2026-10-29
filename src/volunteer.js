@@ -2,12 +2,13 @@
 import { IS_APP } from './platform.js';
 import { BADGE_TIERS, STATUS_UI } from './data.js';
 import { $, FOOD_PRICES } from './helpers.js';
-import { AVAIL, BOOTH, BOOTHS, DISCLAIMER, EXPO_UPCOMING, PRECAUTIONS, SKILLS, attendees, boothHue, boothLabel, hueOf, planBooks, planCredit, state, volunteers } from './data.js';
-import { A, PRICE_DATE, bmi, costOf, esc, firstName, fmt1, healthAge, initials, money, pefPct, projection, simBP } from './helpers.js';
+import { AVAIL, BOOTH, BOOTHS, DISCLAIMER, EXPO_UPCOMING, PRECAUTIONS, SKILLS, attendees, boothHue, boothLabel, hueOf, state, volunteers } from './data.js';
+import { A, PRICE_DATE, bmi, esc, firstName, fmt1, healthAge, initials, money, pefPct, projection, simBP } from './helpers.js';
 import { render, toast, toastUndo } from './shell.js';
 import { LIST_CAP, switchTab, visitorsToShow } from './visitor.js';
 import { migrateVolunteer, persist, cloud } from './state.js';
 import { isOfflineErr, validEmail } from './cloud.js';
+import { overlayClosed, overlayOpened } from './overlay.js';
 /* a lazy cycle: account.js imports this module's modal helpers; the sync call happens only at runtime */
 import { cloudSync } from './account.js';
 import { downloadCSV, foodKeyOf, planFor, shortFood } from './results.js';
@@ -351,7 +352,7 @@ async function volRpc(fn,args,done){
 /* every placement change is pulled back straight away, so the board shows the truth even without live updates */
 const afterPlace=async()=>{await cloudSync(true);};
 export function openPlaceSheet(id){
- gotoServe();state.placeId=id;state.logOpen=false;showModal('#placeSheet');rerenderPlace();
+ gotoServe();state.placeId=id;state.logOpen=false;showModal('#placeSheet',closePlaceSheet);rerenderPlace();
 }
 export function closePlaceSheet(){state.placeId='';hideModal('#placeSheet');render();}
 const placedVol=()=>volunteers.find(v=>v.id===state.placeId)||null;
@@ -884,8 +885,13 @@ export function exportVolCSV(){
 
 
 /* ================= MODALS ================= */
-export function showModal(sel){const el=$(sel);clearTimeout(el._t);el.classList.remove('hidden','is-closing');el.classList.add('flex');}
-export function hideModal(sel){const el=$(sel);if(el.classList.contains('hidden'))return;el.classList.add('is-closing');clearTimeout(el._t);el._t=setTimeout(()=>{el.classList.add('hidden');el.classList.remove('flex','is-closing');},260);}
+/* `close` is the overlay's own close function, for the sheets that also reset state; the rest just hide.
+   A sheet caught mid-close (is-closing) counts as closed, because hideModal already gave its entry back. */
+export function showModal(sel,close){const el=$(sel);clearTimeout(el._t);
+ const wasOpen=!el.classList.contains('hidden')&&!el.classList.contains('is-closing');
+ el.classList.remove('hidden','is-closing');el.classList.add('flex');
+ if(!wasOpen)overlayOpened(sel,close||(()=>hideModal(sel)));}
+export function hideModal(sel){const el=$(sel);if(el.classList.contains('hidden'))return;el.classList.add('is-closing');clearTimeout(el._t);el._t=setTimeout(()=>{el.classList.add('hidden');el.classList.remove('flex','is-closing');},260);overlayClosed(sel);}
 function modeToggle(mode){
  const B=(k,l)=>`<button data-action="setSwitchMode" data-args="${k}" class="flex-1 rounded-full py-1.5 text-[11px] font-extrabold transition ${mode===k?'sw-on':'text-[#5b7178]'}">${l}</button>`;
  return `<div class="flex gap-1 rounded-full bg-[#123033]/[.06] p-1">${B('visitor','Visitors')}${B('volunteer','Volunteers')}</div>`;
@@ -1007,7 +1013,7 @@ function waPreviewHTML(a){
    <span class="text-sm font-bold text-brand-800">🌿 Hi ${esc(firstName(a.name))}!</span>
    <span class="mono rounded-md tint px-2 py-0.5 text-[10px] font-bold">${esc(a.id)}</span>
   </div>
-  <p class="mt-2.5 text-[11px] leading-relaxed text-[#5b7178]">Thank you for visiting the SDA Community Health Expo. Here is your personal <b class="text-[#33504f]">health scorecard & 21-day natural plan</b>:</p>
+  <p class="mt-2.5 text-[11px] leading-relaxed text-[#5b7178]">Thank you for visiting the SDA Community Health Expo. Here is your personal <b class="text-[#33504f]">health scorecard & 90-day natural plan</b>${p.credit?`, written by ${esc(p.credit)}`:''}:</p>
   <div class="mono mt-3 space-y-1 rounded-[14px] border border-brand-200/60 bg-brand-50/70 p-3 text-[11px] font-semibold text-[#33504f]">
    <div>Blood pressure: ${a.s.sys??'—'}/${a.s.dia??'—'} → <b class="text-brand-800">${sys}/${dia} mmHg</b></div>
    <div>Blood sugar: ${a.s.sugar??'—'} mmol/L</div>
@@ -1025,9 +1031,7 @@ function waPreviewHTML(a){
   ${p.items.length?`<div class="mt-3 rounded-[14px] border border-amber-200/70 bg-amber-50/80 p-2.5 text-[10px] leading-relaxed text-amber-900">
    <b>Shopping list (store prices checked ${PRICE_DATE}; may vary by branch):</b> ${p.items.map(it=>`${it.name} (${it.dose})`).join('; ')}.
    <br><b>Where to buy it cheapest:</b> ${p.items.map(it=>{const Pr=foodPriceOf(it.name);return Pr?`${esc(shortFood(it.name))} at ${Pr.parts.map(pp=>esc(pp.cheap)).join(' & ')}`:'';}).filter(Boolean).join(' · ')} —
-   about <b>${money(p.items.reduce((t,it)=>t+cheapDay(it),0))} a day</b> at those stores instead of ${money(costOf(pk))} typical.
   </div>`:''}
-  <p class="mt-3 text-[10px] leading-relaxed text-[#8a9aa0]">From ${planCredit(p)} — ${p.src}.</p>
   ${p.help?`<p class="mt-2 text-[10px] font-bold leading-relaxed text-rose-700">${esc(p.help)}</p>`:''}
   <p class="mt-3 text-[10px] font-bold leading-relaxed text-[#6b8187]">Keep this: the church deletes your health readings ${GRACE_DAYS} days after your visit.</p>
   <p class="mt-2 text-[10px] leading-relaxed text-[#6b8187]">${esc(DISCLAIMER)} ${esc(PRECAUTIONS[5])}</p>
@@ -1083,16 +1087,16 @@ export function cheapDay(it){
 }
 export function cheapLine(it){
  const name=`${it.name} (${it.dose})`,P=foodPriceOf(it.name);
- if(!P||!P.parts.length)return `• ${name}: no verified store price yet — about ${money(it.daily)} a day`;
+ if(!P||!P.parts.length)return `• ${name}: no verified store price yet`;
  const where=P.parts.map(p=>`${p.label?`${p.label} cheapest at `:'cheapest at '}${p.cheap} (${money(p.min)} ${p.unit})${p.n<2?', only one price found':''}`).join(' · ');
- return `• ${name}: ${where} — about ${money(cheapDay(it))} a day`;
+ return `• ${name}: ${where}`;
 }
 /* the same content as the preview, as the plain text that gets sent */
 export function waMessage(a){
  a=withoutOldReadings(a);
  const ha=healthAge(a),{sys,dia}=simBP(a),proj=projection(a),P=planFor(a),pk=P.pk,p=P.p;
  return [
-  `🌿 Hi ${firstName(a.name)}! Thank you for visiting the SDA Community Health Expo. Here is your personal health scorecard and 21-day natural plan (badge ${a.id}):`,
+  `🌿 Hi ${firstName(a.name)}! Thank you for visiting the SDA Community Health Expo. Here is your personal health scorecard and 90-day natural plan (badge ${a.id}):`,
   '',
   `• Blood pressure: ${a.s.sys??'—'}/${a.s.dia??'—'} → ${sys}/${dia} mmHg`,
   `• Blood sugar: ${a.s.sugar??'—'} mmol/L`,
@@ -1107,13 +1111,12 @@ export function waMessage(a){
   ...P.top.flatMap((x,i)=>[`${i+1}. ${x.do}`,`   How: ${x.how.join('; ')}.`,`   Why: ${x.why}`,'']),
   `📅 ${P.recheck[0]}`,
   ...(a.interests&&a.interests.followUpName?[`🤝 ${a.interests.followUpName} from the church will follow up with you.`]:[]),
-  ...(p.items.length?[`Food for this plan: about ${money(costOf(pk))} a day at typical store prices — about ${money(p.items.reduce((t,it)=>t+cheapDay(it),0))} if you buy each food where it is cheapest.`,
+  ...(p.credit?[`This plan was written by ${p.credit}.`,'']:[]),
+  ...(p.items.length?[`Food for this plan — what each item costs in the shops, cheapest first.`,
    '',
    `WHERE TO BUY IT CHEAPEST (store prices checked ${PRICE_DATE}):`,
-   ...p.items.map(cheapLine),
+   ...[...p.items].sort((x,y)=>cheapDay(x)-cheapDay(y)).map(cheapLine),
    '']:[]),
-  `Plan source: ${planCredit(p)}, ${p.src}.`,
-  '',
   ...(p.help?[p.help,'']:[]),
   `These are home remedies and healthy-living advice, not a replacement for your clinic. If you take blood-pressure or diabetes pills, do not stop them suddenly — your clinic will adjust the doses safely.`,
   `Keep this: the church deletes your health readings ${GRACE_DAYS} days after your visit.`,
@@ -1150,7 +1153,7 @@ async function sendWhatsAppInApp(n,msg){
 /* The email app does the sending (nothing leaves this device from here), exactly like WhatsApp above:
    a mailto: link with the same plan text as the subject-line body. */
 export function mailtoHref(a,to){
- return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(`Your health scorecard & 21-day plan (badge ${a.id})`)}&body=${encodeURIComponent(waMessage(a))}`;
+ return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(`Your health scorecard & 90-day plan (badge ${a.id})`)}&body=${encodeURIComponent(waMessage(a))}`;
 }
 export function sendEmail(){
  const a=attendees.find(x=>x.id===state.activeId);
@@ -1191,7 +1194,6 @@ export function buildPrintCard(){
  const date=new Date().toLocaleDateString('en-ZA',{day:'numeric',month:'short',year:'numeric'});
  /* An A6 card is small: the 3 actions with their first "how", food on one line, short book names. (The old card,
     with four long store lines, ran past the bottom edge and cut the safety note off.) */
- const books=p.credit||planBooks(p,P.top.map(x=>x.ref)).map(b=>b.split(' (')[0]).join('; ');
  $('#printArea').innerHTML=`<div class="pc-card">
   <div class="pc-head">
    <div class="pc-head-row">
@@ -1213,10 +1215,10 @@ export function buildPrintCard(){
    <div>${P.top.map((x,i)=>`<div class="pc-habit"><span class="pc-box"></span><span><b>${i+1}. ${esc(x.do)}.</b> ${esc(x.how[0]||'')}.</span></div>`).join('')}</div>
    <div class="pc-line">📅 ${esc(P.recheck[0])}</div>
    ${a.interests&&a.interests.followUpName?`<div class="pc-line">🤝 Follow-up: ${esc(a.interests.followUpName)} from the church will be in touch.</div>`:''}
-   ${p.help||!p.items.length?'':`<div class="pc-line">🛒 About ${money(costOf(pk))} a day (store prices checked ${PRICE_DATE}; may vary by branch): ${p.items.map(i=>esc(shortFood(i.name))).join(', ')}.</div>`}   <!-- plans with the crisis line need the room -->
+   ${p.help||!p.items.length?'':`<div class="pc-line">🛒 Shopping list (store prices checked ${PRICE_DATE}; may vary by branch): ${p.items.map(i=>esc(shortFood(i.name))).join(', ')}.</div>`}   <!-- plans with the crisis line need the room -->
    <div class="pc-foot">
     <div class="pc-safety">Not a replacement for your clinic: given by volunteers, not health professionals, as general information, not medical advice. <b>Never stop prescribed pills suddenly</b>; your clinic will adjust them. In an emergency, go to the nearest emergency unit.${p.help?` ${esc(p.help)}`:''} Your health readings are deleted ${GRACE_DAYS} days after your visit — keep this card.</div>
-    <div class="pc-verse">“Beloved, I pray that you may prosper in all things and be in health.” — 3 John 1:2 · From: ${esc(books)}.</div>
+    <div class="pc-verse">“Beloved, I pray that you may prosper in all things and be in health.” — 3 John 1:2${p.credit?` · From: ${esc(p.credit)}`:''}</div>
     <div class="pc-bottom"><span>${a.interests.nurse?'☎ A nurse will call you within 48 hours':'Questions? Speak to the Health Ministries team'}</span><span>Badge ${esc(a.id)}</span></div>
    </div>
   </div>
