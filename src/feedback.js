@@ -51,18 +51,19 @@ export function answer(yes) {
 /**
  * Ask before something that cannot be undone from the screen. Resolves false if the sheet is not in the page,
  * so a caller can never hang on a missing element.
- * @param {{title?:string, body?:string, label?:string, danger?:boolean}} [o]
+ * @param {{title?:string, body?:string, label?:string, cancelLabel?:string, danger?:boolean}} [o]
  * @returns {Promise<boolean>}
  */
 export function confirmAsk(o) {
   o = o || {};
   if (autoAnswer !== null) return Promise.resolve(autoAnswer);
-  const title = $('#cfTitle'), body = $('#cfBody'), go = $('#cfGo'), sheet = $('#confirmSheet');
+  const title = $('#cfTitle'), body = $('#cfBody'), go = $('#cfGo'), no = $('#cfNo'), sheet = $('#confirmSheet');
   if (!title || !body || !go || !sheet) return Promise.resolve(false);
   if (settle) answer(false);             /* one question at a time: a second ask replaces the first */
   title.textContent = o.title || 'Are you sure?';
   body.textContent = o.body || '';
   go.textContent = o.label || 'Confirm';
+  if (no) no.textContent = o.cancelLabel || 'Cancel';
   go.className = o.danger
     ? 'btn flex-1 bg-rose-600 py-2.5 text-xs text-white'
     : 'btn btn-primary flex-1 py-2.5 text-xs';

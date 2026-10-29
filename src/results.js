@@ -7,8 +7,9 @@ import { ACTIONS, DISCLAIMER, FOOD_WHY, HEARD, HUE_P, PLAN_GOAL, PROTOCOLS, RECH
 import { persist } from './state.js';
 import { IS_APP } from './platform.js';
 import { jelly, renderMain, syncRanges, toast } from './shell.js';
-import { chosenChurchPlan, churchPlanFor, churchPlanPicker, viewChurchPlan } from './churchPlans.js';
-import { GRACE_DAYS, readingsGone, visitIsOld, withoutOldReadings } from './retention.js';
+import { chosenChurchPlan, churchPlanFor, churchPlanPicker, customPlanFor, viewChurchPlan } from './churchPlans.js';
+import { customPlanBox } from './customPlan.js';
+import { GRACE_DAYS, hasReadings, readingsGone, visitIsOld, withoutOldReadings } from './retention.js';
 import { hasConsent, optedIn } from './visitor.js';
 /* the three numbers at the top of Results: actual age, health age now, and the 90-day goal */
 function scoreTiles(tile,a,ha,proj,gone){
@@ -54,8 +55,11 @@ export function viewResults(){
  return `<section class="stagger space-y-3.5">
 
   <div class="glass p-4">
-   <div class="microlabel">Results</div>
-   <div class="display text-base font-extrabold">${first}’s health age</div>
+   <div class="flex items-start justify-between gap-2">
+    <div><div class="microlabel">Results</div>
+    <div class="display text-base font-extrabold">${first}’s health age</div></div>
+    ${!gone&&hasReadings(a)?`<button class="btn btn-glass flex-none px-3 py-2 text-[11px]" data-action="editReadings">Edit readings</button>`:''}
+   </div>
    <p class="mt-1 text-[11px] leading-snug text-[#5c747a]">Worked out from the 8 checks, no maths needed.</p>
    ${gone?goneNote('mt-2 rounded-2xl border border-sky-200/70 bg-sky-50/70 px-3 py-2 text-[10.5px] font-semibold leading-snug text-sky-800'):''}
    <div class="mt-3.5 grid grid-cols-3 gap-2">${scoreTiles(tile,a,ha,proj,gone)}</div>
@@ -100,6 +104,58 @@ export function viewResults(){
    </div>
    <p class="mt-3 text-center text-[10px] leading-snug text-[#8a9aa0]">Expo readings are a quick screening, not a diagnosis, and the volunteers are not health professionals. The blood-pressure and health-age figures are illustrative estimates for counselling, not a prediction. The plans draw, in our own words, on the health writings of Ellen G. White.${costOf(pk)?` The full plan’s food costs about ${money(costOf(pk))} a day (store prices checked ${PRICE_DATE}; they change and vary by branch).`:''}</p>
   </div></details>`}
+ </section>`;
+}
+
+/* ================= VIEW: ONE METRIC (opened from the Check tiles) =================
+   D-01: this visit's entry only — the value, its classification, the reference range and the counselling line.
+   There is no cross-visit history: the app has no person identity, and the readings are deleted after the
+   grace period. D-06: this is a sub-screen of Check, so Back returns to the check grid. */
+export function viewMetric(key){
+ const raw=A(),a=withoutOldReadings(raw),gone=visitIsOld(raw),b=bmi(a);
+ const k=['bp','sugar','bmi'].includes(key)?key:'bp';
+ const label={bp:'Blood pressure',sugar:'Blood sugar',bmi:'Body BMI'}[k];
+ const range={bp:'Healthy is under 120/80 mmHg.',sugar:'The healthy range for a random reading is 4–8 mmol/L.',bmi:'Healthy BMI is 18.5–25.'}[k];
+ const empty={bp:'No blood pressure recorded yet.',sugar:'No blood sugar recorded yet.',bmi:'No body BMI recorded yet.'}[k];
+ let value='',c=[null,'—'],entry=[],line='';
+ if(k==='bp'){
+  if(a.s.sys!=null||a.s.dia!=null)value=`${a.s.sys??'—'}/${a.s.dia??'—'}`;
+  c=cat('bp',{sys:a.s.sys,dia:a.s.dia});
+  entry=[['Top (systolic)',a.s.sys==null?'—':`${a.s.sys} mmHg`],['Bottom (diastolic)',a.s.dia==null?'—':`${a.s.dia} mmHg`]];
+  line=c[0]==='flag'?'See the triage nurse before anything else today.'
+   :c[0]==='watch'?'Have it checked again in 3 weeks, cut down on salt and walk every day.'
+   :c[0]==='ok'?'Keep it there with less salt, daily walks and plenty of vegetables.':'';
+ }else if(k==='sugar'){
+  if(a.s.sugar!=null)value=`${a.s.sugar} mmol/L`;
+  c=cat('sugar',a.s.sugar);
+  entry=[['Reading',a.s.sugar==null?'—':`${a.s.sugar} mmol/L`]];
+  line=c[0]==='flag'?'See the triage nurse before anything else today.'
+   :c[0]==='watch'?'Cut out sugar and sweet drinks, and have it checked again in 3 weeks.'
+   :c[0]==='ok'?'Keep it in range: no sugar or sweet drinks, and a walk every day.':'';
+ }else{
+  if(b!=null)value=fmt1(b);
+  c=cat('bmi',b);
+  entry=[['Weight',a.s.weight==null?'—':`${a.s.weight} kg`],['Height',a.heightCm==null?'—':`${a.heightCm} cm`]];
+  line=b==null?'':b<18.5?'A little underweight: build up with regular meals and enough protein.'
+   :b>=25?'The plan’s first goal is slow, steady weight loss: regular meals, no crash diets.'
+   :'Keep it in the healthy range with daily movement and regular meals.';
+ }
+ const rows=entry.map(([l,v])=>`<div class="flex items-center justify-between border-t border-[#123033]/[.07] py-2 text-[12px]">
+   <span class="text-[#5c747a]">${esc(l)}</span><span class="mono font-bold text-[#123033]">${esc(v)}</span></div>`).join('');
+ return `<section class="stagger space-y-3.5">
+  <div class="glass p-4">
+   <button class="btn btn-glass q-tvbtn" data-action="metricBack">← Check</button>
+   <div class="microlabel mt-3">${label} · this visit</div>
+   <div class="display mt-1 text-xl font-extrabold text-[#0f2a2c]">${value?esc(value):'—'}</div>
+   ${value?`<div class="mt-2"><span class="${chipClass(c[0])}">${c[1]}</span></div>`:''}
+   ${gone?`<p class="mt-2 rounded-2xl border border-sky-200/70 bg-sky-50/70 px-3 py-2 text-[10.5px] font-semibold leading-snug text-sky-800">Readings were deleted ${GRACE_DAYS} days after the visit. They were given on the printed card or by WhatsApp on the day.</p>`:''}
+   ${value?`<div class="mt-3">${rows}</div>
+    <p class="mt-2.5 text-[11.5px] font-semibold leading-snug text-[#33504f]">${esc(range)}</p>
+    <p class="mt-1.5 text-[11.5px] leading-snug text-[#3d5c5e]">${esc(line)}</p>`
+   :`<p class="mt-3 text-[13px] font-bold text-[#33504f]">${esc(empty)}</p>
+    <p class="mt-1 text-[11.5px] leading-snug text-[#5c747a]">The reading appears here as soon as it is saved on the Check screen.</p>
+    <button class="btn btn-primary mt-3 w-full py-2.5 text-xs" data-action="metricBack">Record it on the Check screen →</button>`}
+  </div>
  </section>`;
 }
 function simSlider(id,key,label,badgeId,min,max,step,val,caption){
@@ -239,6 +295,11 @@ export function urgentOf(a,pk){
  return red?{t:'Book a clinic visit this week',w:'This reading is in the red range. The plan below helps, but a clinic must check it.'}:null;
 }
 export function planFor(a,pk){
+ /* item 5: a custom plan written for this visitor IS the plan. It comes before the church library and before
+    the generated plan, and every caller (Plan, Send home, WhatsApp, email, the printed card) gets the same
+    object, so none of them can announce a different plan from the one the visitor was shown (D-04, R-07). */
+ const custom=a&&a.interests&&a.interests.customPlan;
+ if(custom&&typeof custom==='object')return customPlanFor(a,custom);
  if(!pk){const cp=chosenChurchPlan(a);if(cp)return churchPlanFor(a,cp);}
  pk=pk||pkOf(a);
  const actions=k=>{
@@ -260,24 +321,29 @@ export function planFor(a,pk){
 export function viewPlan(){
  const raw=A(),a=withoutOldReadings(raw),gone=visitIsOld(raw),sug=autoProtocol(a);
  if(state.sugFor!==a.id||state.sugVal!==sug){state.protocol=sug;state.sugFor=a.id;state.sugVal=sug;}
- const cp=chosenChurchPlan(a);if(cp)return viewChurchPlan(a,cp);
+ /* a custom plan overrides the church library too, so the church-plan screen is only shown when there is none */
+ const custom=!!(a.interests&&a.interests.customPlan&&typeof a.interests.customPlan==='object');
+ const cp=!custom&&chosenChurchPlan(a);if(cp)return viewChurchPlan(a,cp);
  const P=planFor(a,state.protocol),p=P.p,hue=HUE_P[P.pk],first=esc(firstName(a.name));
- const others=planNeeds(a).filter(n=>n.k!==P.pk);
+ /* a custom plan is the whole plan: the readings' other needs are not advertised as part of someone else's words */
+ const others=custom?[]:planNeeds(a).filter(n=>n.k!==P.pk);
  const ref=r=>r?` <span class="ac-ref">${refLabel(r)}</span>`:'';
  const card=(x,i)=>`<li class="ac-card hue-${hue}">
    <div class="ac-top"><span class="ac-n">${i+1}</span><div class="ac-do">${esc(x.do)}</div></div>
-   <p class="ac-why"><b>Why</b>${esc(x.why)}${ref(x.ref)}</p>
-   <div class="ac-how"><b>How</b><ul>${x.how.map(h=>`<li>${esc(h)}</li>`).join('')}</ul></div>
+   ${x.why?`<p class="ac-why"><b>Why</b>${esc(x.why)}${ref(x.ref)}</p>`:''}
+   ${x.how.length?`<div class="ac-how"><b>How</b><ul>${x.how.map(h=>`<li>${esc(h)}</li>`).join('')}</ul></div>`:''}
    
   </li>`;
  return `<section class="stagger space-y-3.5">
   <div class="glass hue-${hue} p-4">
    <div class="microlabel">${first}’s plan · 90 days</div>
-   <div class="display mt-0.5 text-[19px] leading-tight font-extrabold text-[#0f2a2c]">${P.goal}</div>
+   <div class="display mt-0.5 text-[19px] leading-tight font-extrabold text-[#0f2a2c]">${esc(P.goal)}</div>
    <p class="pl-problem">${esc(P.problem)}</p>
+   ${custom?`<p class="mt-2 text-[11px] leading-snug text-[#4f6870]">Written by ${esc(p.credit||'your church')} · the church’s own plan, not reviewed by the app.</p>`:''}
    ${gone?`<p class="mt-2 rounded-[14px] border border-sky-200/70 bg-sky-50/70 px-3 py-2 text-[10.5px] font-semibold leading-snug text-sky-800">Readings were deleted ${GRACE_DAYS} days after the visit. This plan is the general one that helps everyone.</p>`:''}
    ${others.length?`<div class="pl-also"><span>Also in this plan:</span>${others.map(n=>`<span class="fd-chip hue-${HUE_P[n.k]}">${esc(PROTOCOLS[n.k]?PROTOCOLS[n.k].tag:n.k)}</span>`).join('')}</div>`:''}
-   ${churchPlanPicker(a)}
+   ${custom?'':churchPlanPicker(a)}
+   ${customPlanBox(a)}
   </div>
 
   ${P.urgent&&!gone?`<div class="pl-urgent" role="alert"><b>⚠ ${esc(P.urgent.t)}</b><span>${esc(P.urgent.w)}</span></div>`:''}
@@ -311,19 +377,23 @@ export function viewPlan(){
    <span class="min-w-0 flex-1"><b>Food for this plan · store prices</b>
    <span>Store prices checked ${PRICE_DATE}; they vary by branch. What each food costs, and why it is in the plan.</span></span><span aria-hidden="true">→</span></button>`:''}
 
-  <details class="glass pl-det"><summary>The full day, step by step</summary><div>
+  ${p.steps.length?`<details class="glass pl-det"><summary>The full day, step by step</summary><div>
    <div class="space-y-2.5">${p.steps.map(([t,txt,pg])=>`<div class="flex gap-2.5">
      <span class="mono flex-none rounded-[10px] px-2 py-1 text-[10px] font-bold tint hue-${hue}">${t}</span>
      <span class="min-w-0 flex-1 text-[12px] leading-snug text-[#3d5c5e]">${txt}${ref(pg)}</span></div>`).join('')}</div>
-  </div></details>
+  </div></details>`:''}
   ${p.hydro?`<details class="glass pl-det"><summary>Home hydrotherapy (free)</summary><div><p class="text-[11.5px] leading-relaxed text-[#3d5c5e]">${p.hydro}</p></div></details>`:''}
-  <details class="glass pl-det"><summary>What this plan is based on</summary><div>
+  ${custom?`<details class="glass pl-det"><summary>What this plan is based on</summary><div>
+   <p class="text-[11.5px] leading-relaxed text-[#3d5c5e]">Written by ${esc(p.credit||'your church')} for ${esc(firstName(a.name))}. It is the church’s own plan, not reviewed by the app.</p>
+   <p class="mt-2.5 text-[10px] leading-relaxed text-[#8a9aa0]">${esc(DISCLAIMER)}</p>
+  </div></details>`
+  :`<details class="glass pl-det"><summary>What this plan is based on</summary><div>
    <p class="text-[11.5px] leading-relaxed text-[#3d5c5e]">${p.mech}</p>
    <ul class="mt-2.5 space-y-2">${p.facts.map(([txt,pg])=>`<li class="flex items-start gap-2.5">
      <span class="mt-1.5 h-1.5 w-1.5 flex-none rounded-full bg-brand-500"></span>
      <span class="min-w-0 flex-1 text-[11.5px] leading-snug text-[#3d5c5e]">${txt}${ref(pg)}</span></li>`).join('')}</ul>
    <p class="mt-3 text-[10px] leading-relaxed text-[#8a9aa0]">Source: ${p.src}. ${planBooks(p,P.top.concat(P.more).map(x=>x.ref)).join('. ')}. All books are by Ellen G. White. “Ministry of Healing ch.” = a chapter of The Ministry of Healing; “Counsels on Diet §” and “Healthful Living §” = a numbered paragraph of those books; “Place of Herbs p.” = a page of The Place of Herbs in Rational Therapy. The advice is in our own words. Lines marked “general advice” or “expo safety rule”, and the herb hazard notes, rest on no book.</p>
-  </div></details>
+  </div></details>`}
  </section>`;
 }
 

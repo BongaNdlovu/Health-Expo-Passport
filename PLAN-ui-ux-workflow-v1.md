@@ -10,7 +10,7 @@
 | **Plan Name** | `UI/UX & Workflow Update — button spacing, metric drill-down, result confirmation, registration cancel, custom visitor plans + RBAC` |
 | **Version** | `v1.4` |
 | **Agent ID / Session** | `hermes · 2026-10-29 · ui-ux-workflow` |
-| **Codebase / Repo** | `C:\Users\fanel\Downloads\Health Expo` — git `main`, HEAD `9507821`, plus uncommitted operator work in `index.html` and `src/ui.js` (ECG trace only) present at authoring time |
+| **Codebase / Repo** | `C:\Users\fanel\Downloads\Health Expo` — git `main`, HEAD `9507821`, working tree clean (the ECG work noted at authoring time is committed; see A.6.5) |
 | **Language / Stack** | Vanilla ES modules (no framework) + esbuild single-file bundle · Supabase Postgres (SQL RPCs, RLS) · Capacitor Android · jsdom smoke harness |
 | **Plan Author** | fanel (operator) |
 | **Date Created** | 2026-10-29 |
@@ -71,12 +71,11 @@ src/results.js                (item 2 — metric drill-down view; item 5 — pla
 src/ui.js                     (item 2 — arrow-less status pill, decision D-07)
 src/churchPlans.js            (item 5 — custom plan renderer beside churchPlanFor)
 src/customPlan.js             (NEW — item 5/6: template, parse/normalise, import)
-src/account.js                (item 6 — reuse isAdminAcct; expose the authoring check if needed)
+src/account.js                (item 6 — export canCustomPlan(), reusing isAdminAcct)
 src/feedback.js               (item 3 — reuse confirmAsk; no new modal)
 src/action-registry.js        (items 2, 3, 4, 5 — every new data-action)
 src/main.js                   (new exports added to __internals)
 src/types.js                  (item 5 — CustomPlan typedef)
-src/cloud.js                  (item 5 — confirm interests round-trip, no mapping change expected)
 supabase/schema.sql           (item 6 — guard trigger + save RPC for custom plans)
 .smoke/harness.js             (tests for items 1–6)
 tools/test-commitments.js     (items 5/6 — DB-level tests, PGlite)
@@ -113,8 +112,9 @@ Capacitor WebView           must keep working; no native API is introduced
 ### 1.5 Definition of done
 
 ```
-- Every button row in the shipped app has >= 8 px between controls at 320 px width, verified by a new
-  harness assertion over the templates AND by a manual capture at 320 / 360 / 414 px.
+- Every button row in the shipped app has >= 8 px between controls at 320 px width. The harness asserts
+  the `btn-row` class is present on those rows and that no ad-hoc gap remains; it cannot measure pixels,
+  because its DOM has no layout engine. The 8 px itself is evidenced by a capture at 320 / 360 / 414 px.
 - The three metric cards carry no arrow, are keyboard-focusable, and each opens its own view.
 - Each metric view shows its reading(s); a metric with no value shows the empty state and still navigates.
 - Advancing Check -> Results asks "Are you sure about these results?" with Confirm and Edit; Confirm is the
@@ -127,7 +127,7 @@ Capacitor WebView           must keep working; no native API is introduced
   REFUSED by Postgres (proven by a PGlite test), not merely hidden.
 - npm run typecheck -> 0 errors
 - npm run build -> succeeds, dist/ regenerated
-- npm test -> all checks pass, baseline 886 + new assertions, ZERO new failures
+- npm test -> all checks pass, baseline 1046 + new assertions, ZERO new failures
 - npm run test:build -> 17/17
 - npm run test:db -> baseline 34 + new assertions, 0 failures
 - No file outside §1.2 modified (git status must show exactly the §1.2 list)
@@ -152,7 +152,7 @@ The operator accepted the recommended option for **Q1–Q12** on 2026-10-29. Rec
 | **D-11** | Template download (Q11) | A "Download template" action emitting exactly the JSON the importer accepts. | One more action plus a Blob download in the style of `downloadCSV`. No new dependency. |
 | **D-12** | Item 1 scope (Q12) | Bounded: the measured violation, the `btn-row` rule, and wrap fixes. Not a 99-row sweep. | CHANGE 3 is bounded by a grep list recorded in A.5. A full sweep is a separate plan. |
 
-**Still open — Q13 (working-tree state).** `index.html` and `src/ui.js` carried uncommitted operator changes (ECG) when this plan was written, and D-07 now guarantees CHANGE 4 touches `src/ui.js` too. CP-03 must rebase onto a committed tree before applying anything. This blocks *applying* code; it does not block writing it.
+**Q13 (working-tree state) — RESOLVED 2026-10-29.** The ECG work in `index.html` and `src/ui.js` is committed, along with the plan/health-age, APK-origin and take-home-card fixes. The tree is clean at HEAD `9507821`, so CP-03 has a committed base and needs no rebase. Nothing blocks applying code.
 
 ---
 
@@ -263,11 +263,14 @@ CHANGE 2
   Depends:  none
 
 CHANGE 3
-  File:     src/visitor.js (every flex row whose children carry `class="btn`, ~99 occurrences)
-  Location: enumerated during CP-03 from a grep list recorded in §6 A.5
+  File:     src/visitor.js — only the rows enumerated in §6 A.5
+  Location: enumerated during CP-03 from the grep list recorded in §6 A.5
   Type:     MODIFY
-  Summary:  Replace ad-hoc gaps on button rows with `btn-row`; add `flex-wrap` where a 320 px viewport
-            forces a third control onto a second line. No visual change above 360 px.
+  Summary:  Apply `btn-row` to the button rows that carry an ad-hoc gap, and add `flex-wrap` where a
+            320 px viewport forces a third control onto a second line. No visual change above 360 px.
+            BOUNDED BY D-12: this is not a sweep. The figure of 99 `class="btn"` occurrences is the
+            count across all of src/*.js; src/visitor.js holds 11. Only the rows A.5 names are touched,
+            and a row in any file outside §1.2 is out of scope — halt and ask rather than widen.
   Depends:  CHANGE 1
 
 CHANGE 4
@@ -428,7 +431,11 @@ CHANGE 21
 
 #### Phase B — Exact code + tests: **NOT YET GENERATED**
 
-§1.6 is resolved (D-01 … D-12), so nothing below is blocked by ambiguity any more. The operator's instruction was **planning only**, so no AFTER block has been written. Phase B is ready to generate on request: 21 changes, one BEFORE / AFTER / targeted-test block each, against the tree at HEAD `9507821` + the operator's uncommitted ECG work.
+§1.6 is resolved (D-01 … D-12), so nothing below is blocked by ambiguity any more. The operator's instruction was **planning only**, so no AFTER block has been written. Phase B is ready to generate on request: 21 changes, one BEFORE / AFTER / targeted-test block each, against the clean tree at HEAD `9507821`.
+
+Generate it in groups, not in one pass: items 1-4 (CHANGES 1-7 and 9-11, UI only, no schema) and items 5-6 (CHANGES 12-21, which add a module, an RPC and a trigger guard).
+
+**CHANGE 8 is the one change that straddles both groups** — it registers the item 1-4 actions (`openMetric`, `metricBack`, `cancelReg`, `confirmResults`, `editReadings`) alongside the custom-plan ones, and it `Depends` on CHANGES 12 and 16. Split it: register only the item 1-4 actions with the first group, and add the custom-plan actions with the second. Do not treat CHANGES 1-11 as a shippable set while CHANGE 8 still names actions that do not exist yet.
 
 #### Phase C — Risks & unknowns
 
@@ -525,7 +532,7 @@ Baseline to beat (measured, not assumed):
 
 ```
 npm run typecheck   ->  0 errors
-npm test            ->  all 886 checks passed
+npm test            ->  all 1046 checks passed
 npm run test:build  ->  all 17 build checks passed
 npm run test:db     ->  all 34 DB checks passed  (with PGlite on NODE_PATH)
 npm run test:hub    ->  35 passed, 0 failed      (with NEWSTART_PGLITE set)
@@ -690,6 +697,26 @@ EFFECT:    Supersedes the "no ui.js change needed" note in A.6.1 — D-07 keeps 
            D-08). CHANGE 15 gains template download (D-11) and the plan-chrome constraint (D-10).
            No file in the application was modified by this decision pass.
 APPROVED BY: fanel (operator), 2026-10-29.
+
+A.6.5 — 2026-10-29 — Plan corrected against the current tree (A.6.3 and Q13 superseded)
+OBSERVATION: six defects were found by checking the plan's own claims against the code.
+           1. npm test baseline read 886 in §1.5 and CP-04; the measured baseline is 1046.
+           2. CHANGE 3 named src/visitor.js but cited ~99 `class="btn"` occurrences. 99 is the count
+              across all of src/*.js; visitor.js holds 11. As written it was also the sweep D-12 forbids.
+           3. Q13 and A.6.3 called the tree dirty. The ECG work is committed; the tree is clean.
+           4. §1.5 claimed the harness could verify 8 px; its DOM has no layout engine.
+           5. §1.2 listed src/account.js and src/cloud.js conditionally, weakening CP-05's scope check.
+           6. The Phase B note still referred to uncommitted ECG work.
+ACTION:    all six corrected in place. src/cloud.js was REMOVED from §1.2 — D-04 already establishes that
+           attToRow sends interests wholesale, no CHANGE targets it, and it belongs on a read list, not a
+           modify allowlist. If CP-03 finds a mapper change is needed, that is a scope question: halt and ask.
+           CHANGE 3 is now bounded to the rows A.5 enumerates. A grouped Phase B order was added, with the
+           note that CHANGE 8 straddles both groups because it Depends on CHANGES 12 and 16.
+           A.6.3's rebase instruction no longer applies; this entry supersedes it rather than editing it.
+VERIFIED:  line citations 167-169 / 179 / 187 / 271 / 505 / 635 re-checked and all still hold; is_admin()
+           and is_platform_admin() exist in schema.sql; docs/ui-contract.md §3.3 exists; `customPlan`
+           collides with nothing in src/ or the schema; PGlite 0.5.11 does report PostgreSQL 18.6.
+APPROVED BY: self — plan document only. No application file was touched.
 ```
 
 ### A.7 · Change report — EMPTY (written at CP-06)

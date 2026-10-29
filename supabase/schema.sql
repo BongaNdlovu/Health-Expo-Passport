@@ -316,7 +316,10 @@ alter table public.attendees add constraint attendees_limits check (
   length(name) <= 200 and coalesce(length(phone), 0) <= 40 and coalesce(length(email), 0) <= 200
   and coalesce(length(sex), 0) <= 20 and length(prayer) <= 2000
   and public.jsonb_numbers_only(s) and octet_length(s::text) <= 1000
-  and jsonb_typeof(interests) = 'object' and octet_length(interests::text) <= 1000   -- the paper form's seminar and "heard via" ticks, plus the follow-up name
+  -- consent, the follow-up answers and the paper form's ticks live here; so does a per-visitor custom plan
+  -- (a title, a problem area and 3–8 do/why/how actions), which needs far more than the original 1 KB.
+  and jsonb_typeof(interests) = 'object' and octet_length(interests::text) <= 32000
+  and (not (interests ? 'customPlan') or jsonb_typeof(interests -> 'customPlan') = 'object')
 ) not valid;
 
 -- a station key is a short key, never a paragraph (earlier builds let a placement write any text)
@@ -2195,6 +2198,45 @@ revoke all on function public.attendees_retention() from public, anon, authentic
 drop trigger if exists attendees_retention on public.attendees;
 create trigger attendees_retention before insert or update on public.attendees
   for each row execute function public.attendees_retention();
+
+-- ================================================================ CUSTOM PLANS (one visitor, item 5/6)
+-- A custom plan is a church's own words for one visitor. It travels inside attendee.interests.customPlan, exactly
+-- like interests.churchPlan, so the staff sync (attToRow → upsert) can write it with no mapper change. That also
+-- means any approved account could PATCH it over the API: a client-side check is bypassable, so the role rule has
+-- to live here (R-04, D-05). The App Owner and an approved church admin may write, replace or remove it; every
+-- other approved account may still change the rest of interests (consent, church plan, prayer flags) exactly as
+-- before (R-05). Shape follows volunteers_place_guard: an upsert fires the INSERT branch for a row that already
+-- exists, so it is judged against the stored row — never as a fresh insert that would block an ordinary edit.
+create or replace function public.attendees_custom_plan_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_new jsonb := new.interests -> 'customPlan';
+        v_old jsonb;
+begin
+  if (select auth.uid()) is null then return new; end if;   -- anon has no write policy; nothing to judge
+  /* An upsert fires BEFORE INSERT for a row it is about to update, so the stored plan has to be looked up.
+     The key is (church_id, id) and visitor ids are handed out per device, so EXPO-042 exists in many
+     churches: without church_id this reads another church's plan and then either refuses an honest insert
+     or waves a real one through. */
+  if tg_op = 'INSERT' then
+    select a.interests -> 'customPlan' into v_old from public.attendees a
+     where a.church_id = new.church_id and a.id = new.id;
+  elsif tg_op = 'UPDATE' then
+    v_old := old.interests -> 'customPlan';
+  end if;
+  if v_old is distinct from v_new and not (public.is_admin() or public.is_platform_admin()) then
+    raise exception 'Only the church''s admins can write a custom plan' using errcode = '42501', hint = 'custom_plan_guard';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.attendees_custom_plan_guard() from public, anon, authenticated;
+drop trigger if exists attendees_custom_plan_guard on public.attendees;
+create trigger attendees_custom_plan_guard before insert or update on public.attendees
+  for each row execute function public.attendees_custom_plan_guard();
 
 -- ================================================================ RETENTION (POPIA s14)
 -- Visitors take their results home on the printed card or by WhatsApp on the day, so the church does not keep the

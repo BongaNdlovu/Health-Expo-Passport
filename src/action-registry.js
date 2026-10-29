@@ -16,7 +16,8 @@ import { onSim, setFoodPlan, toggleFood } from './results.js';
 import { isServe, render, toggleTheme } from './shell.js';
 import { cloud } from './state.js';
 import { filterVisitors, onPrayer, onStationCommit, onStationInput, onStep, registerSubmit, reservePouch, resetDemo, resetDemoAsk, switchTab, toggleInterest, toggleReg } from './visitor.js';
-import { applyReading, finishVisit, goVisit, newVisitFrom, onChronicList, onHeight, pickSex, recordConsent, setAnswer, setMyStation, showGuardian, switchTo, toggleOptin, toggleTick } from './visitor.js';
+import { applyReading, cancelReg, confirmResults, editReadings, finishVisit, goVisit, metricBack, newVisitFrom, onChronicList, onHeight, openMetric, pickSex, recordConsent, setAnswer, setMyStation, showGuardian, switchTo, toggleOptin, toggleTick } from './visitor.js';
+import { customPlanClear, customPlanEdit, customPlanImport, customPlanSave, customPlanTemplate } from './customPlan.js';
 import { closeVolReg, closeWhatsApp, exportVolCSV, logExpoEntry, openEmail, openSwitcher, openVolModal, openVolReg, openVolSwitcher, openWhatsApp, pickSecondBooth, pickVolunteer, printCard, removeExpoEntry, saveExpoEntry, saveVolunteer, sendEmail, sendWhatsApp, setVol, setVolTab, startNewVolunteer, switchToVol, toggleDraftBooth, toggleDraftList, toggleShift } from './volunteer.js';
 import { closeSwitcher, closeVolModal, closePlaceSheet, filterSwitcher, filterVolSwitcher, openWAFor, openPlaceSheet, pickAttendee, pickPledge, placeLead, placeMove, placeRelease, placeSwap, recycleBadge, registerNew, setSwitchMode, showAllVol } from './volunteer.js';
 
@@ -28,10 +29,10 @@ import { closeSwitcher, closeVolModal, closePlaceSheet, filterSwitcher, filterVo
 
 export const ACTION_MAP = {
   /* -- plain functions (no arguments) -- */
-  closeAcct, closeBigScreen, closeCloud, closeFood, closeQueuePick, closeSwitcher,
+  cancelReg, closeAcct, closeBigScreen, closeCloud, closeFood, closeQueuePick, closeSwitcher,
   closeVolModal, closeVolReg, closeWhatsApp, cloudInit, cloudResend, cloudSignOut, copyInvite,
-  exportCSV, exportVolCSV, finishVisit, gateBack, gateDemo, goVisit, healthTest, installApp, leaveChurch,
-  logExpoEntry, openBigScreen, openCloud, openEmail, openFood, openSwitcher, openVolModal,
+  editReadings, exportCSV, exportVolCSV, finishVisit, gateBack, gateDemo, goVisit, healthTest, installApp, leaveChurch,
+  logExpoEntry, metricBack, openBigScreen, openCloud, openEmail, openFood, openSwitcher, openVolModal,
   openVolReg, openVolSwitcher, openWhatsApp, profDeleteAsk, profDeleteGo, recycleBadge, registerNew, resetDemo,
   saveExpoEntry, saveVolunteer, sendEmail, sendWhatsApp, shareInvite, startNewVolunteer, stepDown,
   switchToVol, toggleReg, closeSettings, deregisterMyPledge, openSettings, resetDemoAsk, updateLater, updateNow,
@@ -48,6 +49,7 @@ export const ACTION_MAP = {
   manageChurch: el => manageChurch(el.dataset.args),
   openAcct: el => openAcct(el.dataset.args),
   openChurchData: el => openChurchData(el.dataset.args),
+  openMetric: el => openMetric(el.dataset.args),
   openQueuePick: el => openQueuePick(el.dataset.args),
   openWAFor: el => openWAFor(el.dataset.args),
   pickAttendee: el => pickAttendee(el.dataset.args),
@@ -143,6 +145,13 @@ export const ACTION_MAP = {
   'invite-make': el => makeInvite(el.dataset.args, el.dataset.role),
   'select-self': el => el.select(),
 
+  /* -- a plan written for one visitor (items 5 and 6) -- */
+  customPlanEdit: () => customPlanEdit(),
+  customPlanSave: (el, ev) => customPlanSave(ev),
+  customPlanImport: el => customPlanImport(el),
+  customPlanClear: () => customPlanClear(),
+  customPlanTemplate: () => customPlanTemplate(),
+
   /* -- live queue, sim, shell nav -- */
   'queue-sync': () => queueSync(true),
   'queue-filter': el => qFilterPick(el.value),
@@ -150,6 +159,7 @@ export const ACTION_MAP = {
   'sim-open': el => { state.simOpen = el.open; },
   'nav-go': el => el.dataset.tab === 'visit' ? goVisit() : switchTab(el.dataset.tab),
   'switcher-open': el => isServe() ? openVolSwitcher() : openSwitcher(),
+  confirmResults: () => confirmResults(),
 
   /* -- visitor journey -- */
   'guardian-show': el => showGuardian(el.dataset.args, el.value),

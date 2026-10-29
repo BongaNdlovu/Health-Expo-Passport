@@ -70,6 +70,23 @@ export function churchPlanFor(a,cp){
  return {pk:base,church:cp,p,goal:cp.title,problem:PROTOCOLS[cp.problem]?problemOf(a,cp.problem):`A plan from ${name} for: ${cp.problem}.`,
   urgent:urgentOf(a,base),top:list.slice(0,3),more:list.slice(3),recheck:['Check in with your church’s health team in 3 weeks.','']};
 }
+/* A plan written for one visitor, in the same shape as planFor(), so the existing plan card, Send home, the
+   WhatsApp message, the email body and the printed card all carry it unchanged (D-10). Its safety furniture —
+   the urgent banner, the "keep taking your pills" block, the precautions and the disclaimer — is supplied by the
+   same chrome that renders an app plan; this only maps the stored fields. */
+export function customPlanFor(a,cp){
+ cp=cp&&typeof cp==='object'?cp:{};
+ const base=PROTOCOLS[cp.problem]?cp.problem:autoProtocol(a);
+ const tag=PROTOCOLS[cp.problem]?PROTOCOLS[cp.problem].tag:String(cp.problem||'');
+ const name=cp.by||(cloud.acct&&cloud.acct.church&&cloud.acct.church.name)||'your church';
+ const list=(Array.isArray(cp.actions)?cp.actions:[]).map(x=>({do:String(x&&x.do||''),why:String(x&&x.why||''),how:cleanHow(x),ref:'',cost:0})).filter(x=>x.do);
+ const p={tag,title:String(cp.title||''),credit:name,src:'its own plan, not reviewed by the app',steps:[],facts:[],items:[],
+  habits:list.slice(0,3).map(x=>x.do),note:String(cp.note||''),help:['sleep','mind'].includes(base)?HELP_LINE:'',hydro:null,
+  mech:`This plan was written by ${name} for this visitor. It is the church’s own plan, not reviewed by the app.`};
+ return {pk:base,custom:cp,p,goal:String(cp.title||''),problem:`A plan from ${name} for: ${tag}.`,
+  urgent:urgentOf(a,base),top:list.slice(0,3),more:list.slice(3),secondary:[],
+  recheck:['Check in with your church’s health team in 3 weeks.','']};
+}
 export function chooseChurchPlan(id){
  const a=A();if(!a)return;
  a.interests=a.interests||{};

@@ -11,7 +11,7 @@ import { EXPO_TOTAL, PROTOCOLS, STATUS_UI, attendees, boothLabel, state, volunte
 import { qSafe, queueReset, queueSync } from './queue.js';
 import { bmi, cat, chipClass, esc, fmt1, initials, redFlag } from './helpers.js';
 import { planNeeds } from './results.js';
-import { MY_PLEDGE_ACTS, emptyDraft, hideModal, pledgeFormParts, setVolTab, showModal } from './volunteer.js';
+import { MY_PLEDGE_ACTS, emptyDraft, hideModal, isAdminAcct, pledgeFormParts, setVolTab, showModal } from './volunteer.js';
 import { loadScript } from './libs.js';
 /* The account hub: my account, my church, all churches (platform admin), members and approvals. Split from the original single-file app; bundled back into one file by tools/build.js. */
 /* ---------- churches, members and the platform admin ----------
@@ -36,6 +36,10 @@ const ACCT_MSG={church:'Choose your church to continue.',churchwait:'Your church
 export const inChurch=r=>cloud.churchId?{...r,church_id:cloud.churchId}:r;
 export const conflictOn=()=>cloud.churchId?'church_id,id':'id';
 const isChurchAdmin=()=>{const m=cloud.acct&&cloud.acct.membership;return !!m&&m.role==='admin'&&m.status==='approved';};
+/* item 6, D-05: who may write a per-visitor custom plan — the App Owner (platform admin) or an approved church
+   admin. This is the one client predicate; it reuses isAdminAcct rather than restating the role test. Postgres
+   enforces the same rule in attendees_custom_plan_guard, because a client-only check is bypassable (R-04). */
+export const canCustomPlan=()=>!!(cloud.acct&&(cloud.acct.platform_admin||isAdminAcct()));
 /* who is signed in; true when they are staff of an active church (the expo app opens) */
 export async function loadAccount(){
  const sentAt=Date.now(),r=await cloud.client.rpc('my_account');

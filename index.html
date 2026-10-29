@@ -178,6 +178,9 @@
   .btn-glass:hover{background:var(--hx-surface-2)}
   .btn-soft{background:var(--hx-mint-soft);color:var(--hx-mint-deep);border:1px solid var(--hx-mint-line)}
   .btn-soft:hover{background:rgba(52,211,117,.18)}
+  /* One named gap for a row of interactive controls: the phone's 8px "bento" gap from
+     docs/ui-contract.md §3.3. Wrapping is allowed so a third control drops to a second line at 320px. */
+  .btn-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 
   /* ============ FORM FIELDS ============ */
   .field{width:100%;border-radius:var(--hx-r-field);border:1px solid var(--hx-field-border);
@@ -1407,7 +1410,7 @@
     <div id="cfTitle" class="display text-[16px] font-extrabold text-[#0f2a2c]">Are you sure?</div>
     <p id="cfBody" class="mt-2 text-[12px] leading-relaxed text-[#4f6870]"></p>
     <div class="mt-4 flex gap-2">
-      <button data-action="confirmNo" class="btn btn-glass flex-1 py-2.5 text-xs">Cancel</button>
+      <button id="cfNo" data-action="confirmNo" class="btn btn-glass flex-1 py-2.5 text-xs">Cancel</button>
       <button id="cfGo" data-action="confirmYes" class="btn btn-primary flex-1 py-2.5 text-xs">Confirm</button>
     </div>
   </div>

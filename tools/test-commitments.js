@@ -97,6 +97,22 @@ create table public.notifications (
   created_at timestamptz not null default now(),
   read_at timestamptz);
 
+create table public.platform_admins (user_id uuid primary key);
+create or replace function public.is_platform_admin() returns boolean language sql stable security definer as $$
+  select exists (select 1 from public.platform_admins p where p.user_id = auth.uid())
+$$;
+
+/* Only the columns the custom-plan guard reads, but keyed the way production keys them: schema.sql
+   replaces the single-column key with (church_id, id). Visitor ids are handed out per device, so the
+   same EXPO-042 exists in several churches, and a stub keyed on id alone cannot show a guard that
+   forgets the church. church_id defaults to the main test church so single-church cases stay terse. */
+create table public.attendees (
+  church_id uuid not null default '${CHURCH}',
+  id text not null,
+  name text not null default 'Visitor',
+  interests jsonb not null default '{}'::jsonb,
+  primary key (church_id, id));
+
 create or replace function public.booth_title(p_booth text) returns text language sql immutable as $$
   select case p_booth when 'bp' then 'Blood Pressure' when 'sugar' then 'Blood Sugar & Chol.'
                       when 'kitchen' then 'Kitchen Pharmacy' else coalesce(p_booth, '') end
@@ -124,6 +140,8 @@ $$;
   await db.exec(trigger('volunteers_place_guard'));
   await db.exec(trigger('volunteers_admin_status_notify'));
   await db.exec(trigger('volunteers_admin_withdraw_notify'));
+  await db.exec(fn('attendees_custom_plan_guard'));
+  await db.exec(trigger('attendees_custom_plan_guard'));
 
   const as = id => db.query("select set_config('request.jwt.claim.sub', $1, false)", [id]);
   const notifs = async (kind) => (await db.query(
@@ -132,7 +150,7 @@ $$;
   const reset = async () => {
     /* seed as nobody: the guard refuses an unprivileged caller who inserts a team leader */
     await db.query("select set_config('request.jwt.claim.sub', '', false)");
-    await db.exec('delete from public.notifications; delete from public.volunteers; delete from public.memberships; delete from public.churches;');
+    await db.exec('delete from public.notifications; delete from public.volunteers; delete from public.memberships; delete from public.churches; delete from public.attendees; delete from public.platform_admins;');
     await db.exec(`insert into public.churches (id) values ('${CHURCH}');
       insert into public.memberships (user_id, church_id, role) values ('${ADMIN}', '${CHURCH}', 'admin');
       insert into public.memberships (user_id, church_id, role, volunteer_id) values ('${MEMBER}', '${CHURCH}', 'member', 'VOL-1');
@@ -278,6 +296,82 @@ $$;
   await as(OTHER);
   const outsider = await raiseOf(() => db.query("update public.volunteers set booth = null where id = 'VOL-1'"));
   ok('a signed-out-of-this-church user cannot touch the row', outsider !== null, 'the update was allowed');
+
+  /* ------------------------------------------------------------------ */
+  console.log('\n6. the custom-plan guard');
+  await reset();
+  const PLAN = { title: 'A church plan for one visitor', problem: 'Joint pain',
+    actions: [{ do: 'Walk daily', why: 'Movement helps', how: ['10 minutes'] },
+      { do: 'Stretch', why: 'Eases stiffness', how: [] },
+      { do: 'Rest', why: 'Recovery matters', how: [] }] };
+  const asPlan = o => JSON.stringify(o);
+  const setInterests = (id, o) => db.query('update public.attendees set interests = $1::jsonb where id = $2', [asPlan(o), id]);
+
+  await as(MEMBER);
+  await db.query("insert into public.attendees (id, name, interests) values ('EXPO-900', 'Plan Test', '{}')");
+  ok('a member can still add a visitor',
+    (await db.query("select count(*)::int c from public.attendees where id = 'EXPO-900'")).rows[0].c === 1);
+  ok('a member can still record consent', await raiseOf(() => setInterests('EXPO-900', { optin: true })) === null);
+
+  const memberWrite = await raiseOf(() => setInterests('EXPO-900', { optin: true, customPlan: PLAN }));
+  ok('a member cannot write a custom plan', /admins can write a custom plan/.test(memberWrite || ''), memberWrite);
+
+  await as(ADMIN);
+  ok('an approved church admin can write a custom plan',
+    await raiseOf(() => setInterests('EXPO-900', { optin: true, customPlan: PLAN })) === null);
+  ok('...and it is stored on the visitor record',
+    (await db.query("select interests -> 'customPlan' ->> 'title' t from public.attendees where id = 'EXPO-900'")).rows[0].t === PLAN.title);
+
+  await as(MEMBER);
+  ok('a member can still change consent while a custom plan exists (R-05)',
+    await raiseOf(() => setInterests('EXPO-900', { optin: false, customPlan: PLAN })) === null);
+  const memberChange = await raiseOf(() => setInterests('EXPO-900', { optin: false, customPlan: { ...PLAN, title: 'Hijacked' } }));
+  ok('a member cannot replace an existing custom plan', /admins can write a custom plan/.test(memberChange || ''), memberChange);
+
+  /* the real client writes with an upsert, which fires the INSERT trigger for a row that already exists */
+  const upsert = p => db.query("insert into public.attendees (id, name, interests) values ('EXPO-900', 'Plan Test', $1::jsonb) on conflict (church_id, id) do update set interests = excluded.interests", [asPlan(p)]);
+  ok('the sync upsert of an unchanged plan is allowed for a member (the INSERT branch must not refuse it)',
+    await raiseOf(() => upsert({ optin: false, customPlan: PLAN })) === null);
+  const upsertChange = await raiseOf(() => upsert({ optin: false, customPlan: { ...PLAN, title: 'Hijacked again' } }));
+  ok('an upsert that changes the plan is refused for a member', /admins can write a custom plan/.test(upsertChange || ''), upsertChange);
+
+  const memberClear = await raiseOf(() => db.query("update public.attendees set interests = interests - 'customPlan' where id = 'EXPO-900'"));
+  ok('a member cannot remove an admin’s custom plan', /admins can write a custom plan/.test(memberClear || ''), memberClear);
+
+  const newWithPlan = await raiseOf(() => db.query("insert into public.attendees (id, name, interests) values ('EXPO-901', 'Plan Insert', $1::jsonb)", [asPlan({ customPlan: PLAN })]));
+  ok('a member cannot insert a new visitor that already carries a custom plan', /admins can write a custom plan/.test(newWithPlan || ''), newWithPlan);
+
+  await as(ADMIN);
+  ok('an admin can remove the custom plan',
+    await raiseOf(() => db.query("update public.attendees set interests = interests - 'customPlan' where id = 'EXPO-900'")) === null);
+  ok('...and the rest of interests survives',
+    (await db.query("select interests -> 'optin' o from public.attendees where id = 'EXPO-900'")).rows[0].o === false);
+
+  /* the App Owner has the same right without a church admin post */
+  await db.query("insert into public.platform_admins (user_id) values ('" + OTHER + "')");
+  await as(OTHER);
+  ok('the App Owner can write a custom plan',
+    await raiseOf(() => setInterests('EXPO-900', { optin: false, customPlan: PLAN })) === null);
+
+  /* The guard must read THIS church's stored plan. Visitor ids repeat across churches, so a lookup on
+     id alone reads a stranger's row and then either refuses an honest insert or waves a real one past. */
+  await reset();
+  const CHURCH2 = '55555555-5555-5555-5555-555555555555';
+  await db.exec(`insert into public.churches (id) values ('${CHURCH2}');
+    insert into public.memberships (user_id, church_id, role) values ('${OTHER}', '${CHURCH2}', 'member');`);
+  await as(ADMIN);
+  await db.query("insert into public.attendees (church_id, id, name, interests) values ($1, 'EXPO-042', 'Church A visitor', $2::jsonb)",
+    [CHURCH, asPlan({ customPlan: PLAN })]);
+  await as(OTHER);
+  const crossInsert = await raiseOf(() => db.query(
+    "insert into public.attendees (church_id, id, name, interests) values ($1, 'EXPO-042', 'Church B visitor', '{}')", [CHURCH2]));
+  ok('a member of another church can add a visitor whose id already exists elsewhere', crossInsert === null, crossInsert);
+  const crossWrite = await raiseOf(() => db.query(
+    "update public.attendees set interests = $2::jsonb where church_id = $1 and id = 'EXPO-042'", [CHURCH2, asPlan({ customPlan: PLAN })]));
+  ok("...and still cannot write a custom plan on their own church's copy",
+    /admins can write a custom plan/.test(crossWrite || ''), crossWrite);
+  ok("...and church A's plan is untouched",
+    (await db.query("select interests -> 'customPlan' ->> 'title' t from public.attendees where church_id = $1 and id = 'EXPO-042'", [CHURCH])).rows[0].t === PLAN.title);
 
   /* ------------------------------------------------------------------ */
   console.log('\n' + '='.repeat(52));

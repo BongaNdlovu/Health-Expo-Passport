@@ -6,7 +6,7 @@ import { $ } from './helpers.js';
 import { A, SEX_RANGE, bmi, cat, chipClass, chipNote, chipOf, clamp, disp, doneCount, esc, firstName, fmt1, initials, redFlag } from './helpers.js';
 import { EXPO_UPCOMING, EXTRA_DEFS, HEARD, MED_YN, SEMINARS, STATION_DEFS, SURVEY, attendees, hueOf, state } from './data.js';
 import { JOURNEY, JOURNEY_LABEL, jelly, render, renderMain, toast } from './shell.js';
-import { planFor } from './results.js';
+import { planFor, viewMetric } from './results.js';
 import { followupPicker } from './churchPlans.js';
 import { cloud, migrateAttendee, persist, seedDemo } from './state.js';
 import { GRACE_DAYS, RETENTION_YEARS, visitIsOld } from './retention.js';
@@ -31,25 +31,59 @@ export function journeyTop(){
    <span class="jr-name"><b>${esc(a.name)}</b><span>${esc(a.id)}${redFlag(a)?' · <em>⚠ refer to triage</em>':''}</span></span>
    <span class="jr-change">Change</span>
   </button>
-  <ol class="jr-steps">${JOURNEY.map((k,j)=>`<li><button class="jr-step ${j===i?'is-on':j<i?'is-past':''}" data-action="switchTab" data-args="${k}" ${j===i?'aria-current="step"':''}>
+  <ol class="jr-steps">${JOURNEY.map((k,j)=>`<li><button class="jr-step ${j===i?'is-on':j<i?'is-past':''}" ${k==='results'&&state.tab==='screen'?'data-action="confirmResults"':`data-action="switchTab" data-args="${k}"`} ${j===i?'aria-current="step"':''}>
    <span class="jr-dot">${done(k)&&j!==i?'✓':j+1}</span><span class="jr-lbl">${JOURNEY_LABEL[k]}${k==='screen'?` <small id="jrCount">${d<8?d+'/8':''}</small>`:''}</span></button></li>`).join('')}</ol>
  </div>`;
 }
 export function journeyBottom(){
  const a=A(),i=JOURNEY.indexOf(state.tab),prev=JOURNEY[i-1],next=JOURNEY[i+1],left=8-doneCount(a);
+ /* the move from Check into Results asks the operator to confirm the readings (see confirmResults) */
+ const nextBtn=k=>`<button class="btn btn-primary jr-next" ${k==='results'?'data-action="confirmResults"':`data-action="switchTab" data-args="${k}"`}>${k==='results'?'Next: Results':`Next: ${JOURNEY_LABEL[k]}`} →</button>`;
  /* a station volunteer's next move is the next visitor, not this visitor's results */
  if(state.tab==='screen'&&myStation())return `<div class="jr-foot"><div class="jr-btns">
-  <button class="btn btn-glass jr-back" data-action="switchTab" data-args="results">Results →</button>
+  <button class="btn btn-glass jr-back" data-action="confirmResults">Results →</button>
   <button class="btn btn-primary jr-next" data-action="registerNew">Next visitor</button></div></div>`;
  return `<div class="jr-foot">
   ${state.tab==='screen'?`<p id="jrNote" class="jr-note" ${left>0?'':'hidden'}>${left} of 8 checks still empty. You can carry on and come back.</p>`:''}
   <div class="jr-btns">
    ${prev?`<button class="btn btn-glass jr-back" data-action="switchTab" data-args="${prev}">← ${JOURNEY_LABEL[prev]}</button>`:'<span></span>'}
-   ${next?`<button class="btn btn-primary jr-next" data-action="switchTab" data-args="${next}">Next: ${JOURNEY_LABEL[next]} →</button>`
+   ${next?nextBtn(next)
     :`<button class="btn btn-primary jr-next" data-action="finishVisit">${a.done?'Visit complete ✓ · Home':'Finish visit ✓'}</button>`}
   </div>
  </div>`;
 }
+/* The Check → Results gate (item 3). This is the moment the operator declares the readings complete, so the
+   question names what is recorded and what is still blank rather than asking a generic "are you sure" (D-02,
+   D-09). Confirming writes interests.submittedOn, the one marker that says the visit's readings were submitted;
+   after that the question is not asked again and every value stays editable (D-08). */
+function resultsBody(a){
+ const have=[];
+ if(a.s.sys!=null||a.s.dia!=null)have.push(`Blood pressure ${a.s.sys??'—'}/${a.s.dia??'—'}`);
+ if(a.s.sugar!=null)have.push(`Blood sugar ${a.s.sugar} mmol/L`);
+ if(bmi(a)!=null)have.push(`Body BMI ${fmt1(bmi(a))}`);
+ /* the 8 checks, in the order the journey lists them */
+ const checks=[['blood pressure',a.s.sys!=null&&a.s.dia!=null],['blood sugar',a.s.sugar!=null],['cholesterol',a.s.chol!=null],
+  ['weight',a.s.weight!=null],['fruit and vegetables',a.s.veg!=null],['exercise',a.s.walk!=null],
+  ['water',a.s.water!=null],['sleep',a.s.sleep!=null]];
+ const missing=checks.filter(x=>!x[1]).map(x=>'No '+x[0]+' recorded');
+ const lead=have.length?have.join(' · ')+'.':'No readings are recorded yet.';
+ return `${lead} ${missing.length?missing.join(' · ')+'.':'All 8 checks are recorded.'} You can still edit them afterwards.`;
+}
+export async function confirmResults(){
+ const a=A();
+ if(!attendees.some(x=>x.id===a.id)){switchTab('screen');return;}
+ /* one confirmation per visit: a confirmed visit goes straight on, so coming back later does not nag */
+ if(a.interests&&a.interests.submittedOn){switchTab('results');return;}
+ const yes=await confirmAsk({title:'Are you sure about these results?',body:resultsBody(a),
+  label:'Yes, that is right',cancelLabel:'Edit'});
+ if(!yes)return;                       /* Edit: stay on Check, every value untouched */
+ a.interests=a.interests||{};
+ a.interests.submittedOn=todayStr();
+ persist();
+ switchTab('results');
+}
+/* "Edit readings" on Results: back to Check with a.s untouched (D-08) */
+export function editReadings(){switchTab('screen');}
 /* the team's follow-up line follows the recorded answer: contact allowed or not, then anything specific they asked for */
 function followUpLine(a,first,asked){
  const list=asked.length?`<b>${asked.map(esc).join(', ')}</b>`:'';
@@ -99,6 +133,8 @@ export function viewNoVisitor(){
 export function switchTab(t){
  if(JOURNEY.includes(t)){state.step=t;state.stepFor=state.activeId;}
  if(state.food)state.food.open=false;   /* tapping a tab (even Plan) leaves the Food screen — at the tap */
+ if(t!=='screen'){state.metric='';state.metricFor='';}   /* the metric drill-down lives inside Check */
+ if(t!=='plan')state.customEdit=false;                  /* the custom-plan editor belongs to the Plan screen */
  if(t!=='serve')state._serveKey='';     /* coming back to Team fades in once again */
  state.tab=t;render();window.scrollTo(0,0);
 }
@@ -164,9 +200,12 @@ export function viewHome(){
   </div>`:''}
 
   <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
-   ${tileHTML({label:'Blood pressure',icon:I.pulse,value:`${a.s.sys??'—'}/${a.s.dia??'—'}`,status:cbp[1],tone:'ruby',pill:true})}
-   ${tileHTML({label:'Blood sugar',icon:I.drop,value:a.s.sugar==null?'—':fmt1(a.s.sugar),status:csg[1],tone:'amber',pill:true})}
-   ${tileHTML({label:'Body BMI',icon:I.scale,value:bmi(a)?fmt1(bmi(a)):'—',status:cbm[1],tone:'cobalt',pill:true})}
+   <button type="button" data-action="openMetric" data-args="bp" aria-label="Blood pressure details" style="display:block;width:100%;padding:0;border:0;background:none;text-align:inherit;font:inherit;cursor:pointer">
+    ${tileHTML({label:'Blood pressure',icon:I.pulse,value:`${a.s.sys??'—'}/${a.s.dia??'—'}`,status:cbp[1],tone:'ruby',pill:true})}</button>
+   <button type="button" data-action="openMetric" data-args="sugar" aria-label="Blood sugar details" style="display:block;width:100%;padding:0;border:0;background:none;text-align:inherit;font:inherit;cursor:pointer">
+    ${tileHTML({label:'Blood sugar',icon:I.drop,value:a.s.sugar==null?'—':fmt1(a.s.sugar),status:csg[1],tone:'amber',pill:true})}</button>
+   <button type="button" data-action="openMetric" data-args="bmi" aria-label="Body BMI details" style="display:block;width:100%;padding:0;border:0;background:none;text-align:inherit;font:inherit;cursor:pointer">
+    ${tileHTML({label:'Body BMI',icon:I.scale,value:bmi(a)?fmt1(bmi(a)):'—',status:cbm[1],tone:'cobalt',pill:true})}</button>
   </div>
 
   ${redFlag(a)?`<div style="display:flex;gap:8px;padding:10px 12px;border-radius:16px;background:var(--hx-rose-bg);border:1px solid var(--hx-rose-line);color:var(--hx-rose);font-size:11px;font-weight:700;line-height:1.35">
@@ -177,14 +216,17 @@ export function viewHome(){
   </button>`}
 
   ${state.regOpen?`<div class="glass p-4">
-   <div class="display text-sm font-extrabold">New visitor</div>
+   <div class="flex items-center justify-between gap-2">
+    <div class="display text-sm font-extrabold">New visitor</div>
+    <button type="button" class="btn btn-glass px-3 py-2 text-[11px]" data-action="cancelReg">Cancel</button>
+   </div>
    <div class="mt-0.5 text-[11px] leading-snug text-[#5c747a]">Takes about 30 seconds. Their number is given automatically.</div>
    <form data-action="registerSubmit" novalidate class="pop-in mt-4 space-y-3">
     <input id="rgName" required placeholder="Full name e.g. Sipho Ndlovu" class="field">
     <div class="grid grid-cols-2 gap-3">
      <div><label class="microlabel" for="rgAge">Age</label><input id="rgAge" type="text" inputmode="numeric" required placeholder="e.g. 46" class="field mono mt-1" data-on-input="guardian-show" data-args="rg"></div>
      <div><span class="microlabel">Sex</span><input type="hidden" id="rgSex" value="">
-      <div class="mt-1 grid grid-cols-2 gap-1.5" role="group" aria-label="Sex">${['Male','Female'].map(s=>`<button type="button" data-sex="${s}" aria-pressed="false" data-action="pick-sex" class="btn btn-glass py-2.5 text-[12px]">${s}</button>`).join('')}</div></div>
+      <div class="mt-1 grid grid-cols-2 gap-2" role="group" aria-label="Sex">${['Male','Female'].map(s=>`<button type="button" data-sex="${s}" aria-pressed="false" data-action="pick-sex" class="btn btn-glass py-2.5 text-[12px]">${s}</button>`).join('')}</div></div>
     </div>
     <div class="grid grid-cols-2 gap-3">
      <div><label class="microlabel" for="rgPhone">WhatsApp (optional)</label><input id="rgPhone" type="tel" inputmode="tel" placeholder="082 123 4567" class="field mono mt-1"></div>
@@ -269,6 +311,22 @@ export function nextBadge(){
  return 'EXPO-'+String(max+1).padStart(3,'0');
 }
 export function toggleReg(){state.regOpen=!state.regOpen;renderMain();if(state.regOpen){const n=$('#rgName');if(n)n.focus();}}
+/* item 4: Cancel discards the in-progress form and lands on Home, for a brand-new visitor and for a follow-up
+   visit. The form has no draft state of its own: the fields live in the page, so drawing Home again clears them. */
+export function cancelReg(){
+ state.regOpen=false;state.newVisitOf=null;state._goal=null;
+ state.tab='home';render();window.scrollTo(0,0);
+}
+/* item 2: the whole vitals tile is the tap target; this screen shows that one reading's recorded entry (D-01)
+   and is a sub-screen of Check, so Back returns there (D-06). */
+export function openMetric(key){
+ const a=A();
+ if(!attendees.some(x=>x.id===a.id)){toast('Register a visitor first');return;}
+ if(!['bp','sugar','bmi'].includes(key))return;
+ state.metric=key;state.metricFor=a.id;
+ switchTab('screen');      /* the drill-down lives inside the Check tab (D-06) */
+}
+export function metricBack(){state.metric='';state.metricFor='';renderMain();window.scrollTo(0,0);}
 /* Male / Female in one tap: the buttons fill the hidden #rgSex that registerSubmit() reads */
 export function pickSex(btn){
  const s=btn&&btn.dataset&&btn.dataset.sex;if(!s)return;
@@ -391,7 +449,7 @@ export function registerSubmit(e,force){
    ||(digits.length===9&&String(x.phone||'').replace(/\D/g,'').slice(-9)===digits)
    ||(email&&String(x.email||'').toLowerCase()===email.toLowerCase())));
  if(dup)return regError(`${esc(dup.name)} may already be registered as <b>${esc(dup.id)}</b>.
-   <span class="mt-2 flex gap-2"><button type="button" class="st-fix" style="background:#2b8074" data-action="switch-visitor" data-args="${dup.id}">Open ${esc(dup.id)}</button>
+   <span class="mt-2 btn-row"><button type="button" class="st-fix" style="background:#2b8074" data-action="switch-visitor" data-args="${dup.id}">Open ${esc(dup.id)}</button>
    <button type="button" class="st-fix" style="background:#6b8187" data-action="register-again">Register a new passport</button></span>`);
  const a=migrateAttendee({id,name,age,sex,phone:phone||'+27 —',email,heightCm:h,s:{},interests:cons.it,prayer:'',done:false});
  attendees.push(a);state.activeId=a.id;state.regOpen=false;state.newVisitOf=null;state.sugFor=null;state._goal=null;
@@ -410,7 +468,7 @@ export async function resetDemoAsk(){
  if(yes)resetDemo();
 }
 /* tapping a visitor in the list opens their passport where they left off */
-export function switchTo(id){state.activeId=id;state.sugFor=null;state._goal=null;goVisit();toast(`Now serving ${firstName(A().name)} · ${id}`);}
+export function switchTo(id){state.activeId=id;state.sugFor=null;state._goal=null;state.metric='';state.metricFor='';state.customEdit=false;goVisit();toast(`Now serving ${firstName(A().name)} · ${id}`);}
 
 /* ================= VIEW: SCREEN ================= */
 /* A text field with a decimal keypad, not type="number": a number field silently empties "6,5", and South
@@ -428,6 +486,8 @@ function stepperHTML(a,k,label,min,max,step,def){
 }
 export function viewScreen(){
  const a=A(),d=doneCount(a),cbp=cat('bp',{sys:a.s.sys,dia:a.s.dia});
+ /* the vitals drill-down replaces the check grid inside the same tab (D-06) */
+ if(state.metric&&state.metricFor===a.id)return viewMetric(state.metric);
  const bpCard=`<div class="glass hue-blush p-4">
   <div class="flex items-center justify-between">
    <div class="flex items-center gap-2.5">

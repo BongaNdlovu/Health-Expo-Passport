@@ -38,7 +38,7 @@ export function tileHTML(o){
  o=o||{};
  const tones=['ruby','amber','cobalt','mint'];
  const tone=tones.indexOf(o.tone)>=0?o.tone:'mint';
- const foot=o.pill?`<span class="hx-tile-foot">${splitBtnHTML({label:o.status||'—'})}</span>`:`<div class="hx-tile-status">${esc(o.status||'')}</div>`;
+ const foot=o.pill?`<span class="hx-tile-foot">${splitBtnHTML({label:o.status||'—',arrow:false})}</span>`:`<div class="hx-tile-status">${esc(o.status||'')}</div>`;
  return `<div class="hx-tile hx-tile-${tone}">
   <div class="hx-tile-head"><span class="hx-tile-label">${esc(o.label||'')}</span><span class="hx-tile-icon" aria-hidden="true">${o.icon||''}</span></div>
   <div class="hx-tile-value">${esc(o.value==null?'—':o.value)}</div>
@@ -46,11 +46,13 @@ export function tileHTML(o){
  </div>`;
 }
 
-/** Small split label + arrow badge. `variant:'mint'` for the bright pill. */
+/** Small split label + arrow badge. `variant:'mint'` for the bright pill; `arrow:false` keeps the pill and
+    drops the circle, for a status badge that is not a call to action (the three vitals tiles). */
 export function splitBtnHTML(o){
  o=o||{};
  const mint=o.variant==='mint'?' hx-split-mint':'';
- return `<span class="hx-split${mint}"><span class="hx-split-label">${esc(o.label||'')}</span><span class="hx-split-circle" aria-hidden="true">${I.arrow}</span></span>`;
+ const circle=o.arrow===false?'':`<span class="hx-split-circle" aria-hidden="true">${I.arrow}</span>`;
+ return `<span class="hx-split${mint}"><span class="hx-split-label">${esc(o.label||'')}</span>${circle}</span>`;
 }
 
 /** Full-width split CTA: label pill + arrow circle. `variant:'dark'` inverts the label. */

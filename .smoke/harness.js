@@ -1329,6 +1329,193 @@ function makeServer() {
   g.cloud.client = keep.client; g.cloud.acct = keep.acct; g.cloud.pledge = keep.pledge;
   g.cloud.user = keep.user; g.cloud.notifs = keep.notifs;
 
+  /* ---- 16f. UI/UX: button rows, vitals drill-down, the results gate, cancel and custom plans ---- */
+  console.log('\n16f. Button rows, vitals drill-down, confirmation, cancel & custom plans');
+  {
+    const saved = { tab: g.state.tab, id: g.state.activeId, reg: g.state.regOpen, acct: g.cloud.acct };
+    g.resetDemo();
+    g.state.tab = 'home'; g.state.regOpen = false; g.state.metric = ''; g.state.metricFor = ''; g.state.customEdit = false;
+    g.render();
+
+    /* item 1: one named 8px gap, and the one measured 6px .btn row is gone */
+    ok('a row of buttons has one named 8px gap', /\.btn-row\{[^}]*gap:8px/.test(html));
+    const gapRows = [...srcText.matchAll(/<[a-z]+[^>]*class="([^"]*gap-1(?:\.5)?[^"]*)"[^>]*>/g)]
+      .filter(m => /class="btn btn-/.test(srcText.slice(m.index + m[0].length, m.index + m[0].length + 400)));
+    ok('no .btn sits in an ad-hoc gap-1 / gap-1.5 row', gapRows.length === 0, gapRows.map(m => m[0].slice(0, 70)).join(' | '));
+    ok('the remaining ad-hoc button row uses the named gap', /class="mt-2 btn-row"/.test(srcText));
+    g.state.regOpen = true; g.render();
+    ok('the Male/Female pair sits on the 8px gap', /grid grid-cols-2 gap-2" role="group" aria-label="Sex"/.test($main.innerHTML));
+    g.state.regOpen = false; g.render();
+
+    /* item 2: the whole vitals tile is a button, with no false arrow, opening its own screen */
+    const home = $main.innerHTML;
+    ok('the three vitals tiles are buttons that open their own screen',
+      ['bp', 'sugar', 'bmi'].every(k => home.includes(`data-action="openMetric" data-args="${k}"`)));
+    const tileBlock = home.slice(home.indexOf('data-action="openMetric"'), home.indexOf('Screening Spectrum'));
+    ok('a vitals tile keeps its status pill and drops only the arrow',
+      /hx-split-label/.test(tileBlock) && !/hx-split-circle/.test(tileBlock));
+    const david = g.attendees.find(a => a.id === 'EXPO-042');
+    g.state.activeId = david.id;
+    g.openMetric('bp');
+    const mv = $main.innerHTML;
+    ok('a vitals tile opens a screen inside the Check tab',
+      g.state.metric === 'bp' && g.state.tab === 'screen' && /Blood pressure · this visit/.test(mv));
+    ok('the metric screen shows the value, the classification and the reference range',
+      /142\/90/.test(mv) && />High</.test(mv) && /Healthy is under 120\/80 mmHg/.test(mv));
+    ok('the metric screen offers a way back to the checks', /data-action="metricBack"/.test(mv));
+    g.metricBack();
+    ok('Back returns to the check grid', !g.state.metric && /8 checks/.test($main.innerHTML));
+    const sugarWas = david.s.sugar;
+    david.s.sugar = null;
+    g.openMetric('sugar');
+    ok('a metric with no value shows the empty state and still navigates',
+      /No blood sugar recorded yet/.test($main.innerHTML) && /data-action="metricBack"/.test($main.innerHTML));
+    g.metricBack();
+    david.s.sugar = sugarWas;
+
+    /* item 3: one confirmation at Check → Results, naming what is recorded and what is blank */
+    if (david.interests) delete david.interests.submittedOn;
+    const waterWas = david.s.water;
+    david.s.water = null;
+    g.state.tab = 'screen'; g.state.step = 'screen'; g.state.stepFor = david.id; g.render();
+    ok('every Check → Results control on the Check screen asks the question',
+      ($main.innerHTML.match(/data-action="confirmResults"/g) || []).length >= 2);
+    g.state.myStation = 'bp'; g.render();
+    ok('a station volunteer’s Results button asks too', /data-action="confirmResults"/.test($main.innerHTML));
+    g.state.myStation = '';
+    g.render();
+    g.setAutoAnswer(null);
+    const firstAsk = g.confirmResults();
+    ok('advancing Check → Results asks the question',
+      $el('confirmSheet').classList.contains('flex') && $el('cfTitle').textContent === 'Are you sure about these results?'
+        && $el('cfGo').textContent === 'Yes, that is right');
+    ok('the question names the recorded readings and the blank check',
+      /142\/90/.test($el('cfBody').textContent) && /No water recorded/.test($el('cfBody').textContent), $el('cfBody').textContent);
+    ok('the other answer is Edit, not a generic Cancel', $el('cfNo').textContent === 'Edit');
+    g.answerConfirm(false);
+    await firstAsk;
+    ok('Edit stays on Check and leaves every value untouched', g.state.tab === 'screen' && david.s.sys === 142);
+    const secondAsk = g.confirmResults();
+    g.answerConfirm(true);
+    await secondAsk;
+    ok('Confirm moves to Results and marks the readings submitted',
+      g.state.tab === 'results' && !!david.interests.submittedOn);
+    g.state.tab = 'screen'; g.setAutoAnswer(false);
+    await g.confirmResults();
+    ok('the question is asked once per visit, not again', g.state.tab === 'results');
+    g.setAutoAnswer(true);
+    david.s.water = waterWas;
+
+    /* CHANGE 21: Edit readings goes back to Check with the values intact */
+    g.render();
+    ok('Results offers Edit readings while the readings still exist', /data-action="editReadings"/.test($main.innerHTML));
+    g.editReadings();
+    ok('Edit readings returns to Check with the values intact',
+      g.state.tab === 'screen' && david.s.sys === 142 && /8 checks/.test($main.innerHTML));
+
+    /* item 4: Cancel on the registration form, for a new visitor and for a follow-up */
+    g.state.tab = 'home'; g.state.regOpen = true; g.state.newVisitOf = 'EXPO-042'; g.render();
+    ok('the registration form has a visible Cancel', /data-action="cancelReg"/.test($main.innerHTML) && />Cancel</.test($main.innerHTML));
+    g.cancelReg();
+    ok('Cancel clears the form, forgets the follow-up visit and lands on Home',
+      g.state.regOpen === false && !g.state.newVisitOf && g.state.tab === 'home' && !/id="rgName"/.test($main.innerHTML));
+
+    /* items 5/6: the structured custom plan, its template, its precedence and its guard */
+    const good = { title: 'Joint care at home', problem: 'Joint pain',
+      actions: [{ do: 'Walk daily', why: 'Movement helps', how: ['10 minutes on flat ground'] },
+        { do: 'Warm compress', why: 'Eases stiffness', how: ['10 minutes; test the heat'] },
+        { do: 'Stretch every morning', why: 'Keeps joints supple', how: ['5 minutes'] }], note: '', by: 'Grace Chapel', at: '' };
+    const throws = (o, re) => { try { g.normaliseCustomPlan(o); return false; } catch (e) { return re.test(e.message); } };
+    ok('a well-formed plan normalises', g.normaliseCustomPlan(good).title === 'Joint care at home');
+    ok('fewer than 3 actions are refused', throws({ ...good, actions: good.actions.slice(0, 2) }, /at least 3/));
+    ok('more than 8 actions are refused', throws({ ...good, actions: Array(9).fill(good.actions[0]) }, /at most 8/));
+    ok('an unknown field is refused rather than kept', throws({ ...good, extra: 'x' }, /Unknown field/));
+    const parsed = g.parseCustomPlanFile(JSON.stringify(good));
+    ok('a plan file imports with its actions intact', parsed.ok && parsed.plan.title === good.title && parsed.plan.actions.length === 3);
+    ok('broken JSON is refused with a message', (() => { const r = g.parseCustomPlanFile('{oops'); return !r.ok && /not valid JSON/.test(r.error); })());
+    ok('a file over 2 MB is refused before parsing',
+      (() => { const r = g.parseCustomPlanFile('x'.repeat(2 * 1024 * 1024 + 1)); return !r.ok && /too big/.test(r.error); })());
+    let template = '';
+    sandbox.Blob = function (parts) { template = parts.join(''); };
+    g.customPlanTemplate();
+    ok('the downloaded template is exactly what the importer accepts',
+      (() => { const r = g.parseCustomPlanFile(template); return r.ok && r.plan.actions.length >= 3; })());
+
+    const cp = g.normaliseCustomPlan(good);
+    david.interests.customPlan = cp;
+    g.state.activeId = david.id;
+    const P = g.planFor(david);
+    ok('a custom plan overrides the generated plan', !!P.custom && P.goal === cp.title);
+    ok('...even when a protocol is forced (the Plan screen passes one)', g.planFor(david, 'veg').goal === cp.title);
+    g.state.tab = 'plan'; g.state.sugFor = null; g.state.customEdit = false; g.render();
+    const planHTML = $main.innerHTML;
+    ok('the Plan screen renders it through the existing plan card',
+      planHTML.includes(cp.title) && planHTML.includes(cp.actions[0].do) && /Written by/.test(planHTML));
+    ok('...and keeps the safety furniture',
+      /Warnings and precautions/.test(planHTML) && /Keep taking your pills/.test(planHTML));
+    ok('Send home names the custom plan the visitor was shown', g.viewSend().includes(cp.title));
+    ok('the WhatsApp message carries the custom plan', g.waMessage(david).toLowerCase().includes(cp.title.toLowerCase()));
+    ok('the email body carries the custom plan', decodeURIComponent(g.mailtoHref(david, 'v@example.org')).toLowerCase().includes(cp.title.toLowerCase()));
+    g.buildPrintCard();
+    ok('the printed card carries the custom plan', $el('printArea').innerHTML.includes(cp.title));
+
+    /* RBAC: hidden for a member, present for an admin and the owner (D-05) */
+    g.cloud.acct = { membership: { role: 'member', status: 'approved' } };
+    ok('a plain member sees no custom-plan control on the Plan screen',
+      g.canCustomPlan() === false && !/data-action="customPlanEdit"/.test(g.viewPlan()));
+    g.cloud.acct = { membership: { role: 'admin', status: 'approved' } };
+    ok('a church admin sees the custom-plan controls', g.canCustomPlan() === true && /data-action="customPlanEdit"/.test(g.viewPlan()));
+    g.cloud.acct = { platform_admin: true, membership: { role: 'member', status: 'pending' } };
+    ok('the App Owner sees them too, without a church admin post', g.canCustomPlan() === true);
+
+    /* the structured editor */
+    g.state.customEdit = true;
+    const editor = g.viewPlan();
+    ok('the editor is structured: title, problem, eight do/why/how slots, import and template',
+      /id="cpxTitle"/.test(editor) && /id="cpxProblem"/.test(editor) && /id="cpxDo7"/.test(editor)
+        && /data-on-change="customPlanImport"/.test(editor) && /data-action="customPlanTemplate"/.test(editor));
+    david.interests.customPlan = { ...cp, title: '<b>Bad</b>' };
+    ok('a stored title is escaped when the plan is drawn',
+      !/<b>Bad<\/b>/.test(g.viewPlan()) && /&lt;b&gt;Bad/.test(g.viewPlan()));
+    david.interests.customPlan = cp;
+    g.state.customEdit = false;
+
+    /* saving through the editor's form, then a member's identical attempt */
+    const fill = (id, v) => { $el(id).value = v; };
+    const submitPlan = () => {
+      const el = { dataset: { action: 'customPlanSave' }, tagName: 'FORM', hasAttribute: () => false, closest() { return this; } };
+      g.dispatch(el, { type: 'submit', target: el, preventDefault() {} });
+    };
+    fill('cpxTitle', 'Saved from the editor'); fill('cpxProblem', 'bp'); fill('cpxOwn', ''); fill('cpxNote', '');
+    for (let i = 0; i < 8; i++) { fill('cpxDo' + i, i < 3 ? 'Action ' + (i + 1) : ''); fill('cpxWhy' + i, 'Because it helps'); fill('cpxHow' + i, 'Step one\nStep two'); }
+    g.cloud.acct = { membership: { role: 'admin', status: 'approved' } };
+    g.state.tab = 'plan';
+    submitPlan();
+    ok('saving from the editor stores the plan on the visitor', david.interests.customPlan.title === 'Saved from the editor');
+    g.cloud.acct = { membership: { role: 'member', status: 'approved' } };
+    fill('cpxTitle', 'Member edit');
+    submitPlan();
+    ok('a member cannot save through the editor either', david.interests.customPlan.title === 'Saved from the editor');
+
+    const clearIt = () => {
+      const el = { dataset: { action: 'customPlanClear' }, tagName: 'BUTTON', hasAttribute: () => false, closest() { return this; } };
+      g.dispatch(el, { type: 'click', target: el });
+    };
+    g.cloud.acct = { membership: { role: 'admin', status: 'approved' } };
+    clearIt();
+    await sleep(30);
+    ok('Remove returns the visitor to the usual plan', !david.interests.customPlan && !g.planFor(david).custom);
+
+    /* a metric screen cannot open without a visitor */
+    g.attendees.length = 0;
+    g.openMetric('bp');
+    ok('the metric screen cannot open with no visitor', !g.state.metric);
+
+    g.cloud.acct = saved.acct; g.state.customEdit = false;
+    g.resetDemo();
+    g.state.tab = saved.tab; g.state.activeId = saved.id; g.state.regOpen = saved.reg;
+  }
+
   console.log('\n17. Cloud sync (fake Supabase)');
   const srv = makeServer();
   sandbox.supabase = { createClient: () => srv.client };

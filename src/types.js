@@ -49,4 +49,15 @@
  *   status: 'waiting'|'serving'|'done', joined_at: string,
  * }} QueueEntry */
 
+/** A plan written for one visitor, kept at interests.customPlan and carried with the rest of the record.
+ *  The same do / why / how shape planFor() produces, so the existing plan card and send-home paths render it
+ *  with no new renderer. `by` is the church's name; `at` is when it was written (ISO). @typedef {{
+ *   title: string,
+ *   problem: string,                  // a PROTOCOLS key (bp, sugar, …) or a short problem area of the church's own
+ *   actions: { do: string, why: string, how: string[] }[],   // 3–8 of them
+ *   note: string,                     // optional safety note
+ *   by: string,
+ *   at: string,
+ * }} CustomPlan */
+
 export {};
