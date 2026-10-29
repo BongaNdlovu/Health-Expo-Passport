@@ -1479,6 +1479,12 @@ function makeServer() {
       !/<b>Bad<\/b>/.test(g.viewPlan()) && /&lt;b&gt;Bad/.test(g.viewPlan()));
     david.interests.customPlan = cp;
     g.state.customEdit = false;
+    g.state.customEdit = true;
+    const editing = g.viewPlan();
+    ok('an existing custom plan prefills itself, so the starter is not offered',
+      /id="cpxTitle"/.test(editing) && editing.includes(cp.title)
+        && !/data-action="customPlanFromCurrent"/.test(editing));
+    g.state.customEdit = false;
 
     /* saving through the editor's form, then a member's identical attempt */
     const fill = (id, v) => { $el(id).value = v; };
@@ -1506,12 +1512,35 @@ function makeServer() {
     await sleep(30);
     ok('Remove returns the visitor to the usual plan', !david.interests.customPlan && !g.planFor(david).custom);
 
+    /* "start from the plan they were shown": a blank editor can be filled from the current plan,
+       so a church that only wants to tweak a line does not re-type the whole thing */
+    g.customPlanEdit();
+    ok('a fresh editor offers to start from the plan they were shown',
+      g.state.customEdit && /data-action="customPlanFromCurrent"/.test($main.innerHTML));
+    g.customPlanFromCurrent();
+    const dp = g.planFor(david), drafted = g.viewPlan();
+    ok('starting from the current plan fills the title, problem and actions',
+      drafted.includes(`id="cpxTitle" value="${g.esc(dp.goal)}"`)
+        && drafted.includes(`id="cpxDo0" value="${g.esc(dp.top[0].do)}"`)
+        && drafted.includes(`id="cpxWhy0" value="${g.esc(dp.top[0].why)}"`)
+        && new RegExp(`option value="${dp.pk}" selected`).test(drafted),
+      JSON.stringify({ title: (drafted.match(/id="cpxTitle" value="([^"]*)"/) || [])[1] }));
+    ok('...and the how steps come with it', drafted.includes(g.esc(dp.top[0].how.join('\n'))));
+    g.customPlanEdit();
+    ok('opening or closing the editor clears the draft', g.state.customDraft === null);
+    g.customPlanEdit();
+    const blankAgain = g.viewPlan();
+    ok('a fresh editor is blank again after the draft was cleared',
+      /id="cpxTitle" value=""/.test(blankAgain) && !/id="cpxTitle" value="[^"]]/.test(blankAgain));
+    g.customPlanEdit();
+    g.customPlanEdit();
+
     /* a metric screen cannot open without a visitor */
     g.attendees.length = 0;
     g.openMetric('bp');
     ok('the metric screen cannot open with no visitor', !g.state.metric);
 
-    g.cloud.acct = saved.acct; g.state.customEdit = false;
+    g.cloud.acct = saved.acct; g.state.customEdit = false; g.state.customDraft = null;
     g.resetDemo();
     g.state.tab = saved.tab; g.state.activeId = saved.id; g.state.regOpen = saved.reg;
   }

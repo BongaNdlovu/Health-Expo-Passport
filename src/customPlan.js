@@ -15,6 +15,7 @@ import { A, $, esc, firstName } from './helpers.js';
 import { PROTOCOLS, attendees, state } from './data.js';
 import { cloud, persist } from './state.js';
 import { renderMain, toast } from './shell.js';
+import { planFor } from './results.js';
 import { confirmAsk } from './feedback.js';
 import { IS_APP } from './platform.js';
 import { canCustomPlan } from './account.js';
@@ -101,7 +102,7 @@ function templatePlan(){
    and no other modal machinery for a long form (the church plan editor is a card too). */
 export function customPlanHTML(a){
  const cp=a&&a.interests&&a.interests.customPlan;
- const p=cp&&typeof cp==='object'?cp:blankCustomPlan();
+ const p=cp&&typeof cp==='object'?cp:(state.customDraft||blankCustomPlan());
  const acts=Array.isArray(p.actions)?p.actions:[];
  const keys=Object.keys(PROTOCOLS),own=!keys.includes(p.problem);
  const field=(id,ph,v,max)=>`<input id="${id}" value="${esc(v||'')}" placeholder="${ph}" maxlength="${max}" class="field mt-1.5 text-xs">`;
@@ -111,7 +112,8 @@ export function customPlanHTML(a){
    ${field('cpxDo'+i,'What to do',x.do,LIMITS.do)}${field('cpxWhy'+i,'Why it helps',x.why,LIMITS.why)}
    <textarea id="cpxHow${i}" rows="2" maxlength="${LIMITS.how}" placeholder="How: one step per line" class="field mt-1.5 text-xs">${esc(lines(x.how).join('\n'))}</textarea>
   </div>`;};
- return `<form data-action="customPlanSave" class="mt-3 space-y-2.5">
+ return `${!cp?`<button type="button" class="btn btn-glass w-full py-2 text-[11px]" data-action="customPlanFromCurrent">Start from the plan they were shown</button>`:''}
+  <form data-action="customPlanSave" class="mt-3 space-y-2.5">
   <label class="block"><span class="microlabel">Title</span>${field('cpxTitle','e.g. Easing stiff, painful joints',p.title,LIMITS.title)}</label>
   <label class="block"><span class="microlabel">Problem area</span>
    <select id="cpxProblem" class="field mt-1 text-xs">${keys.map(k=>`<option value="${k}" ${k===p.problem?'selected':''}>${esc(PROTOCOLS[k].tag)}</option>`).join('')}<option value="own" ${own?'selected':''}>Another problem (type it below)</option></select></label>
@@ -144,8 +146,28 @@ export function customPlanBox(a){
 const churchLabel=()=>cloud.acct&&cloud.acct.church&&cloud.acct.church.name?cloud.acct.church.name:'your church';
 const holder=()=>{const a=A();return a&&attendees.some(x=>x.id===a.id)?a:null;};
 
+/* The editor starts blank, which is work when the church only wants to tweak a line. This fills it with the
+   plan the visitor was about to be shown — the generated one, or their church's chosen one — so a small
+   edit is enough. A stored custom plan never comes through here: "Edit custom plan" prefills itself. */
+function draftFromCurrent(a){
+ const P=planFor(a);
+ return {title:String(P.goal||'').slice(0,LIMITS.title),
+  problem:P.church?String(P.church.problem||''):String(P.pk||''),
+  actions:(P.top||[]).slice(0,CUSTOM_MAX_ACTIONS).map(x=>({do:String(x.do||''),why:String(x.why||''),how:[...(x.how||[])]})),
+  note:P.church?String(P.church.note||''):''};
+}
+export function customPlanFromCurrent(){
+ if(!canCustomPlan())return;
+ const a=holder();if(!a)return;
+ if(a.interests&&a.interests.customPlan)return;
+ state.customDraft=draftFromCurrent(a);
+ renderMain();
+ toast('Loaded the plan they were shown — change what you need and save');
+}
+
 export function customPlanEdit(){
  if(!canCustomPlan()){toast('Only a church admin or the app owner can write a custom plan.');return;}
+ state.customDraft=null;
  state.customEdit=!state.customEdit;renderMain();
 }
 
@@ -166,7 +188,7 @@ export function customPlanSave(e){
    note:v('cpxNote'),by:churchLabel(),at:new Date().toISOString()});
   a.interests=a.interests||{};
   a.interests.customPlan=plan;
-  persist();state.customEdit=false;renderMain();
+  persist();state.customDraft=null;state.customEdit=false;renderMain();
   toast(`Custom plan saved for ${firstName(a.name)} ✓`);
  }catch(err){toast((err&&err.message)||'Check the plan fields.');}
 }
@@ -186,7 +208,7 @@ export function customPlanImport(el){
   if(!out.plan.by)out.plan.by=churchLabel();
   a.interests=a.interests||{};
   a.interests.customPlan=out.plan;
-  persist();state.customEdit=false;renderMain();
+  persist();state.customDraft=null;state.customEdit=false;renderMain();
   toast(`Custom plan imported for ${firstName(a.name)} ✓`);
  };
  r.onerror=()=>toast('Could not read that file.');

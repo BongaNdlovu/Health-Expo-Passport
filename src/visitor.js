@@ -134,7 +134,7 @@ export function switchTab(t){
  if(JOURNEY.includes(t)){state.step=t;state.stepFor=state.activeId;}
  if(state.food)state.food.open=false;   /* tapping a tab (even Plan) leaves the Food screen — at the tap */
  if(t!=='screen'){state.metric='';state.metricFor='';}   /* the metric drill-down lives inside Check */
- if(t!=='plan')state.customEdit=false;                  /* the custom-plan editor belongs to the Plan screen */
+ if(t!=='plan'){state.customEdit=false;state.customDraft=null;}   /* the custom-plan editor belongs to the Plan screen */
  if(t!=='serve')state._serveKey='';     /* coming back to Team fades in once again */
  state.tab=t;render();window.scrollTo(0,0);
 }

@@ -17,7 +17,7 @@ import { isServe, render, toggleTheme } from './shell.js';
 import { cloud } from './state.js';
 import { filterVisitors, onPrayer, onStationCommit, onStationInput, onStep, registerSubmit, reservePouch, resetDemo, resetDemoAsk, switchTab, toggleInterest, toggleReg } from './visitor.js';
 import { applyReading, cancelReg, confirmResults, editReadings, finishVisit, goVisit, metricBack, newVisitFrom, onChronicList, onHeight, openMetric, pickSex, recordConsent, setAnswer, setMyStation, showGuardian, switchTo, toggleOptin, toggleTick } from './visitor.js';
-import { customPlanClear, customPlanEdit, customPlanImport, customPlanSave, customPlanTemplate } from './customPlan.js';
+import { customPlanClear, customPlanEdit, customPlanFromCurrent, customPlanImport, customPlanSave, customPlanTemplate } from './customPlan.js';
 import { closeVolReg, closeWhatsApp, exportVolCSV, logExpoEntry, openEmail, openSwitcher, openVolModal, openVolReg, openVolSwitcher, openWhatsApp, pickSecondBooth, pickVolunteer, printCard, removeExpoEntry, saveExpoEntry, saveVolunteer, sendEmail, sendWhatsApp, setVol, setVolTab, startNewVolunteer, switchToVol, toggleDraftBooth, toggleDraftList, toggleShift } from './volunteer.js';
 import { closeSwitcher, closeVolModal, closePlaceSheet, filterSwitcher, filterVolSwitcher, openWAFor, openPlaceSheet, pickAttendee, pickPledge, placeLead, placeMove, placeRelease, placeSwap, recycleBadge, registerNew, setSwitchMode, showAllVol } from './volunteer.js';
 
@@ -151,6 +151,7 @@ export const ACTION_MAP = {
   customPlanImport: el => customPlanImport(el),
   customPlanClear: () => customPlanClear(),
   customPlanTemplate: () => customPlanTemplate(),
+  customPlanFromCurrent: () => customPlanFromCurrent(),
 
   /* -- live queue, sim, shell nav -- */
   'queue-sync': () => queueSync(true),

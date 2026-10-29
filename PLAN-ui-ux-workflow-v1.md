@@ -717,6 +717,24 @@ VERIFIED:  line citations 167-169 / 179 / 187 / 271 / 505 / 635 re-checked and a
            and is_platform_admin() exist in schema.sql; docs/ui-contract.md §3.3 exists; `customPlan`
            collides with nothing in src/ or the schema; PGlite 0.5.11 does report PostgreSQL 18.6.
 APPROVED BY: self — plan document only. No application file was touched.
+
+A.6.6 — 2026-10-29 — Post-plan addition: "Start from the plan they were shown"
+REQUEST:    the operator asked for a way to edit the original plan a little, rather than re-typing a whole
+            custom plan (the editor opened blank by design).
+CHANGE:     src/customPlan.js gains customPlanFromCurrent() — a button in a fresh editor that fills the
+            title, problem and first three actions from planFor(a) (a chosen church plan, if any, else the
+            generated one) into state.customDraft; the draft clears on open/close, save, import and on
+            leaving the Plan tab. src/visitor.js switchTab clears it; action-registry and __internals
+            register customPlanFromCurrent and customPlanEdit. A stored custom plan still prefills itself,
+            so the starter is only offered on a fresh editor.
+TESTS:      harness 16f gains 6 checks (starter offered on a fresh editor, fields filled from the current
+            plan, how steps carried, draft cleared on close, blank again, starter withheld when a stored
+            plan exists); suite total 1100, all passing; test:hub 35/35; build + test:build green.
+            Verified end to end in the running app as a simulated admin: fill → tweak title + one how step →
+            save → Plan header and "Written by" credit update → Remove restores the generated plan.
+SCOPE NOTE: this rides entirely on the approved D-04/D-05 storage and role decisions; no schema, mapper or
+            clinical content change.
+APPROVED BY: fanel (operator), 2026-10-29 ("I want an option to be able to edit the plan").
 ```
 
 ### A.7 · Change report — EMPTY (written at CP-06)
