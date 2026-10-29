@@ -914,20 +914,20 @@
     -webkit-mask-image:linear-gradient(90deg,transparent,#000 10%,#000 90%,transparent);
     mask-image:linear-gradient(90deg,transparent,#000 10%,#000 90%,transparent)}
   .hx-ecg svg{display:block;width:100%;height:100%}
-  .hx-ecg-track{fill:none;stroke:var(--hx-mint);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;opacity:.45}
-  .hx-ecg-scan{position:absolute;top:0;bottom:0;left:0;width:22%;transform:translateX(-120%);
-    background:linear-gradient(90deg,transparent,rgba(52,211,117,.55),transparent);
-    animation:hxScan 2.6s linear infinite}
-  @keyframes hxScan{to{transform:translateX(560%)}}
-  /* lub-dub: two quick swells then rest, on the same 2.6s cycle as the scan so they stay in step.
-     Opacity only — a box-shadow or filter glow repaints the hero every frame on a weak phone. */
-  .hx-ecg-beat{position:absolute;inset:0;pointer-events:none;opacity:0;
-    background:radial-gradient(60% 120% at 50% 50%,rgba(52,211,117,.38),transparent 70%);
-    animation:hxBeat 2.6s ease-in-out infinite}
-  @keyframes hxBeat{0%,100%{opacity:0}6%{opacity:.85}13%{opacity:.2}20%{opacity:.6}34%{opacity:0}}
-  html.lite .hx-ecg-scan,html.page-hidden .hx-ecg-scan,
-  html.lite .hx-ecg-beat,html.page-hidden .hx-ecg-beat{animation:none;opacity:0}
-  @media (prefers-reduced-motion:reduce){.hx-ecg-scan,.hx-ecg-beat{animation:none;opacity:0}}
+  /* The glow is the same path drawn again, wider and faint, underneath — so it hugs every bend of
+     the trace and can never show an edge or bar. Both paths write themselves left to right (dash
+     offset), hold for the rest of the beat, then fade and redraw on the shared 2.6s cycle. The only
+     animated paint is two small stroked paths; no filter, no box-shadow, no overlay gradient. */
+  .hx-ecg-glow,.hx-ecg-track{fill:none;stroke:var(--hx-mint);stroke-linecap:round;stroke-linejoin:round;
+    stroke-dasharray:101;stroke-dashoffset:101;
+    animation:hxDraw 2.6s linear infinite,hxFade 2.6s linear infinite}
+  .hx-ecg-glow{stroke-width:7;opacity:.22;--hx-o:.22}
+  .hx-ecg-track{stroke-width:2;opacity:.7;--hx-o:.7}
+  @keyframes hxDraw{0%{stroke-dashoffset:101}42%{stroke-dashoffset:0}100%{stroke-dashoffset:0}}
+  @keyframes hxFade{0%,86%{opacity:var(--hx-o)}100%{opacity:0}}
+  html.lite .hx-ecg-track,html.page-hidden .hx-ecg-track,
+  html.lite .hx-ecg-glow,html.page-hidden .hx-ecg-glow{animation:none;stroke-dashoffset:0}
+  @media (prefers-reduced-motion:reduce){.hx-ecg-track,.hx-ecg-glow{animation:none;stroke-dashoffset:0}}
 
   .hx-capsule{display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:4px 12px;border-radius:999px;
     background:var(--hx-mint-soft);border:1px solid var(--hx-mint-line);color:var(--hx-mint-deep);
@@ -1337,8 +1337,9 @@
    <div style="position:absolute;inset:0;top:50%;transform:translateY(-50%)">
     <div class="hx-ecg" aria-hidden="true">
      <svg viewBox="0 0 340 70" preserveAspectRatio="none" focusable="false">
-      <path class="hx-ecg-track" d="M 0 35 L 50 35 L 64 35 L 72 31 Q 78 28 84 35 L 96 35 L 102 41 L 114 8 L 126 62 L 136 31 Q 148 24 162 35 L 195 35 L 210 35 L 218 31 Q 224 28 230 35 L 242 35 L 248 41 L 260 8 L 272 62 L 282 31 Q 294 24 308 35 L 340 35"/>
-     </svg><span class="hx-ecg-scan"></span><span class="hx-ecg-beat"></span>
+      <path class="hx-ecg-glow" pathLength="101" d="M 0 35 L 50 35 L 64 35 L 72 31 Q 78 28 84 35 L 96 35 L 102 41 L 114 8 L 126 62 L 136 31 Q 148 24 162 35 L 195 35 L 210 35 L 218 31 Q 224 28 230 35 L 242 35 L 248 41 L 260 8 L 272 62 L 282 31 Q 294 24 308 35 L 340 35"/>
+      <path class="hx-ecg-track" pathLength="101" d="M 0 35 L 50 35 L 64 35 L 72 31 Q 78 28 84 35 L 96 35 L 102 41 L 114 8 L 126 62 L 136 31 Q 148 24 162 35 L 195 35 L 210 35 L 218 31 Q 224 28 230 35 L 242 35 L 248 41 L 260 8 L 272 62 L 282 31 Q 294 24 308 35 L 340 35"/>
+     </svg>
     </div>
    </div>
    <div style="position:relative">

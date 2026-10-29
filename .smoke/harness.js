@@ -3687,12 +3687,15 @@ function makeServer() {
       && !/transition:transform \.45s cubic-bezier\(\.34,1\.56,\.64,1\),box-shadow/.test(html));
     ok('the queue pulse no longer animates box-shadow',
       /@keyframes qpulse\{/.test(html) && !/@keyframes qpulse\{[^}]*box-shadow/.test(html));
-    ok('the heartbeat glow animates opacity only',
-      /@keyframes hxBeat\{/.test(html) && !/@keyframes hxBeat\{[^}]*(box-shadow|filter)/.test(html));
-    ok('the heartbeat glow is off under lite and reduced motion',
-      /html\.lite[^{]*\.hx-ecg-beat/.test(html) && /prefers-reduced-motion[^}]*hx-ecg-beat/.test(html));
-    ok('both copies of the ECG carry the heartbeat span',
-      (html.match(/hx-ecg-beat"><\/span>/g) || []).length >= 1 && /hx-ecg-beat/.test(srcText));
+    ok('the line glow is a wider stroke of the same path, no filter or gradient',
+      /\.hx-ecg-glow\{stroke-width:7/.test(html)
+      && /@keyframes hxDraw\{/.test(html) && /@keyframes hxFade\{/.test(html)
+      && !/@keyframes hx(Draw|Fade)\{[^}]*?(box-shadow|filter|gradient)/.test(html));
+    ok('both copies of the ECG draw line and glow from one path each',
+      (html.match(/pathLength="101"/g) || []).length >= 2
+      && (srcText.match(/pathLength="101"/g) || []).length >= 2);
+    ok('the ECG draw and glow are off under lite and reduced motion (static line instead)',
+      /html\.lite[^{]*\.hx-ecg-glow/.test(html) && /prefers-reduced-motion[^}]*\.hx-ecg-glow/.test(html));
   }
 
   /* pouch reservation (the button lives on the last step, Send, since the plan screen was redesigned) */

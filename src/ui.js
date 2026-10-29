@@ -7,13 +7,15 @@ import { esc } from './helpers.js';
 /* Authentic P-Q-R-S-T trace used by the reference (viewBox 0 0 340 70). */
 export const ECG_PATH = 'M 0 35 L 50 35 L 64 35 L 72 31 Q 78 28 84 35 L 96 35 L 102 41 L 114 8 L 126 62 L 136 31 Q 148 24 162 35 L 195 35 L 210 35 L 218 31 Q 224 28 230 35 L 242 35 L 248 41 L 260 8 L 272 62 L 282 31 Q 294 24 308 35 L 340 35';
 
-/** Static ECG trace plus one transform-only scan overlay. Decorative. */
+/** The monitor trace: the real path writes itself left to right and holds for the beat. Its glow is
+    the same path drawn wider underneath, so it hugs every bend — no radial overlay to show edges.
+    Decorative; lite and reduced motion get a static line. */
 export function ecgHTML(){
  return `<div class="hx-ecg" aria-hidden="true">
   <svg viewBox="0 0 340 70" preserveAspectRatio="none" focusable="false">
-   <path class="hx-ecg-track" d="${ECG_PATH}"/>
+   <path class="hx-ecg-glow" pathLength="101" d="${ECG_PATH}"/>
+   <path class="hx-ecg-track" pathLength="101" d="${ECG_PATH}"/>
   </svg>
-  <span class="hx-ecg-scan"></span><span class="hx-ecg-beat"></span>
  </div>`;
 }
 
