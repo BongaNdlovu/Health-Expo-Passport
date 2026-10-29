@@ -195,7 +195,7 @@ export function viewHome(){
   </div>
 
   ${cloud.demo&&!cloud.user?`<div class="hx-practice">
-   <div class="hx-practice-copy"><b>Practice Mode Active</b><span>Demo visitors · Safe offline training</span></div>
+   <div class="hx-practice-copy"><b>Practice Mode Active</b><span>Demo visitors · nothing is shared</span></div>
    <button data-action="openCloud" class="hx-practice-go" aria-label="Sign in">${splitBtnHTML({label:'Sign in'})}</button>
   </div>`:''}
 

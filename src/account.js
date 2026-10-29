@@ -753,7 +753,10 @@ export async function profDeleteGo(){
 }
 /* Create an account / Forgot password open the full-screen sign-in screens, with a way back to the app (gateBack) */
 export function profGate(v){cloud.gateForce=true;gateView(v);}
-export function gateBack(){cloud.gateForce=false;cloud.view='login';cloud.formErr='';cloud.gateKey='';renderGate();}
+export function gateBack(){
+ cloud.gateHide=true;                  /* keep the session; the app stays open until a sign-in screen is asked for again */
+ cloud.gateForce=false;cloud.view='login';cloud.formErr='';cloud.gateKey='';renderGate();
+}
 
 /* --- church admins (and the platform admin, for any church) --- */
 export function churchAdminHTML(){
@@ -1018,7 +1021,7 @@ export async function cloudSignOut(force){
  clearTimeout(cloud.pushT);clearTimeout(cloud.retryT);stopRealtime();
  cloud.signingOut=true;
  try{await cloud.client.auth.signOut({scope:'local'});}catch(e){}
- cloud.signingOut=false;cloud.ready=false;cloud.demo=false;cloud.gateKey='';cloud.isAdmin=undefined;cloud.pendingUsers=null;
+ cloud.signingOut=false;cloud.ready=false;cloud.demo=false;cloud.gateHide=false;cloud.gateKey='';cloud.isAdmin=undefined;cloud.pendingUsers=null;
  cloud.acct=null;cloud.churchId='';cloud.health=undefined;cloud.dir=null;cloud.regChurch=false;cloud.members=null;cloud.plat=null;cloud.audit=null;cloud.adminChurch='';cloud.adminData='';cloud.adminRows=null;closeAcct();
  cloud.view='login';cloud.viewEmail='';cloud.pending=false;cloud.recovery=false;cloud.formErr='';cloud.gateForce=false;cloud.delOpen=false;
  cloud.plans=null;cloud.adminPlans=null;cloud.planEdit=null;try{localStorage.removeItem(CHURCH_PLANS_KEY);}catch(e){}
@@ -1027,7 +1030,7 @@ export async function cloudSignOut(force){
  try{localStorage.removeItem(SYNC_KEY);localStorage.removeItem(CHURCH_KEY);}catch(e){}
  resetLedgerSig();
  seedDemo();state.sugFor=null;state._goal=null;state.tab=state.tab==='me'?'me':'home';
- closeCloud();render();setCloud('signedout');toast('Signed out — this device is back in demo mode');
+ closeCloud();render();setCloud('signedout');toast('Signed out — sign in again, or open the practice sandbox');
 }
 
 /* ---------- pull, merge, push ---------- */

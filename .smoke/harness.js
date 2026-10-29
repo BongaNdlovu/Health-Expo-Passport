@@ -1551,7 +1551,8 @@ function makeServer() {
   const C = g.cloud;
   const device = () => {                      /* a fresh, signed-out demo device */
     clearTimeout(C.pushT); clearTimeout(C.retryT); g.stopRealtime();
-    C.user = null; C.mode = false; C.blocked = false; C.synced = { att: {}, vol: {} }; C.rejected = {}; C.busy = false; C.again = false;
+    C.user = null; C.mode = false; C.blocked = false; C.gateHide = false; C.gateForce = false;
+    C.synced = { att: {}, vol: {} }; C.rejected = {}; C.busy = false; C.again = false;
     store.delete('newstart.cloud.v1');
     g.resetDemo(); srv.reset();
   };
@@ -1812,12 +1813,17 @@ function makeServer() {
   C.ready = false; C.demo = false; C.client = null; C.status = 'off'; C.gateKey = '';
   g.renderGate();
   ok('cold start: gate covers the app while connecting', g.gateState() === 'connecting' && gateShown() && $el('authGateBody').innerHTML.includes('Connecting'));
+  ok('the sign-in page offers the practice sandbox and no offline-training entry',
+    /Practise<br>Sandbox/.test(html) && !/Offline<br>Training/.test(html) && !/Safe local sandbox/.test(html)
+      && (html.match(/data-action="gateDemo"/g) || []).length === 1);
   sandbox.NEWSTART_NO_CLOUD = true; g.renderGate();
   ok('the test switch really hides the gate', g.gateState() === 'hidden' && !gateShown());
   sandbox.NEWSTART_NO_CLOUD = false;
   await g.cloudInit();
   srv.authCb('INITIAL_SESSION', null); await sleep(30);
   ok('no saved session → login form', g.gateState() === 'form' && gateShown() && $el('authGateBody').innerHTML.includes('gatePass') && $el('authGateBody').innerHTML.includes('gateEmail'));
+  ok('a fresh signed-out device has no Back control behind the sign-in page',
+    !$el('authGateBody').innerHTML.includes('data-action="gateBack"'));
   ok('form has email + password fields and a sign-in button', /type="email"/.test($el('authGateBody').innerHTML) && /type="password"/.test($el('authGateBody').innerHTML) && /id="gateGo"/.test($el('authGateBody').innerHTML) && $el('authGateBody').innerHTML.includes('Sign In to Expo'));
   const viaGate = { preventDefault() {}, target: { dataset: { pre: 'gate' } } };
   $el('gateEmail').value = ' staff@example.org '; $el('gatePass').value = 'nope';
@@ -1850,6 +1856,8 @@ function makeServer() {
   await g.cloudSignOut();
   ok('deliberate sign-out shows the login again, without the "expired" toast', gateShown() && g.gateState() === 'form' && !/Signed out — tap/.test($el('toastMsg').textContent), g.gateState());
   ok('…and the demo data is not reachable behind it', C.ready === false && C.demo === false);
+  ok('…and a signed-out device at the gate has no Back control',
+    !$el('authGateBody').innerHTML.includes('data-action="gateBack"'));
 
   /* devices that were signed in before open straight into their saved copy */
   C.mode = true; C.ready = C.mode; g.renderGate();
@@ -1862,15 +1870,48 @@ function makeServer() {
   await signIn(); await sleep(100);
   ok('not approved → still gated on a "waiting for approval" screen', gateShown() && g.gateState() === 'pending' && /Waiting for approval/.test($el('authGateBody').innerHTML), g.gateState());
   ok('…which shows the account email and offers Check again / Sign out', $el('authGateBody').innerHTML.includes('staff@example.org') && $el('authGateBody').innerHTML.includes('Check again') && $el('authGateBody').innerHTML.includes('Sign out'));
+  ok('a signed-in gate names the account', $el('authGateBody').innerHTML.includes('Signed in as'));
+  ok('the practice sandbox is not offered to a signed-in account', $el('gateSandbox').style.display === 'none');
+  /* An account the church has not approved cannot be waved past, and whether it could must not depend on
+     my_account having answered: the same person would otherwise get Back on a slow connection and not on a
+     fast one. Checked with the account absent and present. */
+  ok('a waiting-for-approval gate offers no Back',
+    !$el('authGateBody').innerHTML.includes('data-action="gateBack"'));
+  const acctWas = C.acct;
+  C.acct = { membership: { status: 'pending' }, church: { status: 'active' } }; C.gateKey = ''; g.renderGate();
+  ok('…and none once my_account has answered either',
+    g.gateState() === 'pending' && !$el('authGateBody').innerHTML.includes('data-action="gateBack"'));
+  C.acct = acctWas; C.gateKey = ''; g.renderGate();
+  g.gateBack();
+  ok('…and Back cannot lift an account-status gate', g.gateState() === 'pending' && gateShown());
+  C.gateHide = false; C.gateKey = ''; g.renderGate();
   srv.staff = true; await g.cloudSync(true); await sleep(50);
   ok('after the administrator approves the account, Check again lifts the gate', !gateShown() && C.ready === true && C.pending === false, g.gateState());
+  /* Back is for a gate the app opened over a desk that was already usable: Profile -> Create an account,
+     then "Back to the app". That is the case it exists for, and the session survives it. */
+  C.user = null; C.pending = false; C.ready = false; C.demo = true; C.gateForce = true; C.view = 'signup'; C.gateKey = ''; g.renderGate();
+  ok('a gate opened over a usable desk offers Back',
+    gateShown() && $el('authGateBody').innerHTML.includes('data-action="gateBack"'));
+  g.gateBack();
+  ok('…and Back returns to the app', g.gateState() === 'hidden' && !gateShown());
+  C.gateHide = false; C.gateForce = false; C.demo = false; C.view = 'login'; C.gateKey = ''; g.renderGate();
+
+  C.user = { email: 'staff@example.org' }; C.recovery = true; C.gateHide = false; C.gateKey = ''; g.renderGate();
+  ok('the reset-password screen cannot be backed out of',
+    g.gateState() === 'newpass' && !$el('authGateBody').innerHTML.includes('data-action="gateBack"'));
+  C.recovery = false; C.user = null; C.gateKey = ''; g.renderGate();
 
   /* library cannot load */
   device(); C.client = null; C.ready = false; C.demo = false; C.user = null; C.gateKey = ''; g.setCloud('unavailable');
   ok('sign-in service unreachable → says so, with a retry', gateShown() && g.gateState() === 'unavailable' && $el('authGateBody').innerHTML.includes('Try again'));
+  ok('…and no Back on a device with nothing behind the gate',
+    !$el('authGateBody').innerHTML.includes('data-action="gateBack"'));
   ok('…and an explicit demo escape hatch', $el('authGateBody').innerHTML.includes('demo'));
   g.gateDemo();
   ok('choosing the demo lifts the gate', !gateShown());
+  g.state.tab = 'home'; g.render();
+  ok('the practice banner says the demo is not shared, without the removed offline-training wording',
+    /Practice Mode Active/.test($main.innerHTML) && /nothing is shared/.test($main.innerHTML) && !/offline training/i.test($main.innerHTML));
   C.demo = false;
 
   /* show/hide password */
@@ -2427,7 +2468,7 @@ function makeServer() {
     const freshDevice = async () => {
       device(); install(); rc.length = 0; store.delete('newstart.church.v1');
       sandbox.NEWSTART_NO_CLOUD = false;
-      Object.assign(C, { ready: false, demo: false, pending: false, gateKey: '', acct: null, churchId: '', health: undefined, gateForce: false, delOpen: false, view: 'login', formErr: '', client: null, status: 'off' });
+      Object.assign(C, { ready: false, demo: false, pending: false, gateKey: '', acct: null, churchId: '', health: undefined, gateForce: false, gateHide: false, delOpen: false, view: 'login', formErr: '', client: null, status: 'off' });
       await g.cloudInit(); srv.authCb('INITIAL_SESSION', null); await sleep(30);
     };
 
@@ -2539,7 +2580,7 @@ function makeServer() {
     }
 
     C.user = null; g.stopRealtime(); srv.reset(); store.delete('newstart.cloud.v1'); store.delete('newstart.church.v1');
-    Object.assign(C, { mode: false, ready: false, pending: false, acct: null, churchId: '', synced: { att: {}, vol: {} }, gateForce: false, delOpen: false });
+    Object.assign(C, { mode: false, ready: false, pending: false, acct: null, churchId: '', synced: { att: {}, vol: {} }, gateForce: false, gateHide: false, delOpen: false });
     g.state.tab = 'home'; sandbox.NEWSTART_NO_CLOUD = noCloudWas; g.resetDemo();
   }
 

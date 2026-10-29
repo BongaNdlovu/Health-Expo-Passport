@@ -183,16 +183,18 @@ if(!IS_APP&&'serviceWorker' in navigator&&(location.protocol==='https:'||locatio
    expo never locks the desk out of its own data.
    Views while signed out:  login · signup · verify (check your email) · forgot · forgotSent
    Signed in but not approved yet: pending.  After a reset-password link: newpass. */
-/* the sign-in screens a signed-out person can leave again ("Back to the app") when the Profile page opened them */
-const GATE_BACKABLE=['form','signup','verify','forgot','forgotSent'];
+/* Which gate screen is up; 'hidden' means the app is usable. Back is a separate choice (cloud.gateHide):
+   once the reader chooses "Back to the app", the gate stays out of the way until a sign-in screen is asked for. */
 export function gateState(){
  if(window.NEWSTART_NO_CLOUD)return 'hidden';
  if(cloud.recovery&&cloud.user)return 'newpass';
+ /* An account that is not approved yet is judged before Back is honoured. Otherwise "Back to the app"
+    would open the desk for somebody the church has not let in, and whether it did would depend on
+    whether my_account had answered yet. */
+ if(cloud.user&&cloud.pending)return acctGate()||'pending';
+ if(cloud.gateHide)return 'hidden';          /* Back was chosen: the app stays open until a gate is asked for again */
  if((cloud.ready||cloud.demo)&&!cloud.gateForce)return 'hidden';
- if(cloud.user){
-  if(cloud.pending)return acctGate()||'pending';
-  return cloud.status==='error'?'error':'loading';
- }
+ if(cloud.user)return cloud.status==='error'?'error':'loading';
  if(cloud.status==='unavailable')return 'unavailable';
  if(cloud.client&&cloud.status==='signedout')return cloud.view==='login'?'form':cloud.view;
  return 'connecting';
@@ -222,7 +224,7 @@ export const pwField=(id,label,auto,ph)=>`<label class="block"><span class="micr
 export const authRedirect=()=>IS_APP?APP_SITE:/^https?:$/.test(location.protocol)?location.origin+location.pathname:undefined;
 export function gateView(v){
  const e=$('#gateEmail');if(e&&e.value)cloud.viewEmail=e.value.trim();
- cloud.view=v;cloud.formErr='';cloud.gateKey='';renderGate();
+ cloud.view=v;cloud.formErr='';cloud.gateKey='';cloud.gateHide=false;renderGate();
 }
 function gateFail(m){cloud.formErr=m;cloud.gateKey='';renderCloudBody();renderGate();}
 export function gateBusy(pre,label){const b=$('#'+pre+'Go');if(b){b.disabled=true;const l=b.querySelector('.hx-cta-main');if(l)l.textContent=label;else b.textContent=label;}}
@@ -235,9 +237,19 @@ export function renderGate(){
  el.classList.toggle('hidden',st==='hidden');el.classList.toggle('flex',st!=='hidden');
  /* the gate is a full-screen modal: nothing behind it may take focus or a tap */
  const app=document.getElementById('app');if(app){if(st==='hidden')app.removeAttribute('inert');else app.setAttribute('inert','');}
- const sandbox=$('#gateSandbox');if(sandbox)sandbox.style.display=cloud.mode?'none':'';
+ /* the practice sandbox is for a signed-out desk: a signed-in account must not drop into demo data through it */
+ const sandbox=$('#gateSandbox');if(sandbox)sandbox.style.display=(cloud.mode||cloud.user)?'none':'';
  if(st==='hidden'){cloud.gateKey='';return;}
- const key=[st,cloud.formErr,cloud.err,cloud.status,cloud.viewEmail,cloud.acctV].join('|');
+ /* Back is offered only when there is an app to go back to: the practice sandbox, a saved copy, or a gate the
+    app opened over itself. A fresh signed-out device has nothing behind it, so the control stays hidden (Q3).
+    A first sign-in's loading screen is excluded: the data has not arrived yet. New-password and the account-status
+    gates keep it hidden too — those must be resolved before the app opens. The session is never ended by Back. */
+ const showBack=st!=='newpass'&&st!=='loading'&&!ACCT_GATES.includes(st)
+  &&!!(cloud.gateForce||cloud.ready||cloud.demo||cloud.user);
+ const who=cloud.user&&cloud.user.email
+  ?`<p class="mb-1 text-[11px] font-bold text-[#5c747a]">Signed in as <b class="text-[#123033]">${esc(cloud.user.email)}</b></p>`:'';
+ const back=showBack?`<button type="button" class="tap-link mb-2" data-action="gateBack">← Back to the app</button>`:'';
+ const key=[st,cloud.formErr,cloud.err,cloud.status,cloud.viewEmail,cloud.acctV,showBack,cloud.user?cloud.user.email:''].join('|');
  if(key===cloud.gateKey)return;
  cloud.gateKey=key;
  const keepEmail=($('#gateEmail')||{}).value||cloud.viewEmail||'',keepName=($('#gateName')||{}).value||'';
@@ -323,7 +335,7 @@ export function renderGate(){
  }else{
   html=`${title('Connecting…')}${note('Checking for a saved sign-in.')}`;
  }
- if(cloud.gateForce&&GATE_BACKABLE.includes(st))html+=`<div class="mt-3 text-center">${link('gateBack','Back to the app')}</div>`;
+ html=who+back+html;
  body.innerHTML=html;
  if(st==='church'&&!cloud.regChurch&&cloud.dir==null)churchSearch('');
  if(['form','signup','forgot'].includes(st))setTimeout(()=>{const e=$(st==='signup'?'#gateName':'#gateEmail');if(e&&e.focus)e.focus();},60);
