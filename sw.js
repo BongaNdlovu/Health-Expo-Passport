@@ -28,8 +28,15 @@ self.addEventListener('install', event => {
     const libs = await caches.open(LIBS);
     /* libraries are best-effort: a CDN hiccup must not stop the app installing */
     await Promise.allSettled(LIB_URLS.map(async url => { if (!(await libs.match(url))) await libs.add(url); }));
-    await self.skipWaiting();
+    /* No skipWaiting() here. A new build now waits until the page asks for it (src/update.js shows the banner
+       and its Update button sends UPDATE_NOW). Swapping the worker under a running page is how an app ends up
+       half-updated: the open page still runs the old bundle while every later fetch comes from the new worker. */
   })());
+});
+
+/* The page's Update button. Anything else is ignored. */
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {

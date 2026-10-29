@@ -1,6 +1,6 @@
 // @ts-check
 import { IS_APP } from './platform.js';
-import { BADGE_TIERS, STATUS_UI } from './data.js';
+import { BADGE_TIERS, EXPO_TOTAL, STATUS_UI } from './data.js';
 import { $, FOOD_PRICES } from './helpers.js';
 import { AVAIL, BOOTH, BOOTHS, DISCLAIMER, EXPO_UPCOMING, PRECAUTIONS, SKILLS, attendees, boothHue, boothLabel, hueOf, state, volunteers } from './data.js';
 import { A, PRICE_DATE, bmi, esc, firstName, fmt1, healthAge, initials, money, pefPct, projection, simBP } from './helpers.js';
@@ -29,9 +29,10 @@ import { GRACE_DAYS, withoutOldReadings } from './retention.js';
 export const AV=()=>state.volNew?null:(volunteers.find(v=>v.id===state.volId)||volunteers[0]||null);
 export const volHours=v=>(v.history||[]).reduce((t,h)=>t+(Number(h.hours)||0),0);
 export const volExpos=v=>(v.history||[]).length;
-/* The level counts expos served, one level per expo, and stops growing at 50.
-   A volunteer with 0 expos has no level — 0 must never display as one. */
-export const VOL_LEVEL_MAX=50;
+/* The level counts expos served, one level per expo, and stops at the end of the
+   programme (EXPO_TOTAL). A volunteer with 0 expos has no level — 0 must never
+   display as one, and must never borrow a service rank either. */
+export const VOL_LEVEL_MAX=EXPO_TOTAL;
 export const volLevel=v=>{const e=volExpos(v);return e>0?Math.min(e,VOL_LEVEL_MAX):0;};
 export const volYears=v=>v.since?Math.max(0,new Date().getFullYear()-Number(String(v.since).slice(0,4))):0;
 export const needsRegistration=v=>v.status==='prospect';
@@ -75,7 +76,7 @@ function starGlyph(n,size){
  return `<span class="stars">${s.repeat(n)}</span>`;
 }
 /* The medal is the visual badge: tier colour + the volunteer's level (expos served,
-   1–50) + the medal rank and its stars. With no expos there is no number to show —
+   1–EXPO_TOTAL) + the medal rank and its stars. With no expos there is no number to show —
    the circle reads – and the rank alone is shown, never "Lv 0". */
 export function medalHTML(v,small){
  const t=badgeTier(v),lv=volLevel(v);
@@ -83,9 +84,11 @@ export function medalHTML(v,small){
  return `<span class="medal hue-${t.hue}" role="img" aria-label="${esc(t.name)}">
   <span class="medal-v"><b class="medal-lv">${lv||'–'}</b><span class="medal-rk">${esc(t.short)}</span>${starGlyph(t.stars,'7px')}</span></span>`;
 }
-const rankPill=v=>{const t=badgeTier(v);return `<span class="rankpill hue-${t.hue}">${esc(t.name)}</span>;`};
-/* Compact pill: "Lv 4 · Silver" once there is a level, just the rank before it. */
-const lvPill=v=>{const t=badgeTier(v),lv=volLevel(v);return lv?`Lv ${lv} · ${esc(t.short)}`:esc(t.short);};
+const rankPill=v=>{const t=badgeTier(v);return `<span class="rankpill hue-${t.hue}">${esc(t.name)}</span>`};
+/* Compact pill: "Lv 4 · Silver" once there is a level, the full status before it.
+   The short form ('New') exists for the medal circle; the pill has room for the
+   whole word, so a newcomer reads as "Newcomer", never as a truncated rank. */
+const lvPill=v=>{const t=badgeTier(v),lv=volLevel(v);return lv?`Lv ${lv} · ${esc(t.short)}`:esc(t.name);};
 
 /* ---------- shared bits ---------- */
 /* local calendar date as YYYY-MM-DD (toISOString is UTC, which is yesterday for the first hours of a South African day) */
@@ -433,7 +436,7 @@ export function volRow(v,confirmed,placeMode){
    <span class="mt-0.5 flex flex-wrap items-center gap-1">
     <span class="servechip ${STATUS_UI[v.status].cls}">${STATUS_UI[v.status].label}</span>
     ${v.lead?'<span class="servechip sc-warn">★ Team leader</span>':''}
-    <span class="rankpill hue-${t.hue}">${volLevel(v)?`Lv ${volLevel(v)}`:esc(t.short)}</span>
+    <span class="rankpill hue-${t.hue}">${volLevel(v)?`Lv ${volLevel(v)}`:esc(t.name)}</span>
     ${linkedVolIds()&&linkedVolIds().has(v.id)?'<span class="servechip sc-ok">account ✓</span>':''}
     ${confirmed?`<span class="text-[9.5px] font-bold text-[#6b8187]">${esc(boothLabel(v.booth))}</span>`
                :`<span class="text-[9.5px] font-bold text-[#6b8187]">wants ${esc(boothLabel((v.pref||[])[0]||''))}</span>`}

@@ -98,14 +98,19 @@ export const STATUS_UI={
  checkedin:{label:'Checked in ✓',cls:'sc-ok', hint:'On site and checked in today.'},
  };
 
-/* Badge tiers. A volunteer holds the highest tier whose minimums are both met. */
+/* Badge tiers. A volunteer holds the highest tier whose minimums are both met.
+   The ladder tops out at EXPO_TOTAL expos, so every tier is reachable inside the
+   30-expo programme: Bronze on the first expo, Newcomer only at zero.
+   0 must never carry a service rank — "Friend of the Expo" named a status the
+   person had not earned, and read as an award for not attending at all. */
+export const EXPO_TOTAL=30;
 export const BADGE_TIERS=[
- {n:0,name:'Friend of the Expo',  short:'Friend',  hue:'sage', minExpos:0, minHours:0,  stars:0},
+ {n:0,name:'Newcomer',            short:'New',     hue:'sage', minExpos:0, minHours:0,  stars:0},
  {n:1,name:'Bronze Service Badge',short:'Bronze',  hue:'peach',minExpos:1, minHours:6,  stars:1},
- {n:2,name:'Silver Service Badge',short:'Silver',  hue:'sky',  minExpos:3, minHours:18, stars:2},
- {n:3,name:'Gold Service Badge',  short:'Gold',    hue:'sand', minExpos:6, minHours:36, stars:3},
- {n:4,name:'Platinum Service Badge',short:'Platinum',hue:'aqua',minExpos:9,minHours:60, stars:4},
- {n:5,name:'Expo Legend',     short:'Legend',  hue:'lilac',minExpos:12,minHours:72,stars:5},
+ {n:2,name:'Silver Service Badge',short:'Silver',  hue:'sky',  minExpos:5, minHours:30, stars:2},
+ {n:3,name:'Gold Service Badge',  short:'Gold',    hue:'sand', minExpos:10,minHours:60, stars:3},
+ {n:4,name:'Platinum Service Badge',short:'Platinum',hue:'aqua',minExpos:18,minHours:108,stars:4},
+ {n:5,name:'Expo Legend',     short:'Legend',  hue:'lilac',minExpos:25,minHours:150,stars:5},
 ];
 
 /* Seed volunteers — deliberately spread across tiers so every badge is visible in the demo. */

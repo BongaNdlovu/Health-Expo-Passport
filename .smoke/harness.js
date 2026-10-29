@@ -161,6 +161,9 @@ console.log('\nBoot: OK (no exception)\n');
 
 const g = sandbox.__NEWSTART && sandbox.__NEWSTART.__internals;
 if (!g) { console.log('the bundle exposed no __NEWSTART.__internals'); process.exit(1); }
+/* the app asks through its own sheet now; the harness has no hands, so every question answers yes
+   (the sandbox's window.confirm already answers true) */
+g.setAutoAnswer(true);
 const $main = $el('main');
 
 /* ---- 1. volunteer data + badge maths -------------------------------- */
@@ -168,42 +171,49 @@ console.log('1. Badge tiers');
 ok('7 seed volunteers loaded', g.volunteers.length === 7, 'got ' + g.volunteers.length);
 const byName = n => g.volunteers.find(v => v.name === n);
 const thandi = byName('Thandi Mabaso'), grace = byName('Grace Nkosi'), nomvula = byName('Nomvula Dlamini');
-ok('Thandi: 4 expos / 30h → Silver medal', g.badgeTier(thandi).n === 2, 'got tier ' + g.badgeTier(thandi).n);
+ok('Thandi: 4 expos / 30h → Bronze medal', g.badgeTier(thandi).n === 1, 'got tier ' + g.badgeTier(thandi).n);
 ok('Thandi is Level 4 (one per expo)', g.volLevel(thandi) === 4, 'got Lv' + g.volLevel(thandi));
-ok('Grace: 6 expos / 45.5h → Gold medal, Level 6', g.badgeTier(grace).n === 3 && g.volLevel(grace) === 6,
+ok('Grace: 6 expos / 45.5h → Silver medal, Level 6', g.badgeTier(grace).n === 2 && g.volLevel(grace) === 6,
   'got tier ' + g.badgeTier(grace).n + ' Lv' + g.volLevel(grace));
-ok('Nomvula: 0 expos → Friend medal, no level (0 cannot count)',
+ok('Nomvula: 0 expos → Newcomer, no level (0 cannot count)',
   g.badgeTier(nomvula).n === 0 && g.volLevel(nomvula) === 0,
   'got tier ' + g.badgeTier(nomvula).n + ' Lv' + g.volLevel(nomvula));
-ok('level counts one per expo and stops at 50',
-  g.volLevel({ history: Array(55).fill({ hours: 1 }) }) === g.VOL_LEVEL_MAX && g.VOL_LEVEL_MAX === 50,
+/* the label a person has earned nothing toward must not read as an award */
+ok('zero expos never reads as a service rank',
+  g.badgeTier(nomvula).name === 'Newcomer' && !g.medalHTML(nomvula).includes('Friend of the Expo'));
+ok('level counts one per expo and stops at 30',
+  g.volLevel({ history: Array(55).fill({ hours: 1 }) }) === g.VOL_LEVEL_MAX && g.VOL_LEVEL_MAX === 30,
   'got ' + g.volLevel({ history: Array(55).fill({ hours: 1 }) }));
 ok('medal shows the level number, never 0',
   g.medalHTML(thandi).includes('>4<') && !g.medalHTML(nomvula).includes('>0<')
-    && g.medalHTML(nomvula).includes('–') && g.medalHTML(nomvula).includes('Friend'),
+    && g.medalHTML(nomvula).includes('–') && g.medalHTML(nomvula).includes('Newcomer'),
   g.medalHTML(nomvula).replace(/\s+/g, ' ').slice(0, 120));
 ok('hours sum correctly (Grace = 45.5)', g.volHours(grace) === 45.5, 'got ' + g.volHours(grace));
-ok('next tier for Grace is Platinum', (g.nextTier(grace) || {}).n === 4);
+ok('next tier for Grace is Gold', (g.nextTier(grace) || {}).n === 3);
 const pg = g.tierProgress(grace);
-ok('Grace needs 3 more expos for Platinum', pg.needExpos === 3, 'got ' + pg.needExpos);
+ok('Grace needs 4 more expos for Gold', pg.needExpos === 4, 'got ' + pg.needExpos);
 ok('Grace needs 14.5 more hours', pg.needHours === 14.5, 'got ' + pg.needHours);
 /* Both minimums must be met, so progress toward the next badge is the weaker
-   of the two, measured against the NEXT tier's minimums (6/9 expos = 67%). */
-ok('progress tracks the weaker requirement (67%)', pg.pct === 67, 'got ' + pg.pct);
+   of the two, measured against the NEXT tier's minimums (6/10 expos = 60%). */
+ok('progress tracks the weaker requirement (60%)', pg.pct === 60, 'got ' + pg.pct);
 ok('blocking requirement is expos', pg.blockedBy === 'expos', 'got ' + pg.blockedBy);
 ok('remaining sentence names both gaps',
-  g.tierRemaining(grace) === '3 more expos + 14.5 more hours for Platinum',
+  g.tierRemaining(grace) === '4 more expos + 14.5 more hours for Gold',
   g.tierRemaining(grace));
 /* a helper whose hours lag behind their expo count is gated on hours */
-const hoursGated = { history: Array.from({ length: 6 }, () => ({ hours: 6 })) };  /* 6 expos / 36h */
+const hoursGated = { history: Array.from({ length: 10 }, () => ({ hours: 4 })) };  /* 10 expos / 40h */
 const ph = g.tierProgress(hoursGated);
 ok('hours-gated helper reports hours', ph.blockedBy === 'hours', 'got ' + ph.blockedBy);
-ok('hours-gated progress is 60%', ph.pct === 60, 'got ' + ph.pct);
-ok('hours-gated helper needs 3 more expos', ph.needExpos === 3, 'got ' + ph.needExpos);
+ok('hours-gated progress is 67%', ph.pct === 67, 'got ' + ph.pct);
+ok('hours-gated helper needs no more expos', ph.needExpos === 0, 'got ' + ph.needExpos);
 /* exactly on both minimums promotes without a gap */
-ok('meeting both minimums promotes (6 expos / 36h → Gold)', g.badgeTier(hoursGated).n === 3,
-  'got tier ' + g.badgeTier(hoursGated).n);
-ok('Legend has no next tier', g.nextTier({ history: Array(12).fill({ hours: 8 }) }) === null);
+ok('meeting both minimums promotes (10 expos / 60h → Gold)',
+  g.badgeTier({ history: Array.from({ length: 10 }, () => ({ hours: 6 })) }).n === 3,
+  'got tier ' + g.badgeTier({ history: Array.from({ length: 10 }, () => ({ hours: 6 })) }).n);
+ok('Legend has no next tier', g.nextTier({ history: Array(25).fill({ hours: 8 }) }) === null);
+ok('the ladder is spread across the 30-expo programme',
+  g.BADGE_TIERS[5].minExpos === 25 && g.BADGE_TIERS.every((t, i) => i === 0 || t.minExpos > g.BADGE_TIERS[i - 1].minExpos),
+  g.BADGE_TIERS.map(t => t.minExpos).join(','));
 ok('exactly one top-tier badge', g.BADGE_TIERS.filter(t => t.n === 5).length === 1);
 
 /* ---- 2. booth assignment ------------------------------------------- */
@@ -1219,6 +1229,105 @@ function makeServer() {
     const straightAway = e.left(); e.runTimers(120);
     ok('intro: browsers that cannot report animations get the old timing', !straightAway && e.left());
   }
+
+  /* ---- 16e. commitments, confirmations, update state, notification labels ---- */
+  console.log('\n16e. Member commitments, confirmations & updates');
+  const keep = { client: g.cloud.client, acct: g.cloud.acct, pledge: g.cloud.pledge, user: g.cloud.user, notifs: g.cloud.notifs };
+  const approved = { membership: { role: 'member', status: 'approved' }, church: { name: 'Grace', city: 'Durban' } };
+  const settingsFor = (acct, pledge) => { g.cloud.acct = acct; g.cloud.pledge = pledge; g.renderSettings(); return $el('setBody').innerHTML; };
+
+  ok('the page carries the settings sheet, the confirm sheet and the update banner',
+    /id="setSheet"/.test(html) && /id="confirmSheet"/.test(html) && /id="updateBar"/.test(html));
+
+  ok('settings ask an unapproved member to wait first',
+    /once your church approves/i.test(settingsFor({ membership: { role: 'member', status: 'pending' } }, null)));
+  ok('settings say when nothing is committed', /not committed to an expo yet/i.test(settingsFor(approved, null)));
+
+  const pledged = settingsFor(approved, { id: 'VOL-1', name: 'Thandi Mabaso', status: 'prospect', pledge_expos: 4, pledged_on: '2026-02-01', booth: null, shift: '', role: '' });
+  ok('a pledge shows the expos pledged, out of the programme', /Health expos pledged to/.test(pledged) && /4 of 30/.test(pledged));
+  ok('a pledge offers Unpledge and not Deregister', /my-pledge-withdraw/.test(pledged) && !/my-pledge-deregister/.test(pledged));
+
+  const reg = settingsFor(approved, { id: 'VOL-1', name: 'Thandi Mabaso', status: 'registered', pledge_expos: 6, pledged_on: '2026-02-01', booth: 'bp', shift: 'Morning', role: 'Team', lead: true, registered_on: '2026-02-20' });
+  ok('a registration offers Deregister and not Unpledge', /my-pledge-deregister/.test(reg) && !/my-pledge-withdraw/.test(reg));
+  ok('...names the station by its label', /Blood Pressure/.test(reg));
+  ok('...and shows the leader title', /team leader/i.test(reg));
+
+  const ci = settingsFor(approved, { id: 'VOL-1', name: 'Thandi', status: 'checkedin', pledge_expos: 6, booth: 'bp' });
+  ok('a checked-in member gets no self-service button',
+    !/my-pledge-deregister/.test(ci) && !/my-pledge-withdraw/.test(ci) && /checked in/i.test(ci));
+
+  /* opening it goes through the same sheet machinery (and the same Back-key stack) as every other panel */
+  g.cloud.acct = approved; g.cloud.pledge = null;
+  g.openSettings();
+  ok('the settings sheet opens from the profile', $el('setSheet').classList.contains('flex'));
+  g.closeSettings();
+  ok('...and closes on request', $el('setSheet').classList.contains('is-closing'));
+
+  /* the buttons reach the database */
+  const rpcs = [];
+  g.cloud.client = { rpc: async fn => { rpcs.push(fn); return { data: null, error: null }; } };
+  g.cloud.pledge = { id: 'VOL-1', name: 'Thandi', status: 'registered', pledge_expos: 2, booth: 'bp' };
+  await g.deregisterMyPledge();
+  ok('Deregister calls deregister_my_pledge', rpcs[0] === 'deregister_my_pledge', rpcs.join());
+  ok('...then refreshes the pledge', rpcs.includes('my_pledge'), rpcs.join());
+
+  const wd = [];
+  g.cloud.client = { rpc: async fn => { wd.push(fn); return { data: null, error: null }; } };
+  g.cloud.pledge = { id: 'VOL-1', name: 'Thandi', status: 'prospect', pledge_expos: 2, booth: null };
+  await g.withdrawMyPledge();
+  ok('Unpledge calls withdraw_my_pledge', wd[0] === 'withdraw_my_pledge', wd.join());
+
+  /* the confirmation sheet answers both ways, and replaces itself rather than stacking */
+  g.setAutoAnswer(null);
+  const yes = g.confirmAsk({ title: 'Delete?', body: 'Gone for good.', label: 'Delete', danger: true });
+  ok('the sheet opens with the question',
+    $el('confirmSheet').classList.contains('flex') && $el('cfTitle').textContent === 'Delete?'
+      && $el('cfBody').textContent === 'Gone for good.');
+  ok('a dangerous question styles its button', /rose/.test($el('cfGo').className) && $el('cfGo').textContent === 'Delete');
+  g.answerConfirm(true);
+  ok('saying yes resolves true', (await yes) === true);
+  ok('...and the sheet begins to close', $el('confirmSheet').classList.contains('is-closing'));
+  await sleep(320);                          /* the close animation, same 260 ms as every other sheet */
+  ok('...until it is gone', !$el('confirmSheet').classList.contains('flex') && !$el('confirmSheet').classList.contains('is-closing'));
+
+  const no = g.confirmAsk({ title: 'Sure?', body: '', label: 'Go' });
+  g.answerConfirm(false);
+  ok('saying no resolves false', (await no) === false);
+
+  const first = g.confirmAsk({ title: 'One', body: '' });
+  const second = g.confirmAsk({ title: 'Two', body: '' });
+  ok('a second question answers the first as no', (await first) === false);
+  g.answerConfirm(true);
+  ok('...and the second answers itself', (await second) === true);
+  g.setAutoAnswer(true);                     /* back to the headless default for the rest of the suite */
+
+  /* update state reads the build this page came from */
+  $el('meta[name="app-version"]').getAttribute = () => 'abc1234567';
+  const st = g.updateState();
+  ok('update state reports the build this page came from', st.own === 'abc1234567', JSON.stringify(st));
+  ok('nothing is offered before a version check', st.server === null && st.waiting === false);
+  g.updateLater();
+  ok('"not now" is harmless with no server answer yet', true);
+  /* version.json is same-origin, but an absolute url inside it must not be able to point the Android
+     installer at a package from somewhere else */
+  ok('the update button refuses an APK url from another origin',
+    /apk\.origin !== location\.origin/.test(srcText));
+
+  /* the three new notification kinds have inbox labels */
+  g.cloud.user = { id: 'u1' };
+  g.cloud.notifs = [
+    { id: 3, kind: 'register', title: 'Registered: A', body: 'b', created_at: '2026-10-29T10:00:00Z', read_at: null },
+    { id: 2, kind: 'deregister', title: 'Deregistered: B', body: 'b', created_at: '2026-10-29T09:00:00Z', read_at: null },
+    { id: 1, kind: 'unpledge', title: 'Pledge withdrawn: C', body: 'b', created_at: '2026-10-29T08:00:00Z', read_at: '2026-10-29T08:30:00Z' },
+  ];
+  g.renderNotifs();
+  const inbox = $el('notifBody').innerHTML;
+  ok('the three new kinds have inbox labels',
+    /microlabel">Registered</.test(inbox) && /microlabel">Deregistered</.test(inbox)
+      && /microlabel">Pledge withdrawn</.test(inbox));
+
+  g.cloud.client = keep.client; g.cloud.acct = keep.acct; g.cloud.pledge = keep.pledge;
+  g.cloud.user = keep.user; g.cloud.notifs = keep.notifs;
 
   console.log('\n17. Cloud sync (fake Supabase)');
   const srv = makeServer();

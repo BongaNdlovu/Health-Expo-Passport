@@ -13,6 +13,7 @@ import { GRACE_DAYS, RETENTION_YEARS, visitIsOld } from './retention.js';
 import { homeHealthHTML, installEvt, validEmail } from './cloud.js';
 import { hiredCountLabel, pendingLabel, todayStr } from './volunteer.js';
 import { bannerHTML, capsuleHTML, ctaHTML, ecgHTML, rulerHTML, spectrumHTML, splitBtnHTML, tileHTML } from './ui.js';
+import { confirmAsk } from './feedback.js';
 /* The visitor journey: Check → Results entry, registration, the paper record and the survey. Split from the original single-file app; bundled back into one file by tools/build.js. */
 /* ================= THE VISITOR JOURNEY: Check → Results → Plan → Send home ================= */
 /* where a visitor's passport should open: the step they were on, else the first one not done */
@@ -214,7 +215,7 @@ export function viewHome(){
      data-on-input="visitors-filter" class="field mb-2" autocomplete="off">`:''}
    <div id="visitorList">${visitorListHTML(state.vq)}</div>
    <div class="hx-sheet-actions">
-    ${cloud.user||cloud.mode?'':`<button data-action="resetDemo">Reset demo</button>`}
+    ${cloud.user||cloud.mode?'':`<button data-action="resetDemoAsk">Reset demo</button>`}
     ${installEvt?`<button data-action="installApp">Install app</button>`:''}
     <button data-action="openCloud">${cloud.user?'Sync':'Sign in'}</button>
    </div>
@@ -398,8 +399,15 @@ export function registerSubmit(e,force){
 }
 export function resetDemo(){
  if(cloud.user||cloud.mode){toast('Reset is off while connected to the shared database');return;}
- if(!confirm('Reset all demo data? Every visitor and volunteer you added on this device will be erased.'))return;
  seedDemo();state.sugFor=null;state._goal=null;render();toast('Demo data reset — storage cleared');
+}
+/* The button asks first; resetDemo itself stays synchronous because the smoke harness calls it directly and
+   cannot answer a dialog. Same split as confirmAsk: the question belongs to the action, not the domain. */
+export async function resetDemoAsk(){
+ if(cloud.user||cloud.mode){toast('Reset is off while connected to the shared database');return;}
+ const yes=await confirmAsk({title:'Reset the demo data?',
+  body:'Every visitor and volunteer you added on this device is erased. This cannot be undone.',label:'Reset',danger:true});
+ if(yes)resetDemo();
 }
 /* tapping a visitor in the list opens their passport where they left off */
 export function switchTo(id){state.activeId=id;state.sugFor=null;state._goal=null;goVisit();toast(`Now serving ${firstName(A().name)} · ${id}`);}

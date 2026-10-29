@@ -11,6 +11,8 @@
     "build": "node tools/build.js",
     "test": "node --expose-gc .smoke/harness.js",
     "test:hub": "node tools/test-volunteer-hub.js",
+    "test:build": "node tools/test-build.js",
+    "test:db": "node tools/test-commitments.js",
     "typecheck": "tsc --noEmit -p jsconfig.json"
   }
 }

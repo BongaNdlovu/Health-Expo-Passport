@@ -68,8 +68,13 @@ const CSP_DIST = policy("script-src 'self' " + hashOf(inlineBundle) + ' https://
 }
 
 /* replacer functions, not strings: a "$&" or "$'" inside the bundle must be inserted literally */
+/* The page's own build id, for src/update.js: it compares this with /version.json to decide whether to offer an
+   update. The hash above is taken over the source page, which still holds the placeholder, and the built copy is
+   stamped afterwards — the same two-step sw.js already uses for __VERSION__. */
+if (!minifiedShell.includes('__APP_VERSION__')) throw new Error('index.html lost its app-version meta — the update check cannot tell which build it is');
 const built = minifiedShell.replace('<script type="module" src="./src/main.js"></script>', () => '<script>' + inlineBundle + '</script>')
-  .replace(/(<meta http-equiv="Content-Security-Policy" content=")[^"]*(")/, (all, a, b) => a + CSP_DIST + b);
+  .replace(/(<meta http-equiv="Content-Security-Policy" content=")[^"]*(")/, (all, a, b) => a + CSP_DIST + b)
+  .replace('__APP_VERSION__', version);
 if (!built.includes('__NEWSTART') || built.includes('<script type="module"')) throw new Error('bundle injection failed');
 
 fs.writeFileSync(path.join(dist, 'index.html'), built);
@@ -81,6 +86,15 @@ for (const f of fs.readdirSync(path.join(root, 'icons'))) fs.copyFileSync(path.j
    same address */
 const apk = path.join(root, 'capacitor', 'android', 'app-release-signed.apk');
 if (fs.existsSync(apk)) fs.copyFileSync(apk, path.join(dist, 'newstart.apk'));
+
+/* What src/update.js reads: the build this folder was made at, and — when an Android build is sitting beside it —
+   where to fetch it. No version is claimed for the APK: it was packaged from whichever dist/ existed at the time,
+   and its own page carries that build's id. */
+fs.writeFileSync(path.join(dist, 'version.json'), JSON.stringify({
+  version,
+  built: new Date().toISOString(),
+  apk: fs.existsSync(apk) ? { url: 'newstart.apk' } : null,
+}, null, 2) + '\n');
 
 /* Security headers for every file — identical to the built page's meta tag. What the policy locks down is WHERE
    code may load from (only this site, the two inline hashed scripts, and the three pinned libraries), where data
@@ -99,6 +113,7 @@ fs.writeFileSync(path.join(dist, '_headers'), [
   '/sw.js', '  Cache-Control: no-cache', '/index.html', '  Cache-Control: no-cache', '/manifest.webmanifest', '  Cache-Control: no-cache',
   '  Content-Type: application/manifest+json', '/',
   '  Cache-Control: no-cache', '/icons/*', '  Cache-Control: public, max-age=86400',
+  '/version.json', '  Cache-Control: no-store',
   '/newstart.apk', '  Content-Type: application/vnd.android.package-archive', '  Content-Disposition: attachment; filename="NEWSTART.apk"', ''].join('\n'));
 
 const files = [];

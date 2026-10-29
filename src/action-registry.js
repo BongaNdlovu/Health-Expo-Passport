@@ -1,6 +1,9 @@
 // @ts-check
 import { closeAcct, cloudInit, cloudSignIn, cloudSignOut, cloudSync, gateBack, joinChurch, leaveChurch, linkMember, linkVolunteer, manageChurch, markNotifsRead, myField, myPickPledge, myPledgeEdit, myPledgeSave, mySecondBooth, myToggleBooth, myToggleList, notifClose, notifOpen, openAcct, openNotifs, profDeleteAsk, profDeleteGo, profDeleteTyped, profGate, profPassword, registerChurch, removeMember, renderAcct, saveChurch, saveMyDetails, setChurchStatus, setMember, teamAdd, teamRelease, teamShift, withdrawMyPledge } from './account.js';
 import { churchSearchSoon, openChurchData, stepDown } from './account.js';
+import { closeSettings, deregisterMyPledge, openSettings } from './account.js';
+import { answer } from './feedback.js';
+import { updateLater, updateNow } from './update.js';
 import { cancelInvites, chooseChurchPlan, chooseFollowup, deleteChurchPlan, editChurchPlan, makeInvite, saveChurchPlan, setFollowup } from './churchPlans.js';
 import { copyInvite, shareInvite } from './churchPlans.js';
 import { closeCloud, cloudForgot, cloudNewPassword, cloudResend, cloudSignUp, gateDemo, gateView, healthTest, installApp, openCloud, renderCloudBody, renderGate, togglePass } from './cloud.js';
@@ -12,7 +15,7 @@ import { closeFood, exportCSV, openFood, showAllCare } from './results.js';
 import { onSim, setFoodPlan, toggleFood } from './results.js';
 import { isServe, render, toggleTheme } from './shell.js';
 import { cloud } from './state.js';
-import { filterVisitors, onPrayer, onStationCommit, onStationInput, onStep, registerSubmit, reservePouch, resetDemo, switchTab, toggleInterest, toggleReg } from './visitor.js';
+import { filterVisitors, onPrayer, onStationCommit, onStationInput, onStep, registerSubmit, reservePouch, resetDemo, resetDemoAsk, switchTab, toggleInterest, toggleReg } from './visitor.js';
 import { applyReading, finishVisit, goVisit, newVisitFrom, onChronicList, onHeight, pickSex, recordConsent, setAnswer, setMyStation, showGuardian, switchTo, toggleOptin, toggleTick } from './visitor.js';
 import { closeVolReg, closeWhatsApp, exportVolCSV, logExpoEntry, openEmail, openSwitcher, openVolModal, openVolReg, openVolSwitcher, openWhatsApp, pickSecondBooth, pickVolunteer, printCard, removeExpoEntry, saveExpoEntry, saveVolunteer, sendEmail, sendWhatsApp, setVol, setVolTab, startNewVolunteer, switchToVol, toggleDraftBooth, toggleDraftList, toggleShift } from './volunteer.js';
 import { closeSwitcher, closeVolModal, closePlaceSheet, filterSwitcher, filterVolSwitcher, openWAFor, openPlaceSheet, pickAttendee, pickPledge, placeLead, placeMove, placeRelease, placeSwap, recycleBadge, registerNew, setSwitchMode, showAllVol } from './volunteer.js';
@@ -31,7 +34,11 @@ export const ACTION_MAP = {
   logExpoEntry, openBigScreen, openCloud, openEmail, openFood, openSwitcher, openVolModal,
   openVolReg, openVolSwitcher, openWhatsApp, profDeleteAsk, profDeleteGo, recycleBadge, registerNew, resetDemo,
   saveExpoEntry, saveVolunteer, sendEmail, sendWhatsApp, shareInvite, startNewVolunteer, stepDown,
-  switchToVol, toggleReg,
+  switchToVol, toggleReg, closeSettings, deregisterMyPledge, openSettings, resetDemoAsk, updateLater, updateNow,
+
+  /* -- the confirmation sheet (src/feedback.js): these answer a question, they do not perform an action -- */
+  confirmYes: () => answer(true),
+  confirmNo: () => answer(false),
 
   /* -- single argument, on the element as data-args -- */
   cancelInvites: el => cancelInvites(el.dataset.args),
@@ -92,6 +99,7 @@ export const ACTION_MAP = {
   'followup-toggle': el => setFollowup(el.dataset.user, el.dataset.on === '1'),
   'my-pledge-edit': () => myPledgeEdit(),
   'my-pledge-withdraw': () => withdrawMyPledge(),
+  'my-pledge-deregister': () => deregisterMyPledge(),
   'my-name': el => myField('name', el.value),
   'my-phone': el => myField('phone', el.value),
   'my-shirt': el => myField('shirt', el.value),

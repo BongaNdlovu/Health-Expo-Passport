@@ -6,7 +6,8 @@ import { CLOUD_UI, SB_KEY, SB_LIB, SB_URL, SYNC_KEY, closeCloud, resetLedgerSig,
 import { CHURCH_PLANS_KEY, FOLLOWUP_MAX, churchPlansBox, clearInvite, followupsFor, inviteBox, myFollowupsHTML, pendingInvite } from './churchPlans.js';
 import { GRACE_DAYS, clearReadings, clockKnown, followedUp, hasReadings, noteServerTime, readingsGone, visitIsOld } from './retention.js';
 import { render, toast } from './shell.js';
-import { PROTOCOLS, STATUS_UI, attendees, boothLabel, state, volunteers } from './data.js';
+import { confirmAsk, ok } from './feedback.js';
+import { EXPO_TOTAL, PROTOCOLS, STATUS_UI, attendees, boothLabel, state, volunteers } from './data.js';
 import { qSafe, queueReset, queueSync } from './queue.js';
 import { bmi, cat, chipClass, esc, fmt1, initials, redFlag } from './helpers.js';
 import { planNeeds } from './results.js';
@@ -178,7 +179,10 @@ export async function registerChurch(e){
 }
 export async function leaveChurch(){
  const c=cloud.acct&&cloud.acct.church;if(!c)return;
- if(!confirm(`Leave ${c.name}? Your details there are deleted${cloud.mode?' and this device clears that church’s data':''}. You can join another church afterwards.`))return;
+ const yes=await confirmAsk({title:`Leave ${c.name}?`,
+  body:`Your details there are deleted${cloud.mode?' and this device clears that church’s data':''}. You can join another church afterwards.`,
+  label:'Leave',danger:true});
+ if(!yes)return;
  if(!await acctRpc('leave_church',{},'You have left '+c.name))return;
  closeAcct();cloud.health=undefined;cloud.dir=null;
  await cloudSync(true);
@@ -279,9 +283,11 @@ export function pledgeHTML(){
   <div class="mono mt-1 text-[10px] text-[#6b8187]">${esc(p.id)} · pledged ${esc(String(p.pledged_on||'').slice(0,10))}</div>
   <div class="mt-2 flex gap-2">
    <button data-action="my-pledge-edit" class="btn btn-soft flex-1 py-2 text-xs">Edit my pledge</button>
-   ${p.status==='prospect'?'<button data-action="my-pledge-withdraw" class="btn btn-glass flex-1 py-2 text-xs text-rose-700">Withdraw</button>':''}
+   ${p.status==='prospect'?'<button data-action="my-pledge-withdraw" class="btn btn-glass flex-1 py-2 text-xs text-rose-700">Unpledge</button>'
+     :p.status==='registered'?'<button data-action="my-pledge-deregister" class="btn btn-glass flex-1 py-2 text-xs text-rose-700">Deregister</button>':''}
+   <button data-action="openSettings" class="btn btn-glass flex-1 py-2 text-xs">Settings</button>
   </div>
-  ${p.status!=='prospect'?acctNote('You are registered for the expo, so your row is part of the expo plan: an admin has to remove it. Your details here can still be edited.'):''}`);
+  ${p.status==='checkedin'?acctNote('You are checked in for this expo: only your church’s admin can change that now.'):''}`);
 }
 async function loadPledge(force){
  if(cloud.pledgeBusy&&!force)return;
@@ -346,11 +352,78 @@ export async function myPledgeSave(e){
  await acctReload();                      /* my_account now carries the volunteer_id */
 }
 export async function withdrawMyPledge(){
- if(!confirm('Withdraw your pledge? Your name comes off the team list, and you can pledge again at any time.'))return;
- if(await acctRpc('withdraw_my_pledge',{},'Your pledge is withdrawn')){
+ const yes=await confirmAsk({title:'Unpledge from the expo?',
+  body:'Your name comes off the team list, and your pledge is removed. You can pledge again at any time.',
+  label:'Unpledge',danger:true});
+ if(!yes)return;
+ if(await acctRpc('withdraw_my_pledge')){
   cloud.pledgeEdit=false;state.mf=null;
   await loadPledge(true);
   await acctReload();
+  renderSettings();
+  ok('Your pledge is withdrawn');
+ }
+}
+/* ---------- settings: the commitments a member owns ----------
+   The profile says who you are; this panel says what you have signed up to, and is the only place a member can
+   take that back without an admin. Both buttons call a database function — the sheet only asks, and the server
+   decides (checked-in and unregistered states are refused there, not here). */
+export function openSettings(){renderSettings();showModal('#setSheet',closeSettings);}
+export function closeSettings(){hideModal('#setSheet');}
+export function renderSettings(){
+ const el=$('#setBody');
+ if(el)el.innerHTML=settingsBody();
+}
+function settingsBody(){
+ const m=cloud.acct&&cloud.acct.membership;
+ if(!m||m.status!=='approved')
+  return acctBox('Health expos',acctNote('Once your church approves your membership, the expos you pledge to appear here.'));
+ if(cloud.pledge===undefined){loadPledge();return acctBox('Health expos',acctNote('Loading your commitments…'));}
+ if(cloud.pledgeErr)
+  return acctBox('Health expos',acctNote('Commitments need the latest supabase/schema.sql — ask your church to update the database first.'));
+ const p=cloud.pledge;
+ if(!p)
+  return acctBox('Health expos',acctNote('You are not committed to an expo yet.')
+   +`<p class="mt-2 text-[11px] leading-relaxed text-[#5c747a]">Pledge from <b>My pledge</b> on your profile; the expo appears here as soon as you do.</p>`);
+ const st=STATUS_UI[p.status]||{label:p.status,cls:'sc-off'};
+ const row=(k,v)=>`<div class="flex items-baseline justify-between gap-3 border-b border-[#123033]/[.06] py-1.5 last:border-0"><span class="text-[11px] font-bold text-[#5c747a]">${k}</span><span class="text-right text-[11.5px] font-bold text-[#123033]">${v}</span></div>`;
+ const dated=s=>esc(String(s||'').slice(0,10))||'—';
+ const exposures=Number(p.pledge_expos)||1;
+ const detail=[
+  row('Status',`<span class="servechip ${st.cls}">${esc(st.label)}</span>`),
+  row('Health expos pledged to',`${exposures} of ${EXPO_TOTAL}`),
+  row('Pledged on',dated(p.pledged_on)),
+ ];
+ if(p.status==='registered'||p.status==='checkedin'){
+  detail.push(row('Station',p.booth?esc(boothLabel(p.booth)):'Not placed yet'));
+  if(p.shift)detail.push(row('Shift',esc(p.shift)));
+  if(p.role)detail.push(row('Role',esc(p.role)+(p.lead?' ★ team leader':'')));
+  if(p.registered_on)detail.push(row('Registered on',dated(p.registered_on)));
+ }
+ const acts=p.status==='prospect'
+  ?`<button data-action="my-pledge-withdraw" class="btn btn-glass w-full py-2.5 text-xs text-rose-700">Unpledge from this expo</button>`
+  :p.status==='registered'
+  ?`<button data-action="my-pledge-deregister" class="btn btn-glass w-full py-2.5 text-xs text-rose-700">Deregister from this expo</button>`
+  :`<p class="text-[11px] leading-relaxed text-[#5c747a]">You are checked in for this expo — only your church's admin can change that now.</p>`;
+ return acctBox('Health expos you are committed to',
+  `<div class="mt-1 flex items-center gap-1.5"><span class="servechip ${st.cls}">${esc(st.label)}</span>
+    ${p.lead?'<span class="servechip sc-warn">★ Team leader</span>':''}</div>
+   <div class="mt-2 text-[13px] font-extrabold text-[#123033]">${esc(p.name)}</div>
+   <div class="mono mt-0.5 text-[10px] text-[#6b8187]">${esc(p.id)}</div>
+   <div class="mt-2">${detail.join('')}</div>
+   <div class="mt-3">${acts}</div>`);
+}
+export async function deregisterMyPledge(){
+ const yes=await confirmAsk({title:'Deregister from the expo?',
+  body:'You come off the expo plan and your station is released. Your pledge stays on the team list, so you can register again later. If you lead a station, you hand that back too.',
+  label:'Deregister',danger:true});
+ if(!yes)return;
+ if(await acctRpc('deregister_my_pledge')){
+  cloud.pledgeEdit=false;
+  await loadPledge(true);
+  await acctReload();
+  renderSettings();
+  ok('Deregistered — your pledge still stands');
  }
 }
 /* attach a pledge a staff member typed in to the person's account (admins, mirroring linkMember) */
@@ -456,7 +529,7 @@ async function loadNotifs(){
  const rows=r.data||[];
  cloud.notifs=rows;renderNotifs();
 }
-const KIND_L={membership:'Account',placement:'Placement',lead:'Team leader',church:'Church',pledge:'Pledge',team:'My team',shift:'Shift'};
+const KIND_L={membership:'Account',placement:'Placement',lead:'Team leader',church:'Church',pledge:'Pledge',register:'Registered',deregister:'Deregistered',unpledge:'Pledge withdrawn',team:'My team',shift:'Shift'};
 export function renderNotifs(){
  const el=$('#notifBody');if(!el)return;
  if(!cloud.user){el.innerHTML=acctNote('Sign in to see notifications.');return;}
@@ -486,7 +559,8 @@ export function notifOpen(id){
  const x=(cloud.notifs||[]).find(n=>String(n.id)===String(id));if(!x)return;
  notifClose();
  const staff=cloud.acct&&cloud.acct.membership&&cloud.acct.membership.role!=='member';
- if(staff&&(x.kind==='placement'||x.kind==='team'||x.kind==='pledge'||x.kind==='lead')){setVolTab('muster');render();}
+ if(staff&&(x.kind==='placement'||x.kind==='team'||x.kind==='pledge'||x.kind==='lead'
+   ||x.kind==='register'||x.kind==='deregister'||x.kind==='unpledge')){setVolTab('muster');render();}
  else openAcct('me');
 }
 export function notifClose(){cloud.notifOpen=false;hideModal('#notifSheet');}
@@ -608,7 +682,7 @@ function profShortcuts(){
  if(!a)return '';
  const go=(t,l)=>`<button data-action="openAcct" data-args="${t}" class="btn btn-soft flex-1 py-2.5 text-xs">${l}</button>`;
  const row=(isChurchAdmin()?go('church','My church'):'')+(a.platform_admin?go('admin','All churches'):'');
- return row?`<div class="mt-3 flex gap-2">${row}</div>`:'';
+ return `<div class="mt-3 flex gap-2">${row}<button data-action="openSettings" class="btn btn-soft flex-1 py-2.5 text-xs">Settings</button></div>`;
 }
 function profSync(){
  const ui=CLOUD_UI[cloud.status]||CLOUD_UI.off,tile=(l,v)=>`<div class="tile"><span class="tile-l">${l}</span><span class="tile-v">${v}</span></div>`;
@@ -744,7 +818,9 @@ export async function linkMember(uid,cur){
 }
 export async function removeMember(uid){
  const u=((cloud.members&&cloud.members.list)||[]).find(x=>x.user_id===uid)||{};
- if(!confirm(`Remove ${u.full_name||u.email||'this person'} from the church? Their details there are deleted and they lose access.`))return;
+ const yes=await confirmAsk({title:`Remove ${u.full_name||u.email||'this person'}?`,
+  body:'Their details are deleted from this church and they lose access to it.',label:'Remove',danger:true});
+ if(!yes)return;
  if(await acctRpc('remove_member',{p_user:uid},'Removed'))await reloadMembers();
 }
 /* an admin's own post: step down with one action, or (as the only admin) the promote-an-Assistant-first path */
@@ -761,7 +837,10 @@ export function adminPostHTML(m,ranks){
    :acctNote('You are this church’s only admin. To step down, first choose Admin in the role picker of a member below — then step down, and they lead the church.')}`;
 }
 export async function stepDown(){
- if(!confirm('Step down? You become a plain member: this church’s visitors, volunteers and queue are hidden from you. Your account and your own results stay.'))return;
+ const yes=await confirmAsk({title:'Step down as admin?',
+  body:'You become a plain member: this church’s visitors, volunteers and queue are hidden from you. Your account and your own results stay.',
+  label:'Step down',danger:true});
+ if(!yes)return;
  const uid=cloud.acct&&cloud.acct.user_id;
  if(!await acctRpc('set_member',{p_user:uid,p_role:'member',p_status:'approved'},'You stepped down — you are a member now'))return;
  cloud.members=null;                     /* a member may no longer list the church's members */
@@ -862,7 +941,11 @@ async function loadAudit(){
 }
 export async function setChurchStatus(id,st){
  const c=(cloud.plat||[]).find(x=>x.id===id)||{};
- if(st==='suspended'&&!confirm(`Pause ${c.name||'this church'}? Its staff lose access to its visitors and volunteers until you reactivate it.`))return;
+ if(st==='suspended'){
+  const yes=await confirmAsk({title:`Pause ${c.name||'this church'}?`,
+   body:'Its staff lose access to its visitors and volunteers until you reactivate it.',label:'Pause',danger:true});
+  if(!yes)return;
+ }
  if(!await acctRpc('admin_set_church_status',{p_church:id,p_status:st},st==='active'?'Church approved ✓':'Church paused'))return;
  await loadPlatform();
  if(cloud.churchId===id||(cloud.acct&&cloud.acct.church&&cloud.acct.church.id===id))await cloudSync(true);
@@ -922,8 +1005,12 @@ export async function cloudSignIn(e){
 }
 export async function cloudSignOut(force){
  const n=cloudPending();
- if(!force&&!confirm(n?`${n} change${n>1?'s':''} on this device ${n>1?'have':'has'} not been uploaded yet and will be lost. Sign out anyway?`
-  :'Sign out? The visitor and volunteer data stored on this device will be cleared.'))return;
+ if(!force){
+  const yes=await confirmAsk(n
+   ?{title:'Sign out with unsaved changes?',body:`${n} change${n>1?'s':''} on this device ${n>1?'have':'has'} not been uploaded yet and will be lost.`,label:'Sign out',danger:true}
+   :{title:'Sign out?',body:'The visitor and volunteer data stored on this device will be cleared.',label:'Sign out',danger:true});
+  if(!yes)return;
+ }
  clearTimeout(cloud.pushT);clearTimeout(cloud.retryT);stopRealtime();
  cloud.signingOut=true;
  try{await cloud.client.auth.signOut({scope:'local'});}catch(e){}

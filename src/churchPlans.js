@@ -9,6 +9,7 @@ import { acctBox, acctNote, acctRpc, nOf, renderAcct } from './account.js';
 import { planNeeds, problemOf, urgentOf } from './results.js';
 import { qSafe } from './queue.js';
 import { optedIn } from './visitor.js';
+import { confirmAsk } from './feedback.js';
 /* A church's own home plans, follow-up people and invite links (with the account hub's boxes). Split from the original single-file app; bundled back into one file by tools/build.js. */
 /* ================= CHURCH PLANS =================
    A church's own home plans, for one of the nine problems or one of its own (e.g. "Joint pain"). Its admins write
@@ -174,7 +175,9 @@ export async function saveChurchPlan(e,cid){
 }
 export async function deleteChurchPlan(cid,id){
  const S=cloud[cid===myChurchId()?'plans':'adminPlans'],cp=S&&S.list.find(p=>p.id===id);
- if(!confirm(`Delete the plan “${cp?cp.title:''}”? Visitors it was sent to go back to the app’s plan.`))return;
+ const yes=await confirmAsk({title:'Delete this plan?',
+  body:`“${cp?cp.title:''}” goes for good. Visitors it was sent to go back to the app’s plan.`,label:'Delete',danger:true});
+ if(!yes)return;
  if(await acctRpc('delete_church_plan',{p_id:id},'Plan deleted'))await loadChurchPlans(cid,cid===myChurchId()?'plans':'adminPlans');
 }
 
@@ -296,7 +299,9 @@ export function shareInvite(){
  if(navigator.share)navigator.share({text:t}).catch(()=>{});else window.open('https://wa.me/?text='+encodeURIComponent(t),'_blank');
 }
 export async function cancelInvites(cid){
- if(!confirm('Cancel every invite link of this church? Anyone who has not used theirs yet will need a new one.'))return;
+ const yes=await confirmAsk({title:'Cancel every invite link?',
+  body:'Anyone who has not used theirs yet will need a new one.',label:'Cancel links',danger:true});
+ if(!yes)return;
  if(await acctRpc('cancel_church_invites',{p_church:cid},'Invite links cancelled')){cloud.inviteLink=null;renderAcct();}
 }
 /* HUE_N (per-tab hue) now lives next to SERVE_TABS in the shell section below */

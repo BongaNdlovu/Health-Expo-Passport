@@ -1253,7 +1253,7 @@ begin
   v_phone := left(btrim(coalesce(p ->> 'phone', '')), 40);
   v_email := left(btrim(coalesce(p ->> 'email', '')), 254);
   v_expos := coalesce(nullif(regexp_replace(coalesce(p ->> 'pledgeExpos', ''), '\D', '', ''), '')::integer, 1);
-  v_expos := greatest(1, least(v_expos, 50));
+  v_expos := greatest(1, least(v_expos, 30));
   if length(btrim(v_name)) = 0 then raise exception 'Enter your full name.'; end if;
   if v_phone = '' and v_email = '' then raise exception 'Add a mobile number or an email address, so the team can reach you.'; end if;
   -- lists arrive as JSON arrays of short booth/skill keys; anything longer or bigger is dropped, not stored
@@ -1320,6 +1320,44 @@ begin
   update public.memberships m set volunteer_id = null, updated_at = now() where m.user_id = v_m.user_id;
 end;
 $$;
+
+-- give up a REGISTERED place without giving up the whole pledge: the row stays on the roster as 'prospect'
+-- (they still mean to help) with the confirmed booth, shift and registration date cleared, and Unpledge then
+-- removes it entirely. Checked-in is part of the expo record and only an admin undoes it. A team leader handing
+-- back their station loses the title with it, exactly as release_volunteer does.
+create or replace function public.deregister_my_pledge()
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_m public.memberships; v_row public.volunteers;
+begin
+  if (select auth.uid()) is null then raise exception 'sign in first' using errcode = '42501'; end if;
+  select * into v_m from public.memberships m where m.user_id = (select auth.uid());
+  if v_m.user_id is null or v_m.volunteer_id is null then raise exception 'You have no pledge to deregister.'; end if;
+  select * into v_row from public.volunteers v
+   where v.church_id = v_m.church_id and v.id = v_m.volunteer_id for update;
+  if not found then raise exception 'Your pledge could not be found — ask your church''s admin.'; end if;
+  if v_row.status = 'checkedin' then
+    raise exception 'You are already checked in for this expo — ask your church''s admin to change it.';
+  end if;
+  if v_row.status <> 'registered' then
+    raise exception 'You are not registered for an expo yet — take back your pledge instead.';
+  end if;
+  /* the placement guard reads these: this transaction may clear its own booth, and may drop the title */
+  perform set_config('newstart.lead_ok', 'on', true);
+  perform set_config('newstart.self_release', 'on', true);
+  update public.volunteers v set
+    status = 'prospect', booth = null, shift = '', registered_on = null,
+    lead = false, checked_in = false,
+    role = case when v.lead then '' else v.role end,
+    updated_at = now()
+  where v.church_id = v_m.church_id and v.id = v_m.volunteer_id;
+end;
+$$;
+revoke all on function public.deregister_my_pledge() from public, anon;
+grant execute on function public.deregister_my_pledge() to authenticated;
 
 -- attach a pledge a staff member typed in to the person's account, or unlink with an empty number (admins only,
 -- mirroring link_member)
@@ -1433,6 +1471,7 @@ security definer
 set search_path = ''
 as $$
 declare v_lead_ok boolean := coalesce(current_setting('newstart.lead_ok', true), '') = 'on';
+        v_self_ok boolean := coalesce(current_setting('newstart.self_release', true), '') = 'on';
 begin
   if (select auth.uid()) is null then return new; end if;
   if tg_op = 'INSERT' then
@@ -1456,8 +1495,15 @@ begin
      and not (public.is_admin() or v_lead_ok) then
     raise exception 'Only the church''s admins choose team leaders' using errcode = '42501', hint = 'place_guard';
   end if;
+  /* A member may take THEMSELVES off a booth: deregister_my_pledge marks its transaction with
+     newstart.self_release. It only ever clears their own booth — a move to another station, a lead
+     change, or any other row still needs an admin or that station's leader. */
   if new.booth is distinct from old.booth
-     and not (public.is_admin() or public.can_place(old.booth, new.booth)) then
+     and not (public.is_admin() or public.can_place(old.booth, new.booth)
+              or (v_self_ok and new.booth is null
+                  and exists (select 1 from public.memberships m
+                               where m.user_id = (select auth.uid())
+                                 and m.church_id = new.church_id and m.volunteer_id = new.id))) then
     raise exception 'Only the church''s admins and the station''s team leader may place volunteers' using errcode = '42501', hint = 'place_guard';
   end if;
   return new;
@@ -1878,6 +1924,67 @@ revoke all on function public.pledge_notify() from public, anon, authenticated;
 drop trigger if exists pledge_notify on public.volunteers;
 create trigger pledge_notify after insert on public.volunteers
   for each row execute function public.pledge_notify();
+
+-- ================================================================ ADMIN ALERTS: REGISTER / DEREGISTER / WITHDRAW
+-- pledge_notify above already tells a church's admins about a new pledge. These two cover the other three
+-- movements so an admin inbox reflects every change to who is coming: a registration, a deregistration, and a
+-- withdrawn pledge. One row per approved admin, and — like every other notification here — a row that can never
+-- abort the change that caused it.
+create or replace function public.volunteers_admin_status_notify()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.status is not distinct from old.status then return null; end if;
+  if new.status = 'registered' then
+    insert into public.notifications (church_id, user_id, kind, title, body)
+    select new.church_id, m.user_id, 'register', left('Registered: ' || new.name, 120),
+           case when new.booth is null then 'They are registered for the expo.'
+                else 'They are registered at ' || public.booth_title(new.booth) || '.' end
+    from public.memberships m
+    where m.church_id = new.church_id and m.role = 'admin' and m.status = 'approved';
+  elsif new.status = 'prospect' and old.status = 'registered' then
+    insert into public.notifications (church_id, user_id, kind, title, body)
+    select new.church_id, m.user_id, 'deregister', left('Deregistered: ' || new.name, 120),
+           'They gave up their place at the expo. Their pledge still stands.'
+    from public.memberships m
+    where m.church_id = new.church_id and m.role = 'admin' and m.status = 'approved';
+  end if;
+  return null;
+end;
+$$;
+revoke all on function public.volunteers_admin_status_notify() from public, anon, authenticated;
+drop trigger if exists volunteers_admin_status_notify on public.volunteers;
+create trigger volunteers_admin_status_notify after update of status on public.volunteers
+  for each row execute function public.volunteers_admin_status_notify();
+
+create or replace function public.volunteers_admin_withdraw_notify()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_by_admin boolean := public.is_admin();
+begin
+  /* deleting a church cascades here: there is no church left to notify, and a row pointing at it would
+     fail the foreign key and abort the delete */
+  if not exists (select 1 from public.churches c where c.id = old.church_id) then return null; end if;
+  insert into public.notifications (church_id, user_id, kind, title, body)
+  select old.church_id, m.user_id, 'unpledge',
+         left((case when v_by_admin then 'Removed from the roster: ' else 'Pledge withdrawn: ' end) || old.name, 120),
+         case when v_by_admin then 'An admin took them off the expo roster.'
+              else 'They are no longer on the expo roster.' end
+  from public.memberships m
+  where m.church_id = old.church_id and m.role = 'admin' and m.status = 'approved';
+  return null;
+end;
+$$;
+revoke all on function public.volunteers_admin_withdraw_notify() from public, anon, authenticated;
+drop trigger if exists volunteers_admin_withdraw_notify on public.volunteers;
+create trigger volunteers_admin_withdraw_notify after delete on public.volunteers
+  for each row execute function public.volunteers_admin_withdraw_notify();
 
 -- mark read up to a row, in one call ("Mark all read")
 create or replace function public.mark_notifications_read(p_upto bigint)
