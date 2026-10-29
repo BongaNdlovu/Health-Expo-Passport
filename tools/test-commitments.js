@@ -64,12 +64,14 @@ $$;
 create table public.churches (
   id uuid primary key, name text not null default 'Church', status text not null default 'active');
 
+/* status defaults to 'pending', as production does: an 'approved' default would quietly satisfy any
+   guard that forgot its status check, so each fixture below approves itself on purpose. */
 create table public.memberships (
   user_id uuid primary key,
   church_id uuid not null references public.churches (id) on delete cascade,
   volunteer_id text,
   role text not null default 'member',
-  status text not null default 'approved');
+  status text not null default 'pending');
 
 create table public.volunteers (
   church_id uuid not null references public.churches (id) on delete cascade,
@@ -152,8 +154,8 @@ $$;
     await db.query("select set_config('request.jwt.claim.sub', '', false)");
     await db.exec('delete from public.notifications; delete from public.volunteers; delete from public.memberships; delete from public.churches; delete from public.attendees; delete from public.platform_admins;');
     await db.exec(`insert into public.churches (id) values ('${CHURCH}');
-      insert into public.memberships (user_id, church_id, role) values ('${ADMIN}', '${CHURCH}', 'admin');
-      insert into public.memberships (user_id, church_id, role, volunteer_id) values ('${MEMBER}', '${CHURCH}', 'member', 'VOL-1');
+      insert into public.memberships (user_id, church_id, role, status) values ('${ADMIN}', '${CHURCH}', 'admin', 'approved');
+      insert into public.memberships (user_id, church_id, role, volunteer_id, status) values ('${MEMBER}', '${CHURCH}', 'member', 'VOL-1', 'approved');
       insert into public.volunteers (church_id, id, name, status, booth, shift, role, lead, registered_on)
         values ('${CHURCH}', 'VOL-1', 'Thandi Mabaso', 'registered', 'bp', 'morning', 'Team', true, current_date);`);
   };
@@ -230,7 +232,7 @@ $$;
   /* ------------------------------------------------------------------ */
   console.log('\n3. every admin, once, and nothing on a church delete');
   await reset();
-  await db.exec("insert into public.memberships (user_id, church_id, role) values ('" + ADMIN2 + "', '" + CHURCH + "', 'admin')");
+  await db.exec("insert into public.memberships (user_id, church_id, role, status) values ('" + ADMIN2 + "', '" + CHURCH + "', 'admin', 'approved')");
   await as(MEMBER);
   await db.query('select public.deregister_my_pledge()');
   const both = await notifs('deregister');
@@ -261,7 +263,7 @@ $$;
 
   /* somebody else's pledge: the flag must not reach it */
   await reset();
-  await db.exec(`insert into public.memberships (user_id, church_id, role, volunteer_id) values ('${OTHER}', '${CHURCH}', 'member', 'VOL-2');
+  await db.exec(`insert into public.memberships (user_id, church_id, role, volunteer_id, status) values ('${OTHER}', '${CHURCH}', 'member', 'VOL-2', 'approved');
     insert into public.volunteers (church_id, id, name, status, booth) values ('${CHURCH}', 'VOL-2', 'Pieter Botha', 'registered', 'vitals');`);
   await as(MEMBER);
   await db.query('begin');
@@ -358,7 +360,7 @@ $$;
   await reset();
   const CHURCH2 = '55555555-5555-5555-5555-555555555555';
   await db.exec(`insert into public.churches (id) values ('${CHURCH2}');
-    insert into public.memberships (user_id, church_id, role) values ('${OTHER}', '${CHURCH2}', 'member');`);
+    insert into public.memberships (user_id, church_id, role, status) values ('${OTHER}', '${CHURCH2}', 'member', 'approved');`);
   await as(ADMIN);
   await db.query("insert into public.attendees (church_id, id, name, interests) values ($1, 'EXPO-042', 'Church A visitor', $2::jsonb)",
     [CHURCH, asPlan({ customPlan: PLAN })]);

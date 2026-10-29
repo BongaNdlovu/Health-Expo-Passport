@@ -299,7 +299,7 @@ export function planFor(a,pk){
     the generated plan, and every caller (Plan, Send home, WhatsApp, email, the printed card) gets the same
     object, so none of them can announce a different plan from the one the visitor was shown (D-04, R-07). */
  const custom=a&&a.interests&&a.interests.customPlan;
- if(custom&&typeof custom==='object')return customPlanFor(a,custom);
+ if(custom&&typeof custom==='object'&&!Array.isArray(custom))return customPlanFor(a,custom);
  if(!pk){const cp=chosenChurchPlan(a);if(cp)return churchPlanFor(a,cp);}
  pk=pk||pkOf(a);
  const actions=k=>{

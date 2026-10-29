@@ -90,9 +90,15 @@ if (fs.existsSync(apk)) fs.copyFileSync(apk, path.join(dist, 'newstart.apk'));
 /* What src/update.js reads: the build this folder was made at, and — when an Android build is sitting beside it —
    where to fetch it. No version is claimed for the APK: it was packaged from whichever dist/ existed at the time,
    and its own page carries that build's id. */
+/* The build date is HEAD's commit date, not the wall clock: two builds of the same source then write the
+   same bytes, so a no-op rebuild stops showing dist/ as changed. Outside a git checkout it falls back to
+   now. The build's real identity is `version` above, which is a hash of what actually went into it. */
+let builtAt = '';
+try { builtAt = require('child_process').execFileSync('git', ['log', '-1', '--format=%cI'], { cwd: root, encoding: 'utf8' }).trim(); }
+catch (e) { /* not a checkout, or no git on PATH */ }
 fs.writeFileSync(path.join(dist, 'version.json'), JSON.stringify({
   version,
-  built: new Date().toISOString(),
+  built: builtAt || new Date().toISOString(),
   apk: fs.existsSync(apk) ? { url: 'newstart.apk' } : null,
 }, null, 2) + '\n');
 
