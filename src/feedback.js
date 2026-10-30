@@ -65,7 +65,7 @@ export function confirmAsk(o) {
   go.textContent = o.label || 'Confirm';
   if (no) no.textContent = o.cancelLabel || 'Cancel';
   go.className = o.danger
-    ? 'btn flex-1 bg-rose-600 py-2.5 text-xs text-white'
+    ? 'btn btn-danger flex-1 py-2.5 text-xs'
     : 'btn btn-primary flex-1 py-2.5 text-xs';
   sheet.classList.remove('hidden', 'is-closing');
   sheet.classList.add('flex');

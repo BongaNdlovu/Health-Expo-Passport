@@ -7,7 +7,7 @@ import { CHURCH_PLANS_KEY, FOLLOWUP_MAX, churchPlansBox, clearInvite, followupsF
 import { GRACE_DAYS, clearReadings, clockKnown, followedUp, hasReadings, noteServerTime, readingsGone, visitIsOld } from './retention.js';
 import { render, toast } from './shell.js';
 import { confirmAsk, ok } from './feedback.js';
-import { BOOTHS, EXPO_TOTAL, PROTOCOLS, STATUS_UI, attendees, boothLabel, state, volunteers } from './data.js';
+import { BOOTHS, EXPO_TOTAL, EXPO_UPCOMING, PROTOCOLS, STATUS_UI, attendees, boothLabel, state, volunteers } from './data.js';
 import { qSafe, queueReset, queueSync } from './queue.js';
 import { bmi, cat, chipClass, esc, fmt1, initials, redFlag } from './helpers.js';
 import { planNeeds } from './results.js';
@@ -117,6 +117,7 @@ async function acctReload(){
  if(r&&r.data&&typeof r.data==='object'){cloud.acct=r.data;cloud.acctV++;}
  renderGate();renderAcct();profileChanged();
 }
+export const retryNote=(t,what)=>acctNote(t)+`<button class="btn btn-glass mt-2 w-full py-2.5 text-xs" data-action="acct-retry" data-args="${what}">Try again</button>`;
 export const acctNote=t=>`<p class="mt-1.5 text-[11px] leading-relaxed text-[#5c747a]">${t}</p>`;
 export const acctBox=(label,body)=>`<div class="mt-4 rounded-[18px] border border-[#123033]/[.07] bg-white/60 p-3.5"><div class="microlabel">${label}</div>${body}</div>`;
 
@@ -408,7 +409,7 @@ export async function myPledgeSave(e){
    cloud.pledge?'Your pledge is saved ✓':'Pledge received — you are on the team list ✓');
  const b=$('#mfGo');if(b){b.disabled=false;b.textContent=cloud.pledge?'Save my pledge':'Send my pledge →';}
  if(!r)return;
- cloud.pledgeEdit=false;state.mf=null;
+ cloud.pledgeEdit=false;state.mf=null;cloud.expos=undefined;cloud.adminExpos=undefined;
  await loadPledge(true);
  await acctReload();                      /* my_account now carries the volunteer_id */
 }
@@ -636,6 +637,7 @@ export function acctTabs(){
 }
 export function openAcct(tab){
  cloud.acctTab=tab||'me';
+ cloud.expos=undefined;cloud.adminExpos=undefined;   /* pledge counts change while the sheet is closed: read them fresh */
  if(cloud.acctTab==='admin'){cloud.plat=null;cloud.audit=null;cloud.pAdmins=null;}
  if(cloud.acctTab==='church'){cloud.members=null;cloud.adminPlans=null;cloud.planEdit=null;cloud.adminFollowups=null;cloud.inviteLink=null;}
  if(cloud.acctTab==='me')cloud.myFollow=null;
@@ -833,12 +835,12 @@ export function churchAdminHTML(){
  const selfAdmin=!viaAdmin&&a.membership&&a.membership.church_id===cid&&a.membership.role==='admin'&&a.membership.status==='approved';
  return `${viaAdmin?`<button data-action="back-to-churches" class="tap-link">← All churches</button>`:''}
   <div class="mt-1 text-[13px] font-bold text-[#123033]">${esc(c.name)}</div>
+  ${acctBox('Health Expos',expoAdminHTML(cid))}
   ${acctBox('Members'+(waiting?` · ${waiting} waiting`:'')+(F?` · ${F.length} of ${FOLLOWUP_MAX} follow-up people`:''),
-   !L?acctNote('Loading…'):!L.length?acctNote('Nobody has joined yet.'):L.map(u=>memberRow(u,F,admins,ranks,canPost)).join('')
+   !L?acctNote('Loading…'):cloud.members.err?retryNote('Could not load the members. Check your connection.','members'):!L.length?acctNote('Nobody has joined yet.'):L.map(u=>memberRow(u,F,admins,ranks,canPost)).join('')
    +acctNote('Members see only their own details and results. Staff and church admins see this church’s visitors and volunteers, so only give those roles to people you know.')
    +acctNote('Admins manage this church only: nobody here can open another church’s data. The two admin posts are the Health Department Leader and their Assistant: the Leader (or the Expo admin) gives, swaps and takes them; the Assistant approves and removes members, pledges and team leaders.')
    +acctNote(`Follow-up people (up to ${FOLLOWUP_MAX}) are given visitors to contact after the expo, and see only those visitors.`))}
-  ${acctBox('Health Expos',expoAdminHTML(cid))}
   ${selfAdmin?acctBox('My admin post',adminPostHTML(a.membership,ranks)):''}
   ${acctBox('Invite links',inviteBox(cid,c))}
   ${acctBox('Church plans',churchPlansBox(cid))}
@@ -870,7 +872,7 @@ async function loadMembers(cid){
  cloud.membersBusy=cid;
  const r=await acctRpc('church_members',{p_church:cid});
  cloud.membersBusy='';
- cloud.members={cid,list:r&&Array.isArray(r.data)?r.data:[]};
+ cloud.members={cid,list:r&&Array.isArray(r.data)?r.data:[],err:!(r&&Array.isArray(r.data))};
  renderAcct();
 }
 const reloadMembers=()=>{const cid=cloud.members&&cloud.members.cid;cloud.members=null;return loadMembers(cid);};
@@ -945,14 +947,14 @@ function churchFormHTML(c){
  return `<form data-action="church-save" data-args="${qSafe(c.id)}" class="mt-2 space-y-3">
   ${f('Name','Church name',c.name,'required maxlength="120"')}${f('City','Town or city',c.city,'maxlength="80"')}
   ${f('Phone','Church phone',c.phone,'type="tel" inputmode="tel" maxlength="40"')}${f('Email','Church email',c.email,'type="email" inputmode="email" maxlength="254"')}
-  <button id="cfGo" class="btn btn-primary w-full py-3 text-sm">Save church details</button></form>`;
+  <button id="chGo" class="btn btn-primary w-full py-3 text-sm">Save church details</button></form>`;
 }
 export async function saveChurch(e,cid){
  e.preventDefault();
  const v=id=>(($('#cf'+id)||{}).value||'').trim();
  gateBusy('cf','Saving…');
  const r=await acctRpc('update_church',{p_church:cid,p_name:v('Name'),p_city:v('City'),p_phone:v('Phone'),p_email:v('Email')},'Church details saved ✓');
- const b=$('#cfGo');if(b){b.disabled=false;b.textContent='Save church details';}
+ const b=$("#chGo");if(b){b.disabled=false;b.textContent="Save church details";}
  if(!r)return;
  if(cloud.acct.platform_admin)await loadPlatform();
  await acctReload();
@@ -975,17 +977,28 @@ const expoClosed=x=>!!(x.signup_deadline&&String(x.signup_deadline)<todayStr());
 const openExpos=()=>((cloud.expos&&cloud.expos.list)||[]).filter(x=>x.status==='open'&&!expoClosed(x));
 async function fetchExpos(cid){
  /* a read: an older database without the function just shows no expos, quietly */
- if(!cloud.client)return {err:true,list:[]};
+ if(!cloud.client)return {err:'net',list:[]};
  let r;
  try{r=await cloud.client.rpc('church_expos',cid?{p_church:cid}:{});}catch(e){r={error:e};}
- return r&&!r.error&&Array.isArray(r.data)?{list:r.data}:{err:true,list:[]};
+ if(r&&!r.error&&Array.isArray(r.data))return {list:r.data};
+ const msg=String((r&&r.error&&r.error.message)||'');
+ return {err:/function|does not exist|schema cache/i.test(msg)?'schema':'net',list:[]};
+}
+/* the Team tab's headline expo: the church's nearest open expo while signed in, the built-in one otherwise */
+const EXPO_DEFAULT={...EXPO_UPCOMING};
+export function syncExpoHeadline(){
+ const L=openExpos().filter(x=>String(x.starts_on).slice(0,10)>=todayStr()).sort((a,b)=>String(a.starts_on).localeCompare(String(b.starts_on)));
+ const x=L[0];
+ if(!x){Object.assign(EXPO_UPCOMING,EXPO_DEFAULT);return;}
+ Object.assign(EXPO_UPCOMING,{id:x.id,name:x.name,venue:x.venue||x.address||'Venue to be announced',date:String(x.starts_on).slice(0,10),
+  need:x.volunteers_needed>0?x.volunteers_needed:EXPO_DEFAULT.need});
 }
 async function loadExpos(){
  if(cloud.expoBusy)return;
  cloud.expoBusy=true;
  const r=await fetchExpos('');
  cloud.expoBusy=false;
- cloud.expos=r;
+ cloud.expos=r;syncExpoHeadline();
  renderAcct();render();
 }
 async function loadAdminExpos(cid){
@@ -995,6 +1008,12 @@ async function loadAdminExpos(cid){
  cloud.expoBusy=false;
  cloud.adminExpos={cid,...r};
  renderAcct();
+}
+export function acctRetry(what){
+ if(what==='members')cloud.members=null;
+ else if(what==='pAdmins')cloud.pAdmins=null;
+ else if(what==='expos'){cloud.expos=undefined;cloud.adminExpos=undefined;}
+ renderAcct();render();
 }
 const reloadExpos=()=>{cloud.expos=undefined;cloud.adminExpos=undefined;renderAcct();render();};
 
@@ -1057,7 +1076,8 @@ export function expoAdminHTML(cid){
  if(cloud.expoEdit)return expoFormHTML();
  const E=cloud.adminExpos;
  if(!E||E.cid!==cid){loadAdminExpos(cid);return acctNote('Loading…');}
- return `${E.err?acctNote('Health Expos need the latest supabase/schema.sql — ask the administrator to run it again.')
+ return `${E.err==='schema'?acctNote('Health Expos need the latest supabase/schema.sql — ask the administrator to run it again.')
+   :E.err?retryNote('Could not load the Health Expos. Check your connection.','expos')
    :E.list.length?E.list.map(x=>expoCard(x,true)).join(''):acctNote('No expo yet. Add one: members see it once it is open, and pledge to it.')}
   ${E.err?'':`<button class="btn btn-primary mt-3 w-full py-2.5 text-xs" data-action="expo-new" data-args="${qSafe(cid)}">+ New Health Expo</button>`}`;
 }
@@ -1124,11 +1144,15 @@ export async function saveExpoForm(status){
  if(!d.startsOn){toast('Choose the date of the expo.');return;}
  if(d.startTime&&d.endTime&&d.endTime<=d.startTime){toast('The end time is before the start time.');return;}
  if(d.signupDeadline&&d.signupDeadline>d.startsOn){toast('The sign-up deadline is after the expo.');return;}
+ if(cloud.expoSaving)return;                 /* a second tap while the first is in flight would create the expo twice */
+ cloud.expoSaving=true;
+ const b0=$('#xpGo'),was=b0?b0.textContent:'';
  gateBusy('xp','Saving…');
  const r=await acctRpc('save_expo',{p:{id:d.id||'',church:d.church||'',name:d.name,startsOn:d.startsOn,startTime:d.startTime||'',endTime:d.endTime||'',venue:d.venue||'',
    address:d.address||'',volunteersNeeded:d.total||0,stationNeeds:d.needs,clinic:!!d.clinic,doctors:d.doctors||0,doctorTypes:d.types,signupDeadline:d.signupDeadline||'',status:status||d.status}},
   status==='open'&&d.status!=='open'?'Saved — members can see it now ✓':'Saved ✓');
- const b=$('#xpGo');if(b){b.disabled=false;b.textContent='Save and open for members';}
+ cloud.expoSaving=false;
+ const b=$('#xpGo');if(b){b.disabled=false;b.textContent=was||'Save and open for members';}
  if(!r)return;
  cloud.expoEdit=null;reloadExpos();
 }
@@ -1164,6 +1188,7 @@ export function platformHTML(){
 function platformAdminsHTML(){
  if(cloud.pAdmins===null){loadPlatformAdmins();return acctBox('Platform admins',acctNote('Loading…'));}
  const L=cloud.pAdmins,me=cloud.acct&&cloud.acct.user_id;
+ if(cloud.pAdminsErr)return acctBox('Platform admins',retryNote('Could not load the platform admins. Check your connection.','pAdmins'));
  return acctBox('Platform admins',`${acctNote('Platform admins approve churches and can open every church. Add someone who already has an account in this app with a confirmed email.')}
   ${L.map(p=>`<div class="flex items-center gap-2 border-t border-[#123033]/[.07] py-2">
     <div class="min-w-0 flex-1 truncate text-[13px] font-bold text-[#123033]">${esc(p.email||'')}${p.user_id===me?' <span class="font-semibold text-[#667d83]">(you)</span>':''}</div>
@@ -1177,7 +1202,7 @@ async function loadPlatformAdmins(){
  cloud.pAdminsBusy=true;
  const r=await acctRpc('admin_platform_admins');
  cloud.pAdminsBusy=false;
- cloud.pAdmins=r&&Array.isArray(r.data)?r.data:[];
+ cloud.pAdmins=r&&Array.isArray(r.data)?r.data:[];cloud.pAdminsErr=!(r&&Array.isArray(r.data));
  renderAcct();
 }
 export async function addPlatformAdmin(e){
@@ -1344,6 +1369,7 @@ export async function cloudSignOut(force){
  cloud.signingOut=true;
  try{await cloud.client.auth.signOut({scope:'local'});}catch(e){}
  cloud.signingOut=false;cloud.ready=false;cloud.demo=false;cloud.gateHide=false;cloud.gateKey='';cloud.isAdmin=undefined;cloud.pendingUsers=null;
+ Object.assign(EXPO_UPCOMING,EXPO_DEFAULT);
  cloud.acct=null;cloud.churchId='';cloud.health=undefined;cloud.dir=null;cloud.regChurch=false;cloud.members=null;cloud.plat=null;cloud.audit=null;cloud.pAdmins=null;cloud.expos=undefined;cloud.adminExpos=undefined;cloud.expoEdit=null;cloud.pledgeExpo='';cloud.adminChurch='';cloud.adminData='';cloud.adminRows=null;closeAcct();
  cloud.view='login';cloud.viewEmail='';cloud.pending=false;cloud.recovery=false;cloud.formErr='';cloud.gateForce=false;cloud.delOpen=false;
  cloud.plans=null;cloud.adminPlans=null;cloud.planEdit=null;try{localStorage.removeItem(CHURCH_PLANS_KEY);}catch(e){}

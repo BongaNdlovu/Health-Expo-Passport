@@ -1284,7 +1284,7 @@ function makeServer() {
   ok('the sheet opens with the question',
     $el('confirmSheet').classList.contains('flex') && $el('cfTitle').textContent === 'Delete?'
       && $el('cfBody').textContent === 'Gone for good.');
-  ok('a dangerous question styles its button', /rose/.test($el('cfGo').className) && $el('cfGo').textContent === 'Delete');
+  ok('a dangerous question styles its button', /btn-danger/.test($el('cfGo').className) && $el('cfGo').textContent === 'Delete');
   g.answerConfirm(true);
   ok('saying yes resolves true', (await yes) === true);
   ok('...and the sheet begins to close', $el('confirmSheet').classList.contains('is-closing'));
@@ -1954,6 +1954,35 @@ function makeServer() {
 
   await toLogin();
   ok('login screen links to Create an account and Forgot password', g.gateState() === 'form' && gateHTML().includes('data-action="gateView" data-args="signup"') && gateHTML().includes('data-action="gateView" data-args="forgot"'));
+  ok('the bell lets its unread badge show outside its corner (a .btn clips by default)', /#notifBell,\.hx-round\{overflow:visible\}/.test(require('fs').readFileSync(require('path').join(__dirname, '..', 'index.html'), 'utf8')));
+  { const acc = require('fs').readFileSync(require('path').join(__dirname, '..', 'src', 'account.js'), 'utf8');
+    const resets = 'cloud.expos=undefined;cloud.adminExpos=undefined;';
+    const openAt = acc.indexOf('export function openAcct(tab){');
+    ok('opening the account hub and saving a pledge refresh the expo counts (they were cached and went stale)', openAt > -1 && acc.slice(openAt, openAt + 400).includes(resets) && acc.includes('cloud.pledgeEdit=false;state.mf=null;' + resets));
+    ok('My church lists Health Expos before the long members list', acc.indexOf("acctBox('Health Expos',expoAdminHTML(cid))") > -1 && acc.indexOf("acctBox('Health Expos',expoAdminHTML(cid))") < acc.indexOf("acctBox('Members'+(waiting")); }
+  { /* static audit of the whole source: ids, action names, and failed loads */
+    const fsx = require('fs'), pth = require('path');
+    const srcDir = pth.join(__dirname, '..', 'src');
+    const files = fsx.readdirSync(srcDir).filter(f => f.endsWith('.js')).map(f => [f, fsx.readFileSync(pth.join(srcDir, f), 'utf8')]);
+    const htmlSrc = fsx.readFileSync(pth.join(__dirname, '..', 'index.html'), 'utf8');
+    const idsIn = h => [...h.matchAll(/\sid="([^"$]+)"/g)].map(m => m[1]);
+    const where = {};
+    files.forEach(([f, t]) => new Set(idsIn(t)).forEach(id => (where[id] = where[id] || []).push(f)));
+    new Set(idsIn(htmlSrc)).forEach(id => (where[id] = where[id] || []).push('index.html'));
+    const clash = Object.entries(where).filter(([, v]) => v.length > 1).map(([k, v]) => k + ':' + v.join('+'));
+    ok('no element id is defined in two files (two #cfGo made every confirm dialog relabel the wrong button)', clash.length === 0, clash.join(' '));
+    const reg = fsx.readFileSync(pth.join(srcDir, 'action-registry.js'), 'utf8');
+    const known = new Set([...reg.matchAll(/([A-Za-z][\w-]*)/g)].map(m => m[1]));
+    const used = new Set();
+    [...files, ['index.html', htmlSrc]].forEach(([, t]) => [...t.matchAll(/data-(?:action|on-input|on-change|on-toggle)="([A-Za-z][\w-]*)"/g)].forEach(m => used.add(m[1])));
+    const unwired = [...used].filter(k => !known.has(k));
+    ok('every data-action in the source names a registered action', unwired.length === 0, unwired.join());
+    const acc = files.find(([f]) => f === 'account.js')[1];
+    ok('a failed load of members, Health Expos or platform admins says so and offers Try again (not an empty list)',
+      ['members', 'expos', 'pAdmins'].every(w => acc.includes("'" + w + "'))") || acc.includes(",'" + w + "')")) && reg.includes("'acct-retry'"));
+  }
+  { const fb = require('fs').readFileSync(require('path').join(__dirname, '..', 'src', 'feedback.js'), 'utf8'), pg = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.html'), 'utf8');
+    ok('the destructive confirm button has a style (bg-rose-600 was not compiled: white text on nothing)', /btn btn-danger/.test(fb) && /\.btn-danger\{background:/.test(pg) && !/bg-rose-600/.test(fb)); }
   const actionsOf = h => [...h.matchAll(/data-action="([^"]*)"/g)].map(m => m[1]);
   const unwired = [];
   for (const v of ['login', 'signup', 'forgot']) { g.gateView(v); actionsOf(gateHTML()).forEach(n => { if (!g.hasAction(n)) unwired.push(v + ':' + n); }); }
@@ -2441,6 +2470,11 @@ function makeServer() {
     ok('+ New Health Expo opens the form: name, date, times, venue, address, deadline, volunteers, stations, clinic',
       ['name', 'startsOn', 'startTime', 'endTime', 'venue', 'address', 'signupDeadline'].every(k => new RegExp('data-k="' + k + '"').test(sheet())) && /id="xpTotal"/.test(sheet()) && /Volunteers needed at each station/.test(sheet())
       && /A medical clinic will take part/.test(sheet()) && !/How many doctors/.test(sheet()), sheet().slice(0, 200));
+    { C.expos = { list: expoList }; g.syncExpoHeadline();
+      const live = '2027-03-06' >= new Date().toISOString().slice(0, 10);
+      ok('the Team tab headline follows the church nearest open expo (name, date, venue, helpers needed)', live ? (g.EXPO_UPCOMING.name === 'Pinetown <b>Health</b> Expo' && g.EXPO_UPCOMING.date === '2027-03-06' && g.EXPO_UPCOMING.venue === 'Church hall' && g.EXPO_UPCOMING.need === 20) : true, JSON.stringify(g.EXPO_UPCOMING));
+      C.expos = undefined; g.syncExpoHeadline();
+      ok('…and goes back to the built-in expo when there is none', g.EXPO_UPCOMING.name === 'SDA Community Health Expo — March' && g.EXPO_UPCOMING.need === 22, g.EXPO_UPCOMING.name); }
     ok('…each station starts at its usual size and the total is their sum', C.expoEdit.total === 32 && C.expoEdit.needs.bp === 4 && C.expoEdit.needs.media === 1, JSON.stringify(C.expoEdit.needs) + C.expoEdit.total);
     g.expoStation('bp', '6'); g.expoStation('kids', '0');
     ok('…the total follows the stations until the admin types their own', C.expoEdit.total === 32 - 4 + 6 - 2 && $el('xpTotal').value === String(C.expoEdit.total) && !('kids' in C.expoEdit.needs), String(C.expoEdit.total));
@@ -2459,7 +2493,8 @@ function makeServer() {
     ok('…and an end before the start', /end time/.test($el('toastMsg').textContent) && !rc.some(x => /^saveexpo:/.test(x)), $el('toastMsg').textContent);
     g.expoField('endTime', '16:00'); g.expoField('signupDeadline', '2027-04-01'); await g.saveExpoForm('open');
     ok('…and a deadline after the expo', /deadline/.test($el('toastMsg').textContent) && !rc.some(x => /^saveexpo:/.test(x)), $el('toastMsg').textContent);
-    g.expoField('signupDeadline', '2027-02-20'); g.expoField('venue', 'Church hall'); await g.saveExpoForm('open'); await sleep(40);
+    g.expoField('signupDeadline', '2027-02-20'); g.expoField('venue', 'Church hall'); await Promise.all([g.saveExpoForm('open'), g.saveExpoForm('open')]); await sleep(40);
+    ok('a double tap on Save sends the expo once (it would have been created twice)', rc.filter(x => x.startsWith('saveexpo:Pinetown Health Expo 2027:open')).length === 1, rc.join());
     ok('saving sends everything the admin entered, then the list reloads',
       rc.includes('saveexpo:Pinetown Health Expo 2027:open:25:') && lastExpo.startsOn === '2027-03-06' && lastExpo.startTime === '14:00' && lastExpo.endTime === '16:00' && lastExpo.venue === 'Church hall' && lastExpo.signupDeadline === '2027-02-20'
       && lastExpo.stationNeeds.bp === 5 && !('kids' in lastExpo.stationNeeds) && lastExpo.clinic === true && lastExpo.doctorTypes.join() === 'Dentist' && lastExpo.church === 'ch-a' && !C.expoEdit, JSON.stringify(lastExpo));

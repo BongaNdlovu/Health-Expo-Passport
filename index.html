@@ -42,9 +42,9 @@
     --hx-surface-3:#eeede6;
     --hx-ink:#141815;
     --hx-ink-2:#4e5750;
-    --hx-ink-3:#6b756d;
+    --hx-ink-3:#5b655d;
     --hx-mint:#34d375;
-    --hx-mint-deep:#15803d;
+    --hx-mint-deep:#126a33;
     --hx-mint-soft:rgba(52,211,117,.12);
     --hx-mint-line:rgba(21,128,61,.30);
     --hx-mint-pill-a:#98f3b4;
@@ -759,7 +759,7 @@
   .pl-row b{display:block;font-size:12.5px;color:var(--hx-ink)}
   .pl-row>div>span{display:block;margin-top:2px;font-size:11.5px;line-height:1.45;color:var(--hx-ink-2)}
   .pl-food{display:flex;width:100%;align-items:center;gap:.75rem;border:0;border-radius:20px;padding:.9rem 1rem;text-align:left;cursor:pointer;color:#fff;
-           background:linear-gradient(135deg,#3a9487,#2a7a70);box-shadow:0 18px 36px -24px rgba(31,77,72,.95)}
+           background:linear-gradient(135deg,#237a6d,#1b665c);box-shadow:0 18px 36px -24px rgba(31,77,72,.95)}
   .pl-food b{display:block;font-size:12.5px}
   .pl-food span span{display:block;margin-top:2px;font-size:10.5px;opacity:.8}
   .pl-det summary{display:flex;align-items:center;justify-content:space-between;padding:.95rem 1rem;font-size:12.5px;font-weight:800;color:#123033}
@@ -820,7 +820,7 @@
   .fd-money b{color:#123033}
   .fd-foot{margin-top:.8rem;font-size:10px;line-height:1.5;color:#5f7479}
   .fd-pouch{display:flex;align-items:center;gap:.75rem;border-radius:20px;padding:.85rem 1rem;color:#fff;
-            background:linear-gradient(135deg,#3a9487,#2a7a70);box-shadow:0 18px 36px -24px rgba(31,77,72,.95)}
+            background:linear-gradient(135deg,#237a6d,#1b665c);box-shadow:0 18px 36px -24px rgba(31,77,72,.95)}
   .fd-pouch b{display:block;font-size:12px}
   .fd-pouch span{display:block;margin-top:2px;font-size:10.5px;line-height:1.4;opacity:.8}
 
@@ -1179,6 +1179,32 @@
   .hx-sheet-actions button::after,.hx-practice-go::after{content:"";position:absolute;inset:-12px -8px}
   /* a bottom sheet never grows past the screen: it scrolls inside, so its title is not hidden under the status bar */
   .sheet-up{max-height:92vh;overflow-y:auto;overscroll-behavior:contain}
+  /* .btn clips its contents (for the press ripple), which cut the unread badge sitting on the bell's corner */
+  #notifBell,.hx-round{overflow:visible}
+  /* dark theme: components that kept their light-theme colours (found by checking every screen's text against its background) */
+  html[data-theme=dark] .q-total{background:rgba(255,255,255,.07)}
+  html[data-theme=dark] .q-total b{color:var(--hx-ink)}
+  html[data-theme=dark] .q-total span{color:var(--hx-ink-2)}
+  html[data-theme=dark] .q-state-info{background:rgba(255,255,255,.08);color:var(--hx-ink-2)}
+  html[data-theme=dark] .q-state-live{background:rgba(52,211,117,.14);color:var(--hx-mint-deep)}
+  html[data-theme=dark] .q-state-warn{background:var(--hx-warn-bg);color:var(--hx-warn)}
+  html[data-theme=dark] .q-state-bad{background:var(--hx-rose-bg);color:var(--hx-rose)}
+  html[data-theme=dark] .pl-det summary{color:var(--hx-ink)}
+  html[data-theme=dark] .pl-det summary::after{color:var(--hx-ink-2)}
+  html[data-theme=dark] .sc-ok{background:rgba(52,211,117,.14);border-color:rgba(52,211,117,.30);color:var(--hx-mint-deep)}
+  html[data-theme=dark] .sc-warn{background:var(--hx-warn-bg);border-color:var(--hx-warn-line);color:var(--hx-warn)}
+  html[data-theme=dark] .st-height{color:var(--hx-ink-2)}
+  html[data-theme=dark] .jr-dot{background:rgba(255,255,255,.12);color:var(--hx-ink-2)}
+  /* white text on the avatar and numbered-step gradients: darker stops so the initials and numbers read (both themes) */
+  .av{background:linear-gradient(135deg,color-mix(in srgb,var(--s1) 66%,#000),color-mix(in srgb,var(--s2) 85%,#000))}
+  .ac-n{background:linear-gradient(135deg,color-mix(in srgb,var(--s1) 66%,#000),color-mix(in srgb,var(--s2) 85%,#000))}
+  .nav-badge-alert{background:linear-gradient(135deg,#cf3826,#b32211);font-size:9px}
+  html[data-theme=dark] :is(.text-\[\#1f6b62\],.q-mini-soft){color:var(--hx-mint-deep)}
+  html[data-theme=dark] .pl-switch summary{color:var(--hx-mint-deep)}
+  .jr-dot{color:#4a6166}
+  /* the confirm button for a destructive step: bg-rose-600 is not in the compiled stylesheet, which left white text on nothing */
+  .btn-danger{background:linear-gradient(135deg,#c43c30,#a52a20);color:#fff;border:0;box-shadow:0 10px 20px -12px rgba(165,42,32,.6)}
+  html[data-theme=dark] .btn-danger{background:linear-gradient(135deg,#e5584b,#c43c30);color:#fff}
 </style>
 </head>
 <body>

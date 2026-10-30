@@ -219,7 +219,7 @@ export async function savePassword(pw){
 /* a password box with one Show / Hide button for every box in its form (the sign-in screens and the Profile page both use it) */
 export const pwField=(id,label,auto,ph)=>`<label class="block"><span class="microlabel">${label}</span>
    <span class="relative mt-1 block"><input id="${id}" type="password" autocomplete="${auto}" required placeholder="${ph||'Password'}" class="field" style="padding-right:4.5rem">
-   <button type="button" data-action="toggle-pass" class="text-[11px] font-extrabold text-brand-700" style="position:absolute;right:.9rem;top:50%;transform:translateY(-50%)">Show</button></span></label>`;
+   <button type="button" data-action="toggle-pass" class="text-[11px] font-extrabold text-brand-700" style="position:absolute;right:.5rem;top:50%;transform:translateY(-50%);min-height:40px;min-width:44px;padding:0 .5rem">Show</button></span></label>`;
 /* where the e-mailed links (confirm / reset) send people back to: this page, if it has a web address */
 export const authRedirect=()=>IS_APP?APP_SITE:/^https?:$/.test(location.protocol)?location.origin+location.pathname:undefined;
 export function gateView(v){
@@ -255,7 +255,7 @@ export function renderGate(){
  const keepEmail=($('#gateEmail')||{}).value||cloud.viewEmail||'',keepName=($('#gateName')||{}).value||'';
  const title=t=>`<div class="display hx-gate-title text-[17px] font-extrabold">${t}</div>`;
  const note=(t,cls)=>`<p class="mt-1.5 text-[11px] leading-relaxed ${cls||'text-[#5c747a]'}">${t}</p>`;
- const link=(view,t)=>`<button type="button" data-action="gateView" data-args="${view}" class="text-[11px] font-extrabold text-brand-700">${t}</button>`;
+ const link=(view,t)=>`<button type="button" data-action="gateView" data-args="${view}" style="min-height:44px;padding:0 .2rem" class="text-[11px] font-extrabold text-brand-700">${t}</button>`;
  const err=`<p id="gateErr" role="alert" class="text-[11px] font-bold text-rose-600">${esc(cloud.formErr)}</p>`;
  const emailField=`<label class="block"><span class="microlabel">Email</span>
    <input id="gateEmail" type="email" inputmode="email" autocomplete="username" required placeholder="you@example.org" class="field mt-1" value="${esc(keepEmail)}"></label>`;
