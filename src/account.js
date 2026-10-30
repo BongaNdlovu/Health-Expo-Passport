@@ -357,6 +357,7 @@ async function loadPledge(force){
  cloud.pledgeBusy=false;cloud.pledgeErr=false;
  if(r===null){cloud.pledge=null;cloud.pledgeErr=true;}
  else cloud.pledge=r&&r.data&&typeof r.data==='object'?r.data:null;
+ cloud.acctV++;renderGate();     /* the member screen keys its redraw on acctV: without this it stays on Loading… */
  renderAcct();render();
 }
 /* the member's pledge draft: prefilled from their saved pledge (or their membership details) the first time it opens */
@@ -524,6 +525,7 @@ async function loadMyTeam(){
  const r=await acctRpc('my_team');
  cloud.myTeamBusy=false;
  cloud.myTeam=r&&Array.isArray(r.data)?r.data:[];
+ cloud.acctV++;renderGate();
  renderAcct();render();
 }
 export async function teamAdd(id){
@@ -1007,6 +1009,7 @@ async function loadExpos(){
  const r=await fetchExpos('');
  cloud.expoBusy=false;
  cloud.expos=r;syncExpoHeadline();
+ cloud.acctV++;renderGate();
  renderAcct();render();
 }
 async function loadAdminExpos(cid){

@@ -2000,6 +2000,17 @@ function makeServer() {
     ok('the destructive confirm button has a style (bg-rose-600 was not compiled: white text on nothing)', /btn btn-danger/.test(fb) && /\.btn-danger\{background:/.test(pg) && !/bg-rose-600/.test(fb)); }
   { const rd = f => require('fs').readFileSync(require('path').join(__dirname, '..', 'src', f), 'utf8');
     ok('a signed-in person can sign out from Home and from the Profile Sync box (the way back to the sign-in screen)', /cloud\.user\?`<button data-action="cloudSignOut"[^`]*Sign out/.test(rd('account.js')) && /cloud\.user\?`<button data-action="cloudSignOut">Sign out<\/button>`/.test(rd('visitor.js'))); }
+  { /* second-account round, 2026-10-30: three bugs found on the device */
+    const rd = f => require('fs').readFileSync(require('path').join(__dirname, '..', 'src', f), 'utf8').replace(/\r/g, '');
+    const acc = rd('account.js'), sh = rd('shell.js'), vol = rd('volunteer.js');
+    const bodyOf = (src, head) => { const i = src.indexOf(head); return i < 0 ? '' : src.slice(i, src.indexOf('\n}', i)); };
+    ok('the member screen redraws when the pledge, the expos and the team load (My pledge was stuck on Loading…)',
+      ['loadPledge', 'loadExpos', 'loadMyTeam'].every(n => bodyOf(acc, 'async function ' + n + '(').includes('cloud.acctV++;renderGate();')));
+    ok('an Undo toast leaves with its offer (it stayed up and covered the buttons)',
+      /setTimeout\([^\n]*toastUndo[^\n]*opacity-0/.test(bodyOf(sh, 'export function toastUndo')));
+    ok('every placement Undo redraws the open sheet (it kept showing the old station)',
+      vol.split('afterPlace();rerenderPlace();}})').length - 1 === 3 && !vol.includes('then(r2=>{if(r2)afterPlace();})'));
+  }
   const actionsOf = h => [...h.matchAll(/data-action="([^"]*)"/g)].map(m => m[1]);
   const unwired = [];
   for (const v of ['login', 'signup', 'forgot']) { g.gateView(v); actionsOf(gateHTML()).forEach(n => { if (!g.hasAction(n)) unwired.push(v + ':' + n); }); }
@@ -2450,10 +2461,10 @@ function makeServer() {
     shots.push(gate());
     health = { ...health, s: { sys: 128, dia: 82, veg: 2 } };
     await g.cloudSync(true); await sleep(40);
-    const habitOnly = gate().replace('Only your clinic should change it', '').replace(/Medical clinic: [^<]*|No medical clinic/g, '');
+    const habitOnly = gate().replace(/<[^>]*>/g, ' ').replace('Only your clinic should change it', '').replace(/Medical clinic: [^<]*|No medical clinic/g, '');
     health = { ...health, s: { sys: 128, dia: 82, chol: 7.8 } };
     await g.cloudSync(true); await sleep(40);
-    ok('…red cholesterol says book a clinic visit this week; a low habit alone does not', /Very low/.test(habitOnly) && !/clinic/.test(habitOnly) && /book a clinic visit this week/.test(gate()), habitOnly.slice(-400));
+    ok('…red cholesterol says book a clinic visit this week; a low habit alone does not', /Very low/.test(habitOnly) && !/clinic/.test(habitOnly) && /book a clinic visit this week/.test(gate()), (/Very low/.test(habitOnly) ? 'has Very low' : 'NO Very low') + ' | ' + ((habitOnly.match(/[^<>]{0,80}clinic[^<>]{0,40}/) || ['no clinic'])[0]));
     me.membership.full_name = '<img src=x onerror=alert(1)>';
     await g.cloudSync(true); await sleep(30);
     ok('names from the database are escaped on the account screens', gate().includes('&lt;img src=x') && !gate().includes('<img src=x'));

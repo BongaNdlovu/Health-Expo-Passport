@@ -401,7 +401,7 @@ export async function placeMove(booth){
  if(!r)return;
  await afterPlace();rerenderPlace();
  /* from is empty when this was a first placement: undoing that is a release, not a move to nowhere */
- const back=()=>(from?volRpc('place_volunteer',{p_vol:v.id,p_booth:from}):volRpc('release_volunteer',{p_vol:v.id})).then(r2=>{if(r2)afterPlace();});
+ const back=()=>(from?volRpc('place_volunteer',{p_vol:v.id,p_booth:from}):volRpc('release_volunteer',{p_vol:v.id})).then(async r2=>{if(r2){await afterPlace();rerenderPlace();}});
  toastUndo(`${firstName(v.name)} → ${boothLabel(booth)} ✓`,back);
 }
 export async function placeSwap(otherId){
@@ -409,7 +409,7 @@ export async function placeSwap(otherId){
  const r=await volRpc('swap_volunteers',{p_a:v.id,p_b:o.id});
  if(!r)return;
  await afterPlace();rerenderPlace();
- toastUndo(`Swapped ${firstName(v.name)} ↔ ${firstName(o.name)} ✓`,()=>volRpc('swap_volunteers',{p_a:v.id,p_b:o.id}).then(r2=>{if(r2)afterPlace();}));
+ toastUndo(`Swapped ${firstName(v.name)} ↔ ${firstName(o.name)} ✓`,()=>volRpc('swap_volunteers',{p_a:v.id,p_b:o.id}).then(async r2=>{if(r2){await afterPlace();rerenderPlace();}}));
 }
 export async function placeRelease(){
  const v=placedVol();if(!v)return;
@@ -417,7 +417,7 @@ export async function placeRelease(){
  const r=await volRpc('release_volunteer',{p_vol:v.id});
  if(!r)return;
  await afterPlace();rerenderPlace();
- if(from)toastUndo(`${firstName(v.name)} taken off ${boothLabel(from)}`,()=>volRpc('place_volunteer',{p_vol:v.id,p_booth:from}).then(r2=>{if(r2)afterPlace();}));
+ if(from)toastUndo(`${firstName(v.name)} taken off ${boothLabel(from)}`,()=>volRpc('place_volunteer',{p_vol:v.id,p_booth:from}).then(async r2=>{if(r2){await afterPlace();rerenderPlace();}}));
 }
 export async function placeLead(){
  const v=placedVol();if(!v)return;

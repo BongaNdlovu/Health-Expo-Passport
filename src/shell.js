@@ -101,7 +101,7 @@ export function toastUndo(m,fn){
  const u=$('#toastUndo');
  if(u){u.classList.remove('hidden');u.onclick=()=>{const f=undoFn;undoFn=null;u.classList.add('hidden');if(f)f();};}
  clearTimeout(toastTimer);
- toastTimer=setTimeout(()=>{undoFn=null;const b=$('#toastUndo');if(b)b.classList.add('hidden');},6000);
+ toastTimer=setTimeout(()=>{undoFn=null;const b=$('#toastUndo');if(b)b.classList.add('hidden');$('#toast').classList.add('opacity-0','translate-y-3');},6000);   /* the message leaves with the offer: left up, it covered the buttons */
 }
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeSwitcher();closeWhatsApp();closeVolModal();closeCloud();}});
 
