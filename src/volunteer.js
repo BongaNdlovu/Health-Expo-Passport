@@ -10,7 +10,7 @@ import { migrateVolunteer, persist, cloud } from './state.js';
 import { isOfflineErr, validEmail } from './cloud.js';
 import { overlayClosed, overlayOpened } from './overlay.js';
 /* a lazy cycle: account.js imports this module's modal helpers; the sync call happens only at runtime */
-import { cloudSync } from './account.js';
+import { canManageExpos, cloudSync } from './account.js';
 import { downloadCSV, foodKeyOf, planFor, shortFood } from './results.js';
 import { GRACE_DAYS, withoutOldReadings } from './retention.js';
 /* Volunteers: pledge, register, booth picker, serve, modals, WhatsApp/email share and the print card. Split from the original single-file app; bundled back into one file by tools/build.js. */
@@ -173,6 +173,7 @@ function viewVolPledge(){
    <div class="display mt-1 text-[19px] leading-tight font-extrabold text-[#0f2a2c]">${esc(EXPO_UPCOMING.name)}</div>
    <div class="mt-1 text-[11px] font-semibold text-[#5c747a]">${esc(EXPO_UPCOMING.venue)}</div>
    <div class="mt-1 mono text-[11px] font-bold text-brand-800">${expoLine()}</div>
+   ${expoManageHTML()}
    <div class="mt-4 flex items-end justify-between gap-3">
     <div><div class="microlabel">Team pledged</div>
      <div class="display mt-1 text-[32px] leading-none font-extrabold text-[#0f2a2c]">${hired}<span class="text-sm font-bold text-[#667d83]"> / ${need}</span></div></div>
@@ -970,6 +971,15 @@ export function pickVolunteer(id){
 export function openVolSwitcher(){state.switchMode='volunteer';openSwitcher();}
 export function openVolModal(){renderVolModal();showModal('#volModal');}
 export function closeVolModal(){hideModal('#volModal');}
+/* signed in: say when the expo shown is only the built-in sample, and give admins the way to the real list (create, edit, delete) */
+const expoManageHTML=()=>{
+ if(!cloud.user)return '';
+ const can=canManageExpos();
+ if(!EXPO_UPCOMING.sample&&!can)return '';
+ return `<div class="mt-3 rounded-[14px] bg-[#123033]/[.05] p-3 text-[11px] leading-relaxed text-[#33504f]">
+  ${EXPO_UPCOMING.sample?`<b>This is a built-in sample expo</b>, so it cannot be deleted. ${can?'Create your church’s own Health Expo and it replaces this one.':'Your church’s admins create the real Health Expos; yours appears here once one is open.'}`:''}
+  ${can?`<button data-action="expo-manage" class="btn btn-soft mt-2 w-full py-2.5 text-xs">Manage Health Expos · create, edit, delete</button>`:''}</div>`;
+};
 function renderVolModal(){
  const hired=staffedCount(),need=EXPO_UPCOMING.need;
  $('#volModalTitle').textContent=EXPO_UPCOMING.name;
@@ -993,6 +1003,7 @@ function renderVolModal(){
       <span class="min-w-0 flex-1 truncate">${esc(b.label)}</span>
       <span class="mono text-rose-600">needs ${b.cap-helpersAt(b.k).length}</span></div>`).join('')}
    </div>
+   ${expoManageHTML()}
   </div>`;
 }
 export function pickAttendee(id){state.activeId=id;state.sugFor=null;state._goal=null;closeSwitcher();render();toast(`Now serving ${firstName(A().name)} · ${id}`);}

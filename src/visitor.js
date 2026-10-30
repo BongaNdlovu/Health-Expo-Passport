@@ -260,6 +260,7 @@ export function viewHome(){
     ${cloud.user||cloud.mode?'':`<button data-action="resetDemoAsk">Reset demo</button>`}
     ${installEvt?`<button data-action="installApp">Install app</button>`:''}
     <button data-action="openCloud">${cloud.user?'Sync':'Sign in'}</button>
+    ${cloud.user?`<button data-action="cloudSignOut">Sign out</button>`:''}
    </div>
   </div>
 

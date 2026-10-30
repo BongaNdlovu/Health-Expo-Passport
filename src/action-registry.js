@@ -1,5 +1,5 @@
 // @ts-check
-import { acctRetry, closeAcct, cloudInit, cloudSignIn, cloudSignOut, cloudSync, gateBack, joinChurch, leaveChurch, linkMember, linkVolunteer, manageChurch, markNotifsRead, myField, myPickPledge, myPledgeEdit, myPledgeSave, mySecondBooth, myToggleBooth, myToggleList, notifClose, notifOpen, openAcct, openNotifs, profDeleteAsk, profDeleteGo, profDeleteTyped, profGate, profPassword, registerChurch, removeMember, renderAcct, saveChurch, saveMyDetails, setChurchStatus, setMember, teamAdd, teamRelease, teamShift, withdrawMyPledge } from './account.js';
+import { acctRetry, manageExpos, closeAcct, cloudInit, cloudSignIn, cloudSignOut, cloudSync, gateBack, joinChurch, leaveChurch, linkMember, linkVolunteer, manageChurch, markNotifsRead, myField, myPickPledge, myPledgeEdit, myPledgeSave, mySecondBooth, myToggleBooth, myToggleList, notifClose, notifOpen, openAcct, openNotifs, profDeleteAsk, profDeleteGo, profDeleteTyped, profGate, profPassword, registerChurch, removeMember, renderAcct, saveChurch, saveMyDetails, setChurchStatus, setMember, teamAdd, teamRelease, teamShift, withdrawMyPledge } from './account.js';
 import { addPlatformAdmin, approveAssistant, cancelExpo, churchSearchSoon, deleteExpoAsk, editExpo, expoField, expoStation, expoType, newExpo, openChurchData, pickExpo, pickWant, pickWantBooth, pledgeToExpo, saveExpoForm, setAdminPost, setExpoStatus, stepDown } from './account.js';
 import { closeSettings, deregisterMyPledge, openSettings } from './account.js';
 import { answer } from './feedback.js';
@@ -143,6 +143,7 @@ export const ACTION_MAP = {
   'expo-status': el => setExpoStatus(el.dataset.args, el.dataset.status),
   'expo-delete': el => deleteExpoAsk(el.dataset.args),
   'acct-retry': el => acctRetry(el.dataset.args),
+  'expo-manage': () => manageExpos(),
   'expo-pledge': el => pledgeToExpo(el.dataset.args),
   'expo-pick': el => pickExpo(el.value),
   'want-pick': el => pickWant(el.dataset.args),

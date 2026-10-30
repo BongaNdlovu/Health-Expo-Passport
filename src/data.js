@@ -63,7 +63,7 @@ export const HEARD={heardsocial:'Social media',heardpaper:'Newspaper',heardflyer
 /* ================= VOLUNTEER DATA ================= */
 /* The incoming expo every volunteer is pledging toward. Swap this each season. */
 export const EXPO_UPCOMING={
-  id:'EXPO-2027-03', name:'SDA Community Health Expo — March',
+  sample:true, id:'EXPO-2027-03', name:'SDA Community Health Expo — March',
   venue:'Church hall & parking lot', date:'2027-03-13',
   need:22, /* total helpers the expo needs */
   shifts:['07:00 setup','08:30–11:00','11:00–13:30','13:30–16:00','16:00 pack-up'],

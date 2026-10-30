@@ -1983,6 +1983,8 @@ function makeServer() {
   }
   { const fb = require('fs').readFileSync(require('path').join(__dirname, '..', 'src', 'feedback.js'), 'utf8'), pg = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.html'), 'utf8');
     ok('the destructive confirm button has a style (bg-rose-600 was not compiled: white text on nothing)', /btn btn-danger/.test(fb) && /\.btn-danger\{background:/.test(pg) && !/bg-rose-600/.test(fb)); }
+  { const rd = f => require('fs').readFileSync(require('path').join(__dirname, '..', 'src', f), 'utf8');
+    ok('a signed-in person can sign out from Home and from the Profile Sync box (the way back to the sign-in screen)', /cloud\.user\?`<button data-action="cloudSignOut"[^`]*Sign out/.test(rd('account.js')) && /cloud\.user\?`<button data-action="cloudSignOut">Sign out<\/button>`/.test(rd('visitor.js'))); }
   const actionsOf = h => [...h.matchAll(/data-action="([^"]*)"/g)].map(m => m[1]);
   const unwired = [];
   for (const v of ['login', 'signup', 'forgot']) { g.gateView(v); actionsOf(gateHTML()).forEach(n => { if (!g.hasAction(n)) unwired.push(v + ':' + n); }); }
@@ -2475,6 +2477,11 @@ function makeServer() {
       ok('the Team tab headline follows the church nearest open expo (name, date, venue, helpers needed)', live ? (g.EXPO_UPCOMING.name === 'Pinetown <b>Health</b> Expo' && g.EXPO_UPCOMING.date === '2027-03-06' && g.EXPO_UPCOMING.venue === 'Church hall' && g.EXPO_UPCOMING.need === 20) : true, JSON.stringify(g.EXPO_UPCOMING));
       C.expos = undefined; g.syncExpoHeadline();
       ok('…and goes back to the built-in expo when there is none', g.EXPO_UPCOMING.name === 'SDA Community Health Expo — March' && g.EXPO_UPCOMING.need === 22, g.EXPO_UPCOMING.name); }
+    { const hadUser = C.user; C.user = C.user || { id: 'u-test' }; g.openVolModal(); const vb = $el('volBody').innerHTML;
+      ok('the expo card says when it is only the built-in sample, and gives an admin the way to create, edit and delete real expos', /built-in sample expo/.test(vb) && /data-action="expo-manage"/.test(vb), vb.slice(-300));
+      const before = C.acctTab; g.manageExpos(); await sleep(30);
+      ok('…and that button opens My church (Health Expos) for a church admin', C.acctTab === 'church', C.acctTab);
+      g.closeAcct(); C.user = hadUser; }
     ok('…each station starts at its usual size and the total is their sum', C.expoEdit.total === 32 && C.expoEdit.needs.bp === 4 && C.expoEdit.needs.media === 1, JSON.stringify(C.expoEdit.needs) + C.expoEdit.total);
     g.expoStation('bp', '6'); g.expoStation('kids', '0');
     ok('…the total follows the stations until the admin types their own', C.expoEdit.total === 32 - 4 + 6 - 2 && $el('xpTotal').value === String(C.expoEdit.total) && !('kids' in C.expoEdit.needs), String(C.expoEdit.total));

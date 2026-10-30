@@ -753,7 +753,8 @@ function profSync(){
   ${cloud.err?`<p class="mt-1.5 text-[11px] leading-relaxed text-rose-600">${esc(cloud.err)}</p>`:''}
   ${cloud.ready?`<div class="mt-3 grid grid-cols-3 gap-2">${tile('Visitors',attendees.length)}${tile('Volunteers',volunteers.length)}${tile('To upload',cloudPending())}</div>`:''}
   <div class="mt-3 flex gap-2"><button data-action="sync-now" class="btn btn-primary flex-1 py-2.5 text-xs">Sync now</button>
-   <button data-action="openCloud" class="btn btn-glass flex-1 py-2.5 text-xs">Details</button></div>`);
+   <button data-action="openCloud" class="btn btn-glass flex-1 py-2.5 text-xs">Details</button>
+   ${cloud.user?`<button data-action="cloudSignOut" class="btn btn-glass flex-1 py-2.5 text-xs">Sign out</button>`:''}</div>`);
 }
 function profPasswordBox(){
  return acctBox('Password',`<form data-action="profPassword" class="mt-2 space-y-3">
@@ -986,11 +987,18 @@ async function fetchExpos(cid){
 }
 /* the Team tab's headline expo: the church's nearest open expo while signed in, the built-in one otherwise */
 const EXPO_DEFAULT={...EXPO_UPCOMING};
+/* who can create, edit and delete Health Expos: an approved church admin, or the platform admin through All churches */
+export const canManageExpos=()=>isAdminAcct()||!!(cloud.acct&&cloud.acct.platform_admin);
+export function manageExpos(){
+ hideModal('#volModal');
+ if(!cloud.acct)return;
+ openAcct(isAdminAcct()?'church':'admin');
+}
 export function syncExpoHeadline(){
  const L=openExpos().filter(x=>String(x.starts_on).slice(0,10)>=todayStr()).sort((a,b)=>String(a.starts_on).localeCompare(String(b.starts_on)));
  const x=L[0];
  if(!x){Object.assign(EXPO_UPCOMING,EXPO_DEFAULT);return;}
- Object.assign(EXPO_UPCOMING,{id:x.id,name:x.name,venue:x.venue||x.address||'Venue to be announced',date:String(x.starts_on).slice(0,10),
+ Object.assign(EXPO_UPCOMING,{sample:false,id:x.id,name:x.name,venue:x.venue||x.address||'Venue to be announced',date:String(x.starts_on).slice(0,10),
   need:x.volunteers_needed>0?x.volunteers_needed:EXPO_DEFAULT.need});
 }
 async function loadExpos(){
