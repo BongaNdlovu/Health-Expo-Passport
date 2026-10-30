@@ -4510,8 +4510,10 @@ function makeServer() {
     ok('both copies of the ECG draw the still trace and the four sweep layers from one path each',
       ['base', 'tail', 'neck', 'halo', 'head'].every(k => html.includes('class="hx-ecg-' + k + '" pathLength="101"'))
       && srcText.includes("const ECG_LAYERS = ['base', 'tail', 'neck', 'halo', 'head'];"));
-    ok('the ECG sweep is off under lite and reduced motion (still trace instead)',
-      /html\.lite :is\(\.hx-ecg-tail[^{]*\{animation:none;display:none\}/.test(html)
+    /* 4-core phones are lite from the start: the sweep must keep running there (it once did not), minus the halo */
+    ok('the ECG sweep runs under lite (halo dropped), stops on a hidden page and under reduced motion',
+      /html\.lite \.hx-ecg-halo\{display:none\}/.test(html) && !/html\.lite[^{]*\.hx-ecg-(head|neck|tail)/.test(html)
+      && /html\.page-hidden :is\(\.hx-ecg-tail[^{]*\{animation:none;display:none\}/.test(html)
       && /prefers-reduced-motion:reduce\)\{\s*html \.hx-ecg-base,html\[data-theme\] \.hx-ecg-base\{opacity:\.7[^}]*\}\s*\.hx-ecg-tail[^{]*\{animation:none;display:none\}/.test(html));
   }
 

@@ -936,9 +936,10 @@
   html[data-theme="light"] .hx-ecg-base{opacity:.3}
   html[data-theme="light"] .hx-ecg-head{--hx-ecg-head:var(--hx-mint-deep)}
   @keyframes hxSweep{from{stroke-dashoffset:var(--d)}to{stroke-dashoffset:calc(var(--d) - 101)}}
-  /* still: the full trace, clearly, and nothing moving */
-  html.lite .hx-ecg-base,html.page-hidden .hx-ecg-base{opacity:.7;stroke-width:2}
-  html.lite :is(.hx-ecg-tail,.hx-ecg-neck,.hx-ecg-halo,.hx-ecg-head),
+  /* lite (4 cores or fewer, or a choppy first second: most budget phones) keeps the sweep, which is a few thin
+     strokes moving one value, and only drops the wide halo. A hidden page stops everything. */
+  html.lite .hx-ecg-halo{display:none}
+  html.page-hidden .hx-ecg-base{opacity:.7;stroke-width:2}
   html.page-hidden :is(.hx-ecg-tail,.hx-ecg-neck,.hx-ecg-halo,.hx-ecg-head){animation:none;display:none}
   @media (prefers-reduced-motion:reduce){
     html .hx-ecg-base,html[data-theme] .hx-ecg-base{opacity:.7;stroke-width:2}
