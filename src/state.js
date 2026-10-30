@@ -9,8 +9,9 @@ import { toast } from './shell.js';
 const LS_KEY='newstart.passport.v2';
 /* Cloud state lives up here because persistence reads it. The sync code itself is further down. */
 export const cloud={client:null,user:null,mode:false,status:'off',err:'',busy:false,again:false,starting:false,blocked:false,
-  synced:{att:{},vol:{}},rejected:{},channel:null,pushT:null,retryT:null,renderT:null,formErr:'',
+  synced:{att:{},vol:{}},rejected:{},rejectedNote:null,channel:null,pushT:null,retryT:null,renderT:null,formErr:'',
   since:{att:'',vol:''},lastFull:0,ready:false,demo:false,gateKey:'',gateHide:false,
+  phase:'',prog:{done:0,total:0},syncedAt:0,   /* what the sync chrome shows: pull/push, upload progress, last success */
   view:'login',viewEmail:'',pending:false,recovery:false,resendAt:0,signingOut:false,
   acct:null,acctV:0,churchId:'',acctTab:'me',health:undefined,dir:null,regChurch:false,members:null,plat:null,audit:null,pAdmins:null,wants:'member',wantsBooths:[],expos:undefined,adminExpos:undefined,expoEdit:null,expoSaving:false,expoBusy:false,pledgeExpo:'',adminChurch:'',gateForce:false,delOpen:false,
   pledge:undefined,pledgeErr:false,pledgeBusy:false,   /* the member's own pledge (src/account.js pledgeHTML) */

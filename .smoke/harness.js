@@ -85,7 +85,11 @@ function makeEl(id) {
     querySelectorAll() { return []; },
     closest() { return null; },
     getBoundingClientRect() { return { left: 0, top: 0, width: 100, height: 40 }; },
-    focus() {}, blur() {}, click() {}, remove() {}, setAttribute() {}, getAttribute() { return null; }, removeAttribute() {},
+    focus() {}, blur() {}, click() {}, remove() {},
+    _attrs: {},
+    setAttribute(k, v) { this._attrs[k] = String(v); },
+    getAttribute(k) { return Object.prototype.hasOwnProperty.call(this._attrs, k) ? this._attrs[k] : null; },
+    removeAttribute(k) { delete this._attrs[k]; },
     scrollTo() {}, play() { return Promise.resolve(); },
     firstElementChild: null,
   };
@@ -3336,6 +3340,36 @@ function makeServer() {
     shots.push(g.homeHealthHTML());
     srv.offline = false; await g.cloudSync(true); await flush();
     ok('back online the change uploads and Upload says so', H.upload.st === 'ok' && srv.tables.attendees.has('EXPO-321'), JSON.stringify(H.upload));
+
+    /* the sync chrome: last-synced time on the profile card, progress words, the pending badge and the busy ring */
+    {
+      const profHTML = () => { g.state.tab = 'me'; g.render(); const h = $main.innerHTML; shots.push(h); return h; };
+      const was = { busy: C.busy, status: C.status, phase: C.phase, prog: { ...C.prog }, tab: g.state.tab };
+      ok('a successful sync records when it happened and the profile card shows it',
+        C.syncedAt > 0 && /id="profSyncLine"/.test(profHTML()) && /synced (just now|\d+ min ago|at \d\d:\d\d)/.test(profHTML()), String(C.syncedAt));
+      C.busy = true; C.status = 'syncing';
+      C.phase = 'pull'; const a = g.syncStatusText();
+      C.phase = 'push'; C.prog = { done: 2, total: 5 }; const b = g.syncStatusText();
+      ok('while syncing the words say what is happening: downloading, then uploading with a count',
+        a === 'Downloading the latest…' && b === 'Uploading 2 of 5…', a + ' | ' + b);
+      g.syncChrome();
+      g.renderCloudBody();
+      ok('the cloud dot carries the busy ring and the sheet disables Sync now while it runs',
+        $el('cloudDot').getAttribute('data-busy') === '1' && $el('cloudDot').style.background === g.CLOUD_UI.syncing[0] && /disabled/.test($el('cloudBody').innerHTML),
+        $el('cloudDot').getAttribute('data-busy') + '|' + $el('cloudDot').style.background);
+      g.syncChrome();                                    /* busy: the badge stands down while the ring speaks */
+      ok('the pending badge stands down while syncing', $el('cloudBadge').style.display === 'none', $el('cloudBadge').style.display);
+      C.busy = false; C.status = 'online'; C.phase = was.phase; C.prog = was.prog;
+      registerLocal('Badge Count', 'EXPO-322');
+      g.syncChrome();
+      ok('the header badge counts what is waiting to upload', $el('cloudBadge').style.display !== 'none' && $el('cloudBadge').textContent === '1',
+        $el('cloudBadge').style.display + '|' + $el('cloudBadge').textContent);
+      ok('…the dot drops the busy ring at rest', $el('cloudDot').getAttribute('data-busy') === null, $el('cloudDot').getAttribute('data-busy'));
+      await g.cloudSync(true); await flush();
+      ok('…and the badge hides again once the change is up', $el('cloudBadge').style.display === 'none' && C.syncedAt > 0 && srv.tables.attendees.has('EXPO-322'),
+        $el('cloudBadge').style.display);
+      g.state.tab = was.tab; g.render();
+    }
 
     /* the live connection reports its own state */
     srv.rtState = 'CHANNEL_ERROR'; g.stopRealtime(); g.startRealtime(); await flush();

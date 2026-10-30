@@ -2,7 +2,7 @@
 import { KINDS, acctHealthHTML, isNet, renderGate } from './cloud.js';
 import { $ } from './helpers.js';
 import { cloud, persist, persistNow, seedDemo } from './state.js';
-import { CLOUD_UI, SB_KEY, SB_LIB, SB_URL, SYNC_KEY, closeCloud, resetLedgerSig, cloudDirtyList, cloudPending, gateBusy, gateView, healthFromError, healthLive, healthReset, healthUpload, installBlock, isDirty, isMissingErr, isOfflineErr, isSeedRow, noteHealth, passwordCheck, pwField, renderCloudBody, rowToAtt, savePassword, saveSynced, saveSyncedSoon, setCloud, sigOf, validEmail } from './cloud.js';
+import { CLOUD_UI, SB_KEY, SB_LIB, SB_URL, SYNC_KEY, closeCloud, resetLedgerSig, cloudDirtyList, cloudPending, gateBusy, gateView, healthFromError, healthLive, healthReset, healthUpload, installBlock, isDirty, isMissingErr, isOfflineErr, isSeedRow, noteHealth, passwordCheck, pwField, renderCloudBody, rowToAtt, savePassword, saveSynced, saveSyncedSoon, setCloud, sigOf, syncChrome, syncStatusText, syncTilesHTML, syncedLabel, validEmail } from './cloud.js';
 import { CHURCH_PLANS_KEY, FOLLOWUP_MAX, churchPlansBox, clearInvite, followupsFor, inviteBox, myFollowupsHTML, pendingInvite } from './churchPlans.js';
 import { GRACE_DAYS, clearReadings, clockKnown, followedUp, hasReadings, noteServerTime, readingsGone, visitIsOld } from './retention.js';
 import { render, toast } from './shell.js';
@@ -748,11 +748,11 @@ function profShortcuts(){
  return `<div class="mt-3 flex gap-2">${row}<button data-action="openSettings" class="btn btn-soft flex-1 py-2.5 text-xs">Settings</button></div>`;
 }
 function profSync(){
- const ui=CLOUD_UI[cloud.status]||CLOUD_UI.off,tile=(l,v)=>`<div class="tile"><span class="tile-l">${l}</span><span class="tile-v">${v}</span></div>`;
- return acctBox('Sync',`<div class="mt-2 flex items-center gap-2 text-[12px] font-bold text-[#33504f]"><span style="width:9px;height:9px;border-radius:9999px;background:${ui[0]}"></span>${esc(ui[1])}</div>
+ const ui=CLOUD_UI[cloud.status]||CLOUD_UI.off;
+ return acctBox('Sync',`<div class="mt-2 flex items-center gap-2 text-[12px] font-bold text-[#33504f]"><span style="width:9px;height:9px;border-radius:9999px;background:${ui[0]}"></span><span id="profSyncLine">${esc(syncStatusText())}${syncedLabel()}</span></div>
   ${cloud.err?`<p class="mt-1.5 text-[11px] leading-relaxed text-rose-600">${esc(cloud.err)}</p>`:''}
-  ${cloud.ready?`<div class="mt-3 grid grid-cols-3 gap-2">${tile('Visitors',attendees.length)}${tile('Volunteers',volunteers.length)}${tile('To upload',cloudPending())}</div>`:''}
-  <div class="mt-3 flex gap-2"><button data-action="sync-now" class="btn btn-primary flex-1 py-2.5 text-xs">Sync now</button>
+  ${cloud.ready?`<div class="mt-3 grid grid-cols-3 gap-2" id="profSyncTiles">${syncTilesHTML()}</div>`:''}
+  <div class="mt-3 flex gap-2"><button data-action="sync-now" class="btn btn-primary flex-1 py-2.5 text-xs"${cloud.busy?' disabled':''}>Sync now</button>
    <button data-action="openCloud" class="btn btn-glass flex-1 py-2.5 text-xs">Details</button>
    ${cloud.user?`<button data-action="cloudSignOut" class="btn btn-glass flex-1 py-2.5 text-xs">Sign out</button>`:''}</div>`);
 }
@@ -1382,7 +1382,8 @@ export async function cloudSignOut(force){
  cloud.view='login';cloud.viewEmail='';cloud.pending=false;cloud.recovery=false;cloud.formErr='';cloud.gateForce=false;cloud.delOpen=false;
  cloud.plans=null;cloud.adminPlans=null;cloud.planEdit=null;try{localStorage.removeItem(CHURCH_PLANS_KEY);}catch(e){}
  cloud.followups=null;cloud.adminFollowups=null;cloud.myFollow=null;cloud.inviteLink=null;clearInvite();   /* a stale invite link must not join the next account on this desk */
- cloud.user=null;cloud.mode=false;cloud.blocked=false;cloud.synced={att:{},vol:{}};cloud.rejected={};cloud.lastFull=0;cloud.since={att:'',vol:''};
+ cloud.user=null;cloud.mode=false;cloud.blocked=false;cloud.synced={att:{},vol:{}};cloud.rejected={};cloud.rejectedNote=null;cloud.lastFull=0;cloud.since={att:'',vol:''};
+ cloud.phase='';cloud.prog={done:0,total:0};cloud.syncedAt=0;   /* the status chrome starts clean for the next account */
  try{localStorage.removeItem(SYNC_KEY);localStorage.removeItem(CHURCH_KEY);}catch(e){}
  resetLedgerSig();
  seedDemo();state.sugFor=null;state._goal=null;state.tab=state.tab==='me'?'me':'home';
@@ -1406,14 +1407,15 @@ function cloudError(err,where){
  /* the place guard also answers 42501, but that is one row another desk has already moved, not a bad sign-in */
  if(err&&(err.code==='42501'||/row-level security|permission denied/i.test(msg))&&!isPlaceRefusal(err))
   {cloud.blocked=true;setCloud('error','This sign-in is not on the staff list yet. Ask the administrator to add it (step 3 at the bottom of supabase/schema.sql).');return;}
- setCloud('error',msg||'Sync failed');
+ /* the raw message is already in Details (healthFromError put it there): the status line keeps calm words */
+ setCloud('error','Sync hit a problem. It retries by itself — Details has the technical bit.');
  clearTimeout(cloud.retryT);cloud.retryT=setTimeout(()=>cloudSync(),60000);
 }
 export async function cloudSync(manual){
  if(!cloud.client||!cloud.user)return;
  if(cloud.busy){cloud.again=true;return;}
  if(manual)cloud.blocked=false;
- cloud.busy=true;setCloud('syncing');
+ cloud.busy=true;cloud.phase='pull';cloud.prog={done:0,total:0};setCloud('syncing');
  try{
   if(!await loadAccount()){
    cloud.blocked=true;cloud.pending=true;
@@ -1446,6 +1448,7 @@ export async function cloudSync(manual){
      (or dropped) here rather than being sent back after the purge */
   const pruned=applyRetention();
   if(pruned&&!attendees.some(a=>a.id===state.activeId))state.activeId=(attendees[0]||{}).id||'';
+  cloud.phase='push';
   await pushDirty();
   afterMerge();saveSynced();persistNow();
   startRealtime();
@@ -1454,7 +1457,8 @@ export async function cloudSync(manual){
   if(changed||manual)cloudRefresh();
  }catch(err){cloudError(err);}
  finally{
-  cloud.busy=false;
+  cloud.busy=false;cloud.phase='';
+  syncChrome();                    /* the ring and badge settle even when no setCloud ran (nothing to upload) */
   if(cloud.status==='online')cloud.ready=true;      /* the first successful sync lifts the sign-in gate */
   renderGate();
   if(cloud.again){cloud.again=false;cloudQueuePush();}
@@ -1507,8 +1511,13 @@ export function mergeRemote(kind,rows,full=true){
    as before. */
 const PUSH_BATCH=100;
 async function pushDirty(){
+ /* the progress the status line shows: a fixed total taken now, ticked up as batches land (observe-only —
+    the upload order and requests are exactly as before) */
+ const lists={att:cloudDirtyList('att'),vol:cloudDirtyList('vol')};   /* one snapshot, same rows and order as before */
+ cloud.prog={done:0,total:lists.att.length+lists.vol.length};
+ syncChrome();
  for(const kind of ['att','vol']){
-  const k=KINDS[kind],sy=cloud.synced[kind],list=cloudDirtyList(kind);
+  const k=KINDS[kind],sy=cloud.synced[kind],list=lists[kind];
   const groups=[[list.filter(o=>sy[o.id]!==undefined),false],[list.filter(o=>sy[o.id]===undefined),true]];
   for(const [group,isFresh] of groups){
    for(let i=0;i<group.length;i+=PUSH_BATCH){
@@ -1516,25 +1525,35 @@ async function pushDirty(){
     if(chunk.length>1){
      const rows=chunk.map(o=>k.toRow(o)),sigs=rows.map(sigOf);
      const {error}=await (isFresh?cloud.client.from(k.table).insert(rows.map(inChurch)):cloud.client.from(k.table).upsert(rows.map(inChurch),{onConflict:conflictOn()}));
-     if(!error){chunk.forEach((o,j)=>{sy[o.id]=sigs[j];});continue;}
+     if(!error){chunk.forEach((o,j)=>{sy[o.id]=sigs[j];});cloud.prog.done+=chunk.length;syncChrome();continue;}
     }
-    for(const o of chunk)await pushOne(kind,o);
+    for(const o of chunk){await pushOne(kind,o);cloud.prog.done++;}   /* refused rows count as handled */
+    syncChrome();                                                     /* once per chunk, never once per row */
    }
   }
  }
+ syncChrome();
 }
 async function pushOne(kind,o,again){
  const k=KINDS[kind],row=k.toRow(o),s=sigOf(row),fresh=cloud.synced[kind][o.id]===undefined;
  const q=fresh?cloud.client.from(k.table).insert(inChurch(row)):cloud.client.from(k.table).upsert(inChurch(row),{onConflict:conflictOn()});
  const {error}=await q;
- if(!error){cloud.synced[kind][o.id]=s;return;}
+ if(!error){
+  cloud.synced[kind][o.id]=s;
+  if(cloud.rejected[o.id]!==undefined){            /* an edit after a refusal went through: the refusal is over */
+   delete cloud.rejected[o.id];
+   if(cloud.rejectedNote&&cloud.rejectedNote.id===o.id)cloud.rejectedNote=null;
+  }
+  return;
+ }
  if(fresh&&error.code==='23505')return resolveConflict(kind,o,s);
  /* one row's station was changed on another desk: take the server's placement, keep this phone's other edits,
     and try once more. Never let it stop the rest of the desk (it used to set cloud.blocked). */
  const placeRefused=isPlaceRefusal(error);
  if(placeRefused&&!again&&kind==='vol'&&await resolvePlacement(o))return;
  if(/^2[23]/.test(error.code||'')||placeRefused){           /* data the database refuses: skip this row, keep syncing the rest */
-  cloud.rejected[o.id]=s;toast(`${o.id} was not uploaded: ${error.message}`);return;
+  cloud.rejected[o.id]=s;cloud.rejectedNote={id:o.id,msg:String(error.message||'')};
+  toast(`${o.id} was not uploaded: ${error.message}`);return;
  }
  throw error;
 }
@@ -1609,10 +1628,10 @@ export async function cloudPush(){
  if(!cloud.user||!cloud.client||cloud.blocked)return;
  if(cloud.busy){cloud.again=true;return;}
  if(!cloudPending()){if(cloud.status==='syncing')setCloud('online');return;}
- cloud.busy=true;setCloud('syncing');
+ cloud.busy=true;cloud.phase='push';cloud.prog={done:0,total:0};setCloud('syncing');
  try{await pushDirty();saveSynced();setCloud('online');healthUpload();}
  catch(err){cloudError(err,'upload');}
- finally{cloud.busy=false;if(cloud.again){cloud.again=false;cloudQueuePush();}}
+ finally{cloud.busy=false;cloud.phase='';syncChrome();if(cloud.again){cloud.again=false;cloudQueuePush();}}
 }
 
 /* ---------- live updates from other desks ---------- */

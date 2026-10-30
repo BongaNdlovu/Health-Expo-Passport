@@ -141,10 +141,57 @@ export const CLOUD_UI={
  offline:['#e0a63a','Offline — changes are kept on this device and upload when you reconnect.'],
  error:['#d6584a','Sync problem'],
 };
+/* what the status line says right now: the plain CLOUD_UI words, except while a sync is running it says
+   what it is doing — pulling, or pushing which row of how many (set from the push loop, observe-only) */
+export function syncStatusText(){
+ const ui=CLOUD_UI[cloud.status]||CLOUD_UI.off;
+ if(cloud.status!=='syncing'||!cloud.busy)return ui[1];
+ if(cloud.phase==='pull')return 'Downloading the latest…';
+ const {done,total}=cloud.prog;
+ return total?`Uploading ${Math.min(done,total)} of ${total}…`:'Uploading…';
+}
+/* "· synced 14:32" — reassurance that the cloud copy is current; recomputed at render time, no timer */
+export function syncedLabel(){
+ if(!cloud.syncedAt||cloud.status!=='online')return '';
+ const mins=Math.max(0,Math.round((Date.now()-cloud.syncedAt)/60000));
+ if(mins<1)return ' · synced just now';
+ if(mins<60)return ` · synced ${mins} min ago`;
+ return ` · synced ${hhmm(cloud.syncedAt)}`;
+}
+/* the three count tiles under the status line (Profile card and the sheet behind the logo); the caller may
+   pass the pending count it has already worked out, so a redraw never hashes the whole list twice */
+export function syncTilesHTML(pending){
+ const tile=(l,v)=>`<div class="tile"><span class="tile-l">${l}</span><span class="tile-v">${v}</span></div>`;
+ return `${tile('Visitors',attendees.length)}${tile('Volunteers',volunteers.length)}${tile('To upload',pending===undefined?cloudPending():pending)}`;
+}
+/* the always-visible chrome: dots, the pending badge on the header button and its tooltip. Cheap patches so
+   sync state stays current between renders — called from setCloud and after each uploaded batch. */
+export function syncChrome(){
+ const ui=CLOUD_UI[cloud.status]||CLOUD_UI.off;
+ for(const id of ['cloudDot','homeCloudDot']){
+  const dot=$('#'+id);if(!dot)continue;
+  dot.style.background=ui[0];
+  if(cloud.busy)dot.setAttribute('data-busy','1');else dot.removeAttribute('data-busy');
+ }
+ /* how many rows are still waiting: while a sync runs the push loop already knows (total minus done), so the
+    chrome does not hash every row again; at rest it asks the ledger once for the badge, the tooltip and the tiles */
+ const n=cloud.user?(cloud.busy?Math.max(0,cloud.prog.total-cloud.prog.done):cloudPending()):0;
+ const btn=$('#cloudBtn');
+ if(btn){
+  const badge=$('#cloudBadge'),show=!!(cloud.user&&n&&!cloud.busy);
+  if(badge){badge.style.display=show?'grid':'none';if(show)badge.textContent=n>9?'9+':String(n);}
+  btn.title=cloud.user?`${syncStatusText()}${n?` · ${n} to upload`:''}`:'Cloud sync';
+ }
+ /* the status line and tiles, wherever they are on screen (the sheet behind the logo, the Profile card) */
+ const line=$('#cloudSyncLine');if(line)line.innerHTML=esc(syncStatusText())+syncedLabel();
+ const prof=$('#profSyncLine');if(prof)prof.innerHTML=esc(syncStatusText())+syncedLabel();
+ const tiles=syncTilesHTML(n);
+ for(const id of ['cloudSyncTiles','profSyncTiles']){const t=$('#'+id);if(t)t.innerHTML=tiles;}
+}
 export function setCloud(status,err){
  cloud.status=status;cloud.err=err||'';
- const ui=CLOUD_UI[status]||CLOUD_UI.off;
- for(const id of ['cloudDot','homeCloudDot']){const dot=$('#'+id);if(dot)dot.style.background=ui[0];}
+ if(status==='online')cloud.syncedAt=Date.now();      /* anything that reaches the server counts as "last synced" */
+ syncChrome();
  const m=$('#cloudModal');if(m&&!m.classList.contains('hidden'))renderCloudBody();
  renderGate();profileChanged();
 }
@@ -469,15 +516,14 @@ export function renderCloudBody(){
  const keep=($('#cloudEmail')||{}).value||'';
  const ui=CLOUD_UI[cloud.status]||CLOUD_UI.off;
  if(cloud.user){
-  const tile=(l,v)=>`<div class="tile"><span class="tile-l">${l}</span><span class="tile-v">${v}</span></div>`;
   body.innerHTML=`<div class="display text-base font-extrabold">Shared database</div>
-   <div class="mt-3 flex items-center gap-2 text-[12px] font-bold text-[#33504f]"><span style="width:9px;height:9px;border-radius:9999px;background:${ui[0]}"></span>${esc(ui[1])}</div>
+   <div class="mt-3 flex items-center gap-2 text-[12px] font-bold text-[#33504f]"><span style="width:9px;height:9px;border-radius:9999px;background:${ui[0]}"></span><span id="cloudSyncLine">${esc(syncStatusText())}${syncedLabel()}</span></div>
    ${cloud.err?`<p class="mt-1.5 text-[11px] leading-relaxed text-rose-600">${esc(cloud.err)}</p>`:''}
    <div class="mono mt-2 text-[10px] text-[#6b8187]">${esc(cloud.user.email||'')}</div>
-   <div class="mt-3 grid grid-cols-3 gap-2">${tile('Visitors',attendees.length)}${tile('Volunteers',volunteers.length)}${tile('To upload',cloudPending())}</div>
+   <div class="mt-3 grid grid-cols-3 gap-2" id="cloudSyncTiles">${syncTilesHTML()}</div>
    <div class="mt-4 flex gap-2">
     <button data-action="cloudSignOut" class="btn btn-glass flex-1 py-2.5 text-xs text-[#5b7178]">Sign out</button>
-    <button data-action="sync-now" class="btn btn-primary flex-1 py-2.5 text-xs">Sync now</button>
+    <button data-action="sync-now" class="btn btn-primary flex-1 py-2.5 text-xs"${cloud.busy?' disabled':''}>Sync now</button>
    </div>${statusPanelHTML()}${acctButtons()}${cloud.isAdmin&&!cloud.acct?approvalsHTML():''}${installBlock()}`;
   if(cloud.isAdmin===undefined&&!cloud.acct)loadApprovals();
   return;
@@ -523,10 +569,11 @@ export function healthFromError(key,err,what){
  if(err&&(err.code==='42501'||/row-level security|permission denied/i.test(msg)))return noteHealth(key,'bad','Refused: this account has no access to it.',msg);
  noteHealth(key,'bad',msg||'Failed for an unknown reason.',[err&&err.code,what].filter(Boolean).join(' · '));
 }
-/* what is waiting to upload, counted from this phone's own copy */
+/* what is waiting to upload, counted from this phone's own copy; a refused change names the latest reason */
 export function healthUpload(){
  const n=cloudPending(),bad=Object.keys(cloud.rejected).length;
- if(bad)return noteHealth('upload','warn',`${bad} change${bad>1?'s were':' was'} refused by the database and will not upload. The reason was shown when it happened.`);
+ if(bad)return noteHealth('upload','warn',`${bad} change${bad>1?'s were':' was'} refused by the database and will not upload.`,
+  cloud.rejectedNote?`Latest: ${cloud.rejectedNote.id} — ${cloud.rejectedNote.msg}`:'');
  noteHealth('upload',n?'warn':'ok',n?`${n} change${n>1?'s':''} waiting to upload.`:'Every change on this phone is uploaded.');
 }
 /* the live connections report their own state: SUBSCRIBED, or CHANNEL_ERROR / TIMED_OUT / CLOSED while reconnecting */
@@ -550,8 +597,9 @@ export function statusPanelHTML(){
   <p class="mt-2 text-[10px] leading-relaxed text-[#8a9aa0]">${cloud.testedAt?`Test now ran at ${hhmm(cloud.testedAt)}. `:''}Test now only reads (one row of each table, and read-only functions); it never changes data.</p>
  </div>`;
 }
-/* Home: the worst of download, upload and live updates, one tap from the details */
+/* Home: the worst of download, upload and live updates, one tap from the details; while a sync runs it says so */
 export function homeHealthHTML(){
+ if(cloud.busy&&cloud.user)return `<button data-action="openCloud" class="q-state q-state-info mb-2 w-full text-left"><span class="q-dot"></span><span class="min-w-0 flex-1 truncate">${esc(syncStatusText())}</span><span>Details</span></button>`;
  const rows=['sync','upload','live'].map(k=>health[k]).filter(Boolean);
  if(!rows.length)return '';
  const w=rows.reduce((a,b)=>H_RANK[b.st]>H_RANK[a.st]?b:a);

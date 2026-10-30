@@ -1030,6 +1030,12 @@
     background:#dc3522;color:#fff;font-size:8.5px;font-weight:800;line-height:14px;text-align:center;display:none;place-items:center}
   .hx-cloud-dot{position:absolute;right:-1px;bottom:-1px;width:8px;height:8px;border-radius:50%;
     background:#9db0b4;box-shadow:0 0 0 1.5px var(--hx-surface)}
+  /* the cloud dots breathe while a sync runs: the same compositor-friendly ring as the live-queue dot,
+     hooked to a data attribute (not a class) so the markup keeps its inline styling */
+  #cloudDot[data-busy="1"]::after,#homeCloudDot[data-busy="1"]::after{content:"";position:absolute;inset:-3px;border-radius:50%;
+    pointer-events:none;border:2px solid rgba(224,166,58,.5);animation:qpulse 1.8s ease-in-out infinite}
+  html.lite #cloudDot[data-busy="1"]::after,html.lite #homeCloudDot[data-busy="1"]::after{animation:none;opacity:0}
+  @media (prefers-reduced-motion:reduce){#cloudDot[data-busy="1"]::after,#homeCloudDot[data-busy="1"]::after{animation:none;opacity:0}}
   .hx-round svg{width:13px;height:13px}
   .hx-round-ivory{border-color:rgba(20,24,21,.12);background:rgba(20,24,21,.05);color:#141715}
   .hx-practice{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 15px;
@@ -1223,6 +1229,7 @@
              style="background:linear-gradient(145deg,#34d375,#15803d);box-shadow:0 8px 18px -10px rgba(21,128,61,.55),inset 0 1px 0 rgba(255,255,255,.35)">
           <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
           <span id="cloudDot" data-cloud-dot style="position:absolute;right:-3px;top:-3px;width:11px;height:11px;border-radius:9999px;background:#9db0b4;border:2px solid #fff"></span>
+          <span id="cloudBadge" data-cloud-badge style="display:none;position:absolute;left:-4px;bottom:-4px;min-width:17px;height:17px;padding:0 4px;border-radius:9999px;background:#d88a55;border:2px solid #fff;color:#fff;font-size:9px;font-weight:800;line-height:13px;text-align:center;place-items:center"></span>
         </button>
         <div class="hdr-title leading-tight" style="white-space:nowrap">
           <div class="display text-[15px] font-extrabold tracking-tight text-[#123033]">Health Expo Passport</div>

@@ -219,6 +219,9 @@ the result into a cache version, writes `dist/` with `_headers`, `version.json`,
 - **localStorage is the offline truth.** It survives a closed tab and works with no signal.
 - **Postgres is the shared truth.** When signed in, remote rows merge into the local arrays; conflicts resolve by
   signature comparison, and a placement refusal triggers a re-resolve rather than a data loss (`resolvePlacement`).
+- **The sync chrome only observes.** The dot ring, the pending badge, the "Uploading 3 of 5…" words and the
+  "synced 14:32" label are all read from `cloud.phase`/`cloud.prog`/`cloud.syncedAt`/`cloudPending()` — the
+  upload loop just sets counters (see `syncChrome` in `src/cloud.js`, `FIX-PLAN-sync-ui.md`).
 - **Realtime** streams row changes on `attendees`, `volunteers` and `notifications` so other desks see them live.
 
 There is **no server-rendered HTML and no API layer of your own**. The client talks to Postgres through Supabase's
@@ -341,6 +344,11 @@ House style, visible throughout. Follow it and your change will look native.
 
 The harness loads the built page and drives `__internals` — a deliberate seam that exposes ~250 functions. If you
 rename or change the return shape of anything in that object, update `main.js` and the harness together.
+
+Section 18d also drives the sync chrome: it checks the "synced just now / 14:32" label after a fake sync, the
+"Downloading…"/"Uploading 2 of 5…" words, the pending badge against the dirty rows, the busy ring attribute and
+that Sync now is disabled while a sync runs. The same section keeps the house rules honest: exactly two timers and
+no new CSS class tokens.
 
 ---
 
