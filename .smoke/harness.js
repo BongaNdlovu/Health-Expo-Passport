@@ -1845,10 +1845,12 @@ function makeServer() {
   ok('first successful sync lifts the gate', C.ready === true && !gateShown() && g.gateState() === 'hidden', C.status + ' ready=' + C.ready);
   ok('the app now shows real data (demo gone, own visitor uploaded)', g.attendees.length === 1 && srv.tables.attendees.has('EXPO-360'));
 
-  /* an unexpected sign-out keeps the desk working */
+  /* an unexpected sign-out (expired, revoked elsewhere) puts the desk back behind the gate: on a shared
+     device the next person must not continue in the previous operator's copy, and must not be waved in */
   $el('toastMsg').textContent = '';
   srv.authCb('SIGNED_OUT', null); await sleep(30);
-  ok('session ends by itself → no lock-out, a toast explains', !gateShown() && /Signed out/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+  ok('session ends by itself → the sign-in gate returns, a toast explains', gateShown() && g.gateState() === 'form' && /Signed out/.test($el('toastMsg').textContent), g.gateState() + ' ' + $el('toastMsg').textContent);
+  ok('…and the expired desk has no Back control to wave itself back in', !$el('authGateBody').innerHTML.includes('data-action="gateBack"'));
   ok('…and local edits keep queueing', g.cloudPending() === 0 || true);
   /* signing out on purpose brings the gate back */
   srv.authCb('SIGNED_IN', { user: { id: 'user-1', email: 'staff@example.org' } }); await sleep(300);
@@ -1988,7 +1990,7 @@ function makeServer() {
   await toLogin(); g.gateView('signup');
   signupForm(); await g.cloudSignUp(onGate);
   signupForm(); g.gateView('signup'); signupForm(); await g.cloudSignUp(onGate);
-  ok('signing up an existing email says so, without leaking more', g.gateState() === 'signup' && /already has an account/.test(C.formErr), C.formErr);
+  ok('signing up an existing email looks exactly like a fresh one (no enumeration)', g.gateState() === 'verify' && !C.formErr, g.gateState() + ' ' + C.formErr);
   await toLogin(); g.gateView('signup'); srv.signupMode = 'disabled'; signupForm({ gateEmail: 'x1@example.org' }); await g.cloudSignUp(onGate);
   ok('sign-ups switched off in Supabase → clear message', /switched off/.test(C.formErr), C.formErr);
   srv.signupMode = 'ratelimit'; signupForm({ gateEmail: 'x2@example.org' }); await g.cloudSignUp(onGate);

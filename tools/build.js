@@ -36,8 +36,9 @@ const version = versionHash.digest('hex').slice(0, 10);
 /* ---- CSP ---------------------------------------------------------------------------------------------
    No 'unsafe-inline' for scripts: the page has exactly two inline scripts and each is allowed by its own
    content hash — the tiny font picker in <head>, and the app bundle (different on every build, so its hash
-   is stamped fresh into the built page and _headers here). Anything else must come from 'self' or the three
-   pinned, hash-checked CDNs. The style-src 'unsafe-inline' stays: the page styles itself inline. */
+   is stamped fresh into the built page and _headers here). The only off-site script source is the one
+   library the app loads, pinned down to its exact versioned path — jsDelivr serves arbitrary npm content,
+   so the host name alone must never be enough. The style-src 'unsafe-inline' stays: the page styles itself inline. */
 const hashOf = s => "'sha256-" + crypto.createHash('sha256').update(s).digest('base64') + "'";
 const fontPick = (shell.match(/<script id="fontPick">([\s\S]*?)<\/script>/) || [])[1];
 if (!fontPick) throw new Error('index.html lost its fontPick script — the CSP hash cannot be computed');
@@ -56,8 +57,9 @@ const policy = scripts => [
 /* the browser hashes the exact text between <script> and </script>, so the hash is taken of exactly what is
    injected below — newlines included */
 const inlineBundle = '\n' + bundle + '\n';
-const CSP_DEV = policy("script-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com");
-const CSP_DIST = policy("script-src 'self' " + hashOf(inlineBundle) + ' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com');
+const SB_CDN = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4';   /* keep in step with SB_LIB in src/cloud.js */
+const CSP_DEV = policy("script-src 'self' " + SB_CDN);
+const CSP_DIST = policy("script-src 'self' " + hashOf(inlineBundle) + ' ' + SB_CDN);
 
 /* The shell's meta tag is the development policy (dev loads src/main.js as an external module, so it needs
    'self' but not the bundle hash). It must carry the current fontPick hash — fail the build on drift. */
@@ -103,8 +105,8 @@ fs.writeFileSync(path.join(dist, 'version.json'), JSON.stringify({
 }, null, 2) + '\n');
 
 /* Security headers for every file — identical to the built page's meta tag. What the policy locks down is WHERE
-   code may load from (only this site, the two inline hashed scripts, and the three pinned libraries), where data
-   may be sent (only this site and Supabase), and who may frame the app (nobody). */
+   code may load from (only this site, the two inline hashed scripts, and the one library pinned to its exact
+   versioned path), where data may be sent (only this site and Supabase), and who may frame the app (nobody). */
 const SECURITY = ['/*',
   '  Content-Security-Policy: ' + CSP_DIST,
   '  X-Content-Type-Options: nosniff',
@@ -121,6 +123,16 @@ fs.writeFileSync(path.join(dist, '_headers'), [
   '  Cache-Control: no-cache', '/icons/*', '  Cache-Control: public, max-age=86400',
   '/version.json', '  Cache-Control: no-store',
   '/newstart.apk', '  Content-Type: application/vnd.android.package-archive', '  Content-Disposition: attachment; filename="NEWSTART.apk"', ''].join('\n'));
+
+/* RFC 9116 security.txt: a researcher who finds something has somewhere to take it instead of going public.
+   Monitored by End of Time Academy (project owner). */
+fs.mkdirSync(path.join(dist, '.well-known'), { recursive: true });
+fs.writeFileSync(path.join(dist, '.well-known', 'security.txt'), [
+  'Contact: mailto:admin@endoftime7.com',
+  'Expires: 2027-10-30T00:00:00.000Z',
+  'Preferred-Languages: en',
+  '# Health Expo Passport (NEWSTART). Please include the page address and a screenshot with any report.',
+  ''].join('\n'));
 
 const files = [];
 (function walk(d) { for (const e of fs.readdirSync(d, { withFileTypes: true })) e.isDirectory() ? walk(path.join(d, e.name)) : files.push(path.relative(dist, path.join(d, e.name))); })(dist);

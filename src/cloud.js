@@ -366,16 +366,19 @@ export async function cloudSignUp(e){
  try{res=await cloud.client.auth.signUp({email:em,password:pw,options:{data:{full_name:name},emailRedirectTo:authRedirect()}});}catch(err){res={error:err};}
  if(res.error){
   const m=String(res.error.message||''),c=res.error.code||'';
-  gateFail(c==='signup_disabled'||/signups? not allowed/i.test(m)?'Creating accounts is switched off for this project. Ask the administrator to add you.'
-   :c==='weak_password'?m
-   :c==='user_already_exists'||/already registered/i.test(m)?'That email already has an account — sign in, or reset your password.'
-   :c==='over_email_send_rate_limit'||res.error.status===429||/rate limit/i.test(m)?'Too many emails were sent just now. Wait a few minutes and try again.'
-   :isNet(m)?'No connection — try again when you are online.':(m||'Could not create the account.'));
-  return;
+  /* an address that already has an account is answered exactly like a fresh one — the check-your-email screen
+     below — so the page cannot be used to find out who has an account (the forgot-password screen's rule) */
+  if(!(c==='user_already_exists'||/already registered/i.test(m))){
+   gateFail(c==='signup_disabled'||/signups? not allowed/i.test(m)?'Creating accounts is switched off for this project. Ask the administrator to add you.'
+    :c==='weak_password'?m
+    :c==='over_email_send_rate_limit'||res.error.status===429||/rate limit/i.test(m)?'Too many emails were sent just now. Wait a few minutes and try again.'
+    :isNet(m)?'No connection — try again when you are online.':(m||'Could not create the account.'));
+   return;
+  }
  }
  const u=res.data&&res.data.user;
- /* with e-mail confirmation on, signing up an address that already exists returns a user with no identities */
- if(u&&Array.isArray(u.identities)&&u.identities.length===0){gateFail('That email already has an account — sign in, or reset your password.');return;}
+ /* with e-mail confirmation on, signing up an address that already exists returns a user with no identities:
+    it falls through to the same check-your-email screen as a fresh signup, so the two look identical */
  cloud.resendAt=Date.now()+60000;
  if(res.data&&res.data.session)return;                 /* confirmation is switched off: the sign-in event takes over */
  cloud.view='verify';cloud.formErr='';cloud.gateKey='';renderGate();

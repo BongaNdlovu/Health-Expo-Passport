@@ -1,9 +1,10 @@
 // @ts-check
+import { SEED } from './data.js';
 /* POPIA s14: kept no longer than needed. A visitor takes their results home on the printed card or by WhatsApp on the
    day, so the church has no reason to hold the readings: they are deleted GRACE_DAYS after the visit, and a visitor who
    did not agree to follow-up is deleted with them. Only name and contact details of a follow-up stay, for
    RETENTION_YEARS after the last visit. supabase/schema.sql applies the same rule in the database (the daily purge and
-   the trigger on attendees) and the notice the visitor reads says it too (PRIVACY_NOTICE in visitor.js): change the
+   the trigger on attendees) and the notice the visitor reads says it too (noticeRows in visitor.js): change the
    three together. */
 export const GRACE_DAYS=7;
 export const RETENTION_YEARS=2;
@@ -20,10 +21,16 @@ export function noteServerTime(iso,sentAt,gotAt){
 }
 export const clockKnown=()=>skewKnown;
 export const serverNow=()=>Date.now()+clockSkew;
-/* the visit's date, as the database holds it; an old local record without one simply cannot be judged */
+/* the visit's date, as the database holds it; a record without one falls back to the consent date — the same
+   fallback the database uses (consent_is_old in schema.sql), and every version of the app sends that date. The
+   built-in demo visitors are exempt: their consent dates are fixtures from a past expo, and practice must keep
+   showing their readings. */
 export const visitIsOld=a=>{
  const t=Date.parse((a&&a.created_at)||'');
- return !isNaN(t)&&serverNow()-t>GRACE_DAYS*86400000;
+ if(!isNaN(t))return serverNow()-t>GRACE_DAYS*86400000;
+ if(SEED.some(x=>x.id===(a&&a.id)))return false;
+ const c=(a&&a.interests&&a.interests.consentOn)||'';
+ return /^\d{4}-\d{2}-\d{2}$/.test(c)&&c<new Date(serverNow()-GRACE_DAYS*86400000).toISOString().slice(0,10);
 };
 /* the app always carries the eight reading keys (null until measured), so emptiness is "no value in any of them" */
 export const hasReadings=a=>{

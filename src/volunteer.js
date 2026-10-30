@@ -1032,7 +1032,7 @@ function waPreviewHTML(a){
    </ol>
    <p class="mt-2 text-[11px] font-semibold leading-relaxed text-[#33504f]">📅 ${esc(P.recheck[0])}</p></div>
   ${p.items.length?`<div class="mt-3 rounded-[14px] border border-amber-200/70 bg-amber-50/80 p-2.5 text-[10px] leading-relaxed text-amber-900">
-   <b>Shopping list (store prices checked ${PRICE_DATE}; may vary by branch):</b> ${p.items.map(it=>`${it.name} (${it.dose})`).join('; ')}.
+   <b>Shopping list (store prices checked ${PRICE_DATE}; may vary by branch):</b> ${p.items.map(it=>`${esc(it.name)} (${esc(it.dose)})`).join('; ')}.
    <br><b>Where to buy it cheapest:</b> ${p.items.map(it=>{const Pr=foodPriceOf(it.name);return Pr?`${esc(shortFood(it.name))} at ${Pr.parts.map(pp=>esc(pp.cheap)).join(' & ')}`:'';}).filter(Boolean).join(' · ')}.
   </div>`:''}
   ${p.help?`<p class="mt-2 text-[10px] font-bold leading-relaxed text-rose-700">${esc(p.help)}</p>`:''}

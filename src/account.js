@@ -274,7 +274,7 @@ export function pledgeHTML(){
  if(!m||m.status!=='approved')return '';
  if(cloud.pledge===undefined){loadPledge();return acctBox('My pledge',acctNote('Loading…'));}
  if(cloud.pledgeErr)return acctBox('My pledge',acctNote('Pledging needs the latest supabase/schema.sql — ask the church to update the database first.'));
- if(!cloud.pledge)return acctBox('My pledge',acctNote('Pledge to help at the next expo and your name goes onto the team list straight away. Your church’s admin registers you and chooses your station.')+myPledgeFormHTML());
+ if(!cloud.pledge)return acctBox('My pledge',acctNote('Pledge to help at the next expo and your name goes onto the team list straight away. Your church’s admin registers you and chooses your station. Your pledge details stay on the roster until you unpledge or your church’s admin removes them.')+myPledgeFormHTML());
  if(cloud.pledgeEdit)return acctBox('My pledge',myPledgeFormHTML());
  const p=cloud.pledge,st=STATUS_UI[p.status];
  return acctBox('My pledge',`
@@ -291,7 +291,7 @@ export function pledgeHTML(){
      :p.status==='registered'?'<button data-action="my-pledge-deregister" class="btn btn-glass flex-1 py-2 text-xs text-rose-700">Deregister</button>':''}
    <button data-action="openSettings" class="btn btn-glass flex-1 py-2 text-xs">Settings</button>
   </div>
-  ${p.status==='checkedin'?acctNote('You are checked in for this expo: only your church’s admin can change that now.'):''}`);
+  ${p.status==='checkedin'?acctNote('You are checked in for this expo: only your church’s admin can change that now.'):acctNote('Your pledge details (name and contacts) stay on your church’s roster until you unpledge or your church’s admin removes them.')}`);
 }
 async function loadPledge(force){
  if(cloud.pledgeBusy&&!force)return;
@@ -981,10 +981,16 @@ export function cloudAuthEvent(ev,session){
   cloud.user=u;cloud.gateForce=false;noteHealth('auth','ok','Signed in as '+(u.email||''));
   if(!same){cloud.mode=true;cloud.blocked=false;cloud.lastFull=0;cloud.since={att:'',vol:''};cloudSync();profileChanged(true);}
  }else if(ev==='SIGNED_OUT'||ev==='INITIAL_SESSION'){
-  if(cloud.user){cloud.user=null;stopRealtime();notifStop();cloudRefresh();}
-  /* the session ended by itself (expired, or revoked elsewhere): keep working from the saved copy, but say so */
+  /* A session that ends while the desk is open (expired, or revoked elsewhere) puts the sign-in gate back up:
+     on a shared desk the next person must not continue in the previous operator's copy, and "Back to the app"
+     must not wave them in — dropping cloud.ready removes the Back control too (gateState). A desk that starts
+     without a session was never open for anyone, so the boot path (saved copy, no gate) is untouched. */
+  const wasIn=!!cloud.user;
+  if(wasIn){cloud.user=null;stopRealtime();notifStop();cloudRefresh();
+   applyRetention();afterMerge();persistNow();      /* the server may already have purged these readings; the saved copy follows */
+   cloud.ready=false;}
   healthReset();noteHealth('auth','off','Not signed in.');
-  if(ev==='SIGNED_OUT'&&cloud.ready&&!cloud.signingOut)toast('Signed out — tap the logo to sign in again');
+  if(ev==='SIGNED_OUT'&&wasIn&&!cloud.signingOut)toast('Signed out — tap the logo to sign in again');
   setCloud('signedout');
  }
 }
@@ -1025,7 +1031,7 @@ export async function cloudSignOut(force){
  cloud.acct=null;cloud.churchId='';cloud.health=undefined;cloud.dir=null;cloud.regChurch=false;cloud.members=null;cloud.plat=null;cloud.audit=null;cloud.adminChurch='';cloud.adminData='';cloud.adminRows=null;closeAcct();
  cloud.view='login';cloud.viewEmail='';cloud.pending=false;cloud.recovery=false;cloud.formErr='';cloud.gateForce=false;cloud.delOpen=false;
  cloud.plans=null;cloud.adminPlans=null;cloud.planEdit=null;try{localStorage.removeItem(CHURCH_PLANS_KEY);}catch(e){}
- cloud.followups=null;cloud.adminFollowups=null;cloud.myFollow=null;cloud.inviteLink=null;
+ cloud.followups=null;cloud.adminFollowups=null;cloud.myFollow=null;cloud.inviteLink=null;clearInvite();   /* a stale invite link must not join the next account on this desk */
  cloud.user=null;cloud.mode=false;cloud.blocked=false;cloud.synced={att:{},vol:{}};cloud.rejected={};cloud.lastFull=0;cloud.since={att:'',vol:''};
  try{localStorage.removeItem(SYNC_KEY);localStorage.removeItem(CHURCH_KEY);}catch(e){}
  resetLedgerSig();
@@ -1067,6 +1073,17 @@ export async function cloudSync(manual){
    notifWatch();return;
   }
   cloud.pending=false;
+  /* A device signing in for the first time may carry edited demo rows. Their ids sit inside the normal numbering
+     space, but a real visitor registered before the first sign-in is always numbered above the demo data, and an
+     explicit sign-out wipes the device — so here, and only here, "a seed id that was never uploaded" is practice
+     data, which must not ride into the real church. Re-signing in after a lost session keeps its saved copy: the
+     church key survives that, so this purge does not run and unsynced real work is safe. */
+  try{if(!localStorage.getItem(CHURCH_KEY)){
+   for(const kind of ['att','vol']){const k=KINDS[kind];
+    for(let i=k.list.length-1;i>=0;i--){const o=k.list[i];
+     if(cloud.synced[kind][o.id]===undefined&&isDirty(kind,o)&&k.seed.some(x=>x.id===o.id)){k.list.splice(i,1);delete cloud.synced[kind][o.id];}}
+   }
+  }}catch(e){}
   if(cloud.acct)adoptChurch(cloud.churchId);
   /* A full pull on sign-in, "Sync now" and every 10 minutes (it is the only way to notice rows deleted on another
      desk); in between, only rows changed since the last pull. */

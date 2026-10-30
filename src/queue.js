@@ -172,7 +172,11 @@ function startQueueRealtime(){
  if(qs.ch||!cloud.client)return;
  const ch=cloud.client.channel('newstart-queue');
  ch.on('postgres_changes',{event:'*',schema:'public',table:'queue_entries'},p=>{
-  if(p.eventType==='DELETE'){const id=qSafe(p.old&&p.old.id),i=queue.findIndex(e=>e.id===id);if(i>=0)queue.splice(i,1);}
+  if(p.eventType==='DELETE'){
+   /* Realtime delete events carry no row-level security, so count one only when it names this device's church
+      (as onRemoteChange does for visitors and volunteers); the next full pull notices any real deletion. */
+   if(cloud.churchId&&!(p.old&&p.old.church_id===cloud.churchId))return;
+   const id=qSafe(p.old&&p.old.id),i=queue.findIndex(e=>e.id===id);if(i>=0)queue.splice(i,1);}
   else if(p.new&&p.new.id)qApply(p.new);
   else return;
   qRefresh();

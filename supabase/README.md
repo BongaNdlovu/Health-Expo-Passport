@@ -33,6 +33,22 @@ Next.js files in the Supabase quickstart (`utils/supabase/*`, middleware) do not
 
 6. Open the app and sign in. The dot on the logo turns green once the first sync finishes.
 
+## Before the expo — dashboard checklist
+
+Settings the repo cannot prove on its own; tick each one off (security pass 2026-10-30, finding F-04):
+
+- [x] **pg_cron is ON and the purge is scheduled.** Enabled 2026-10-30: `purge-expired-visitors` runs daily at `0 3 * * *`.
+      Confirm with `select jobname, schedule from cron.job;`. Re-run `schema.sql` (or the `enable_pg_cron_purge_schedule`
+      migration) if the job is missing, and once run `select public.purge_expired_visitors();` by hand. **If this is
+      skipped, nothing is ever deleted and the privacy notice is not true.**
+- [ ] **Leaked password protection is ON** (Authentication → Sign In / Providers → Email → Prevent use of leaked
+      passwords). **Pro plan or above required** — this org is currently on Free, so the toggle stays unavailable until
+      upgrade; Security Advisor will keep warning until then. Checks new passwords against known breaches.
+- [ ] **SMTP is connected** (step 4) — sign-up and reset emails survive real volume.
+- [ ] **Site URL and Redirect URLs are exact** (step 3) — no wildcards.
+- [ ] **A platform admin exists** (step 5) and **2FA is on** for the Supabase, GitHub and Cloudflare/registrar accounts
+      that own this project.
+
 ## Retention: readings are kept 7 days, follow-up 2 years
 
 POPIA s14 says no longer than needed. A visitor takes their results home on the printed card or by WhatsApp on the day,
