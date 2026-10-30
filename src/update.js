@@ -7,14 +7,16 @@
    worker a plain reload is enough, because sw.js serves the page network-first.
 
    Android (Capacitor) — the page inside the APK carries the version it was packaged at, so a newer server build
-   means a newer app is on offer. Tapping downloads /newstart.apk, which the host already sends with
-   Content-Disposition: attachment (see _headers in tools/build.js), and the phone's installer takes it from there.
+   means a newer app is on offer. The app's own page is a local copy with no version.json, so inside the app the
+   check goes to the website (APP_SITE), whose /version.json allows it (see _headers in tools/build.js). Tapping
+   downloads /newstart.apk from the website, which the host sends with Content-Disposition: attachment, and the
+   phone's installer takes it from there.
 
    A development page is never stamped, and an unstamped page never shows the banner — there is nothing to compare.
 
    Split from the original single-file app; bundled back into one file by tools/build.js. */
 import { $ } from './helpers.js';
-import { IS_APP } from './platform.js';
+import { APP_SITE, IS_APP } from './platform.js';
 
 const SNOOZE = 'newstart.updSnooze';        /* the server version this person said "not now" to */
 
@@ -31,6 +33,19 @@ const ownVersion = () => {
 };
 const read = k => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
 const write = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* private mode */ } };
+
+/** Where this build's version.json is read from: the page's own host on the web, the website from inside the app. */
+export const versionUrl = (isApp, now) => (isApp ? APP_SITE : '') + 'version.json?t=' + now;
+
+/** The APK address the installer may be given, or '' when it is not on this app's own host. version.json is read
+ *  from that host, but an absolute url inside it would otherwise be followed anywhere, which is a package nobody
+ *  vetted. Inside the app the host is the website; on the web it is the page's own host. */
+export function apkHref(url, isApp, pageHref) {
+  const base = isApp ? APP_SITE : pageHref;
+  let apk;
+  try { apk = new URL(String(url), base); } catch (e) { return ''; }
+  return apk.origin === new URL(base).origin ? apk.href : '';
+}
 
 /** Watch for a newer build. Safe to call twice; a development page does nothing at all. */
 export function updateInit() {
@@ -70,7 +85,7 @@ async function checkNow() {
   if (!navigator.onLine) return;
   let data = null;
   try {
-    const res = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+    const res = await fetch(versionUrl(IS_APP, Date.now()), { cache: 'no-store' });
     if (!res.ok) return;
     data = await res.json();
   } catch (e) { return; }                    /* offline, or no file on this host: stay quiet */
@@ -103,23 +118,24 @@ function hide() {
 }
 
 /** The Update button. */
-export function updateNow() {
+export async function updateNow() {
   hide();
   if (IS_APP) {
     if (server && server.apk && server.apk.url) {
       snoozed = server.version || '';
       if (snoozed) write(SNOOZE, snoozed);
-      /* A WebView cannot install an APK, and navigating it to one usually just fails. Hand the file to whatever
-         the platform offers: Capacitor's Browser plugin, then a new window (Chrome), then plain navigation as a
-         last resort. This is the one path that needs a real phone to verify. */
-      /* Only ever hand the installer a file from this app's own host. version.json is same-origin, but an
-         absolute url inside it would otherwise be followed anywhere, which is a package nobody vetted. */
-      const apk = new URL(String(server.apk.url), location.href);
-      if (apk.origin !== location.origin) return;
-      const href = apk.href;
+      /* A WebView cannot install an APK, and navigating it to one usually just fails. Hand the address to the
+         phone: the AppLauncher plugin (already in the app) opens it in the phone's own browser, which downloads
+         the file for the installer. Capacitor's Browser plugin and a new window are the fallbacks. This is the one
+         path that needs a real phone to verify. */
+      const href = apkHref(server.apk.url, true, location.href);
+      if (!href) return;
       const cap = /** @type {any} */ (window).Capacitor;
-      const browser = cap && cap.Plugins && cap.Plugins.Browser;
-      if (browser && typeof browser.open === 'function') browser.open({ url: href });
+      const plugins = (cap && cap.Plugins) || {};
+      if (plugins.AppLauncher && typeof plugins.AppLauncher.openUrl === 'function') {
+        try { await plugins.AppLauncher.openUrl({ url: href }); return; } catch (e) { /* fall through */ }
+      }
+      if (plugins.Browser && typeof plugins.Browser.open === 'function') plugins.Browser.open({ url: href });
       else if (!window.open(href, '_blank')) location.href = href;
     }
     return;

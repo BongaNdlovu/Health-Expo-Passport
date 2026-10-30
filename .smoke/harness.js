@@ -130,7 +130,7 @@ const sandbox = {
   cancelAnimationFrame() {},
   requestIdleCallback: fn => { setTimeout(() => fn({ timeRemaining: () => 5 }), 0); return 1; },
   setTimeout, clearTimeout, setInterval, clearInterval,
-  URL: { createObjectURL: () => 'blob:x', revokeObjectURL() {} },
+  URL: Object.assign(class extends URL {}, { createObjectURL: () => 'blob:x', revokeObjectURL() {} }),   /* a real constructor: the update check parses addresses */
   Blob: function () {},
   Date, Math, JSON, console, performance: { now: () => Date.now() },
   innerWidth: 390, innerHeight: 844, scrollY: 0, scrollTo() {},
@@ -1311,8 +1311,15 @@ function makeServer() {
   ok('"not now" is harmless with no server answer yet', true);
   /* version.json is same-origin, but an absolute url inside it must not be able to point the Android
      installer at a package from somewhere else */
-  ok('the update button refuses an APK url from another origin',
-    /apk\.origin !== location\.origin/.test(srcText));
+  const SITE = 'https://winter-bonus-626a.ndlovufanelesibonge8.workers.dev/';
+  ok('inside the app the version check goes to the website, on the web to the page\'s own host',
+    g.versionUrl(true, 5) === SITE + 'version.json?t=5' && g.versionUrl(false, 5) === 'version.json?t=5', g.versionUrl(true, 5));
+  ok('inside the app the APK comes from the website (the app\'s own page has no such file)',
+    g.apkHref('newstart.apk', true, 'https://localhost/') === SITE + 'newstart.apk', g.apkHref('newstart.apk', true, 'https://localhost/'));
+  ok('the update button refuses an APK url from another origin, in the app and on the web',
+    g.apkHref('https://evil.example/x.apk', true, 'https://localhost/') === '' && g.apkHref('//evil.example/x.apk', true, 'https://localhost/') === ''
+    && g.apkHref('https://evil.example/x.apk', false, 'https://expo.example/') === '' && g.apkHref('newstart.apk', false, 'https://expo.example/') === 'https://expo.example/newstart.apk'
+    && g.apkHref('http://[bad', true, 'https://localhost/') === '');
 
   /* the three new notification kinds have inbox labels */
   g.cloud.user = { id: 'u1' };

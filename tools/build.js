@@ -51,7 +51,7 @@ const policy = scripts => [
   "font-src https://fonts.gstatic.com",
   "img-src 'self' data: blob:",
   "media-src 'self' blob:",
-  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.supabase.in wss://*.supabase.in",
+  "connect-src 'self' " + SITE_ORIGIN + " https://*.supabase.co wss://*.supabase.co https://*.supabase.in wss://*.supabase.in",
   "worker-src 'self'", "manifest-src 'self'", "object-src 'none'", "base-uri 'self'", "form-action 'self'", "frame-ancestors 'none'",
 ].join('; ');
 /* the browser hashes the exact text between <script> and </script>, so the hash is taken of exactly what is
@@ -59,6 +59,11 @@ const policy = scripts => [
 const inlineBundle = '\n' + bundle + '\n';
 /* The exact URL the app loads (SB_LIB in src/cloud.js). A CSP source without a trailing slash matches that path
    only, so it must be the whole file path — a shortened one blocks the library and sign-in never loads. */
+/* The packaged Android app reads /version.json from the website to learn about a new build (src/update.js), so the
+   policy lets the page connect to that one origin as well as to itself and Supabase. */
+const APP_SITE = (/export const APP_SITE='([^']+)'/.exec(fs.readFileSync(path.join(root, 'src', 'platform.js'), 'utf8')) || [])[1];
+if (!APP_SITE) throw new Error('src/platform.js lost its APP_SITE line — the CSP cannot name the site the app updates from');
+const SITE_ORIGIN = new URL(APP_SITE).origin;
 const SB_CDN = (/export const SB_LIB='([^']+)'/.exec(fs.readFileSync(path.join(root, 'src', 'cloud.js'), 'utf8')) || [])[1];
 if (!SB_CDN) throw new Error('src/cloud.js lost its SB_LIB line — the CSP cannot name the library it must allow');
 const CSP_DEV = policy("script-src 'self' " + SB_CDN);
@@ -124,7 +129,7 @@ fs.writeFileSync(path.join(dist, '_headers'), [
   '/sw.js', '  Cache-Control: no-cache', '/index.html', '  Cache-Control: no-cache', '/manifest.webmanifest', '  Cache-Control: no-cache',
   '  Content-Type: application/manifest+json', '/',
   '  Cache-Control: no-cache', '/icons/*', '  Cache-Control: public, max-age=86400',
-  '/version.json', '  Cache-Control: no-store',
+  '/version.json', '  Cache-Control: no-store', '  Access-Control-Allow-Origin: *',
   '/newstart.apk', '  Content-Type: application/vnd.android.package-archive', '  Content-Disposition: attachment; filename="NEWSTART.apk"', ''].join('\n'));
 
 /* RFC 9116 security.txt: a researcher who finds something has somewhere to take it instead of going public.

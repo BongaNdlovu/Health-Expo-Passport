@@ -47,6 +47,13 @@ ok('the cache version is stamped', !sw.includes('__VERSION__'));
 
 console.log('\n4. caching rules');
 ok('version.json is never cached', /\/version\.json[\s\S]{0,60}no-store/.test(headers));
+/* the packaged app lives on https://localhost, so reading the website's version.json is a cross-origin request */
+ok('version.json may be read by the packaged app (CORS) and nothing else gets that header', /\/version\.json\n[^\n]*no-store\n\s*Access-Control-Allow-Origin: \*/.test(headers) && (headers.match(/Access-Control-Allow-Origin/g) || []).length === 1);
+{
+  const site = (/export const APP_SITE='([^']+)'/.exec(fs.readFileSync(path.join(__dirname, '..', 'src', 'platform.js'), 'utf8')) || [])[1];
+  const connect = ((/Content-Security-Policy: (.*)/.exec(headers) || [])[1] || '').split(';').map(x => x.trim()).find(x => x.startsWith('connect-src ')) || '';
+  ok('the CSP lets the app read the website\'s version.json (connect-src names the site)', !!site && connect.split(/\s+/).includes(new URL(site).origin), connect);
+}
 ok('sw.js is never cached', /\/sw\.js[\s\S]{0,60}no-cache/.test(headers));
 ok('the APK is served as an attachment', /\/newstart\.apk[\s\S]{0,120}Content-Disposition: attachment/.test(headers));
 ok('the page sends a CSP', /Content-Security-Policy:/.test(headers) && /http-equiv="Content-Security-Policy"/.test(html));
