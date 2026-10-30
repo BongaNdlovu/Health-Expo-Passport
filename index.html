@@ -1170,6 +1170,16 @@
     border-radius:999px;box-shadow:0 4px 12px -4px rgba(21,128,61,.45)}
   html[data-theme] #navPill{display:none}
 
+  /* ---- Buttons are never squashed: round and icon buttons keep their size and shape, a visitor pill gives way
+     before them, a badge stays whole and readable, and small text links get a 44px hit area ---- */
+  .hx-round,.hx-theme,.hx-split-circle,.hx-staff-av{flex:none;aspect-ratio:1/1}
+  .hx-theme{aspect-ratio:auto}
+  .hx-staff{flex:0 1 auto;min-width:0;max-width:calc(100% - 118px)}
+  .hx-staff-meta{text-overflow:ellipsis}
+  .hx-notif-dot{min-width:17px;height:17px;padding:0 4px;right:-5px;top:-5px;font-size:10px;line-height:17px;
+    box-shadow:0 0 0 2px var(--hx-surface);letter-spacing:0}
+  .hx-sheet-actions button,.hx-practice-go{position:relative}
+  .hx-sheet-actions button::after,.hx-practice-go::after{content:"";position:absolute;inset:-12px -8px}
 </style>
 </head>
 <body>

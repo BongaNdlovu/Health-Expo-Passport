@@ -2211,11 +2211,19 @@ function makeServer() {
       { user_id: 'u-staff', email: 'st@example.org', full_name: 'Staff Person', phone: '082', area: 'Umlazi', role: 'staff', status: 'approved', attendee_id: 'EXPO-042', confirmed: true }];
     let me = person(), health = null, refuse = null;
     const rc = [], shots = [];                     /* account calls the app made; every screen drawn (for the class check) */
+    let lastExpo = null, acctCalls = 0;
+    const expoList = [
+      { id: 'ex-1', name: 'Pinetown <b>Health</b> Expo', starts_on: '2027-03-06', start_time: '09:00', end_time: '14:00', venue: 'Church hall', address: '12 Main Rd, Pinetown',
+        volunteers_needed: 20, station_needs: { bp: 4, kids: 2 }, clinic: true, doctors: 2, doctor_types: ['GP', 'Dentist'], signup_deadline: '2999-02-20', status: 'open', pledged: 5, placed: { bp: 2 } },
+      { id: 'ex-2', name: 'Draft Expo', starts_on: '2027-05-01', start_time: '', end_time: '', venue: '', address: '', volunteers_needed: 0, station_needs: {}, clinic: false, doctors: 0,
+        doctor_types: [], signup_deadline: null, status: 'draft', pledged: 0, placed: {} },
+      { id: 'ex-3', name: 'Past Expo', starts_on: '2026-01-10', start_time: '09:00', end_time: '12:00', venue: 'Hall', address: '', volunteers_needed: 10, station_needs: {}, clinic: false, doctors: 0,
+        doctor_types: [], signup_deadline: '2025-12-01', status: 'open', pledged: 10, placed: {} }];
     const padmins = [{ user_id: 'u-owner', email: 'owner@example.org', created_at: '2026-10-01T08:00:00Z' }];
     const done = (data = null) => ({ data, error: null });
     const install = () => {
       srv.rpcs = {
-        my_account: () => done(JSON.parse(JSON.stringify(me))),
+        my_account: () => { acctCalls++; return done(JSON.parse(JSON.stringify(me))); },
         church_directory: a => { rc.push('dir:' + a.p_search); return done([{ id: A.id, name: A.name, city: A.city }]); },
         join_church: a => { rc.push('join:' + a.p_church); if (a.p_wants) rc.push('wants:' + a.p_church + ':' + a.p_wants + ':' + (a.p_booths || []).join('+')); me.membership = member(); me.church = { ...A }; return done(); },
         register_church: a => { rc.push('register:' + a.p_name + ':' + a.p_city); me.membership = member({ church_id: B.id, role: 'admin', status: 'approved' }); me.church = { ...B, name: a.p_name, city: a.p_city }; return done(B.id); },
@@ -2223,6 +2231,9 @@ function makeServer() {
         leave_church: () => { rc.push('leave'); me.membership = null; me.church = null; return done(); },
         my_health: () => { rc.push('health'); return done(health); },
         church_members: a => { rc.push('members:' + a.p_church); return done(JSON.parse(JSON.stringify(people))); },
+        church_expos: a => { rc.push('expos:' + (a.p_church || '')); return done(JSON.parse(JSON.stringify(expoList))); },
+        save_expo: a => { rc.push('saveexpo:' + a.p.name + ':' + a.p.status + ':' + a.p.volunteersNeeded + ':' + (a.p.id || '')); lastExpo = a.p; return done('ex-new'); },
+        delete_expo: a => { rc.push('delexpo:' + a.p_id); return done(); },
         set_admin_post: a => { rc.push('post:' + a.p_user + ':' + a.p_post); return done(); },
         set_member: a => { rc.push(['set', a.p_user, a.p_role, a.p_status].join(':')); return refuse ? { data: null, error: { message: refuse } } : done(); },
         link_member: a => { rc.push('link:' + a.p_user + ':' + a.p_attendee); return done(); },
@@ -2298,6 +2309,9 @@ function makeServer() {
     ok('joining a church sends the request, then waits for that church to approve', rc.includes('join:ch-a') && rc.includes('wants:ch-a:pledge:bp') && C.wants === 'member' && g.gateState() === 'pending'
       && /Waiting for approval/.test(gate()) && gate().includes('Grace Chapel') && gate().includes('Check again'), g.gateState() + ' ' + rc.join());
     ok('…and a member waiting for approval can delete their account from that screen', /data-action="profDeleteAsk"/.test(gate()));
+    const acctBefore = acctCalls; g.checkWhileWaiting(); await sleep(60);
+    const acctMid = acctCalls; g.checkWhileWaiting(); await sleep(60);
+    ok('someone waiting for approval is re-checked when the app comes back (no button press needed), but not again within 15 seconds', acctBefore < acctMid && acctCalls === acctMid, acctBefore + ' ' + acctMid + ' ' + acctCalls);
     $el('gmName').value = ' Dave Dlamini '; $el('gmPhone').value = '082 000 0000'; $el('gmArea').value = 'Umlazi'; $el('gmBirth').value = '1980-05-01';
     await g.saveMyDetails({ preventDefault() {}, target: { dataset: { pre: 'gm' } } }); await sleep(20);
     ok('a member saves their own details', rc.includes('details:Dave Dlamini:082 000 0000:Umlazi:1980-05-01') && /value="Dave Dlamini"/.test(gate()), rc.join());
@@ -2314,9 +2328,15 @@ function makeServer() {
     ok('a linked member sees their own readings, with the Results colour bands', rc.includes('health') && gate().includes('165/102') && gate().includes('Crisis') && gate().includes('chip chip-flag') && gate().includes('5.2 mmol/L'), gate().slice(0, 300));
     ok('…a danger-range reading tells them to see a clinic soon, and the medicine rule always shows', /see a clinic as soon as you can/.test(gate()) && /Keep taking any medicine/.test(gate()));
     ok('…and "what to work on first" follows their numbers', /What to work on first: Blood pressure/.test(gate()));
+    await sleep(40);
+    ok('an approved member sees the open expos with date, venue, volunteers needed and the clinic, and none of the admin buttons or the draft',
+      rc.includes('expos:') && /Health Expos/.test(gate()) && gate().includes('Church hall') && /15 still needed/.test(gate()) && /Medical clinic: 2 doctors · GP, Dentist/.test(gate())
+      && !gate().includes('Draft Expo') && !/data-action="expo-edit"/.test(gate()) && !/data-action="expo-status"/.test(gate()) && !/data-action="expo-delete"/.test(gate()), gate().slice(0, 200));
+    ok('…a pledge button for an expo still taking sign-ups, none once they have closed', (gate().match(/data-action="expo-pledge"/g) || []).length === 1 && /data-action="expo-pledge" data-args="ex-1"/.test(gate()) && /Sign-ups closed on/.test(gate()));
+    shots.push(gate());
     health = { ...health, s: { sys: 128, dia: 82, veg: 2 } };
     await g.cloudSync(true); await sleep(40);
-    const habitOnly = gate().replace('Only your clinic should change it', '');
+    const habitOnly = gate().replace('Only your clinic should change it', '').replace(/Medical clinic: [^<]*|No medical clinic/g, '');
     health = { ...health, s: { sys: 128, dia: 82, chol: 7.8 } };
     await g.cloudSync(true); await sleep(40);
     ok('…red cholesterol says book a clinic visit this week; a low habit alone does not', /Very low/.test(habitOnly) && !/clinic/.test(habitOnly) && /book a clinic visit this week/.test(gate()), habitOnly.slice(-400));
@@ -2389,6 +2409,47 @@ function makeServer() {
     $el('cfName').value = 'Grace Chapel Durban'; $el('cfCity').value = 'Durban'; $el('cfPhone').value = ''; $el('cfEmail').value = '';
     await g.saveChurch({ preventDefault() {} }, 'ch-a');
     ok('a church admin saves the church\'s details', rc.includes('church:ch-a:Grace Chapel Durban'), rc.join());
+    /* Health Expos: the admin's list, the form, and the numbers it keeps */
+    g.openAcct('church'); await sleep(60);
+    ok('the Church screen has a Health Expos box with the expos (status, date, venue, volunteers, clinic) and + New Health Expo',
+      rc.includes('expos:ch-a') && /Health Expos/.test(sheet()) && /data-action="expo-new"/.test(sheet()) && /Church hall/.test(sheet()) && /5 of 20 volunteers/.test(sheet()) && /15 still needed/.test(sheet())
+      && /Medical clinic: 2 doctors · GP, Dentist/.test(sheet()) && /Draft/.test(sheet()) && /No medical clinic/.test(sheet()) && /Blood Pressure/.test(sheet()) && /2 of 4 placed/.test(sheet()), rc.join());
+    ok('…a draft offers Open for members, an open expo Mark done, and every expo Edit and Delete',
+      /data-action="expo-status" data-args="ex-2" data-status="open"/.test(sheet()) && /data-action="expo-status" data-args="ex-1" data-status="done"/.test(sheet()) && /data-action="expo-edit" data-args="ex-1"/.test(sheet()) && /data-action="expo-delete" data-args="ex-1"/.test(sheet()));
+    ok('…expo names from the database are escaped', !sheet().includes('<b>Health</b>') && sheet().includes('&lt;b&gt;Health'));
+    ok('…and a past sign-up deadline says closed', /Sign-ups closed on/.test(sheet()));
+    shots.push(sheet());
+    g.newExpo('ch-a'); sheet();
+    ok('+ New Health Expo opens the form: name, date, times, venue, address, deadline, volunteers, stations, clinic',
+      ['name', 'startsOn', 'startTime', 'endTime', 'venue', 'address', 'signupDeadline'].every(k => new RegExp('data-k="' + k + '"').test(sheet())) && /id="xpTotal"/.test(sheet()) && /Volunteers needed at each station/.test(sheet())
+      && /A medical clinic will take part/.test(sheet()) && !/How many doctors/.test(sheet()), sheet().slice(0, 200));
+    ok('…each station starts at its usual size and the total is their sum', C.expoEdit.total === 32 && C.expoEdit.needs.bp === 4 && C.expoEdit.needs.media === 1, JSON.stringify(C.expoEdit.needs) + C.expoEdit.total);
+    g.expoStation('bp', '6'); g.expoStation('kids', '0');
+    ok('…the total follows the stations until the admin types their own', C.expoEdit.total === 32 - 4 + 6 - 2 && $el('xpTotal').value === String(C.expoEdit.total) && !('kids' in C.expoEdit.needs), String(C.expoEdit.total));
+    g.expoField('total', '25'); g.expoStation('bp', '5');
+    ok('…a typed total stays', C.expoEdit.total === '25' || C.expoEdit.total === 25, String(C.expoEdit.total));
+    g.expoField('clinic', true); sheet();
+    ok('…ticking the clinic box asks how many doctors and what kind', /How many doctors/.test(sheet()) && /data-action="expo-type" data-args="Dentist"/.test(sheet()));
+    g.expoType('GP'); g.expoType('Dentist'); g.expoType('GP');
+    ok('…doctor types toggle on and off', C.expoEdit.types.join() === 'Dentist', C.expoEdit.types.join());
+    $el('toastMsg').textContent = '';
+    await g.saveExpoForm('open');
+    ok('…a missing name or date is stopped on the screen, not sent', /name/.test($el('toastMsg').textContent) && !rc.some(x => /^saveexpo:/.test(x)), $el('toastMsg').textContent);
+    g.expoField('name', 'Pinetown Health Expo 2027'); await g.saveExpoForm('open');
+    ok('…and so is a missing date', /date/.test($el('toastMsg').textContent) && !rc.some(x => /^saveexpo:/.test(x)), $el('toastMsg').textContent);
+    g.expoField('startsOn', '2027-03-06'); g.expoField('startTime', '14:00'); g.expoField('endTime', '09:00'); await g.saveExpoForm('open');
+    ok('…and an end before the start', /end time/.test($el('toastMsg').textContent) && !rc.some(x => /^saveexpo:/.test(x)), $el('toastMsg').textContent);
+    g.expoField('endTime', '16:00'); g.expoField('signupDeadline', '2027-04-01'); await g.saveExpoForm('open');
+    ok('…and a deadline after the expo', /deadline/.test($el('toastMsg').textContent) && !rc.some(x => /^saveexpo:/.test(x)), $el('toastMsg').textContent);
+    g.expoField('signupDeadline', '2027-02-20'); g.expoField('venue', 'Church hall'); await g.saveExpoForm('open'); await sleep(40);
+    ok('saving sends everything the admin entered, then the list reloads',
+      rc.includes('saveexpo:Pinetown Health Expo 2027:open:25:') && lastExpo.startsOn === '2027-03-06' && lastExpo.startTime === '14:00' && lastExpo.endTime === '16:00' && lastExpo.venue === 'Church hall' && lastExpo.signupDeadline === '2027-02-20'
+      && lastExpo.stationNeeds.bp === 5 && !('kids' in lastExpo.stationNeeds) && lastExpo.clinic === true && lastExpo.doctorTypes.join() === 'Dentist' && lastExpo.church === 'ch-a' && !C.expoEdit, JSON.stringify(lastExpo));
+    g.editExpo('ex-1'); sheet();
+    ok('Edit opens the form with the expo\'s own numbers (the saved total is kept, not recalculated)', C.expoEdit.id === 'ex-1' && C.expoEdit.total === 20 && C.expoEdit.clinic === true && C.expoEdit.types.join() === 'GP,Dentist' && /Save changes/.test(sheet()) && !/Save as a draft/.test(sheet()), sheet().slice(0, 100));
+    g.cancelExpo();
+    await g.setExpoStatus('ex-2', 'open'); await g.deleteExpoAsk('ex-1'); await sleep(20);
+    ok('Open for members and Delete (after asking) each call the database', rc.includes('saveexpo:Draft Expo:open:0:ex-2') && rc.includes('delexpo:ex-1'), rc.join());
     g.closeAcct();
     g.openAcct('church'); await sleep(30);
     ok('the Church screen has a Church plans box with + Write a new plan', sheet().includes('Church plans') && /data-action="plan-edit" data-church="ch-a" data-plan=""/.test(sheet()) && rc.includes('plans:ch-a'), rc.join());
@@ -2913,6 +2974,82 @@ function makeServer() {
     await sys(`delete from auth.users where id in ($1, $2)`, [X1, X2]);
     await sys(`update public.memberships set admin_post = 'leader' where user_id = $1`, [U.alice]);
 
+    /* Health Expos: set up by the church's admins, seen by approved members once open, with pledges linked to them.
+       Temporary people: M1 (an approved member of church A), and church C2 with its own admin X4. */
+    const M1 = 'e3000000-0000-4000-8000-000000000003', X4 = 'e4000000-0000-4000-8000-000000000004', C2 = 'f0000000-0000-4000-8000-0000000000c2';
+    await sys(`insert into public.churches (id, name, status) values ($1, 'Other Church', 'active')`, [C2]);
+    for (const [id, em, ch, role] of [[M1, 'm1@example.org', A, 'member'], [X4, 'x4@example.org', C2, 'admin']]) {
+      await sys(`insert into auth.users (id, email, email_confirmed_at) values ($1, $2, now())`, [id, em]);
+      await sys(`insert into public.memberships (user_id, church_id, role, status, full_name, phone) values ($1, $2, $3, 'approved', 'Temp Person', '082 000 0000')`, [id, ch, role]);
+    }
+    const inDays = n => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+    const expoJson = over => JSON.stringify(Object.assign({ name: 'Pinetown Health Expo', startsOn: inDays(20), startTime: '09:00', endTime: '14:00', venue: 'Church hall',
+      address: '12 Main Rd, Pinetown', volunteersNeeded: 40, stationNeeds: { bp: 4, kids: 2 }, clinic: true, doctors: 3, doctorTypes: ['GP', 'Dentist'], signupDeadline: inDays(10), status: 'draft' }, over || {}));
+    const svx = (u, o) => as(u, `select public.save_expo($1::jsonb) id`, [expoJson(o)]);
+    r = await svx(M1);
+    ok('a member cannot set up an expo', !!r.error, (r.error || {}).message);
+    r = await svx(X4, { church: A });
+    ok('another church\'s admin cannot set up an expo here', !!r.error, (r.error || {}).message);
+    r = await svx(U.alice);
+    const E1 = r.rows && r.rows[0] && r.rows[0].id;
+    ok('the Leader sets up an expo (a draft first)', !r.error && !!E1, (r.error || {}).message);
+    r = await as(M1, `select public.church_expos() e`);
+    const rA = await as(U.alice, `select public.church_expos() e`);
+    ok('a draft is for the admins: members do not see it', !r.error && r.rows[0].e.length === 0 && rA.rows[0].e.length === 1 && rA.rows[0].e[0].name === 'Pinetown Health Expo', (r.error || rA.error || {}).message);
+    r = await as(U.alice, `select public.save_expo($1::jsonb) id`, [expoJson({ id: E1, status: 'open' })]);
+    const mn = await as(M1, `select public.church_expos() e`);
+    const note = await sys(`select user_id, title from public.notifications where kind = 'expo'`);
+    ok('opening it shows it to every approved member and notifies them (not the admin who opened it)',
+      !r.error && mn.rows[0].e.length === 1 && mn.rows[0].e[0].starts_on && note.some(x => x.user_id === M1 && /Pinetown Health Expo/.test(x.title)) && !note.some(x => x.user_id === U.alice), (r.error || mn.error || {}).message || JSON.stringify(note));
+    const ex = mn.rows[0].e[0];
+    ok('what the admin set is what members read: date, times, venue, address, volunteers, stations, clinic, doctors and types, deadline',
+      ex.start_time === '09:00' && ex.end_time === '14:00' && ex.venue === 'Church hall' && ex.address === '12 Main Rd, Pinetown' && ex.volunteers_needed === 40
+      && ex.station_needs.bp === 4 && ex.station_needs.kids === 2 && ex.clinic === true && ex.doctors === 3 && ex.doctor_types.join() === 'GP,Dentist' && !!ex.signup_deadline, JSON.stringify(ex));
+    const pledgedBefore = ex.pledged;     /* volunteers with no expo count towards the earliest upcoming open one */
+    r = await as(X4, `select public.church_expos($1) e`, [A]);
+    const rE = await as(U.erin, `select public.church_expos($1) e`, [A]);
+    ok('another church sees nothing of it, and the platform admin can look at any church\'s expos', !r.error && r.rows[0].e.length === 0 && !rE.error && rE.rows[0].e.length === 1, (r.error || rE.error || {}).message);
+    r = await as(X4, `select public.save_expo($1::jsonb) id`, [expoJson({ id: E1, name: 'Hijacked' })]);
+    const d1 = await as(M1, `select public.delete_expo($1)`, [E1]);
+    ok('another church\'s admin cannot change it, and a member cannot delete it', !!r.error && !!d1.error && (await sys(`select name from public.expos where id = $1`, [E1]))[0].name === 'Pinetown Health Expo', [r, d1].map(x => (x.error || {}).message).join(' | '));
+    const v1 = await svx(U.alice, { name: 'X' });
+    const v2 = await svx(U.alice, { startsOn: '' });
+    const v3 = await svx(U.alice, { startTime: '14:00', endTime: '09:00' });
+    const v4 = await svx(U.alice, { signupDeadline: inDays(30) });
+    const v5 = await svx(U.alice, { status: 'maybe' });
+    ok('a one-letter name, no date, an end before the start, a deadline after the expo and an unknown status are each refused',
+      [v1, v2, v3, v4, v5].every(x => !!x.error), [v1, v2, v3, v4, v5].map(x => (x.error || {}).message).join(' | '));
+    r = await svx(U.alice, { id: E1, status: 'open', clinic: false, doctors: 5, doctorTypes: ['GP'], stationNeeds: { bp: 4, kids: 0, x: 'abc', y: 500, ' ': 3 }, volunteersNeeded: '40 people' });
+    const eAfter = (await sys(`select clinic, doctors, doctor_types, station_needs, volunteers_needed from public.expos where id = $1`, [E1]))[0];
+    ok('with no clinic the doctors and types are cleared; station needs keep only whole numbers above zero, capped at 100; a number written with words is read as digits',
+      !r.error && eAfter.clinic === false && eAfter.doctors === 0 && eAfter.doctor_types.length === 0 && eAfter.station_needs.bp === 4 && eAfter.station_needs.y === 100 && !('kids' in eAfter.station_needs) && !('x' in eAfter.station_needs) && !(' ' in eAfter.station_needs) && eAfter.volunteers_needed === 40,
+      (r.error || {}).message || JSON.stringify(eAfter));
+    /* pledging to an expo */
+    r = await as(M1, `select public.save_my_pledge($1::jsonb) id`, [JSON.stringify({ name: 'Temp Person', phone: '082 000 0000', expoId: E1, pref: ['bp'] })]);
+    const pledged = await as(M1, `select public.my_pledge() p`);
+    const cnt = await as(U.alice, `select public.church_expos() e`);
+    ok('a member pledges to a chosen open expo: the pledge says which, and the admin\'s count goes up', !r.error && pledged.rows[0].p.expo_id === E1 && cnt.rows[0].e[0].pledged === pledgedBefore + 1, (r.error || {}).message || JSON.stringify(cnt.rows && cnt.rows[0].e[0].pledged));
+    await svx(U.alice, { id: E1, status: 'draft' });
+    const vols = await sys(`select id from public.volunteers where expo_id = $1`, [E1]);
+    const E2 = (await svx(U.alice, { name: 'Closed Expo', status: 'open', signupDeadline: inDays(-1), startsOn: inDays(2) })).rows[0].id;
+    const E3 = (await svx(U.alice, { name: 'Draft Expo', status: 'draft' })).rows[0].id;
+    const closed = await as(M1, `select public.save_my_pledge($1::jsonb) id`, [JSON.stringify({ name: 'Temp Person', phone: '082 000 0000', expoId: E2 })]);
+    const notOpen = await as(M1, `select public.save_my_pledge($1::jsonb) id`, [JSON.stringify({ name: 'Temp Person', phone: '082 000 0000', expoId: E3 })]);
+    const foreign = await as(M1, `select public.save_my_pledge($1::jsonb) id`, [JSON.stringify({ name: 'Temp Person', phone: '082 000 0000', expoId: '00000000-0000-4000-8000-00000000dead' })]);
+    ok('a pledge to a closed, unopened or unknown expo is refused, and a pledge to none still works',
+      vols.length === 1 && !!closed.error && /closed/.test(closed.error.message) && !!notOpen.error && /not open/.test(notOpen.error.message) && !!foreign.error
+      && !(await as(M1, `select public.save_my_pledge($1::jsonb) id`, [JSON.stringify({ name: 'Temp Person', phone: '082 000 0000' })])).error, [closed, notOpen, foreign].map(x => (x.error || {}).message).join(' | '));
+    r = await as(U.alice, `select public.delete_expo($1)`, [E1]);
+    const gone = await sys(`select (select count(*)::int from public.expos where id = $1) n, (select expo_id from public.volunteers where id = $2 and church_id = $3) e`, [E1, vols[0].id, A]);
+    ok('an admin deletes an expo; a volunteer who pledged to it stays, with no expo', !r.error && gone[0].n === 0 && gone[0].e === null, (r.error || {}).message || JSON.stringify(gone));
+    await sys(`update public.memberships set volunteer_id = null where user_id = $1`, [M1]);
+    await sys(`delete from public.volunteers where id = $1 and church_id = $2`, [vols[0].id, A]);
+    await sys(`delete from public.expos where church_id in ($1, $2)`, [A, C2]);
+    await sys(`delete from public.notifications where kind = 'expo'`);
+    await sys(`delete from public.memberships where user_id in ($1, $2)`, [M1, X4]);
+    await sys(`delete from auth.users where id in ($1, $2)`, [M1, X4]);
+    await sys(`delete from public.churches where id = $1`, [C2]);
+
     /* what a person asks to be when they join (their position), kept for the admin who approves */
     await sys(`delete from public.memberships where user_id = $1`, [U.frank]);
     const bad1 = await as(U.frank, `select public.join_church($1, 'Frank', '', 'king')`, [A]);
@@ -3252,6 +3389,26 @@ function makeServer() {
       await g.myPledgeSave({ preventDefault() {} });
       ok('the pledge needs a mobile number or an email — the staff form\'s rule, word for word',
         $el('toastMsg').textContent === 'Please enter a mobile number or an email address, so the team can reach you', $el('toastMsg').textContent);
+      {
+        const calls = [], keepClient = C.client;
+        C.client = { rpc: async (fn, a) => { calls.push([fn, a]); return { data: null, error: null }; } };
+        const open = (id, name) => ({ id, name, starts_on: '2027-03-06', status: 'open', signup_deadline: null });
+        C.expos = { list: [open('ex-1', 'Pinetown Health Expo')] }; C.pledge = null; g.state.mf = null;
+        const one = g.pledgeHTML();
+        g.state.mf = { name: 'Nomsa', phone: '082 000 0000', email: '', pledgeExpos: 1, skills: [], pref: ['bp'], avail: [], pref2: '', shirt: '', emergency: '', notes: '' };
+        await g.myPledgeSave({ preventDefault() {} });
+        const sv1 = calls.find(c => c[0] === 'save_my_pledge');
+        ok('with one open expo the pledge form says which, and the pledge is sent for it', /For Pinetown Health Expo/.test(one) && !/data-on-change="expo-pick"/.test(one) && sv1 && sv1[1].p.expoId === 'ex-1', JSON.stringify(sv1 && sv1[1].p));
+        calls.length = 0; C.pledge = null; C.expos = { list: [open('ex-1', 'Pinetown Health Expo'), open('ex-2', 'Durban Health Expo')] }; C.pledgeExpo = '';
+        g.state.mf = null;
+        const two = g.pledgeHTML();
+        g.pledgeToExpo('ex-2'); g.pickExpo('ex-2');
+        g.state.mf = { name: 'Nomsa', phone: '082 000 0000', email: '', pledgeExpos: 1, skills: [], pref: [], avail: [], pref2: '', shirt: '', emergency: '', notes: '' };
+        await g.myPledgeSave({ preventDefault() {} });
+        const sv2 = calls.find(c => c[0] === 'save_my_pledge');
+        ok('with several open expos the member picks one, and that one is sent', /data-on-change="expo-pick"/.test(two) && /Durban Health Expo/.test(two) && sv2 && sv2[1].p.expoId === 'ex-2', JSON.stringify(sv2 && sv2[1].p));
+        C.client = keepClient; C.expos = undefined; C.pledgeExpo = ''; C.pledge = null; g.state.mf = null;
+      }
       ok('the staff form and the member form share that rule and the form parts',
         (srcText.match(/Please enter a mobile number or an email address, so the team can reach you/g) || []).length === 2
           && (srcText.match(/pledgeFormParts\(/g) || []).length >= 3, '');

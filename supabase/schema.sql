@@ -161,6 +161,8 @@ create trigger volunteers_touch before update on public.volunteers
 
 -- one team leader per station (see VOLUNTEER HUB: TEAM LEADERS below); added here because my_pledge() reads it
 alter table public.volunteers add column if not exists lead boolean not null default false;
+-- the expo this volunteer pledged to (see HEALTH EXPOS below; the foreign key is added there); added here because my_pledge() reads it
+alter table public.volunteers add column if not exists expo_id uuid;
 
 -- ---------------------------------------------------------------- indexes (the app pages through rows by
 -- created_at and pulls "changes since" by updated_at; these keep both fast with many thousands of rows)
@@ -1382,7 +1384,8 @@ as $$
   select jsonb_build_object('id', v.id, 'name', v.name, 'phone', v.phone, 'email', v.email, 'status', v.status,
     'pledge_expos', v.pledge_expos, 'skills', v.skills, 'pref', v.pref, 'pref2', v.pref2,
     'availability', v.availability, 'shirt', v.shirt, 'emergency', v.emergency, 'notes', v.notes,
-    'pledged_on', v.pledged_on, 'since', v.since, 'booth', v.booth, 'role', v.role, 'shift', v.shift, 'lead', v.lead)
+    'pledged_on', v.pledged_on, 'since', v.since, 'booth', v.booth, 'role', v.role, 'shift', v.shift, 'lead', v.lead,
+    'expo_id', v.expo_id)
   from public.memberships m
   join public.churches c on c.id = m.church_id and c.status = 'active'
   join public.volunteers v on v.church_id = m.church_id and v.id = m.volunteer_id
@@ -1406,6 +1409,7 @@ declare
   v_name text; v_phone text; v_email text; v_expos integer;
   v_skills text[]; v_pref text[]; v_avail text[];
   v_list jsonb;
+  v_expo uuid; v_exp_id uuid; v_exp_dead date;
 begin
   if v_uid is null then raise exception 'sign in first' using errcode = '42501'; end if;
   select * into v_m from public.memberships m where m.user_id = v_uid;
@@ -1436,6 +1440,16 @@ begin
   v_pref := case when jsonb_typeof(v_list) = 'array' then
     (select coalesce(array_agg(left(btrim(x), 40)), '{}'::text[]) from (select jsonb_array_elements_text(v_list) x) s where btrim(x) <> '' limit 2)
     else '{}'::text[] end;
+  -- the expo this pledge is for (optional): one of this church's open expos, before its sign-up deadline
+  v_expo := nullif(p ->> 'expoId', '')::uuid;
+  if v_expo is not null then
+    select e.id, e.signup_deadline into v_exp_id, v_exp_dead from public.expos e
+     where e.id = v_expo and e.church_id = v_m.church_id and e.status = 'open';
+    if v_exp_id is null then raise exception 'That expo is not open for sign-ups.'; end if;
+    if v_exp_dead is not null and v_exp_dead < current_date then
+      raise exception 'Sign-ups for that expo have closed.';
+    end if;
+  end if;
 
   if v_m.volunteer_id is not null then
     update public.volunteers v set
@@ -1443,7 +1457,7 @@ begin
       skills = v_skills, pref = v_pref, pref2 = left(btrim(coalesce(p ->> 'pref2', '')), 40),
       availability = v_avail, shirt = left(btrim(coalesce(p ->> 'shirt', '')), 20),
       emergency = left(btrim(coalesce(p ->> 'emergency', '')), 500),
-      notes = left(btrim(coalesce(p ->> 'notes', '')), 2000), updated_at = now()
+      notes = left(btrim(coalesce(p ->> 'notes', '')), 2000), expo_id = coalesce(v_expo, v.expo_id), updated_at = now()
     where v.church_id = v_m.church_id and v.id = v_m.volunteer_id;
     if not found then raise exception 'Your pledge could not be found — ask your church''s admin.'; end if;
     return v_m.volunteer_id;
@@ -1457,11 +1471,11 @@ begin
   end loop;
   v_id := 'VOL-' || v_num;
   insert into public.volunteers (church_id, id, name, phone, email, status, pledge_expos, skills, pref, pref2,
-      availability, shirt, emergency, notes, since, pledged_on)
+      availability, shirt, emergency, notes, since, pledged_on, expo_id)
   values (v_m.church_id, v_id, v_name, v_phone, v_email, 'prospect', v_expos, v_skills, v_pref,
       left(btrim(coalesce(p ->> 'pref2', '')), 40), v_avail, left(btrim(coalesce(p ->> 'shirt', '')), 20),
       left(btrim(coalesce(p ->> 'emergency', '')), 500), left(btrim(coalesce(p ->> 'notes', '')), 2000),
-      to_char(now(), 'YYYY-MM-DD'), current_date);
+      to_char(now(), 'YYYY-MM-DD'), current_date, v_expo);
   update public.memberships m set volunteer_id = v_id, updated_at = now() where m.user_id = v_uid;
   return v_id;
 end;
@@ -2473,6 +2487,203 @@ begin
     perform cron.unschedule(jobid) from cron.job where jobname = 'purge-expired-visitors';
     perform cron.schedule('purge-expired-visitors', '0 3 * * *', 'select public.purge_expired_visitors()');
   end if;
+end $$;
+
+-- ================================================================ HEALTH EXPOS
+-- A church's admins (the Leader, the Assistant and the platform admin) set up each Health Expo: name, date and time,
+-- where, how many volunteers are needed (in all and per station), whether a medical clinic takes part and how many
+-- doctors of which types. A church may have several at once. Every approved member sees the OPEN ones; drafts, done
+-- and cancelled expos are for the admins. Counts and types only: no doctor's name or contact is stored here.
+create table if not exists public.expos (
+  id                uuid primary key default gen_random_uuid(),
+  church_id         uuid not null references public.churches (id) on delete cascade,
+  name              text not null check (length(btrim(name)) between 2 and 120),
+  starts_on         date not null,
+  start_time        time,
+  end_time          time,
+  venue             text not null default '' check (length(venue) <= 120),
+  address           text not null default '' check (length(address) <= 300),
+  volunteers_needed integer not null default 0 check (volunteers_needed between 0 and 1000),
+  station_needs     jsonb not null default '{}'::jsonb check (jsonb_typeof(station_needs) = 'object'),   -- {"bp": 4, "kids": 2}
+  clinic            boolean not null default false,
+  doctors           integer not null default 0 check (doctors between 0 and 100),
+  doctor_types      text[] not null default '{}' check (cardinality(doctor_types) <= 12),
+  signup_deadline   date,
+  status            text not null default 'draft' check (status in ('draft', 'open', 'done', 'cancelled')),
+  created_by        uuid references auth.users (id) on delete set null,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now()
+);
+create index if not exists expos_church_idx on public.expos (church_id, starts_on);
+drop trigger if exists expos_touch on public.expos;
+create trigger expos_touch before update on public.expos
+  for each row execute function public.touch_updated_at();
+alter table public.expos enable row level security;
+revoke all on public.expos from anon, authenticated;     -- no policies: only the functions below reach it
+
+-- which expo a volunteer pledged to (the member picks it when pledging); a volunteer with none counts towards the
+-- church's earliest upcoming open expo
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'volunteers_expo_fk') then
+    alter table public.volunteers add constraint volunteers_expo_fk foreign key (expo_id) references public.expos (id) on delete set null;
+  end if;
+end $$;
+create index if not exists volunteers_expo_idx on public.volunteers (expo_id) where expo_id is not null;
+
+-- the expos the caller may see, with how many volunteers have pledged and who is placed where. p_church is for the
+-- platform admin looking at one church; everyone else gets their own church.
+create or replace function public.church_expos(p_church uuid default null)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare v_church uuid := p_church; v_admin boolean; v_first uuid; v_out jsonb;
+begin
+  if (select auth.uid()) is null then raise exception 'sign in first' using errcode = '42501'; end if;
+  if v_church is null then
+    select m.church_id into v_church from public.memberships m where m.user_id = (select auth.uid());
+  end if;
+  if v_church is null then return '[]'::jsonb; end if;
+  v_admin := public.church_admin_of(v_church);
+  if not v_admin and not exists (select 1 from public.memberships m join public.churches c on c.id = m.church_id
+       where m.user_id = (select auth.uid()) and m.church_id = v_church and m.status = 'approved' and c.status = 'active') then
+    return '[]'::jsonb;
+  end if;
+  select e.id into v_first from public.expos e
+   where e.church_id = v_church and e.status = 'open' and e.starts_on >= current_date
+   order by e.starts_on, e.created_at limit 1;
+  select coalesce(jsonb_agg(jsonb_build_object(
+      'id', e.id, 'name', e.name, 'starts_on', e.starts_on,
+      'start_time', to_char(e.start_time, 'HH24:MI'), 'end_time', to_char(e.end_time, 'HH24:MI'),
+      'venue', e.venue, 'address', e.address, 'volunteers_needed', e.volunteers_needed, 'station_needs', e.station_needs,
+      'clinic', e.clinic, 'doctors', e.doctors, 'doctor_types', to_jsonb(e.doctor_types),
+      'signup_deadline', e.signup_deadline, 'status', e.status,
+      'pledged', (select count(*) from public.volunteers v
+                  where v.church_id = e.church_id and v.status in ('prospect', 'registered', 'checkedin')
+                    and (v.expo_id = e.id or (v.expo_id is null and e.id = v_first))),
+      'placed', (select coalesce(jsonb_object_agg(t.b, t.n), '{}'::jsonb)
+                 from (select v.booth b, count(*) n from public.volunteers v
+                       where v.church_id = e.church_id and v.status in ('prospect', 'registered', 'checkedin')
+                         and coalesce(v.booth, '') <> '' and (v.expo_id = e.id or (v.expo_id is null and e.id = v_first))
+                       group by v.booth) t)
+    ) order by (e.starts_on < current_date), abs(e.starts_on - current_date), e.created_at), '[]'::jsonb)
+  into v_out
+  from public.expos e
+  where e.church_id = v_church and (v_admin or e.status = 'open');
+  return v_out;
+end;
+$$;
+
+-- create (no id) or change (with id) an expo. Admins only; the numbers are kept to sane limits and the clinic
+-- fields are cleared when there is no clinic.
+create or replace function public.save_expo(p jsonb)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := (select auth.uid());
+  v_id uuid := nullif(p ->> 'id', '')::uuid;
+  v_church uuid;
+  v_name text := left(btrim(coalesce(p ->> 'name', '')), 120);
+  v_date date := nullif(p ->> 'startsOn', '')::date;
+  v_from time := nullif(p ->> 'startTime', '')::time;
+  v_to time := nullif(p ->> 'endTime', '')::time;
+  v_dead date := nullif(p ->> 'signupDeadline', '')::date;
+  v_status text := coalesce(nullif(p ->> 'status', ''), 'draft');
+  v_need integer; v_docs integer; v_clinic boolean; v_needs jsonb; v_types text[];
+begin
+  if v_uid is null then raise exception 'sign in first' using errcode = '42501'; end if;
+  if v_id is not null then
+    select e.church_id into v_church from public.expos e where e.id = v_id;
+    if v_church is null then raise exception 'No such expo.'; end if;
+  else
+    v_church := coalesce(nullif(p ->> 'church', '')::uuid, (select m.church_id from public.memberships m where m.user_id = v_uid));
+  end if;
+  if v_church is null or not public.church_admin_of(v_church) then raise exception 'church admins only' using errcode = '42501'; end if;
+  if length(v_name) < 2 then raise exception 'Enter the expo’s name.'; end if;
+  if v_date is null then raise exception 'Choose the date of the expo.'; end if;
+  if v_from is not null and v_to is not null and v_to <= v_from then raise exception 'The end time is before the start time.'; end if;
+  if v_dead is not null and v_dead > v_date then raise exception 'The sign-up deadline is after the expo.'; end if;
+  if v_status not in ('draft', 'open', 'done', 'cancelled') then raise exception 'Unknown status.'; end if;
+  v_need := greatest(0, least(coalesce(nullif(regexp_replace(coalesce(p ->> 'volunteersNeeded', ''), '\D', '', 'g'), '')::integer, 0), 1000));
+  v_clinic := coalesce(p ->> 'clinic', '') in ('true', 't', '1');
+  v_docs := case when v_clinic
+    then greatest(0, least(coalesce(nullif(regexp_replace(coalesce(p ->> 'doctors', ''), '\D', '', 'g'), '')::integer, 0), 100)) else 0 end;
+  v_types := case when v_clinic and jsonb_typeof(p -> 'doctorTypes') = 'array' then
+    coalesce((select array_agg(t.x) from (select left(btrim(x), 40) x from jsonb_array_elements_text(p -> 'doctorTypes') x
+                                          where btrim(x) <> '' limit 12) t), '{}'::text[])
+    else '{}'::text[] end;
+  v_needs := case when jsonb_typeof(p -> 'stationNeeds') = 'object' then
+    coalesce((select jsonb_object_agg(t.k, t.n) from (select left(btrim(k), 40) k, case when v ~ '^[0-9]{1,3}$' then least(v::integer, 100) end n
+                                                      from jsonb_each_text(p -> 'stationNeeds') as e(k, v)
+                                                      where btrim(k) <> '' limit 30) t where t.n > 0), '{}'::jsonb)
+    else '{}'::jsonb end;
+  if v_id is null then
+    insert into public.expos (church_id, name, starts_on, start_time, end_time, venue, address, volunteers_needed, station_needs,
+                              clinic, doctors, doctor_types, signup_deadline, status, created_by)
+    values (v_church, v_name, v_date, v_from, v_to, left(btrim(coalesce(p ->> 'venue', '')), 120), left(btrim(coalesce(p ->> 'address', '')), 300),
+            v_need, v_needs, v_clinic, v_docs, v_types, v_dead, v_status, v_uid)
+    returning id into v_id;
+  else
+    update public.expos e set name = v_name, starts_on = v_date, start_time = v_from, end_time = v_to,
+      venue = left(btrim(coalesce(p ->> 'venue', '')), 120), address = left(btrim(coalesce(p ->> 'address', '')), 300),
+      volunteers_needed = v_need, station_needs = v_needs, clinic = v_clinic, doctors = v_docs, doctor_types = v_types,
+      signup_deadline = v_dead, status = v_status
+    where e.id = v_id;
+  end if;
+  return v_id;
+end;
+$$;
+
+create or replace function public.delete_expo(p_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_church uuid;
+begin
+  select e.church_id into v_church from public.expos e where e.id = p_id;
+  if v_church is null then return; end if;
+  if not public.church_admin_of(v_church) then raise exception 'church admins only' using errcode = '42501'; end if;
+  delete from public.expos e where e.id = p_id;
+end;
+$$;
+
+-- every approved member hears when an expo opens (the person who opened it does not)
+create or replace function public.expos_notify()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.status = 'open' and (tg_op = 'INSERT' or old.status is distinct from 'open') then
+    perform public.notify(new.church_id, m.user_id, 'expo', 'Health Expo: ' || new.name,
+      to_char(new.starts_on, 'DD Mon YYYY') || case when new.venue <> '' then ' · ' || new.venue else '' end)
+    from public.memberships m
+    where m.church_id = new.church_id and m.status = 'approved' and m.user_id is distinct from (select auth.uid());
+  end if;
+  return null;
+end;
+$$;
+revoke all on function public.expos_notify() from public, anon, authenticated;
+drop trigger if exists expos_notify on public.expos;
+create trigger expos_notify after insert or update of status on public.expos
+  for each row execute function public.expos_notify();
+
+do $$
+declare f text;
+begin
+  foreach f in array array['church_expos(uuid)', 'save_expo(jsonb)', 'delete_expo(uuid)'] loop
+    execute format('revoke all on function public.%s from public, anon', f);
+    execute format('grant execute on function public.%s to authenticated', f);
+  end loop;
 end $$;
 
 -- ================================================================ AFTER RUNNING THE SCRIPT

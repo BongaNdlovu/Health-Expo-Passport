@@ -12,7 +12,7 @@ export const cloud={client:null,user:null,mode:false,status:'off',err:'',busy:fa
   synced:{att:{},vol:{}},rejected:{},channel:null,pushT:null,retryT:null,renderT:null,formErr:'',
   since:{att:'',vol:''},lastFull:0,ready:false,demo:false,gateKey:'',gateHide:false,
   view:'login',viewEmail:'',pending:false,recovery:false,resendAt:0,signingOut:false,
-  acct:null,acctV:0,churchId:'',acctTab:'me',health:undefined,dir:null,regChurch:false,members:null,plat:null,audit:null,pAdmins:null,wants:'member',wantsBooths:[],adminChurch:'',gateForce:false,delOpen:false,
+  acct:null,acctV:0,churchId:'',acctTab:'me',health:undefined,dir:null,regChurch:false,members:null,plat:null,audit:null,pAdmins:null,wants:'member',wantsBooths:[],expos:undefined,adminExpos:undefined,expoEdit:null,expoBusy:false,pledgeExpo:'',adminChurch:'',gateForce:false,delOpen:false,
   pledge:undefined,pledgeErr:false,pledgeBusy:false,   /* the member's own pledge (src/account.js pledgeHTML) */
   myTeam:undefined,myTeamBusy:false,                    /* a team leader's people (src/account.js myTeamHTML) */
   notifN:0,notifT:null,notifLive:false,notifChannel:null,notifWatched:'',notifs:undefined,notifsOffline:false,notifOpen:false};

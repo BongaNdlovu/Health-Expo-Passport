@@ -1,6 +1,6 @@
 // @ts-check
 import { closeAcct, cloudInit, cloudSignIn, cloudSignOut, cloudSync, gateBack, joinChurch, leaveChurch, linkMember, linkVolunteer, manageChurch, markNotifsRead, myField, myPickPledge, myPledgeEdit, myPledgeSave, mySecondBooth, myToggleBooth, myToggleList, notifClose, notifOpen, openAcct, openNotifs, profDeleteAsk, profDeleteGo, profDeleteTyped, profGate, profPassword, registerChurch, removeMember, renderAcct, saveChurch, saveMyDetails, setChurchStatus, setMember, teamAdd, teamRelease, teamShift, withdrawMyPledge } from './account.js';
-import { addPlatformAdmin, approveAssistant, churchSearchSoon, openChurchData, pickWant, pickWantBooth, setAdminPost, stepDown } from './account.js';
+import { addPlatformAdmin, approveAssistant, cancelExpo, churchSearchSoon, deleteExpoAsk, editExpo, expoField, expoStation, expoType, newExpo, openChurchData, pickExpo, pickWant, pickWantBooth, pledgeToExpo, saveExpoForm, setAdminPost, setExpoStatus, stepDown } from './account.js';
 import { closeSettings, deregisterMyPledge, openSettings } from './account.js';
 import { answer } from './feedback.js';
 import { updateLater, updateNow } from './update.js';
@@ -132,6 +132,18 @@ export const ACTION_MAP = {
   'church-save': (el, ev) => saveChurch(ev, el.dataset.args),
   'church-status': el => setChurchStatus(el.dataset.args, el.dataset.status),
   'padmin-add': (el, ev) => addPlatformAdmin(ev),
+  'expo-new': el => newExpo(el.dataset.args),
+  'expo-edit': el => editExpo(el.dataset.args),
+  'expo-field': el => expoField(el.dataset.k, el.value),
+  'expo-check': el => expoField('clinic', el.checked),
+  'expo-station': el => expoStation(el.dataset.k, el.value),
+  'expo-type': el => expoType(el.dataset.args),
+  'expo-save': el => saveExpoForm(el.dataset.status),
+  'expo-cancel': () => cancelExpo(),
+  'expo-status': el => setExpoStatus(el.dataset.args, el.dataset.status),
+  'expo-delete': el => deleteExpoAsk(el.dataset.args),
+  'expo-pledge': el => pledgeToExpo(el.dataset.args),
+  'expo-pick': el => pickExpo(el.value),
   'want-pick': el => pickWant(el.dataset.args),
   'want-booth': el => pickWantBooth(el.dataset.args),
   'member-post': el => setAdminPost(el.dataset.user, el.value),

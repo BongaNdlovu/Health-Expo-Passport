@@ -34,6 +34,10 @@ Next.js files in the Supabase quickstart (`utils/supabase/*`, middleware) do not
    functions exist (the church list with its waiting churches, the Platform admins box, the admin posts and the
    position a person asks for when they sign up). Removing a platform admin is not in the app yet; the SQL editor does it.
 
+   Health Expos: the Leader, the Assistant and the platform admin set up each expo under My church → Health Expos (name,
+   date and time, venue, volunteers needed in all and per station, clinic and doctors). Members see the open ones and
+   pledge to one; a person who pledges to none counts towards the earliest upcoming open expo.
+
    Church admin posts: each church has a Health Department Leader and an Assistant. The Leader and the platform admin
    give, swap and take them (members list → admin post); the Assistant approves and removes members. A church may have
    no admin; the platform admin appoints one.
