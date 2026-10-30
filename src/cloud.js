@@ -335,7 +335,13 @@ export function renderGate(){
  }else{
   html=`${title('Connecting…')}${note('Checking for a saved sign-in.')}`;
  }
- html=who+back+html;
+/* a way back to the sign-in page on every screen that is not the sign-in page itself: the create-account, reset and check-email
+   screens go back to it; the screens of a signed-in account that is still waiting (choose a church, waiting for approval) sign out to reach it */
+ const toSignIn=['signup','forgot','verify','forgotSent'].includes(st)
+  ?`<button type="button" class="tap-link mb-2" data-action="gateView" data-args="login">← Back to sign in</button>`
+  :(['church','churchwait','suspended','pending'].includes(st)&&cloud.user
+   ?`<button type="button" class="tap-link mb-2" data-action="cloudSignOut">← Back to sign in</button>`:'');
+ html=toSignIn+who+back+html;
  body.innerHTML=html;
  if(st==='church'&&cloud.dir==null)churchSearch('');
  if(['form','signup','forgot'].includes(st))setTimeout(()=>{const e=$(st==='signup'?'#gateName':'#gateEmail');if(e&&e.focus)e.focus();},60);

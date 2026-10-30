@@ -1347,6 +1347,12 @@ function makeServer() {
 
     /* item 1: one named 8px gap, and the one measured 6px .btn row is gone */
     ok('a row of buttons has one named 8px gap', /\.btn-row\{[^}]*gap:8px/.test(html));
+    {
+      const toggles = [...html.matchAll(/<button[^>]*data-action="toggleTheme"[^>]*>([\s\S]*?)<\/button>/g)].map(m => m[1]).concat([...$main.innerHTML.matchAll(/<button[^>]*data-action="toggleTheme"[^>]*>([\s\S]*?)<\/button>/g)].map(m => m[1]));
+      ok('the light/dark switch is a round icon button: a sun and a moon, no words, on the sign-in screen and on Home',
+        toggles.length >= 2 && toggles.every(t => /class="hx-theme-light"/.test(t) && /class="hx-theme-dark"/.test(t) && !/>\s*(Light|Dark)\s*</.test(t))
+        && /\.hx-theme\{display:grid;place-items:center;width:30px;height:30px;padding:0;border-radius:50%/.test(html), String(toggles.length));
+    }
     const gapRows = [...srcText.matchAll(/<[a-z]+[^>]*class="([^"]*gap-1(?:\.5)?[^"]*)"[^>]*>/g)]
       .filter(m => /class="btn btn-/.test(srcText.slice(m.index + m[0].length, m.index + m[0].length + 400)));
     ok('no .btn sits in an ad-hoc gap-1 / gap-1.5 row', gapRows.length === 0, gapRows.map(m => m[0].slice(0, 70)).join(' | '));
@@ -1995,6 +2001,13 @@ function makeServer() {
   srv.staff = true; await g.cloudSync(true); await sleep(80);
   ok('once approved, the app opens', !gateShown() && C.ready);
 
+  { const gb = () => $el('authGateBody').innerHTML;
+    await toLogin(); g.gateView('signup');
+    ok('Create account has a visible "← Back to sign in" at the top', /class="tap-link mb-2" data-action="gateView" data-args="login">← Back to sign in/.test(gb()) && gb().indexOf('Back to sign in') < gb().indexOf('Create your account'));
+    g.gateView('forgot');
+    ok('…so does Reset your password', /← Back to sign in/.test(gb()) && gb().indexOf('Back to sign in') < gb().indexOf('Reset your password'));
+    await toLogin();
+    ok('…and the sign-in page itself has none (there is nothing before it)', !/← Back to sign in/.test(gb())); }
   await toLogin(); g.gateView('signup');
   signupForm(); await g.cloudSignUp(onGate);
   signupForm(); g.gateView('signup'); signupForm(); await g.cloudSignUp(onGate);
@@ -2288,6 +2301,7 @@ function makeServer() {
     await fresh(person()); await sleep(30);
     ok('signed in with no church → "Choose your church", with the list of churches', gateShown() && g.gateState() === 'church' && /Choose your church/.test(gate())
       && /Grace Chapel/.test($el('churchDir').innerHTML) && /data-action="join-church" data-args="ch-a"/.test($el('churchDir').innerHTML), g.gateState());
+    ok('…and a "← Back to sign in" at the top signs the account out', /class="tap-link mb-2" data-action="cloudSignOut">← Back to sign in/.test(gate()));
     ok('…and the visitor data saved on this device is cleared', demoRows > 0 && g.attendees.length === 0 && g.volunteers.length === 0, demoRows + ' → ' + g.attendees.length);
     ok('…and only the platform admin is offered the admin screens', !/data-action="openAcct" data-args="admin"/.test(gate()) && !g.acctTabs().some(t => t[0] === 'admin'));
     ok('…and "What would you like to be?" comes first, with the positions and Health Department Leader (register a church)',
@@ -3031,6 +3045,8 @@ function makeServer() {
     ok('a member pledges to a chosen open expo: the pledge says which, and the admin\'s count goes up', !r.error && pledged.rows[0].p.expo_id === E1 && cnt.rows[0].e[0].pledged === pledgedBefore + 1, (r.error || {}).message || JSON.stringify(cnt.rows && cnt.rows[0].e[0].pledged));
     await svx(U.alice, { id: E1, status: 'draft' });
     const vols = await sys(`select id from public.volunteers where expo_id = $1`, [E1]);
+    const own = await as(U.erin, `select public.save_expo($1::jsonb) id`, [expoJson({ id: E1, name: 'Renamed by the owner', status: 'draft' })]);
+    ok('the platform admin (the owner) can edit any church’s expo', !own.error && (await sys(`select name from public.expos where id = $1`, [E1]))[0].name === 'Renamed by the owner', (own.error || {}).message);
     const E2 = (await svx(U.alice, { name: 'Closed Expo', status: 'open', signupDeadline: inDays(-1), startsOn: inDays(2) })).rows[0].id;
     const E3 = (await svx(U.alice, { name: 'Draft Expo', status: 'draft' })).rows[0].id;
     const closed = await as(M1, `select public.save_my_pledge($1::jsonb) id`, [JSON.stringify({ name: 'Temp Person', phone: '082 000 0000', expoId: E2 })]);
@@ -3039,6 +3055,8 @@ function makeServer() {
     ok('a pledge to a closed, unopened or unknown expo is refused, and a pledge to none still works',
       vols.length === 1 && !!closed.error && /closed/.test(closed.error.message) && !!notOpen.error && /not open/.test(notOpen.error.message) && !!foreign.error
       && !(await as(M1, `select public.save_my_pledge($1::jsonb) id`, [JSON.stringify({ name: 'Temp Person', phone: '082 000 0000' })])).error, [closed, notOpen, foreign].map(x => (x.error || {}).message).join(' | '));
+    const ownDel = await as(U.erin, `select public.delete_expo($1)`, [E2]);
+    ok('…and delete one', !ownDel.error && (await sys(`select count(*)::int n from public.expos where id = $1`, [E2]))[0].n === 0, (ownDel.error || {}).message);
     r = await as(U.alice, `select public.delete_expo($1)`, [E1]);
     const gone = await sys(`select (select count(*)::int from public.expos where id = $1) n, (select expo_id from public.volunteers where id = $2 and church_id = $3) e`, [E1, vols[0].id, A]);
     ok('an admin deletes an expo; a volunteer who pledged to it stays, with no expo', !r.error && gone[0].n === 0 && gone[0].e === null, (r.error || {}).message || JSON.stringify(gone));

@@ -172,8 +172,8 @@ export function viewHome(){
       ${I.chevD}
      </button>
      <span class="hx-hero-tools">
-      <button data-action="toggleTheme" class="hx-theme" aria-label="Switch light or dark">
-       ${I.sun}<span class="hx-theme-light">Light</span><span class="hx-theme-dark">Dark</span>
+      <button data-action="toggleTheme" class="hx-theme" aria-label="Switch light or dark" title="Switch light or dark">
+       <svg class="hx-theme-light" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path stroke-linecap="round" d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg><svg class="hx-theme-dark" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
       </button>
       <button data-action="openCloud" class="hx-round" aria-label="Cloud sync" title="Cloud sync">
        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17.5 19a4.5 4.5 0 0 0 .5-9 6 6 0 0 0-11.6 1.5A3.5 3.5 0 0 0 6.5 19z"/></svg>

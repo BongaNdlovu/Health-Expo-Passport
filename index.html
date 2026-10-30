@@ -1017,13 +1017,13 @@
   .hx-staff-meta span{color:rgba(255,255,255,.65);font-weight:500}
   .hx-staff>svg{width:12px;height:12px;color:rgba(255,255,255,.65);flex:none}
   .hx-hero-tools{display:inline-flex;align-items:center;gap:6px;flex:none}
-  .hx-theme{display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 10px;border-radius:999px;
-    border:1px solid var(--hx-line);background:var(--hx-surface);color:var(--hx-ink-2);
-    font:inherit;font-size:11.5px;font-weight:700;cursor:pointer}
-  .hx-theme svg{width:12px;height:12px}
+  /* the light/dark switch is one round icon button: a sun in the light theme, a moon in the dark one */
+  .hx-theme{display:grid;place-items:center;width:30px;height:30px;padding:0;border-radius:50%;
+    border:1px solid var(--hx-line);background:var(--hx-surface);color:var(--hx-ink-2);cursor:pointer}
+  .hx-theme svg{width:14px;height:14px}
   .hx-theme-dark{display:none}
   html[data-theme=dark] .hx-theme-light{display:none}
-  html[data-theme=dark] .hx-theme-dark{display:inline}
+  html[data-theme=dark] .hx-theme-dark{display:block}
   .hx-round{position:relative;width:30px;height:30px;padding:0;border-radius:50%;display:grid;place-items:center;cursor:pointer;
     border:1px solid var(--hx-line);background:var(--hx-surface);color:var(--hx-ink-2)}
   .hx-notif-dot{position:absolute;right:-3px;top:-3px;min-width:14px;height:14px;padding:0 3px;border-radius:999px;
@@ -1144,8 +1144,6 @@
   .hx-split:focus-visible,.nav-item:focus-visible{
     outline:2px solid var(--hx-mint);outline-offset:3px}
   @media (max-width:360px){
-    .hx-theme span{display:none}
-    .hx-theme{width:30px;padding:0;justify-content:center;gap:0}
     .hx-hero-top{gap:6px}
     .hx-staff{max-width:58%;min-width:0;overflow:hidden}
     .hx-staff-meta{min-width:0;overflow:hidden}
@@ -1173,7 +1171,6 @@
   /* ---- Buttons are never squashed: round and icon buttons keep their size and shape, a visitor pill gives way
      before them, a badge stays whole and readable, and small text links get a 44px hit area ---- */
   .hx-round,.hx-theme,.hx-split-circle,.hx-staff-av{flex:none;aspect-ratio:1/1}
-  .hx-theme{aspect-ratio:auto}
   .hx-staff{flex:0 1 auto;min-width:0;max-width:calc(100% - 118px)}
   .hx-staff-meta{text-overflow:ellipsis}
   .hx-notif-dot{min-width:17px;height:17px;padding:0 4px;right:-5px;top:-5px;font-size:10px;line-height:17px;
@@ -1363,9 +1360,8 @@
       <span class="hx-staff-meta"><b>HealthExpo</b><span>· v4.2</span></span>
      </span>
      <span class="hx-hero-tools">
-      <button type="button" data-action="toggleTheme" class="hx-theme" aria-label="Switch light or dark">
-       <svg fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path stroke-linecap="round" d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
-       <span class="hx-theme-light">Light</span><span class="hx-theme-dark">Dark</span>
+      <button type="button" data-action="toggleTheme" class="hx-theme" aria-label="Switch light or dark" title="Switch light or dark">
+       <svg class="hx-theme-light" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path stroke-linecap="round" d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg><svg class="hx-theme-dark" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
       </button>
      </span>
     </div>
