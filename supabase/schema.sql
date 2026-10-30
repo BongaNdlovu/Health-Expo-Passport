@@ -2521,6 +2521,36 @@ create trigger expos_touch before update on public.expos
 alter table public.expos enable row level security;
 revoke all on public.expos from anon, authenticated;     -- no policies: only the functions below reach it
 
+-- Remove a visitor who wandered off (PLAN-remove-visitor). Church admins and team leaders of the caller's own active
+-- church; a team leader is an approved member whose linked volunteer has lead = true (the test can_place uses).
+-- The table's "admins delete" policies are unchanged: this function is the only way a team leader deletes, and only
+-- a row of their own church. false = not allowed or not found; the app keeps the visitor and says so.
+create or replace function public.remove_visitor(p_id text)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_church uuid;
+  v_allowed boolean;
+begin
+  select m.church_id, (m.role = 'admin' or coalesce(v.lead, false))
+    into v_church, v_allowed
+    from public.memberships m
+    join public.churches c on c.id = m.church_id and c.status = 'active'
+    left join public.volunteers v on v.church_id = m.church_id and v.id = m.volunteer_id
+   where m.user_id = (select auth.uid()) and m.status = 'approved';
+  if v_church is null or not v_allowed then
+    return false;
+  end if;
+  delete from public.attendees a where a.id = p_id and a.church_id = v_church;
+  return found;
+end;
+$$;
+revoke all on function public.remove_visitor(text) from public, anon;
+grant execute on function public.remove_visitor(text) to authenticated;
+
 -- which expo a volunteer pledged to (the member picks it when pledging); a volunteer with none counts towards the
 -- church's earliest upcoming open expo
 do $$

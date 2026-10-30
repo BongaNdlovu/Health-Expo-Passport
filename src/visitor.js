@@ -11,7 +11,7 @@ import { followupPicker } from './churchPlans.js';
 import { cloud, migrateAttendee, persist, seedDemo } from './state.js';
 import { GRACE_DAYS, RETENTION_YEARS, visitIsOld } from './retention.js';
 import { homeHealthHTML, installEvt, validEmail } from './cloud.js';
-import { hiredCountLabel, pendingLabel, todayStr } from './volunteer.js';
+import { hiredCountLabel, mayPlace, pendingLabel, todayStr } from './volunteer.js';
 import { bannerHTML, capsuleHTML, ctaHTML, ecgHTML, rulerHTML, spectrumHTML, splitBtnHTML, tileHTML } from './ui.js';
 import { confirmAsk } from './feedback.js';
 /* The visitor journey: Check → Results entry, registration, the paper record and the survey. Split from the original single-file app; bundled back into one file by tools/build.js. */
@@ -31,6 +31,7 @@ export function journeyTop(){
    <span class="jr-name"><b>${esc(a.name)}</b><span>${esc(a.id)}${redFlag(a)?' · <em>⚠ refer to triage</em>':''}</span></span>
    <span class="jr-change">Change</span>
   </button>
+  ${a.id&&(!cloud.user||mayPlace())?`<div class="jr-tools"><button class="jr-remove" data-action="visitor-remove" data-args="${esc(a.id)}">Remove visitor</button></div>`:''}
   <ol class="jr-steps">${JOURNEY.map((k,j)=>`<li><button class="jr-step ${j===i?'is-on':j<i?'is-past':''}" ${k==='results'&&state.tab==='screen'?'data-action="confirmResults"':`data-action="switchTab" data-args="${k}"`} ${j===i?'aria-current="step"':''}>
    <span class="jr-dot">${done(k)&&j!==i?'✓':j+1}</span><span class="jr-lbl">${JOURNEY_LABEL[k]}${k==='screen'?` <small id="jrCount">${d<8?d+'/8':''}</small>`:''}</span></button></li>`).join('')}</ol>
  </div>`;

@@ -133,6 +133,15 @@ export function queueRemove(id){
  qs.confirm='';
  qMove(id,'left',['waiting','serving'],e=>`${firstName(qName(e.attendeeId))} removed from the line`);
 }
+/* a visitor removed from the list leaves every line they are still in: queue_entries has no link to the visitor row */
+export async function queueLeaveFor(attendeeId){
+ const open=queue.filter(e=>e.attendeeId===attendeeId);
+ for(const entry of open){
+  const isOpen=entry.status==='waiting'||entry.status==='serving';
+  if(!isOpen)continue;
+  await qMove(entry.id,'left',['waiting','serving'],null);   /* null: no toast per line; the caller says what happened */
+ }
+}
 export function qSelect(k){state.qStation=k;qs.confirm='';renderMain();}
 
 /* ---------- loading and live updates ---------- */

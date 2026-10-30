@@ -1306,6 +1306,17 @@ function makeServer() {
   ok('...and the second answers itself', (await second) === true);
   g.setAutoAnswer(true);                     /* back to the headless default for the rest of the suite */
 
+  { /* PLAN-remove-visitor TST-01-V5 / V6 / V4: this device only, the queue, and the control */
+    g.attendees.push({ ...g.attendees[0], id: 'EXPO-0990', name: 'Local Wanderer' });
+    g.queue.push({ id: 'q-test-990', attendeeId: 'EXPO-0990', station: 'bp', status: 'waiting', joinedAt: Date.now(), calledAt: 0, finishedAt: 0 });
+    await g.removeVisitorAsk('EXPO-0990');
+    ok('TST-01-V5 not signed in, a visitor is removed from this device', !g.attendees.some(a => a.id === 'EXPO-0990'));
+    ok('TST-01-V6 their place in a station line is marked left', g.queue.find(e => e.id === 'q-test-990').status === 'left');
+    const vjs = require('fs').readFileSync(require('path').join(__dirname, '..', 'src', 'visitor.js'), 'utf8');
+    ok('TST-01-V4 the journey header has the Remove control, for admins and team leaders when signed in', /data-action="visitor-remove"/.test(vjs) && /!cloud\.user\|\|mayPlace\(\)/.test(vjs));
+    g.queue.splice(g.queue.findIndex(e => e.id === 'q-test-990'), 1);   /* leave the practice queue as it was for 20b */
+  }
+
   /* update state reads the build this page came from */
   $el('meta[name="app-version"]').getAttribute = () => 'abc1234567';
   const st = g.updateState();
@@ -2223,6 +2234,56 @@ function makeServer() {
   ok('Sync now does the full reconcile and notices the deletion', g.attendees.length === N && srv.calls.filter(c => /^select:attendees:range/.test(c)).length === 7, g.attendees.length);
   ok('rows are not lost when a full pull is split across pages', g.attendees.every(a => srv.tables.attendees.has(a.id)) && g.volunteers.length === VN);
 
+  /* removing a visitor who wandered off (PLAN-remove-visitor TST-01) */
+  {
+    const C0 = g.cloud, keepAcct = C0.acct, keepRpcs = srv.rpcs;
+    srv.rpcs = { ...(keepRpcs || {}), remove_visitor: a => {
+      srv.calls.push('rpc:remove_visitor');
+      if (srv.offline) return { data: null, error: { message: 'TypeError: Failed to fetch' } };
+      if (srv.noRemoveFn) return { data: null, error: { code: 'PGRST202', message: 'Could not find the function public.remove_visitor' } };
+      const had = srv.tables.attendees.get(a.p_id);
+      if (srv.refuseDelete || !had) return { data: false, error: null };
+      srv.tables.attendees.delete(a.p_id);
+      srv.emit('attendees', { eventType: 'DELETE', old: had });
+      return { data: true, error: null };
+    } };
+    for (const [id, name] of [['EXPO-4100', 'Wandered Off'], ['EXPO-4101', 'Also Gone']])
+      srv.tables.attendees.set(id, { ...lateRow, id, name, updated_at: new Date().toISOString() });
+    await g.cloudSync(true);
+    /* the sync re-reads my_account (the fake server has none), so the role is set after the pull */
+    C0.acct = { ...(keepAcct || {}), membership: { role: 'admin', status: 'approved', church_id: C0.churchId } };
+    const before = g.attendees.length;
+    srv.calls.length = 0;
+    await g.removeVisitorAsk('EXPO-4100');
+    ok('TST-01-V1 an admin removes a visitor: gone here and in the shared database, one request',
+      g.attendees.length === before - 1 && !g.attendees.some(a => a.id === 'EXPO-4100') && !srv.tables.attendees.has('EXPO-4100')
+      && srv.calls.filter(c => c === 'rpc:remove_visitor').length === 1 && g.cloudPending() === 0, srv.calls.join());
+    await g.removeVisitorAsk('EXPO-9999');
+    ok('TST-01-V2a an unknown badge changes nothing', g.attendees.length === before - 1);
+    g.setAutoAnswer(false); await g.removeVisitorAsk('EXPO-4101'); g.setAutoAnswer(true);
+    ok('TST-01-V2b Cancel keeps the visitor here and in the database', g.attendees.some(a => a.id === 'EXPO-4101') && srv.tables.attendees.has('EXPO-4101'));
+    srv.offline = true; await g.removeVisitorAsk('EXPO-4101'); srv.offline = false;
+    ok('TST-01-V2c offline, the visitor stays (nothing is lost)', g.attendees.some(a => a.id === 'EXPO-4101') && srv.tables.attendees.has('EXPO-4101'));
+    srv.refuseDelete = true; await g.removeVisitorAsk('EXPO-4101'); srv.refuseDelete = false;
+    ok('TST-01-V2d a removal the database refuses (false) keeps the visitor', g.attendees.some(a => a.id === 'EXPO-4101'));
+    srv.noRemoveFn = true; await g.removeVisitorAsk('EXPO-4101'); srv.noRemoveFn = false;
+    ok('TST-01-V2f before schema.sql is re-run (no function), the visitor is kept', g.attendees.some(a => a.id === 'EXPO-4101') && srv.tables.attendees.has('EXPO-4101'));
+    C0.acct = { ...(keepAcct || {}), membership: { role: 'staff', status: 'approved', church_id: C0.churchId } };
+    srv.calls.length = 0; await g.removeVisitorAsk('EXPO-4101');
+    ok('TST-01-V2e staff who are not team leaders are refused, and nothing is sent', g.attendees.some(a => a.id === 'EXPO-4101') && !srv.calls.includes('rpc:remove_visitor'));
+    /* a team leader: an ordinary member whose linked volunteer leads a station (mayPlace) */
+    g.volunteers.push({ ...g.volunteers[0], id: 'VOL-9990', name: 'Station Lead', lead: true, booth: 'bp' });
+    C0.acct = { ...(keepAcct || {}), membership: { role: 'member', status: 'approved', church_id: C0.churchId, volunteer_id: 'VOL-9990' } };
+    srv.calls.length = 0;
+    await Promise.all([g.removeVisitorAsk('EXPO-4101'), g.removeVisitorAsk('EXPO-4101')]);
+    ok('TST-01-V7 a team leader removes a visitor', !g.attendees.some(a => a.id === 'EXPO-4101') && !srv.tables.attendees.has('EXPO-4101'));
+    ok('TST-01-V3 a double tap sends one request', srv.calls.filter(c => c === 'rpc:remove_visitor').length === 1, srv.calls.join());
+    g.volunteers.splice(g.volunteers.findIndex(v => v.id === 'VOL-9990'), 1);
+    await g.cloudSync(true);
+    ok('TST-01-V3b a full pull does not bring them back', !g.attendees.some(a => a.id === 'EXPO-4100' || a.id === 'EXPO-4101') && g.attendees.length === before - 2);
+    C0.acct = keepAcct; srv.rpcs = keepRpcs;
+  }
+
   /* a long offline backlog */
   srv.offline = true;
   const backlogT = Date.now();
@@ -3110,6 +3171,40 @@ function makeServer() {
     r = await as(U.alice, `select public.delete_expo($1)`, [E1]);
     const gone = await sys(`select (select count(*)::int from public.expos where id = $1) n, (select expo_id from public.volunteers where id = $2 and church_id = $3) e`, [E1, vols[0].id, A]);
     ok('an admin deletes an expo; a volunteer who pledged to it stays, with no expo', !r.error && gone[0].n === 0 && gone[0].e === null, (r.error || {}).message || JSON.stringify(gone));
+    /* PLAN-remove-visitor TST-02: remove_visitor — admins and team leaders of their own church only.
+       Self-contained fixtures: L1 (member + lead volunteer), S1 (staff), P1 (plain member), under church A;
+       X4 is still the admin of the other, active church C2 here. */
+    const L1 = 'e5000000-0000-4000-8000-000000000005', S1 = 'e6000000-0000-4000-8000-000000000006',
+      P1 = 'e7000000-0000-4000-8000-000000000007';
+    for (const [uid, em, role] of [[L1, 'l1@example.org', 'member'], [S1, 's1@example.org', 'staff'], [P1, 'p1@example.org', 'member']]) {
+      await sys(`insert into auth.users (id, email, email_confirmed_at) values ($1, $2, now())`, [uid, em]);
+      await sys(`insert into public.memberships (user_id, church_id, role, status, full_name, phone) values ($1, $2, $3, 'approved', 'Temp Person', '082 000 0000')`, [uid, A, role]);
+    }
+    await sys(`insert into public.volunteers (church_id, id, name) values ($1, 'VOL-9901', 'Lead Person')`, [A]);
+    await sys(`update public.volunteers set status = 'registered', booth = 'bp', lead = true where church_id = $1 and id = 'VOL-9901'`, [A]);
+    await sys(`update public.memberships set volunteer_id = 'VOL-9901' where user_id = $1`, [L1]);
+    await sys(`insert into public.attendees (church_id, id, name) values ($1, 'EXPO-9701', 'Gone A'), ($1, 'EXPO-9702', 'Gone B'), ($1, 'EXPO-9703', 'Gone C')`, [A]);
+    const rv = async (uid, id) => { const x = await as(uid, `select public.remove_visitor($1) ok`, [id]); return x.error ? 'error:' + x.error.message : x.rows[0].ok; };
+    const isGone = async id => (await sys(`select count(*)::int n from public.attendees where id = $1 and church_id = $2`, [id, A]))[0].n === 0;
+    const adminGone = await rv(U.alice, 'EXPO-9701');
+    ok('TST-02-V1 a church admin removes a visitor of their church', adminGone === true && await isGone('EXPO-9701'), String(adminGone));
+    const leadGone = await rv(L1, 'EXPO-9702');
+    ok('TST-02-V1b a team leader (member + lead volunteer) removes one too', leadGone === true && await isGone('EXPO-9702'), String(leadGone));
+    const staffGone = await rv(S1, 'EXPO-9703'), plainGone = await rv(P1, 'EXPO-9703');
+    ok('TST-02-V2 staff without a lead, and plain members, get false and nothing is deleted',
+      staffGone === false && plainGone === false && !(await isGone('EXPO-9703')), staffGone + ' | ' + plainGone);
+    const foreignGone = await rv(X4, 'EXPO-9703');
+    ok('TST-02-V2b another church\'s admin cannot remove it (false, row kept)', foreignGone === false && !(await isGone('EXPO-9703')), String(foreignGone));
+    const unknownGone = await rv(U.alice, 'EXPO-9999');
+    const direct = await as(S1, `delete from public.attendees where id = 'EXPO-9703' returning id`);
+    ok('TST-02-V3 an unknown badge returns false; a direct delete by staff still removes nothing (policy unchanged)',
+      unknownGone === false && (!!direct.error || direct.rows.length === 0) && !(await isGone('EXPO-9703')), String(unknownGone));
+    await sys(`delete from public.attendees where id = 'EXPO-9703' and church_id = $1`, [A]);
+    await sys(`update public.memberships set volunteer_id = null where user_id = $1`, [L1]);
+    await sys(`delete from public.volunteers where id = 'VOL-9901' and church_id = $1`, [A]);
+    await sys(`delete from public.memberships where user_id in ($1, $2, $3)`, [L1, S1, P1]);
+    await sys(`delete from auth.users where id in ($1, $2, $3)`, [L1, S1, P1]);
+
     await sys(`update public.memberships set volunteer_id = null where user_id = $1`, [M1]);
     await sys(`delete from public.volunteers where id = $1 and church_id = $2`, [vols[0].id, A]);
     await sys(`delete from public.expos where church_id in ($1, $2)`, [A, C2]);

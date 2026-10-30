@@ -8,10 +8,10 @@ import { GRACE_DAYS, clearReadings, clockKnown, followedUp, hasReadings, noteSer
 import { render, toast } from './shell.js';
 import { confirmAsk, ok } from './feedback.js';
 import { BOOTHS, EXPO_TOTAL, EXPO_UPCOMING, PROTOCOLS, STATUS_UI, attendees, boothLabel, state, volunteers } from './data.js';
-import { qSafe, queueReset, queueSync } from './queue.js';
+import { qSafe, queueLeaveFor, queueReset, queueSync } from './queue.js';
 import { bmi, cat, chipClass, esc, fmt1, initials, redFlag } from './helpers.js';
 import { planNeeds } from './results.js';
-import { MY_PLEDGE_ACTS, emptyDraft, hideModal, isAdminAcct, pledgeFormParts, setVolTab, showModal } from './volunteer.js';
+import { MY_PLEDGE_ACTS, emptyDraft, hideModal, isAdminAcct, mayPlace, pledgeFormParts, setVolTab, showModal } from './volunteer.js';
 import { loadScript } from './libs.js';
 /* The account hub: my account, my church, all churches (platform admin), members and approvals. Split from the original single-file app; bundled back into one file by tools/build.js. */
 /* ---------- churches, members and the platform admin ----------
@@ -1604,6 +1604,46 @@ export function afterMerge(kind){
   if(!state.volNew&&!volunteers.some(v=>v.id===state.volId))state.volId=(volunteers[0]||{}).id||null;
   if(cloud.user){let m=1000;for(const v of volunteers){const n=parseInt(String(v.id).replace(/\D/g,''),10)||0;if(n>m)m=n;}state._volSeq=m+1;}
  }
+}
+/* A visitor who wandered off: removed from the shared database first, then from this device. Church admins and team
+   leaders may (remove_visitor checks the same in the database and answers false when it refuses). */
+export async function removeVisitorAsk(id){
+ const visitor=attendees.find(x=>x.id===id);
+ if(!visitor)return;
+ if(cloud.removing===id)return;                       /* a second tap while the first is still in flight */
+ const isShared=!!cloud.user;
+ if(isShared&&!mayPlace()){toast('Only your church’s admins and team leaders can remove a visitor');return;}
+ cloud.removing=id;
+ try{
+  const yes=await confirmAsk({title:`Remove ${visitor.name||id}?`,
+   body:isShared?'Their passport and readings are deleted for every desk in your church. This cannot be undone.'
+    :'Their passport and readings are deleted from this device. This cannot be undone.',
+   label:'Remove',danger:true});
+  if(!yes)return;
+  // 1. The shared copy, when there is one
+  const isOnServer=isShared&&cloud.synced.att[id]!==undefined;
+  if(isOnServer){
+   const client=cloud.client;
+   if(!client){toast('Removing a visitor needs a connection — try again when you are online.');return;}
+   let res;
+   try{res=await client.rpc('remove_visitor',{p_id:id});}catch(e){res={error:e};}
+   const {data,error}=res;
+   if(error){toast(isNet(error.message)?'Removing a visitor needs a connection — try again when you are online.':(error.message||'That did not work.'));return;}
+   const wasDeleted=data===true;
+   if(!wasDeleted){toast('The database did not remove them: only your church’s admins and team leaders can');return;}
+  }
+  // 2. Their open places in the station lines
+  await queueLeaveFor(id);
+  // 3. This device
+  const i=attendees.findIndex(x=>x.id===id);
+  if(i>=0)attendees.splice(i,1);
+  delete cloud.synced.att[id];
+  delete cloud.rejected[id];
+  if(cloud.rejectedNote&&cloud.rejectedNote.id===id)cloud.rejectedNote=null;
+  if(state.activeId===id)state.activeId=attendees[0]?attendees[0].id:'';
+  saveSyncedSoon();persist();render();
+  toast(`${visitor.name||id} removed`);
+ }finally{cloud.removing='';}
 }
 /* The same 7-day rule the database applies (schema.sql), on this device: the readings of a past visit go, and a visitor
    who did not agree to follow-up goes with them. It only touches records the server has already confirmed and that have
