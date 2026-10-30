@@ -7,14 +7,16 @@ import { esc } from './helpers.js';
 /* Authentic P-Q-R-S-T trace used by the reference (viewBox 0 0 340 70). */
 export const ECG_PATH = 'M 0 35 L 50 35 L 64 35 L 72 31 Q 78 28 84 35 L 96 35 L 102 41 L 114 8 L 126 62 L 136 31 Q 148 24 162 35 L 195 35 L 210 35 L 218 31 Q 224 28 230 35 L 242 35 L 248 41 L 260 8 L 272 62 L 282 31 Q 294 24 308 35 L 340 35';
 
-/** The monitor trace: the real path writes itself left to right and holds for the beat. Its glow is
-    the same path drawn wider underneath, so it hugs every bend — no radial overlay to show edges.
-    Decorative; lite and reduced motion get a static line. */
+/* still trace, then the sweep: tail, neck, halo and head share the path and differ only in dash length */
+const ECG_LAYERS = ['base', 'tail', 'neck', 'halo', 'head'];
+
+/** The monitor trace: a faint still rhythm with a bright head sweeping along it, tail behind and halo
+    round it, so it hugs every bend — no radial overlay to show edges. Decorative; lite and reduced
+    motion get the still trace only. */
 export function ecgHTML(){
  return `<div class="hx-ecg" aria-hidden="true">
   <svg viewBox="0 0 340 70" preserveAspectRatio="none" focusable="false">
-   <path class="hx-ecg-glow" pathLength="101" d="${ECG_PATH}"/>
-   <path class="hx-ecg-track" pathLength="101" d="${ECG_PATH}"/>
+   ${ECG_LAYERS.map(k => `<path class="hx-ecg-${k}" pathLength="101" d="${ECG_PATH}"/>`).join('\n   ')}
   </svg>
  </div>`;
 }
@@ -43,7 +45,7 @@ export function journeyRailHTML(stepIdx, isDone){
  const pctFill = isDone ? 100 : Math.round((cur / 3) * 100);
 
  return `<div class="hx-journey-rail" role="progressbar" aria-valuenow="${isDone ? 4 : cur + 1}" aria-valuemin="1" aria-valuemax="4" aria-label="Journey progress: Step ${isDone ? 4 : cur + 1} of 4">
-  <div class="hx-rail-track" aria-hidden="true"><div class="hx-rail-fill" style="width:${pctFill}%"></div></div>
+  <div class="hx-rail-track" aria-hidden="true"><div class="hx-rail-fill" style="--hx-fill:${pctFill / 100}"></div></div>
   <div class="hx-rail-steps">
    ${steps.map((s, i) => {
     const done = isDone || i < cur;
@@ -98,45 +100,46 @@ export function ctaHTML(o){
  return `<span class="hx-cta${dark}"><span class="hx-cta-main">${esc(o.label||'')}</span><span class="hx-cta-circle" aria-hidden="true">${I.arrow}</span></span>`;
 }
 
+/** Whole-number shares of `parts` that always add up to exactly 100 (largest remainder), all 0 when empty. */
+export function shares(parts){
+ const total = parts.reduce((s, n) => s + n, 0);
+ if (!total) return parts.map(() => 0);
+ const raw = parts.map(n => n * 100 / total), out = raw.map(Math.floor);
+ let left = 100 - out.reduce((s, n) => s + n, 0);
+ const order = raw.map((r, i) => [r - out[i], i]).sort((x, y) => y[0] - x[0]);
+ for (const [, i] of order) { if (!left) break; out[i]++; left--; }
+ return out;
+}
+
 /**
- * Cinematic Triage Distribution Deck: Ruby Action, Amber Watch, and Mint Optimal status cards with luminous rail.
- * Replaces the old mystery 5-color block bar with clear clinical categories and counts.
+ * Triage deck: Action (any red reading or red flag), Watch (something raised), Optimal (BP, sugar and BMI all
+ * normal). The shares are of the visitors whose three core checks are in, so the cards add up to 100%; anyone
+ * still in their checks is counted on its own line and as a grey run on the rail, which is sized by head count.
+ * @param {number[]} counts [action, watch, optimal, still in checks]
  */
 export function spectrumHTML(counts){
- const vals = (Array.isArray(counts) && counts.length >= 3 ? counts : [0, 0, 0, 0, 0]).map(n => Math.max(0, Number(n) || 0));
- const [flag, watch, ok, pending] = vals;
- const total = flag + watch + ok + (pending || 0);
- const pct = (n) => total ? Math.round((n / total) * 100) : 0;
+ const [flag, watch, ok, pending] = [0, 1, 2, 3].map(i => Math.max(0, Number(Array.isArray(counts) ? counts[i] : 0) || 0));
+ const screened = flag + watch + ok, total = screened + pending;
+ const [pf, pw, po] = shares([flag, watch, ok]);
  const aria = total
-  ? `Screening distribution: ${flag} action needed, ${watch} under watch, ${ok} optimal`
-  : 'Screening distribution: no visitors screened yet';
-
+  ? `Screening distribution of ${screened} screened visitors: ${flag} action needed (${pf}%), ${watch} under watch (${pw}%), ${ok} optimal (${po}%)${pending ? `; ${pending} still in their checks` : ''}`
+  : 'Screening distribution: no visitors yet';
+ const card = (tone, title, n, p, word) => `<div class="hx-triage-card hx-triage-${tone}">
+    <div class="hx-triage-head"><span class="hx-triage-dot"></span><span class="hx-triage-title">${title}</span></div>
+    <div class="hx-triage-val">${n}</div>
+    <div class="hx-triage-sub">${screened ? p + '% · ' : ''}${word}</div>
+   </div>`;
+ const bar = (tone, n) => n ? `<div class="hx-triage-bar hx-bar-${tone}" style="flex-grow:${n}"></div>` : '';
  return `<div class="hx-triage-deck" role="region" aria-label="${esc(aria)}">
   <div class="hx-triage-grid">
-   <div class="hx-triage-card hx-triage-ruby">
-    <div class="hx-triage-head"><span class="hx-triage-dot"></span><span class="hx-triage-title">Action</span></div>
-    <div class="hx-triage-val">${flag}</div>
-    <div class="hx-triage-sub">${pct(flag)}% · Nurse</div>
-   </div>
-   <div class="hx-triage-card hx-triage-amber">
-    <div class="hx-triage-head"><span class="hx-triage-dot"></span><span class="hx-triage-title">Watch</span></div>
-    <div class="hx-triage-val">${watch}</div>
-    <div class="hx-triage-sub">${pct(watch)}% · Elevated</div>
-   </div>
-   <div class="hx-triage-card hx-triage-mint">
-    <div class="hx-triage-head"><span class="hx-triage-dot"></span><span class="hx-triage-title">Optimal</span></div>
-    <div class="hx-triage-val">${ok}</div>
-    <div class="hx-triage-sub">${pct(ok)}% · Healthy</div>
-   </div>
+   ${card('ruby', 'Action', flag, pf, 'Nurse')}
+   ${card('amber', 'Watch', watch, pw, 'Elevated')}
+   ${card('mint', 'Optimal', ok, po, 'Healthy')}
   </div>
   <div class="hx-triage-rail" aria-hidden="true">
-   ${total === 0 ? `<div class="hx-triage-bar hx-bar-empty" style="flex:1"></div>` : `
-    ${flag ? `<div class="hx-triage-bar hx-bar-ruby" style="flex:${Math.max(1, pct(flag))}"></div>` : ''}
-    ${watch ? `<div class="hx-triage-bar hx-bar-amber" style="flex:${Math.max(1, pct(watch))}"></div>` : ''}
-    ${ok ? `<div class="hx-triage-bar hx-bar-mint" style="flex:${Math.max(1, pct(ok))}"></div>` : ''}
-    ${pending ? `<div class="hx-triage-bar hx-bar-slate" style="flex:${Math.max(1, pct(pending))}"></div>` : ''}
-   `}
+   ${total ? bar('ruby', flag) + bar('amber', watch) + bar('mint', ok) + bar('slate', pending) : '<div class="hx-triage-bar hx-bar-empty" style="flex-grow:1"></div>'}
   </div>
+  ${total ? `<p class="hx-triage-note">${screened} of ${total} screened${pending ? ` · ${pending} still in checks` : ''}</p>` : ''}
  </div>`;
 }
 

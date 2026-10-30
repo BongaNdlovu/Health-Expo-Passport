@@ -2033,6 +2033,23 @@ function makeServer() {
       la.includes('const keepDraft=sameChurch&&(cloud.pledgeEdit||') && la.includes('if(keepDraft)loadPledge(true);else{cloud.pledge=undefined;cloud.pledgeEdit=false;state.mf=null;}')
       && !/cloud\.acct=r\.data;[^\n]*cloud\.pledgeEdit=false/.test(la));
   }
+  { /* the triage deck's numbers: shares of the screened add up to 100, pending sits apart, the rail is head count */
+    const sh = g.triageShares, txt = h => h.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    const sum = a => a.reduce((s, n) => s + n, 0);
+    ok('triage shares always add up to exactly 100 (1/1/1, 2/1/0, 7/0/0) and are all 0 when empty',
+      [[1, 1, 1], [2, 1, 0], [7, 0, 0], [3, 5, 9], [1, 2, 4]].every(p => sum(sh(p)) === 100)
+      && sh([0, 0, 0]).every(n => n === 0) && sh([1, 1, 1]).join() === '34,33,33', JSON.stringify(sh([1, 1, 1])));
+    const d = txt(g.spectrumHTML([2, 1, 1, 3]));
+    ok('the deck shows counts and shares of the screened, with the unscreened on their own line',
+      /Action 2 50% · Nurse/.test(d) && /Watch 1 25% · Elevated/.test(d) && /Optimal 1 25% · Healthy/.test(d)
+      && /4 of 7 screened · 3 still in checks/.test(d), d);
+    const h = g.spectrumHTML([2, 1, 1, 3]);
+    ok('the rail runs are sized by head count, grey for those still in checks',
+      /hx-bar-ruby" style="flex-grow:2"/.test(h) && /hx-bar-amber" style="flex-grow:1"/.test(h)
+      && /hx-bar-mint" style="flex-grow:1"/.test(h) && /hx-bar-slate" style="flex-grow:3"/.test(h));
+    const e = txt(g.spectrumHTML([0, 0, 0, 0]));
+    ok('an empty deck shows zeros, no percent signs and no note', /Action 0 Nurse/.test(e) && !/%/.test(e) && !/screened/.test(e), e);
+  }
   const actionsOf = h => [...h.matchAll(/data-action="([^"]*)"/g)].map(m => m[1]);
   const unwired = [];
   for (const v of ['login', 'signup', 'forgot']) { g.gateView(v); actionsOf(gateHTML()).forEach(n => { if (!g.hasAction(n)) unwired.push(v + ':' + n); }); }
@@ -4487,15 +4504,15 @@ function makeServer() {
       && !/transition:transform \.45s cubic-bezier\(\.34,1\.56,\.64,1\),box-shadow/.test(html));
     ok('the queue pulse no longer animates box-shadow',
       /@keyframes qpulse\{/.test(html) && !/@keyframes qpulse\{[^}]*box-shadow/.test(html));
-    ok('the line glow is a wider stroke of the same path, no filter or gradient',
-      /\.hx-ecg-glow\{stroke-width:7/.test(html)
-      && /@keyframes hxDraw\{/.test(html) && /@keyframes hxFade\{/.test(html)
-      && !/@keyframes hx(Draw|Fade)\{[^}]*?(box-shadow|filter|gradient)/.test(html));
-    ok('both copies of the ECG draw line and glow from one path each',
-      (html.match(/pathLength="101"/g) || []).length >= 2
-      && (srcText.match(/pathLength="101"/g) || []).length >= 2);
-    ok('the ECG draw and glow are off under lite and reduced motion (static line instead)',
-      /html\.lite[^{]*\.hx-ecg-glow/.test(html) && /prefers-reduced-motion[^}]*\.hx-ecg-glow/.test(html));
+    ok('the monitor sweep moves only stroke-dashoffset: no filter, shadow or gradient in its keyframe',
+      /\.hx-ecg-halo\{--d:6;stroke-width:10/.test(html) && /@keyframes hxSweep\{/.test(html)
+      && !/@keyframes hxSweep\{[^}]*?(box-shadow|filter|gradient|opacity)/.test(html));
+    ok('both copies of the ECG draw the still trace and the four sweep layers from one path each',
+      ['base', 'tail', 'neck', 'halo', 'head'].every(k => html.includes('class="hx-ecg-' + k + '" pathLength="101"'))
+      && srcText.includes("const ECG_LAYERS = ['base', 'tail', 'neck', 'halo', 'head'];"));
+    ok('the ECG sweep is off under lite and reduced motion (still trace instead)',
+      /html\.lite :is\(\.hx-ecg-tail[^{]*\{animation:none;display:none\}/.test(html)
+      && /prefers-reduced-motion:reduce\)\{\s*html \.hx-ecg-base,html\[data-theme\] \.hx-ecg-base\{opacity:\.7[^}]*\}\s*\.hx-ecg-tail[^{]*\{animation:none;display:none\}/.test(html));
   }
 
   /* pouch reservation (the button lives on the last step, Send, since the plan screen was redesigned) */

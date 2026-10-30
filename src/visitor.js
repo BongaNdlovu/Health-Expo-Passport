@@ -155,7 +155,7 @@ export function viewHome(){
   else if(cs.every(z=>z[0]==='ok'))tri.ok++;
   else tri.none++;
  }
- const spec=[tri.flag,tri.watch,tri.ok,tri.none,0];
+ const spec=[tri.flag,tri.watch,tri.ok,tri.none];
  const ctaLabel=a.done?`Open ${firstName(a.name)}’s passport`:`Continue: ${JOURNEY_LABEL[step]}`;
  return `<section class="stagger space-y-3.5">
   ${!attendees.length?`<div class="hx-hero" style="text-align:center">
