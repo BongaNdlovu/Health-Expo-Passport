@@ -2062,6 +2062,13 @@ function makeServer() {
       !/triage nurse|refer to triage|red-flag triage/i.test(srcText)
       && srcText.includes("listSection('Emergency — attend quickly'") && srcText.includes("card('ruby', 'Emergency', flag, pf, 'Attend quickly')"));
   }
+  { /* no nurse on site: the day's care notes skip the step test, refer to a clinic, or call it an emergency */
+    const kids = [{ s: { sugar: 3.5 } }, { s: { preg: 1 } }, { s: { ops: 1 } }, { s: { pulseRest: 110 } }];
+    const notes = kids.map(k => g.careNotes({ name: 'T', sex: 'Female', ...k, s: { ...k.s } }).join(' '));
+    ok('no care note sends anyone to a nurse; each says what the team does instead',
+      notes.every(n => n && !/nurse/i.test(n)) && /Emergency: attend to them quickly/.test(notes[0])
+      && /skip the step test/.test(notes[1]) && /skip the step test/.test(notes[2]) && /Skip the step test/.test(notes[3]), JSON.stringify(notes));
+  }
   const actionsOf = h => [...h.matchAll(/data-action="([^"]*)"/g)].map(m => m[1]);
   const unwired = [];
   for (const v of ['login', 'signup', 'forgot']) { g.gateView(v); actionsOf(gateHTML()).forEach(n => { if (!g.hasAction(n)) unwired.push(v + ':' + n); }); }
@@ -4665,7 +4672,7 @@ function makeServer() {
       && !('churchPlan' in g.migrateAttendee({ id: 'EXPO-905', name: 'F', interests: { churchPlan: "x');alert(1)//" } }).interests); })());
   ok('paper record: seminars and how they heard survive as ticks', kh.interests.lifestyle === true && kh.interests.heardword === true);
   ok('sugar 3.7 is Low (paper range 4–8), under 3 is a red flag', g.cat('sugar', 3.7)[1] === 'Low' && g.cat('sugar', 2.9)[0] === 'flag' && g.redFlag({ s: { sugar: 2.9 } }) && !g.redFlag(kh));
-  ok('a low sugar does not open the blood-sugar plan, it goes to the nurse', !g.planNeeds(kh).some(n => n.k === 'sugar') && /low/.test(g.careNotes(kh)[0]));
+  ok('a low sugar does not open the blood-sugar plan, it goes to the care notes as an emergency', !g.planNeeds(kh).some(n => n.k === 'sugar') && /low/.test(g.careNotes(kh)[0]) && /Emergency: attend to them quickly/.test(g.careNotes(kh)[0]));
   ok('body fat, body water and waist use the paper form\'s male ranges', g.cat('fat', { v: 18.9, sex: 'Male' })[0] === 'ok' && g.cat('tbw', { v: 58.5, sex: 'Male' })[0] === 'ok'
     && g.cat('waist', { v: 93, sex: 'Male' })[0] === 'ok' && g.cat('waist', { v: 94, sex: 'Male' })[0] === 'watch' && g.cat('fat', { v: 25, sex: '' })[0] === null);
   ok('peak flow 430 of 572 is 75%: reduced, and a counsellor note', g.cat('pef', 75)[1] === 'Reduced' && g.careNotes(kh).some(n => /75%/.test(n)));

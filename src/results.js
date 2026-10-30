@@ -204,7 +204,7 @@ export function planNeeds(a){
  const bp=cat('bp',{sys:a.s.sys,dia:a.s.dia});
  /* order: red-flag blood pressure, red-flag sugar, amber blood pressure, amber sugar, then weight/cholesterol, then sleep */
  if(sev(bp[0]))out.push({k:'bp',sev:sev(bp[0]),rank:sev(bp[0])===3?0:2,why:`${a.s.sys}/${a.s.dia} is ${bpStage(a.s.sys,a.s.dia)}`});
- /* only a high reading: the blood-sugar plan lowers sugar, so a low one goes to the nurse instead (careNotes) */
+ /* only a high reading: the blood-sugar plan lowers sugar, so a low one goes to the care notes instead (careNotes) */
  const sg=cat('sugar',a.s.sugar);
  if(sev(sg[0])&&a.s.sugar>8)out.push({k:'sugar',sev:sev(sg[0]),rank:sev(sg[0])===3?1:3,why:`${a.s.sugar} mmol/L (${Math.round(a.s.sugar*18)} mg/dL) is above the expo’s healthy range`});
  const b=bmi(a),bm=cat('bmi',b),ch=cat('chol',a.s.chol),why=[];
@@ -269,16 +269,16 @@ export function problemOf(a,pk){
 /* What the counsellor must also raise: things no home plan covers, from the paper record and survey. Plain sentences. */
 export function careNotes(a){
  const s=a.s,out=[];
- if(s.sugar!=null&&s.sugar<4)out.push(`Blood sugar ${s.sugar} mmol/L is low (healthy is 4–8). Give a sweet drink or fruit now, and the nurse should see them.`);
+ if(s.sugar!=null&&s.sugar<4)out.push(`Blood sugar ${s.sugar} mmol/L is low (healthy is 4–8). Give a sweet drink or fruit now. Emergency: attend to them quickly and stay with them until it is back up.`);
  if(s.bpMed===1)out.push('Takes blood-pressure medication: keep taking it. This plan does not replace it; only their doctor changes it.');
- if(s.preg===1)out.push('Pregnant: the nurse should see her before the step test and before any plan.');
+ if(s.preg===1)out.push('Pregnant: skip the step test, and she should check any plan with her doctor or clinic.');
  if(s.chronic===1)out.push(`Chronic illness${a.chronicList?': '+a.chronicList:''}. Check the plan with their doctor.`);
- if(s.ops===1)out.push('Has had a major operation: ask the nurse before the step test.');
+ if(s.ops===1)out.push('Has had a major operation: skip the step test unless their doctor has cleared them.');
  const w=cat('waist',{v:s.waist,sex:a.sex});
  if(w[0]&&w[0]!=='ok')out.push(`Waist ${s.waist} cm: ${w[1].toLowerCase()} (${a.sex==='Female'?'under 80':'under 94'} is healthy).`);
  const p=pefPct(a);
- if(p!=null&&p<80)out.push(`Lung function ${s.pef} is ${p}% of the recommended ${s.pefExp}. ${p<50?'The nurse should see them today.':'Suggest a clinic check.'}`);
- if(s.pulseRest!=null&&s.pulseRest>100)out.push(`Resting pulse ${s.pulseRest} is fast (normal is 60–100). Skip the step test; the nurse should check it.`);
+ if(p!=null&&p<80)out.push(`Lung function ${s.pef} is ${p}% of the recommended ${s.pefExp}. ${p<50?'Emergency: attend to them quickly and refer them to a clinic today.':'Suggest a clinic check.'}`);
+ if(s.pulseRest!=null&&s.pulseRest>100)out.push(`Resting pulse ${s.pulseRest} is fast (normal is 60–100). Skip the step test and suggest a clinic check soon.`);
  const bf=SEX_RANGE.fat[a.sex];
  if(bf&&s.fat!=null&&s.fat<bf[0])out.push(`Body fat ${s.fat}% is below the ${bf.join('–')}% range.`);
  if(s.smoke>=3)out.push(`Smokes (${SURVEY[3].a[s.smoke-1].toLowerCase()}). Offer help to stop.`);
