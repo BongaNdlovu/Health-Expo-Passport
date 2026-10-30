@@ -1,6 +1,6 @@
 // @ts-check
 import { closeAcct, cloudInit, cloudSignIn, cloudSignOut, cloudSync, gateBack, joinChurch, leaveChurch, linkMember, linkVolunteer, manageChurch, markNotifsRead, myField, myPickPledge, myPledgeEdit, myPledgeSave, mySecondBooth, myToggleBooth, myToggleList, notifClose, notifOpen, openAcct, openNotifs, profDeleteAsk, profDeleteGo, profDeleteTyped, profGate, profPassword, registerChurch, removeMember, renderAcct, saveChurch, saveMyDetails, setChurchStatus, setMember, teamAdd, teamRelease, teamShift, withdrawMyPledge } from './account.js';
-import { churchSearchSoon, openChurchData, stepDown } from './account.js';
+import { addPlatformAdmin, approveAssistant, churchSearchSoon, openChurchData, pickWant, pickWantBooth, setAdminPost, stepDown } from './account.js';
 import { closeSettings, deregisterMyPledge, openSettings } from './account.js';
 import { answer } from './feedback.js';
 import { updateLater, updateNow } from './update.js';
@@ -131,6 +131,11 @@ export const ACTION_MAP = {
   'notif-open': el => notifOpen(el.dataset.args),
   'church-save': (el, ev) => saveChurch(ev, el.dataset.args),
   'church-status': el => setChurchStatus(el.dataset.args, el.dataset.status),
+  'padmin-add': (el, ev) => addPlatformAdmin(ev),
+  'want-pick': el => pickWant(el.dataset.args),
+  'want-booth': el => pickWantBooth(el.dataset.args),
+  'member-post': el => setAdminPost(el.dataset.user, el.value),
+  'member-approve-assistant': el => approveAssistant(el.dataset.user),
   'all-churches-back': el => { cloud.adminData = ''; renderAcct(); },
   'staff-approve': el => approveStaff(el.dataset.args, el),
   'approvals-clear': el => { cloud.isAdmin = undefined; renderCloudBody(); },

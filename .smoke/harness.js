@@ -673,6 +673,7 @@ ok('no unescaped visitor markup on any visitor tab',
   Object.values(shown).every(h => !h.includes('<img src=x')), Object.keys(shown).filter(t => shown[t].includes('<img src=x')).join(','));
 g.openSwitcher(); ok('visitor switcher escapes names', !$el('switcherList').innerHTML.includes('<img src=x'));
 g.openWhatsApp(); ok('WhatsApp preview escapes names', !$el('waBody').innerHTML.includes('<img src=x'));
+ok('the preview card has no backdrop blur (it sits inside a blurred scrim and a scroller: some phone WebViews clip the card)', !/backdrop-blur/.test($el('waBody').innerHTML));
 g.buildPrintCard(); ok('print card escapes names', !$el('printArea').innerHTML.includes('<img src=x'));
 ok('the printed card carries no QR code any more', !/pc-qr|pcQr/.test($el('printArea').innerHTML));
 hostile.interests = { nurse: true }; hostile.prayer = '<script>x</script>'; hostile.s.sys = 170; hostile.s.dia = 105;
@@ -2203,17 +2204,19 @@ function makeServer() {
       { user_id: 'u-staff', email: 'st@example.org', full_name: 'Staff Person', phone: '082', area: 'Umlazi', role: 'staff', status: 'approved', attendee_id: 'EXPO-042', confirmed: true }];
     let me = person(), health = null, refuse = null;
     const rc = [], shots = [];                     /* account calls the app made; every screen drawn (for the class check) */
+    const padmins = [{ user_id: 'u-owner', email: 'owner@example.org', created_at: '2026-10-01T08:00:00Z' }];
     const done = (data = null) => ({ data, error: null });
     const install = () => {
       srv.rpcs = {
         my_account: () => done(JSON.parse(JSON.stringify(me))),
         church_directory: a => { rc.push('dir:' + a.p_search); return done([{ id: A.id, name: A.name, city: A.city }]); },
-        join_church: a => { rc.push('join:' + a.p_church); me.membership = member(); me.church = { ...A }; return done(); },
+        join_church: a => { rc.push('join:' + a.p_church); if (a.p_wants) rc.push('wants:' + a.p_church + ':' + a.p_wants + ':' + (a.p_booths || []).join('+')); me.membership = member(); me.church = { ...A }; return done(); },
         register_church: a => { rc.push('register:' + a.p_name + ':' + a.p_city); me.membership = member({ church_id: B.id, role: 'admin', status: 'approved' }); me.church = { ...B, name: a.p_name, city: a.p_city }; return done(B.id); },
         update_my_details: a => { rc.push(['details', a.p_full_name, a.p_phone, a.p_area, a.p_birth_date].join(':')); Object.assign(me.membership, { full_name: a.p_full_name, phone: a.p_phone, area: a.p_area, birth_date: a.p_birth_date }); return done(); },
         leave_church: () => { rc.push('leave'); me.membership = null; me.church = null; return done(); },
         my_health: () => { rc.push('health'); return done(health); },
         church_members: a => { rc.push('members:' + a.p_church); return done(JSON.parse(JSON.stringify(people))); },
+        set_admin_post: a => { rc.push('post:' + a.p_user + ':' + a.p_post); return done(); },
         set_member: a => { rc.push(['set', a.p_user, a.p_role, a.p_status].join(':')); return refuse ? { data: null, error: { message: refuse } } : done(); },
         link_member: a => { rc.push('link:' + a.p_user + ':' + a.p_attendee); return done(); },
         remove_member: a => { rc.push('remove:' + a.p_user); return done(); },
@@ -2237,7 +2240,11 @@ function makeServer() {
         join_with_invite: a => { rc.push('joininv:' + a.p_code); me.membership = member({ role: 'staff', status: 'approved' }); me.church = { ...A }; return done(A.id); },
         admin_churches: () => { rc.push('admin_churches'); return done([{ ...B, members: 1, staff: 0, pending: 0, visitors: 0, volunteers: 0 }, { ...A, members: 2, staff: 1, pending: 1, visitors: 5, volunteers: 2 }]); },
         admin_set_church_status: a => { rc.push('status:' + a.p_church + ':' + a.p_status); return done(); },
-        admin_audit: () => done([{ at: '2026-10-20T09:15:00Z', church: A.name, actor: 'st@example.org', tbl: 'attendees', op: 'UPDATE', row_id: 'EXPO-042' }]),
+        admin_audit: () => done([{ at: '2026-10-20T09:15:00Z', church: A.name, actor: 'st@example.org', tbl: 'attendees', op: 'UPDATE', row_id: 'EXPO-042' },
+          { at: '2026-10-21T08:00:00Z', church: '', actor: 'owner@example.org', tbl: 'platform_admins', op: 'INSERT', row_id: 'new@example.org' }]),
+        admin_platform_admins: () => { rc.push('padmins'); return done(padmins.map(p => ({ ...p }))); },
+        admin_add_platform_admin: a => { rc.push('padd:' + a.p_email); if (/^nobody@/.test(a.p_email)) return { data: null, error: { code: 'P0001', message: 'No account has that email. They must create an account in the app first.' } };
+          padmins.push({ user_id: 'u-new', email: a.p_email, created_at: '2026-10-30T10:00:00Z' }); return done(); },
       };
     };
     const gate = () => { const h = $el('authGateBody').innerHTML; shots.push(h); return h; };
@@ -2265,9 +2272,25 @@ function makeServer() {
       && /Grace Chapel/.test($el('churchDir').innerHTML) && /data-action="join-church" data-args="ch-a"/.test($el('churchDir').innerHTML), g.gateState());
     ok('…and the visitor data saved on this device is cleared', demoRows > 0 && g.attendees.length === 0 && g.volunteers.length === 0, demoRows + ' → ' + g.attendees.length);
     ok('…and only the platform admin is offered the admin screens', !/data-action="openAcct" data-args="admin"/.test(gate()) && !g.acctTabs().some(t => t[0] === 'admin'));
+    ok('…and "What would you like to be?" comes first, with the positions and Health Department Leader (register a church)',
+      /What would you like to be\?/.test(gate()) && /data-action="want-pick" data-args="team_leader"/.test(gate()) && /data-action="want-pick" data-args="assistant"/.test(gate()) && /data-action="reg-church-form"/.test(gate())
+      && !/data-action="want-booth"/.test(gate()), gate().slice(0, 300));
+    g.pickWant('team_leader'); await sleep(5);
+    ok('…a team leader is asked for one station, and an assistant is told the Leader approves',
+      /Which station would you lead/.test(gate()) && /data-action="want-booth" data-args="bp"/.test(gate()), gate().slice(0, 200));
+    g.pickWantBooth('bp'); g.pickWantBooth('kids');
+    ok('…and only one station can be chosen to lead', C.wantsBooths.join() === 'kids', C.wantsBooths.join());
+    g.pickWant('team_member'); g.pickWantBooth('bp'); g.pickWantBooth('media');
+    ok('…a team member may choose two stations, and a third replaces the oldest', C.wantsBooths.join() === 'bp,media', C.wantsBooths.join());
+    g.pickWant('team_leader'); g.pickWantBooth('bp');    /* the one kept station is toggled off */
+    await g.joinChurch('ch-a'); await sleep(10);
+    ok('…a team leader who chose no station is not sent anywhere', !rc.some(x => /^join:/.test(x)) && /Choose the one station/.test($el('toastMsg').textContent), $el('toastMsg').textContent + rc.join());
+    g.pickWant('pledge'); g.pickWantBooth('bp');
+    ok('…and Delete my account is offered there too', /data-action="profDeleteAsk"/.test(gate()));
     await g.joinChurch('ch-a'); await sleep(30);
-    ok('joining a church sends the request, then waits for that church to approve', rc.includes('join:ch-a') && g.gateState() === 'pending'
+    ok('joining a church sends the request, then waits for that church to approve', rc.includes('join:ch-a') && rc.includes('wants:ch-a:pledge:bp') && C.wants === 'member' && g.gateState() === 'pending'
       && /Waiting for approval/.test(gate()) && gate().includes('Grace Chapel') && gate().includes('Check again'), g.gateState() + ' ' + rc.join());
+    ok('…and a member waiting for approval can delete their account from that screen', /data-action="profDeleteAsk"/.test(gate()));
     $el('gmName').value = ' Dave Dlamini '; $el('gmPhone').value = '082 000 0000'; $el('gmArea').value = 'Umlazi'; $el('gmBirth').value = '1980-05-01';
     await g.saveMyDetails({ preventDefault() {}, target: { dataset: { pre: 'gm' } } }); await sleep(20);
     ok('a member saves their own details', rc.includes('details:Dave Dlamini:082 000 0000:Umlazi:1980-05-01') && /value="Dave Dlamini"/.test(gate()), rc.join());
@@ -2297,15 +2320,22 @@ function makeServer() {
     ok('a member can leave their church and is back at the list of churches', rc.includes('leave') && g.gateState() === 'church', g.gateState());
 
     /* registering a church */
+    C.dir = [{ ...A, status: 'active' }, { id: 'ch-z', name: 'Zion Fellowship', city: 'Pinetown', status: 'pending' }];
     C.regChurch = true; C.acctV++; g.renderGate();
     ok('"My church is not listed" opens the church registration form', /Register the church/.test(gate()));
+    ok('…and it lists the churches already registered, so a church is not registered twice: Join for an active one, a waiting note for a pending one',
+      /Already registered/.test(gate()) && gate().includes('Grace Chapel') && gate().includes('Zion Fellowship') && /data-on-input="church-search"/.test(gate())
+      && (gate().match(/data-action="join-church"/g) || []).length === 1 && /Waiting for approval/.test(gate()), gate().slice(0, 400));
+    shots.push(gate());
     $el('rcName').value = 'Hope Church'; $el('rcCity').value = 'Pinetown'; $el('rcPhone').value = ''; $el('rcEmail').value = '';
     await g.registerChurch({ preventDefault() {} }); await sleep(30);
     ok('registering a church sends its details, then waits for the NEWSTART admin', rc.includes('register:Hope Church:Pinetown') && g.gateState() === 'churchwait'
       && /Waiting for your church to be approved/.test(gate()) && gate().includes('Hope Church'), g.gateState());
+    ok('…a church waiting for approval offers Delete my account (and no Leave, which would orphan the church)', /data-action="profDeleteAsk"/.test(gate()) && !/data-action="leaveChurch"/.test(gate()));
     me.church.status = 'suspended';
     await g.cloudSync(true); await sleep(20);
     ok('a paused church says so and offers to leave it', g.gateState() === 'suspended' && /is paused/.test(gate()) && /data-action="leaveChurch"/.test(gate()), g.gateState());
+    ok('…and Delete my account', /data-action="profDeleteAsk"/.test(gate()));
 
     /* church staff */
     await fresh(person({ membership: member({ role: 'staff', status: 'approved' }), church: { ...A } }), () => registerLocal('Church Visitor', 'EXPO-310'));
@@ -2343,6 +2373,8 @@ function makeServer() {
     sandbox.prompt = () => ' EXPO-042 '; await g.linkMember('u-pend', ''); sandbox.prompt = () => null;
     await g.removeMember('u-staff');
     ok('…approving, changing a role, linking a badge and removing someone each call the database', rc.includes('set:u-pend:staff:pending') && rc.includes('link:u-pend:EXPO-042') && rc.includes('remove:u-staff'), rc.join());
+    await g.setAdminPost('u-staff', 'assistant'); await g.approveAssistant('u-pend');
+    ok('…giving the Assistant post, and approving someone who asked for it, each call the database', rc.includes('post:u-staff:assistant') && rc.includes('set:u-pend:member:approved') && rc.includes('post:u-pend:assistant'), rc.join());
     refuse = 'A church needs at least one admin. Make someone else an admin first.';
     await g.setMember('user-1', 'staff', 'approved'); refuse = null;
     ok('a refusal is shown in the database\'s own words', $el('toastMsg').textContent === 'A church needs at least one admin. Make someone else an admin first.', $el('toastMsg').textContent);
@@ -2418,6 +2450,17 @@ function makeServer() {
     ok('the Admin screen lists every church with its counts, and Approve for a waiting one', rc.includes('admin_churches') && sheet().includes('Grace Chapel') && sheet().includes('Hope Church')
       && /data-action="church-status" data-args="ch-b" data-status="active"/.test(sheet()) && /5 visitors/.test(sheet()) && /1 member ·/.test(sheet()), rc.join());
     ok('…with the latest changes in every church', sheet().includes('st@example.org') && sheet().includes('update visitor EXPO-042'));
+    ok('…and a change to the platform admins is named in the changes', sheet().includes('platform admin new@example.org'));
+    ok('…with the list of platform admins and a way to add one', rc.includes('padmins') && sheet().includes('owner@example.org') && /data-action="padmin-add"/.test(sheet())
+      && !/data-action="padmin-remove"/.test(sheet()), rc.join());
+    shots.push(sheet());
+    $el('paEmail').value = 'nobody@example.org';
+    await g.addPlatformAdmin({ preventDefault() {} }); await sleep(30);
+    ok('…an email with no account is refused in the database’s words and the list is unchanged', rc.includes('padd:nobody@example.org') && padmins.length === 1 && !sheet().includes('nobody@example.org'), rc.join());
+    $el('paEmail').value = 'new@example.org';
+    await g.addPlatformAdmin({ preventDefault() {} }); await sleep(60);
+    ok('…adding one by email calls the database and the list then shows them, and there is no Remove (not in the app yet)', rc.includes('padd:new@example.org') && sheet().includes('new@example.org') && !/padmin-remove/.test(sheet()) && !/Remove/.test(sheet().slice(sheet().indexOf('Platform admins'), sheet().indexOf('Recent changes'))), rc.join());
+    shots.push(sheet());
     await g.setChurchStatus('ch-b', 'active');
     ok('…approving a church calls the database', rc.includes('status:ch-b:active'), rc.join());
     g.manageChurch('ch-b'); await sleep(30);
@@ -2755,9 +2798,11 @@ function makeServer() {
     ok('a church admin makes a member staff, who then sees the church\'s visitors', !r.error && r7.rows[0].n === 1, (r.error || {}).message);
 
     r = await as(U.carol, `select public.set_member($1, 'staff', 'approved')`, [U.carol]);
-    const r8 = await as(U.carol, `select public.leave_church()`);
-    const r9 = await as(U.carol, `select public.remove_member($1)`, [U.carol]);
-    ok('a church\'s last admin cannot step down, leave or be removed', !!r.error && !!r8.error && !!r9.error);
+    const noAdmin = (await sys(`select count(*)::int n from public.memberships where church_id = $1 and role = 'admin'`, [B]))[0].n === 0;
+    const r8 = await as(U.erin, `select public.set_admin_post($1, 'leader')`, [U.carol]);
+    const carolPost = (await sys(`select role, admin_post from public.memberships where user_id = $1`, [U.carol]))[0];
+    ok('a church may be left with no admin: its last admin can step down, and the platform admin appoints one again',
+      !r.error && noAdmin && !r8.error && carolPost.role === 'admin' && carolPost.admin_post === 'leader', (r.error || r8.error || {}).message || JSON.stringify(carolPost));
     r = await as(U.erin, `select * from public.church_members($1)`, [B]);
     const r10 = await as(U.erin, `select public.update_church($1, 'Grace Chapel Durban', 'Durban')`, [B]);
     ok('the platform admin manages any church\'s members and profile', !r.error && r.rows.length === 1 && !r10.error && (await sys(`select name from public.churches where id = $1`, [B]))[0].name === 'Grace Chapel Durban',
@@ -2772,8 +2817,11 @@ function makeServer() {
     r = await as(U.dave, `select public.join_church($1)`, [B]);
     await as(U.erin, `select public.admin_set_church_status($1, 'pending')`, [B]);
     const r12 = await as(U.frank, `select * from public.church_directory('')`);
-    ok('a church that is not active is not listed', !r12.error && r12.rows.every(x => x.id !== B), JSON.stringify(r12.rows));
+    ok('a church waiting for approval is listed as pending (so nobody registers it twice) and cannot be joined',
+      !r12.error && r12.rows.some(x => x.id === B && x.status === 'pending') && !!(await as(U.dave, `select public.join_church($1)`, [B])).error, JSON.stringify(r12.rows));
     await as(U.erin, `select public.admin_set_church_status($1, 'suspended')`, [B]);
+    const r12b = await as(U.frank, `select * from public.church_directory('')`);
+    ok('a paused church is not listed', !r12b.error && r12b.rows.every(x => x.id !== B), JSON.stringify(r12b.rows));
     r = await as(U.carol, `select count(*)::int n from public.attendees`);
     const r13 = await as(U.carol, `select public.is_staff() s`);
     ok('suspending a church cuts its staff off', !r.error && r.rows[0].n === 0 && r13.rows[0].s === false, JSON.stringify(r.rows));
@@ -2783,6 +2831,97 @@ function makeServer() {
     ok('the platform admin\'s audit trail names the church of each change', !r.error && r.rows.length > 0 && r.rows.some(x => x.church === 'My church (rename me)' && x.tbl === 'attendees'), (r.error || {}).message || JSON.stringify(r.rows.slice(0, 3)));
     r = await as(U.alice, `select * from public.admin_audit(20)`);
     ok('nobody else can read the audit trail', !!r.error);
+
+    /* the platform admins are managed in the app: only a platform admin, only a confirmed account, never the last one */
+    r = await as(U.erin, `select * from public.admin_platform_admins()`);
+    ok('a platform admin can list the platform admins', !r.error && r.rows.length === 1 && r.rows[0].user_id === U.erin, (r.error || {}).message || JSON.stringify(r.rows));
+    const pa1 = await as(U.alice, `select * from public.admin_platform_admins()`);
+    const pa2 = await as(U.alice, `select public.admin_add_platform_admin('alice@example.org')`);
+    ok('nobody else can list or add platform admins (a church admin included)', !!pa1.error && !!pa2.error && (await sys(`select count(*)::int n from public.platform_admins`))[0].n === 1,
+      [pa1, pa2].map(x => (x.error || {}).message).join(' | '));
+    const pa4 = await as(U.erin, `select public.admin_add_platform_admin('nobody-here@example.org')`);
+    ok('an email with no account is refused', !!pa4.error && /No account has that email/.test(pa4.error.message), (pa4.error || {}).message);
+    const alice = (await sys(`select email, email_confirmed_at from auth.users where id = $1`, [U.alice]))[0];
+    await sys(`update auth.users set email_confirmed_at = null where id = $1`, [U.alice]);
+    const pa5 = await as(U.erin, `select public.admin_add_platform_admin($1)`, [alice.email.toUpperCase()]);
+    ok('an account that has not confirmed its email is refused', !!pa5.error && /not confirmed/.test(pa5.error.message), (pa5.error || {}).message);
+    await sys(`update auth.users set email_confirmed_at = $2 where id = $1`, [U.alice, alice.email_confirmed_at]);
+    const pa6 = await as(U.erin, `select public.admin_add_platform_admin($1)`, ['  ' + alice.email.toUpperCase() + ' ']);
+    const pa7 = await as(U.erin, `select public.admin_add_platform_admin($1)`, [alice.email]);
+    ok('a confirmed account is added (the email is matched without case or spaces), and adding it twice is refused', !pa6.error && !!pa7.error && /already/.test(pa7.error.message), (pa6.error || pa7.error || {}).message);
+    r = await as(U.alice, `select public.my_account() a`);
+    const pa8 = await as(U.alice, `select * from public.admin_churches()`);
+    ok('the new platform admin has the platform admin powers at once', !r.error && r.rows[0].a.platform_admin === true && !pa8.error, (r.error || pa8.error || {}).message);
+    r = await as(U.erin, `select * from public.admin_audit(50)`);
+    ok('adding a platform admin is written to the audit trail with the person’s email', !r.error && r.rows.some(x => x.tbl === 'platform_admins' && x.op === 'INSERT' && x.row_id === alice.email.toLowerCase() && x.actor !== ''), JSON.stringify(r.rows.slice(0, 2)));
+    const fn = await sys(`select count(*)::int n from pg_proc p join pg_namespace s on s.oid = p.pronamespace where s.nspname = 'public' and p.proname = 'admin_remove_platform_admin'`);
+    ok('there is no way to remove a platform admin from the app (only the SQL editor does that, for now)', fn[0].n === 0);
+    await sys(`delete from public.platform_admins where user_id = $1`, [U.alice]);   /* the owner's SQL editor puts the test back */
+
+    /* the church's two admin posts: the Leader and the platform admin give, swap and take them; the Assistant cannot.
+       Two extra approved staff members (X1, X2) join church A for this and leave again at the end. */
+    const X1 = 'e1000000-0000-4000-8000-000000000001', X2 = 'e2000000-0000-4000-8000-000000000002';
+    for (const [id, em] of [[X1, 'x1@example.org'], [X2, 'x2@example.org']]) {
+      await sys(`insert into auth.users (id, email, email_confirmed_at) values ($1, $2, now())`, [id, em]);
+      await sys(`insert into public.memberships (user_id, church_id, role, status) values ($1, $2, 'staff', 'approved')`, [id, A]);
+    }
+    const post = async u => (await sys(`select role, admin_post from public.memberships where user_id = $1`, [u]))[0];
+    const posts = async () => JSON.stringify([await post(U.alice), await post(X1), await post(X2)]);
+    r = await as(U.alice, `select public.my_account() a`);
+    ok('a church\'s first admin is its Health Department Leader', !r.error && r.rows[0].a.membership.admin_rank === 1 && (await post(U.alice)).admin_post === 'leader', await posts());
+    r = await as(U.alice, `select public.set_admin_post($1, 'assistant')`, [X1]);
+    const x1a = await as(X1, `select public.my_account() a`);
+    ok('the Leader appoints the Assistant', !r.error && (await post(X1)).admin_post === 'assistant' && x1a.rows[0].a.membership.admin_rank === 2, (r.error || {}).message || await posts());
+    const as1 = await as(X1, `select public.set_admin_post($1, 'none')`, [U.alice]);
+    const as2 = await as(X1, `select public.set_member($1, 'staff', 'approved')`, [U.alice]);
+    const as3 = await as(X1, `select public.remove_member($1)`, [U.alice]);
+    const as4 = await as(X1, `select public.set_member($1, 'admin', 'approved')`, [X2]);
+    ok('the Assistant cannot change the Leader\'s post, demote or remove the Leader, or appoint an admin', !!as1.error && !!as2.error && !!as3.error && !!as4.error && (await post(U.alice)).admin_post === 'leader' && (await post(X2)).role === 'staff',
+      [as1, as2, as3, as4].map(x => (x.error || {}).message).join(' | '));
+    r = await as(U.alice, `select public.set_admin_post($1, 'leader')`, [X1]);
+    ok('the Leader can swap the two posts: the Assistant becomes the Leader and the old Leader the Assistant',
+      !r.error && (await post(X1)).admin_post === 'leader' && (await post(U.alice)).admin_post === 'assistant', (r.error || {}).message || await posts());
+    r = await as(U.alice, `select public.set_admin_post($1, 'none')`, [X1]);
+    ok('…and the old Leader, now the Assistant, can no longer change the posts', !!r.error && (await post(X1)).admin_post === 'leader');
+    r = await as(X1, `select public.set_member($1, 'staff', 'approved')`, [X1]);
+    ok('when the Leader steps down the Assistant becomes the Leader', !r.error && (await post(U.alice)).admin_post === 'leader' && (await post(X1)).role === 'staff', (r.error || {}).message || await posts());
+    r = await as(U.erin, `select public.set_admin_post($1, 'assistant')`, [X1]);
+    const upPost = await as(U.erin, `select public.set_admin_post($1, 'leader')`, [X1]);
+    ok('the platform admin appoints either post; a person who holds one post takes the other and the two swap',
+      !r.error && !upPost.error && (await post(X1)).admin_post === 'leader' && (await post(U.alice)).admin_post === 'assistant', (r.error || upPost.error || {}).message || await posts());
+    r = await as(U.erin, `select public.set_admin_post($1, 'leader')`, [X2]);
+    ok('giving a post that is held replaces its holder, who stays on as staff', !r.error && (await post(X2)).admin_post === 'leader' && (await post(X1)).role === 'staff' && (await post(X1)).admin_post === null
+      && (await post(U.alice)).admin_post === 'assistant', (r.error || {}).message || await posts());
+    r = await as(U.erin, `select public.set_admin_post($1, 'none')`, [X2]);
+    ok('a post can be taken away (the person stays on as staff), and a church can be left with no Leader',
+      !r.error && (await post(X2)).role === 'staff' && (await post(X2)).admin_post === null && (await post(U.alice)).admin_post === 'assistant', (r.error || {}).message || await posts());
+    r = await as(U.frank, `select public.set_admin_post($1, 'leader')`, [U.frank]);
+    const rj = await as(X1, `select public.set_admin_post($1, 'leader')`, [X1]);
+    ok('nobody can give themselves a post (an ordinary member or a staff member)', !!r.error && !!rj.error && (await post(X1)).admin_post === null);
+    r = await as(U.erin, `select public.set_admin_post($1, 'leader')`, [U.frank]);
+    ok('a person who is not yet approved cannot be given a post', !!r.error, (r.error || {}).message);
+    r = await as(U.erin, `select public.set_admin_post($1, 'chief')`, [X1]);
+    ok('an unknown post is refused', !!r.error);
+    await sys(`delete from public.memberships where user_id in ($1, $2)`, [X1, X2]);
+    await sys(`delete from auth.users where id in ($1, $2)`, [X1, X2]);
+    await sys(`update public.memberships set admin_post = 'leader' where user_id = $1`, [U.alice]);
+
+    /* what a person asks to be when they join (their position), kept for the admin who approves */
+    await sys(`delete from public.memberships where user_id = $1`, [U.frank]);
+    const bad1 = await as(U.frank, `select public.join_church($1, 'Frank', '', 'king')`, [A]);
+    const bad2 = await as(U.frank, `select public.join_church($1, 'Frank', '', 'team_leader', '{}')`, [A]);
+    const bad3 = await as(U.frank, `select public.join_church($1, 'Frank', '', 'team_member', '{}')`, [A]);
+    ok('a position that does not exist, a team leader without one station, a team member without a station are refused', !!bad1.error && !!bad2.error && !!bad3.error, [bad1, bad2, bad3].map(x => (x.error || {}).message).join(' | '));
+    r = await as(U.frank, `select public.join_church($1, 'Frank', '', 'pledge', array['bp', 'kids', 'media'])`, [A]);
+    const cap2 = (await sys(`select cardinality(wants_booths) n from public.memberships where user_id = $1`, [U.frank]))[0];
+    ok('at most two stations are kept with a request', !r.error && cap2.n === 2, (r.error || {}).message || JSON.stringify(cap2));
+    await sys(`delete from public.memberships where user_id = $1`, [U.frank]);
+    r = await as(U.frank, `select public.join_church($1, 'Frank', '', 'team_leader', array['bp'])`, [A]);
+    const fm = (await sys(`select role, status, wants, wants_booths from public.memberships where user_id = $1`, [U.frank]))[0];
+    ok('a position is stored with the request, and it gives no right: still a pending member', !r.error && fm.role === 'member' && fm.status === 'pending' && fm.wants === 'team_leader' && fm.wants_booths.join() === 'bp', (r.error || {}).message || JSON.stringify(fm));
+    r = await as(U.alice, `select * from public.church_members($1)`, [A]);
+    ok('the admin sees the position each member asked for', !r.error && r.rows.some(x => x.user_id === U.frank && x.wants === 'team_leader' && x.wants_booths.join() === 'bp'), (r.error || {}).message);
+    await sys(`delete from public.memberships where user_id = $1`, [U.frank]);
     r = await as(null, `select public.my_account() a`);
     const r14 = await as(null, `select * from public.church_directory('')`);
     ok('signed-out callers can use none of the account functions', !!r.error && !!r14.error);
@@ -3094,6 +3233,10 @@ function makeServer() {
       const pf = g.pledgeHTML();
       ok('a member without a pledge gets the pledge form, with the shared booth picker',
         pf.includes('id="mfName"') && pf.includes('my-draft-booth') && pf.includes('Send my pledge'));
+      g.state.mf = null; C.acct.membership.wants_booths = ['bp', 'kids'];
+      g.pledgeHTML();
+      ok('the pledge form starts from the stations asked for at sign-up', g.state.mf && g.state.mf.pref.join() === 'bp,kids', JSON.stringify(g.state.mf && g.state.mf.pref));
+      C.acct.membership.wants_booths = [];
       g.state.mf = { name: '', phone: '', email: '', pledgeExpos: 1, skills: [], pref: [], avail: [], pref2: '', shirt: '', emergency: '', notes: '' };
       await g.myPledgeSave({ preventDefault() {} });
       ok('the pledge form refuses an empty name in place', /full name/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
@@ -3264,12 +3407,7 @@ function makeServer() {
     const sig = await sys(`select pg_get_function_arguments(p.oid) a from pg_proc p join pg_namespace s on s.oid = p.pronamespace where s.nspname = 'public' and p.proname = 'delete_my_account'`);
     ok('delete: the function takes no user id, so it can only ever delete the caller', sig.length === 1 && sig[0].a === '', JSON.stringify(sig));
     ok('delete: signed-out callers cannot delete an account', await refused(null, `select public.delete_my_account()`) && !(await gone(U.adminA)));
-    let dr = await as(U.adminA, `select public.delete_my_account()`);
-    ok('delete: a church\'s only admin is refused, with the reason, and nothing is removed', !!dr.error && /only admin/.test(dr.error.message) && !(await gone(U.adminA)) && await count('public.memberships') === 5, dr.error && dr.error.message);
-    await sys(`update public.memberships set role = 'admin' where user_id = $1`, [U.pendA]);
-    dr = await as(U.adminA, `select public.delete_my_account()`);
-    ok('delete: a second admin who is still waiting for approval does not count as another admin', !!dr.error && /only admin/.test(dr.error.message) && !(await gone(U.adminA)), dr.error && dr.error.message);
-    await sys(`update public.memberships set role = 'member' where user_id = $1`, [U.pendA]);
+    let dr;
     dr = await as(U.loner, `select public.delete_my_account()`);
     ok('delete: the only platform admin is refused, with the reason', !!dr.error && /only platform admin/.test(dr.error.message) && !(await gone(U.loner)), dr.error && dr.error.message);
     const m0 = await count('public.memberships'), a0 = await count('public.attendees'), c0 = await count('public.churches'), u0 = await count('auth.users');
@@ -3295,6 +3433,9 @@ function makeServer() {
     const made = await sys(`select created_by from public.churches where id = $1`, [CB]);
     ok('delete: the person who registered a church can delete their login; the church stays and forgets its creator',
       !dr.error && await gone(U.adminB) && made.length === 1 && made[0].created_by === null, dr.error ? dr.error.message : JSON.stringify(made));
+    dr = await as(B2, `select public.delete_my_account()`);
+    ok('delete: even a church\'s last admin can delete their login; the church stays with no admin (the platform admin appoints one)',
+      !dr.error && await gone(B2) && (await sys(`select 1 from public.churches where id = $1`, [CB])).length === 1, dr.error && dr.error.message);
     const P2 = 'c0000000-0000-4000-8000-000000000002';
     await sys(`insert into auth.users (id, email, email_confirmed_at) values ($1, 'padmin2@ex.org', now())`, [P2]);
     await sys(`insert into public.platform_admins (user_id) values ($1)`, [P2]);
@@ -4284,14 +4425,23 @@ function makeServer() {
   ok('the owner’s tabs read My account / My church / All churches', g.acctTabs().map(t => t[1]).join('|') === 'My account|My church|All churches');
   g.cloud.acct = hubAdminAcct;
   ok('a church admin’s tabs stop at My account / My church', g.acctTabs().map(t => t[1]).join('|') === 'My account|My church');
-  const mr = (u, admins, ranks) => g.memberRow(u, [], admins, ranks);
-  ok('the Admin choice is offered while a church has one admin', !/value="admin"\s+disabled/.test(mr({ user_id: 'u9', role: 'member', status: 'approved' }, 1)));
-  ok('the Admin choice is switched off at two admins', /value="admin"\s+disabled/.test(mr({ user_id: 'u9', role: 'member', status: 'approved' }, 2)));
-  ok('an existing admin keeps the choice open at two admins', !/value="admin"\s+disabled/.test(mr({ user_id: 'u9', role: 'admin', status: 'approved' }, 2)));
-  ok('a pending member cannot be promoted past the cap', /value="admin"\s+disabled/.test(mr({ user_id: 'u9', role: 'member', status: 'pending' }, 2)));
+  const mr = (u, admins, ranks, canPost) => g.memberRow(u, [], admins, ranks, canPost);
+  ok('the role picker offers Member and Staff only: admin posts have their own picker', !/value="admin"/.test(mr({ user_id: 'u9', role: 'member', status: 'approved' }, 1, {}, true)));
+  ok('the Leader (or the Expo admin) sees the admin-post picker, with the current post selected',
+    /data-on-change="member-post"/.test(mr({ user_id: 'u9', role: 'member', status: 'approved' }, 1, {}, true)) && /<option value="assistant" selected>/.test(mr({ user_id: 'u2', role: 'admin', status: 'approved' }, 2, { u2: 2 }, true))
+    && /<option value="leader" selected>/.test(mr({ user_id: 'u1', role: 'admin', status: 'approved' }, 2, { u1: 1 }, true)));
+  ok('the Assistant sees no admin-post picker, and cannot remove an admin', !/member-post/.test(mr({ user_id: 'u1', role: 'admin', status: 'approved' }, 2, { u1: 1 }, false)) && !/removeMember/.test(mr({ user_id: 'u1', role: 'admin', status: 'approved' }, 2, { u1: 1 }, false))
+    && /removeMember/.test(mr({ user_id: 'u9', role: 'member', status: 'approved' }, 2, {}, false)));
+  ok('a member who is not yet approved has no admin-post picker', !/member-post/.test(mr({ user_id: 'u9', role: 'member', status: 'pending' }, 1, {}, true)));
+  ok('what a person asked to be is shown beside their name', /Wants to lead Blood Pressure/.test(mr({ user_id: 'u9', role: 'member', status: 'pending', confirmed: true, wants: 'team_leader', wants_booths: ['bp'] }, 1, {}, true))
+    && /Wants to pledge/.test(mr({ user_id: 'u9', role: 'member', status: 'pending', confirmed: true, wants: 'pledge', wants_booths: [] }, 1, {}, true)) && !/Wants/.test(mr({ user_id: 'u9', role: 'member', status: 'pending', wants: 'member' }, 1, {}, true)));
+  ok('a request to be the Assistant gets "Approve as Assistant" for the Leader, and a plain Approve plus a note for the Assistant',
+    /member-approve-assistant/.test(mr({ user_id: 'u9', role: 'member', status: 'pending', confirmed: true, wants: 'assistant' }, 1, {}, true))
+    && !/member-approve-assistant/.test(mr({ user_id: 'u9', role: 'member', status: 'pending', confirmed: true, wants: 'assistant' }, 1, {}, false))
+    && /Only the Health Department Leader or the Expo admin can make someone the Assistant/.test(mr({ user_id: 'u9', role: 'member', status: 'pending', confirmed: true, wants: 'assistant' }, 1, {}, false)));
   g.cloud.members = { cid: 'c1', list: [
-    { user_id: 'u1', role: 'admin', status: 'approved', full_name: 'Own', email: 'own@x.y', confirmed: true },
-    { user_id: 'u2', role: 'admin', status: 'approved', full_name: 'Two', email: 'two@x.y', confirmed: true }] };
+    { user_id: 'u1', role: 'admin', status: 'approved', full_name: 'Own', email: 'own@x.y', confirmed: true, admin_post: 'leader' },
+    { user_id: 'u2', role: 'admin', status: 'approved', full_name: 'Two', email: 'two@x.y', confirmed: true, admin_post: 'assistant' }] };
   g.cloud.followups = { cid: 'c1', list: [] };
   g.cloud.adminFollowups = { cid: 'c1', list: [] };
   const hub = g.churchAdminHTML();
@@ -4311,10 +4461,10 @@ function makeServer() {
   g.cloud.members = { cid: 'c1', list: [
     { user_id: 'u1', role: 'admin', status: 'approved', full_name: 'Own', email: 'own@x.y', confirmed: true }] };
   const soleAdmin = g.churchAdminHTML();
-  ok('the only admin is told to promote a member first, with no step-down button', /only admin/.test(soleAdmin) && !/stepDown\(\)/.test(soleAdmin));
+  ok('the only admin may still step down, and is told the church then has no admin until the Expo admin appoints one', /only admin/.test(soleAdmin) && /data-action="stepDown"/.test(soleAdmin) && /no admin until the Expo admin appoints one/.test(soleAdmin));
   g.cloud.members = null;
   const postLoading = g.adminPostHTML(hubAdminAcct.membership, {});
-  ok('while the members load, the admin post says Loading, not "only admin"', /Loading/.test(postLoading) && !/only admin/.test(postLoading) && !/stepDown\(\)/.test(postLoading));
+  ok('while the members load, the admin post says Loading, not "only admin"', /Loading/.test(postLoading) && !/only admin/.test(postLoading) && !/stepDown/.test(postLoading));
   g.cloud.acct = { ...hubAdminAcct, platform_admin: true };
   g.cloud.adminChurch = 'c1';
   g.cloud.members = { cid: 'c1', list: [

@@ -7,7 +7,7 @@ import { CHURCH_PLANS_KEY, FOLLOWUP_MAX, churchPlansBox, clearInvite, followupsF
 import { GRACE_DAYS, clearReadings, clockKnown, followedUp, hasReadings, noteServerTime, readingsGone, visitIsOld } from './retention.js';
 import { render, toast } from './shell.js';
 import { confirmAsk, ok } from './feedback.js';
-import { EXPO_TOTAL, PROTOCOLS, STATUS_UI, attendees, boothLabel, state, volunteers } from './data.js';
+import { BOOTHS, EXPO_TOTAL, PROTOCOLS, STATUS_UI, attendees, boothLabel, state, volunteers } from './data.js';
 import { qSafe, queueReset, queueSync } from './queue.js';
 import { bmi, cat, chipClass, esc, fmt1, initials, redFlag } from './helpers.js';
 import { planNeeds } from './results.js';
@@ -29,6 +29,17 @@ const ROLE_L={member:'Member',staff:'Staff',admin:'Admin'};
 const ADMIN_TITLES=['Health Department Leader','Assistant Health Department Leader'];
 export const roleLabel=m=>!m?'':(m.role==='admin'&&m.status==='approved'&&m.admin_rank?(ADMIN_TITLES[m.admin_rank-1]||'Admin'):(ROLE_L[m.role]||m.role));
 const CHURCH_L={pending:'Waiting',active:'Active',suspended:'Paused'};
+/* what a person can ask to be when they sign up (memberships.wants): nothing here gives a right, an admin decides */
+const WANTS=[['member','Church member','See my own results'],['pledge','Volunteer','Pledge to help at the expo'],
+ ['team_member','Team member','Help at the station I choose'],['team_leader','Team leader','Lead one station'],
+ ['assistant','Assistant Health Department Leader','Your church’s Leader approves this']];
+const boothNames=l=>(l||[]).map(k=>boothLabel(k)).join(', ');
+export const wantText=u=>{
+ const w=u&&u.wants,b=boothNames(u&&u.wants_booths);
+ return w==='assistant'?'Wants to be the Assistant Health Department Leader'
+  :w==='team_leader'?'Wants to lead '+(b||'a station'):w==='team_member'?'Wants to help at '+(b||'a station')
+  :w==='pledge'?'Wants to pledge'+(b?' · '+b:''):'';
+};
 const ACCT_MSG={church:'Choose your church to continue.',churchwait:'Your church is waiting for the Health Expo admin’s approval.',
  suspended:'Your church has been paused by the Health Expo admin.',pending:'Your church has not approved this account yet.',
  member:'Members see their own account. Visitor and volunteer data is for church staff.'};
@@ -120,16 +131,16 @@ export function acctGateHTML(st){
  if(st==='church')return `${title('Choose your church')}
   ${acctNote('Signed in as <b class="text-[#33504f]">'+esc(a.email||'')+'</b>. Join the church you belong to. Its admins approve you, and then you can see your own expo results here.')}
   ${churchPickHTML()}
-  <button data-action="cloudSignOut" class="btn btn-glass mt-4 w-full py-2.5 text-xs text-[#5b7178]">Sign out</button>${admin}`;
+  <button data-action="cloudSignOut" class="btn btn-glass mt-4 w-full py-2.5 text-xs text-[#5b7178]">Sign out</button>${admin}${profDeleteHTML()}`;
  if(st==='churchwait')return `${title('Waiting for your church to be approved')}
   ${acctNote('<b class="text-[#33504f]">'+esc(c.name)+'</b> is registered, with you as its Health Department Leader. The Health Expo admin still has to approve it before visitors and volunteers can be added. Press Check again once they have.')}
-  ${out}${admin}`;
+  ${out}${admin}${profDeleteHTML()}`;
  if(st==='suspended')return `${title(esc(c.name)+' is paused')}
   ${acctNote('The Health Expo admin has paused this church, so its expo data cannot be opened. Ask them about it, or leave the church to join another one.')}
-  ${out}${leave}${admin}`;
+  ${out}${leave}${admin}${profDeleteHTML()}`;
  if(st==='pending')return `${title('Waiting for approval')}
   ${acctNote('Your email <b class="text-[#33504f]">'+esc(a.email||'')+'</b> is confirmed. <b class="text-[#33504f]">'+esc(c.name)+'</b> still has to approve you as a member. Give the Health Department Leader or their Assistant the email above, then press Check again.')}
-  ${out}${meFormHTML('gm')}${leave}${admin}`;
+  ${out}${meFormHTML('gm')}${leave}${admin}${profDeleteHTML()}`;
  return `${title('My account')}
   ${acctNote(esc(m.full_name||a.email||'')+' · '+roleLabel(m)+' of <b class="text-[#33504f]">'+esc(c.name)+'</b>')}
   ${healthHTML()}${notifBoxHTML()}${pledgeHTML()}${myTeamHTML()}${meFormHTML('gm')}<div class="pf">${profPasswordBox()}</div>
@@ -137,7 +148,8 @@ export function acctGateHTML(st){
 }
 function churchPickHTML(){
  const link=(fn,t)=>`<div class="mt-3 text-center"><button type="button" data-action="${fn}" class="text-[11px] font-extrabold text-brand-700">${t}</button></div>`;
- if(cloud.regChurch)return `<form data-action="registerChurch" class="mt-4 space-y-3">
+ if(cloud.regChurch)return `${dirBoxHTML('Already registered — is yours here? Join it instead of registering it again.','max-h-[26vh]')}
+  <form data-action="registerChurch" class="mt-4 space-y-3">
    <label class="block"><span class="microlabel">Church or organisation name</span><input id="rcName" required maxlength="120" placeholder="e.g. Grace Chapel" class="field mt-1"></label>
    <label class="block"><span class="microlabel">Town or city</span><input id="rcCity" maxlength="80" placeholder="e.g. Durban" class="field mt-1"></label>
    <label class="block"><span class="microlabel">Church phone</span><input id="rcPhone" type="tel" inputmode="tel" maxlength="40" class="field mt-1"></label>
@@ -145,19 +157,54 @@ function churchPickHTML(){
    <p class="text-[10px] leading-relaxed text-[#8a9aa0]">You become the church’s Health Department Leader. One Assistant can be added later — a church has two admin posts. The Health Expo admin approves the church before any visitor data can be added.</p>
    <button id="rcGo" class="btn btn-primary w-full py-3 text-sm">Register the church</button></form>
   ${link('reg-church-list','Back to the list of churches')}`;
- return `<label class="mt-4 block"><span class="microlabel">Find your church</span>
-   <input id="dirQ" data-on-input="church-search" placeholder="Church name or town" class="field mt-1"></label>
-  <div id="churchDir" class="mt-2 max-h-[52vh] overflow-y-auto no-scrollbar">${dirHTML()}</div>
+ return `${wantsPickHTML()}${dirBoxHTML('Then find your church','max-h-[52vh]')}
   ${link('reg-church-form','My church is not listed — register it')}`;
+}
+/* "What would you like to be?" comes first at sign-up; the station chips appear for the positions that need one */
+function wantsPickHTML(){
+ const w=cloud.wants||'member',one=w==='team_leader',needs=w==='team_leader'||w==='team_member'||w==='pledge';
+ const btn=(k,t,d)=>`<button type="button" data-action="want-pick" data-args="${k}" aria-pressed="${w===k}" class="btn ${w===k?'btn-primary':'btn-glass'} w-full px-3 py-2 text-left text-xs"><b>${esc(t)}</b><span class="block text-[10px] font-semibold opacity-80">${esc(d)}</span></button>`;
+ return `<div class="mt-4"><div class="microlabel">What would you like to be?</div>
+  <div class="mt-1.5 space-y-1.5">${WANTS.map(x=>btn(x[0],x[1],x[2])).join('')}
+   <button type="button" data-action="reg-church-form" class="btn btn-glass w-full px-3 py-2 text-left text-xs"><b>Health Department Leader</b><span class="block text-[10px] font-semibold opacity-80">Register my church — I lead it</span></button></div>
+  ${needs?`<div class="mt-2"><span class="microlabel">${one?'Which station would you lead?':w==='pledge'?'A station you would like (optional, up to 2)':'Which station(s)? Up to 2'}</span>
+   <div class="mt-1.5 flex flex-wrap gap-1.5">${BOOTHS.map(b=>`<button type="button" data-action="want-booth" data-args="${esc(b.k)}" aria-pressed="${(cloud.wantsBooths||[]).includes(b.k)}" class="availpill hue-${b.hue} ${(cloud.wantsBooths||[]).includes(b.k)?'availpill-on':''}">${esc(b.label)}</button>`).join('')}</div></div>`:''}
+  ${w==='assistant'||w==='team_leader'?acctNote('Nobody gives themselves this: your church’s Health Department Leader or admin approves it first. Until then you are a plain member.'):''}</div>`;
+}
+/* the gate only redraws when its fingerprint changes, so a choice made on it clears the fingerprint; the search box keeps its text */
+function redrawGate(){
+ const q=($('#dirQ')||{}).value||'';
+ cloud.gateKey='';renderGate();
+ const el=$('#dirQ');if(el&&q)el.value=q;
+}
+export function pickWant(k){
+ if(!WANTS.some(x=>x[0]===k))return;
+ cloud.wants=k;
+ const keep=(cloud.wantsBooths||[]).slice(0,k==='team_leader'?1:2);
+ cloud.wantsBooths=(k==='team_leader'||k==='team_member'||k==='pledge')?keep:[];
+ redrawGate();
+}
+export function pickWantBooth(k){
+ const l=(cloud.wantsBooths||[]).slice(),i=l.indexOf(k),max=cloud.wants==='team_leader'?1:2;
+ if(i>=0)l.splice(i,1);else{l.push(k);while(l.length>max)l.shift();}
+ cloud.wantsBooths=l;redrawGate();
+}
+/* the searchable list of registered churches, shown both when choosing a church and when registering a new one */
+function dirBoxHTML(label,maxH){
+ return `<label class="mt-4 block"><span class="microlabel">${label}</span>
+   <input id="dirQ" data-on-input="church-search" placeholder="Church name or town" class="field mt-1"></label>
+  <div id="churchDir" class="mt-2 ${maxH} overflow-y-auto no-scrollbar">${dirHTML()}</div>`;
 }
 function dirHTML(){
  const l=cloud.dir;
  if(!l)return '<p class="text-[11.5px] text-[#4f6870]">Loading…</p>';
- if(!l.length)return '<p class="text-[11.5px] text-[#4f6870]">No church matches. Check the spelling, or register your church.</p>';
+ if(!l.length)return `<p class="text-[11.5px] text-[#4f6870]">${cloud.regChurch?'No church matches yet.':'No church matches. Check the spelling, or register your church.'}</p>`;
+ /* a church still waiting for the platform admin can be seen but not joined; a list from an older database has no status */
  return l.map(c=>`<div class="flex items-center gap-2 border-t border-[#123033]/[.07] py-2">
    <div class="min-w-0 flex-1"><div class="truncate text-[13px] font-bold text-[#123033]">${esc(c.name)}</div>
     <div class="truncate text-[11px] text-[#4f6870]">${esc(c.city||'')}</div></div>
-   <button class="btn btn-primary flex-none px-4 text-xs" data-action="join-church" data-args="${qSafe(c.id)}">Join</button></div>`).join('');
+   ${c.status==='pending'?`<span class="${chipClass('watch')} flex-none">Waiting for approval</span>`
+    :`<button class="btn btn-primary flex-none px-4 text-xs" data-action="join-church" data-args="${qSafe(c.id)}">Join</button>`}</div>`).join('');
 }
 let _dirT=null;
 export function churchSearchSoon(q){clearTimeout(_dirT);_dirT=setTimeout(()=>churchSearch(q),250);}
@@ -167,9 +214,15 @@ export async function churchSearch(q){
  const el=$('#churchDir');if(el)el.innerHTML=dirHTML();
 }
 export async function joinChurch(id,btn){
+ const w=cloud.wants||'member',b=(cloud.wantsBooths||[]).slice();
+ if(w==='team_leader'&&b.length!==1){toast('Choose the one station you would lead');return;}
+ if(w==='team_member'&&!b.length){toast('Choose the station you would like to help at');return;}
  if(btn){btn.disabled=true;btn.textContent='…';}
- const r=await acctRpc('join_church',{p_church:id},'Request sent — the church will approve you');
+ /* a plain member sends the old short call, which works with any version of the database */
+ const args=w==='member'?{p_church:id}:{p_church:id,p_wants:w,p_booths:b};
+ const r=await acctRpc('join_church',args,'Request sent — the church will approve you');
  if(!r){if(btn){btn.disabled=false;btn.textContent='Join';}return;}
+ cloud.wants='member';cloud.wantsBooths=[];
  cloud.dir=null;await cloudSync(true);
 }
 export async function registerChurch(e){
@@ -309,7 +362,7 @@ function myDraftInit(){
   const p=cloud.pledge,mm=(cloud.acct&&cloud.acct.membership)||{};
   d.name=p?p.name:(mm.full_name||'');d.phone=p?p.phone:(mm.phone||'');d.email=p?p.email:'';
   d.pledgeExpos=p?(p.pledge_expos||1):1;
-  d.skills=p?[...(p.skills||[])]:[];d.pref=p?[...(p.pref||[])]:[];d.avail=p?[...(p.availability||[])]:[];
+  d.skills=p?[...(p.skills||[])]:[];d.pref=p?[...(p.pref||[])]:(Array.isArray(mm.wants_booths)?mm.wants_booths.slice(0,2):[]);d.avail=p?[...(p.availability||[])]:[];
   d.pref2=p?(p.pref2||''):'';d.shirt=p?(p.shirt||''):'';d.emergency=p?(p.emergency||''):'';d.notes=p?(p.notes||''):'';
   d._init=true;
  }
@@ -447,7 +500,7 @@ export function myTeamHTML(){
  const L=cloud.myTeam||[],placed=L.filter(x=>x.booth),wait=L.filter(x=>!x.booth);
  const row=x=>`<div class="border-t border-[#123033]/[.07] py-2">
    <div class="flex items-center gap-2"><div class="min-w-0 flex-1">
-    <div class="truncate text-[12.5px] font-bold text-[#123033]">${esc(x.name)}${x.lead?' <span class="text-[#bf9a40]">★</span>':''}</div>
+    <div class="truncate text-[13px] font-bold text-[#123033]">${esc(x.name)}${x.lead?' <span class="text-[#bf9a40]">★</span>':''}</div>
     <div class="truncate text-[10.5px] text-[#4f6870]">${esc(x.phone||'')}${x.phone&&x.pref&&x.pref.length?' · asked for '+esc(x.pref.map(boothLabel).join(', ')):''}</div></div>
     <span class="servechip ${STATUS_UI[x.status]?STATUS_UI[x.status].cls:'sc-off'}">${esc(STATUS_UI[x.status]?STATUS_UI[x.status].label:x.status)}</span></div>
    ${x.booth?`<div class="mt-1.5 flex items-center gap-2">
@@ -548,7 +601,7 @@ export function renderNotifs(){
   ${L.length?L.map(x=>`<button data-action="notif-open" data-args="${qSafe(String(x.id))}" class="mt-2 w-full rounded-[16px] border border-[#123033]/[.07] bg-white/60 p-3 text-left ${x.read_at?'opacity-70':''}">
     <div class="flex items-center justify-between gap-2"><span class="microlabel">${esc(KIND_L[x.kind]||x.kind||'Notification')}</span>
      <span class="mono flex-none text-[9px] text-[#8a9aa0]">${esc(String(x.created_at||'').slice(0,16).replace('T',' '))}${x.read_at?'':' · new'}</span></div>
-    <div class="mt-0.5 text-[12.5px] font-bold text-[#123033]">${esc(x.title)}</div>
+    <div class="mt-0.5 text-[13px] font-bold text-[#123033]">${esc(x.title)}</div>
     ${x.body?`<div class="mt-0.5 text-[11px] leading-snug text-[#4f6870]">${esc(x.body)}</div>`:''}</button>`).join('')
    :acctNote('Nothing yet. You will hear about your placement, your team and your membership here.')}`;
 }
@@ -579,7 +632,7 @@ export function acctTabs(){
 }
 export function openAcct(tab){
  cloud.acctTab=tab||'me';
- if(cloud.acctTab==='admin'){cloud.plat=null;cloud.audit=null;}
+ if(cloud.acctTab==='admin'){cloud.plat=null;cloud.audit=null;cloud.pAdmins=null;}
  if(cloud.acctTab==='church'){cloud.members=null;cloud.adminPlans=null;cloud.planEdit=null;cloud.adminFollowups=null;cloud.inviteLink=null;}
  if(cloud.acctTab==='me')cloud.myFollow=null;
  showModal('#acctSheet');renderAcct();
@@ -719,11 +772,11 @@ export async function profPassword(e){
 function profAccountBox(){
  return acctBox('Account',`<button data-action="cloudSignOut" class="btn btn-glass mt-2 w-full py-2.5 text-xs text-[#5b7178]">Sign out</button>${profDeleteHTML()}`);
 }
-/* Deleting is two steps: open the panel, then type DELETE. The database refuses a church's only admin and the only platform admin. */
+/* Deleting is two steps: open the panel, then type DELETE. The database refuses only the only platform admin. */
 function profDeleteHTML(){
  if(!cloud.delOpen)return `<button data-action="profDeleteAsk" class="mt-3 w-full text-center text-[11px] font-bold text-rose-700">Delete my account…</button>`;
  return `<div class="mt-3 rounded-[14px] border border-rose-200/70 bg-rose-50/80 p-3">
-   <p class="text-[11px] font-bold leading-relaxed text-rose-700">This deletes your login and your details for good. Visitor and volunteer records stay with your church. It cannot be undone.</p>
+   <p class="text-[11px] font-bold leading-relaxed text-rose-700">This deletes your login and your details (name, phone, area, pledge and the position you asked for) for good. Visitor and volunteer records stay with your church. It cannot be undone.</p>
    <label class="mt-2 block"><span class="microlabel">Type DELETE to confirm</span>
     <input id="pfDelType" data-on-input="prof-delete-typed" autocomplete="off" autocapitalize="characters" class="field mt-1"></label>
    <p id="pfDelErr" role="alert" class="mt-2 text-[11px] font-bold text-rose-600"></p>
@@ -767,19 +820,19 @@ export function churchAdminHTML(){
  if(!cloud.members||cloud.members.cid!==cid)loadMembers(cid);
  const L=cloud.members&&cloud.members.cid===cid?cloud.members.list:null,waiting=L?L.filter(u=>u.status==='pending').length:0,
        admins=L?L.filter(u=>u.role==='admin'&&u.status==='approved').length:0;
- /* the two admin posts, oldest admin first: rank 1 = Health Department Leader, rank 2 = their Assistant */
+ /* the two admin posts are stored: rank 1 = Health Department Leader, rank 2 = their Assistant */
  const ranks={};
- (L||[]).filter(u=>u.role==='admin'&&u.status==='approved')
-  .slice().sort((a,b)=>a.created_at<b.created_at?-1:a.created_at>b.created_at?1:(a.user_id<b.user_id?-1:1))
-  .forEach((u,i)=>{ranks[u.user_id]=i+1;});
+ (L||[]).filter(u=>u.role==='admin'&&u.status==='approved').forEach(u=>{ranks[u.user_id]=u.admin_post==='leader'?1:2;});
+ /* the Leader and the platform admin give and take the admin posts; the Assistant runs the members */
+ const canPost=!!(a.platform_admin||(a.membership&&a.membership.role==='admin'&&a.membership.status==='approved'&&a.membership.admin_rank===1&&a.membership.church_id===cid));
  const F=followupsFor(cid);
  const selfAdmin=!viaAdmin&&a.membership&&a.membership.church_id===cid&&a.membership.role==='admin'&&a.membership.status==='approved';
  return `${viaAdmin?`<button data-action="back-to-churches" class="tap-link">← All churches</button>`:''}
   <div class="mt-1 text-[13px] font-bold text-[#123033]">${esc(c.name)}</div>
   ${acctBox('Members'+(waiting?` · ${waiting} waiting`:'')+(F?` · ${F.length} of ${FOLLOWUP_MAX} follow-up people`:''),
-   !L?acctNote('Loading…'):!L.length?acctNote('Nobody has joined yet.'):L.map(u=>memberRow(u,F,admins,ranks)).join('')
+   !L?acctNote('Loading…'):!L.length?acctNote('Nobody has joined yet.'):L.map(u=>memberRow(u,F,admins,ranks,canPost)).join('')
    +acctNote('Members see only their own details and results. Staff and church admins see this church’s visitors and volunteers, so only give those roles to people you know.')
-   +acctNote('Admins manage this church only: nobody here can open another church’s data. The two admin posts are the Health Department Leader and their Assistant.')
+   +acctNote('Admins manage this church only: nobody here can open another church’s data. The two admin posts are the Health Department Leader and their Assistant: the Leader (or the Expo admin) gives, swaps and takes them; the Assistant approves and removes members, pledges and team leaders.')
    +acctNote(`Follow-up people (up to ${FOLLOWUP_MAX}) are given visitors to contact after the expo, and see only those visitors.`))}
   ${selfAdmin?acctBox('My admin post',adminPostHTML(a.membership,ranks)):''}
   ${acctBox('Invite links',inviteBox(cid,c))}
@@ -787,22 +840,25 @@ export function churchAdminHTML(){
   ${acctBox('Church details',churchFormHTML(c))}`;
 }
 /* F = the user ids of the church's follow-up people (null while loading); admins = its count of approved admins;
-   ranks = user id → 1 for the Health Department Leader, 2 for their Assistant */
-export function memberRow(u,F,admins,ranks){
- const id=qSafe(u.user_id),fu=!!(F&&F.includes(u.user_id));
- /* the Admin choice is switched off while two approved admins hold the posts; the database refuses it anyway */
- const capFull=admins>=2&&!(u.role==='admin'&&u.status==='approved');
+   ranks = user id → 1 for the Health Department Leader, 2 for their Assistant; canPost = may this viewer give admin posts */
+export function memberRow(u,F,admins,ranks,canPost){
+ const id=qSafe(u.user_id),fu=!!(F&&F.includes(u.user_id)),isAdmin=u.role==='admin'&&u.status==='approved',want=wantText(u);
+ const post=isAdmin?((ranks&&ranks[u.user_id])===1?'leader':'assistant'):'none';
+ const asst=u.status==='pending'&&u.confirmed&&u.wants==='assistant'&&canPost;
  return `<div class="border-t border-[#123033]/[.07] py-2.5">
   <div class="flex items-center gap-2"><div class="min-w-0 flex-1"><div class="truncate text-[13px] font-bold text-[#123033]">${esc(u.full_name||'(no name given)')}</div>
    ${ranks&&ranks[u.user_id]?`<div class="text-[10px] font-bold text-[#33504f]">${esc(ADMIN_TITLES[ranks[u.user_id]-1])}</div>`:''}
+   ${want?`<div class="text-[10px] font-bold text-brand-700">${esc(want)}</div>`:''}
    <div class="truncate text-[11px] text-[#4f6870]">${esc(u.email||'')}${u.phone?' · '+esc(u.phone):''}${u.area?' · '+esc(u.area):''}${u.confirmed?'':' · has not confirmed the email yet'}</div></div>
-   ${u.status==='pending'&&u.confirmed?`<button class="btn btn-primary flex-none px-4 text-xs" data-action="member-approve" data-user="${id}" data-role="${qSafe(u.role)}">Approve</button>`:''}</div>
+   ${u.status==='pending'&&u.confirmed?`<button class="btn btn-primary flex-none px-4 text-xs" data-action="${asst?'member-approve-assistant':'member-approve'}" data-user="${id}" data-role="${qSafe(u.role)}">${asst?'Approve as Assistant':'Approve'}</button>`:''}</div>
+  ${u.status==='pending'&&u.wants==='assistant'&&!canPost?acctNote('Only the Health Department Leader or the Expo admin can make someone the Assistant. Approve them as a member now, and they can appoint them.'):''}
   <div class="mt-1.5 flex flex-wrap items-center gap-2">
-   <select data-on-change="member-role" data-user="${id}" data-status="${qSafe(u.status)}" aria-label="Role" class="field py-1.5 text-xs" style="width:auto">${['member','staff','admin'].map(r=>`<option value="${r}" ${r===u.role?'selected':''} ${r==='admin'&&capFull?'disabled':''}>${ROLE_L[r]}</option>`).join('')}</select>
+   ${isAdmin?'':`<select data-on-change="member-role" data-user="${id}" data-status="${qSafe(u.status)}" aria-label="Role" class="field py-1.5 text-xs" style="width:auto">${['member','staff'].map(r=>`<option value="${r}" ${r===u.role?'selected':''}>${ROLE_L[r]}</option>`).join('')}</select>`}
+   ${canPost&&u.status==='approved'?`<select data-on-change="member-post" data-user="${id}" aria-label="Admin post" class="field py-1.5 text-xs" style="width:auto">${[['none','No admin post'],['leader',ADMIN_TITLES[0]],['assistant','Assistant']].map(o=>`<option value="${o[0]}" ${o[0]===post?'selected':''}>${o[1]}</option>`).join('')}</select>`:''}
    <button class="tap-link" data-action="member-link" data-user="${id}" data-cur="${qSafe(u.attendee_id||'')}">${u.attendee_id?'Badge '+esc(u.attendee_id):'Link badge'}</button>
    <button class="tap-link" data-action="member-vol-link" data-user="${id}" data-cur="${qSafe(u.volunteer_id||'')}">${u.volunteer_id?'Vol '+esc(u.volunteer_id):'Link volunteer'}</button>
    ${F&&u.status==='approved'?`<button class="tap-link" aria-pressed="${fu}" data-action="followup-toggle" data-user="${id}" data-on="${fu?0:1}">${fu?'✓ Follow-up person':'Make follow-up person'}</button>`:''}
-   <button class="tap-link text-rose-700" data-action="removeMember" data-args="${id}">Remove</button></div></div>`;
+   ${isAdmin&&!canPost?'':`<button class="tap-link text-rose-700" data-action="removeMember" data-args="${id}">Remove</button>`}</div></div>`;
 }
 async function loadMembers(cid){
  if(!cid||cloud.membersBusy===cid)return;
@@ -818,6 +874,30 @@ export async function setMember(uid,role,status){
  await reloadMembers();                                            /* also puts a refused role back in the list */
  if(r&&cloud.acct&&uid===cloud.acct.user_id)await cloudSync(true);  /* changed my own role */
 }
+/* the Leader's (or the Expo admin's) choice of who holds which admin post; a held post is replaced, and a person
+   who holds the other post swaps with its holder — the database does it, the screen only asks first */
+export async function setAdminPost(uid,post){
+ const L=(cloud.members&&cloud.members.list)||[],u=L.find(x=>x.user_id===uid)||{},name=u.full_name||u.email||'this person';
+ const holder=post==='none'?null:L.find(x=>x.user_id!==uid&&x.role==='admin'&&x.status==='approved'&&x.admin_post===post);
+ const mine=u.role==='admin'&&u.status==='approved'?u.admin_post:'';
+ const t=post==='leader'?ADMIN_TITLES[0]:ADMIN_TITLES[1];
+ if(post==='none'){
+  if(!await confirmAsk({title:`Take ${name}’s admin post away?`,body:'They stay on as staff and keep seeing the church’s expo data, but they can no longer approve or remove members.',label:'Take it away',danger:true})){await reloadMembers();return;}
+ }else if(holder&&!mine){
+  if(!await confirmAsk({title:`Make ${name} the ${t}?`,body:`${holder.full_name||holder.email} holds that post now. They stay on as staff.`,label:'Replace',danger:true})){await reloadMembers();return;}
+ }else if(holder&&mine){
+  if(!await confirmAsk({title:'Swap the two admin posts?',body:`${name} becomes the ${t} and ${holder.full_name||holder.email} takes ${name}’s post.`,label:'Swap'})){await reloadMembers();return;}
+ }
+ const r=await acctRpc('set_admin_post',{p_user:uid,p_post:post},'Saved ✓');
+ await reloadMembers();                                           /* also puts a refused post back in the list */
+ if(r&&cloud.acct)await acctReload();
+}
+/* approve someone who asked to be the Assistant: approve them as a member, then give the post (asking first if it is held) */
+export async function approveAssistant(uid){
+ if(!await acctRpc('set_member',{p_user:uid,p_role:'member',p_status:'approved'}))return;
+ await reloadMembers();
+ await setAdminPost(uid,'assistant');
+}
 export async function linkMember(uid,cur){
  const v=prompt('Badge number of this member’s expo record, e.g. EXPO-042. Leave it empty to unlink.',cur||'');
  if(v===null)return;
@@ -830,7 +910,7 @@ export async function removeMember(uid){
  if(!yes)return;
  if(await acctRpc('remove_member',{p_user:uid},'Removed'))await reloadMembers();
 }
-/* an admin's own post: step down with one action, or (as the only admin) the promote-an-Assistant-first path */
+/* an admin's own post: step down with one action. A church may have no admin; the Expo admin appoints one. */
 export function adminPostHTML(m,ranks){
  const me=cloud.acct&&cloud.acct.user_id;   /* the membership object carries no user id; the account does */
  /* until the church's member list arrives, nobody can tell whether a co-admin exists */
@@ -838,14 +918,15 @@ export function adminPostHTML(m,ranks){
  const others=cloud.members.list.filter(u=>u.role==='admin'&&u.status==='approved'&&u.user_id!==me).length;
  const title=(ranks&&ranks[me])?esc(ADMIN_TITLES[ranks[me]-1]):esc(roleLabel(m)||'Admin');
  return `<div class="text-[12px] font-bold text-[#123033]">${title}</div>
-  ${others?`<button data-action="stepDown" class="btn btn-glass mt-2 w-full py-2.5 text-xs text-rose-700">Step down — become a member</button>
-   ${acctNote('You keep your account and your own screening results; the other admin stays in charge.')}
-   ${acctNote('When the Health Department Leader steps down, their Assistant automatically becomes the Health Department Leader.')}`
-   :acctNote('You are this church’s only admin. To step down, first choose Admin in the role picker of a member below — then step down, and they lead the church.')}`;
+  <button data-action="stepDown" class="btn btn-glass mt-2 w-full py-2.5 text-xs text-rose-700">Step down — become a member</button>
+  ${acctNote('You keep your account and your own screening results.')}
+  ${others?acctNote('When the Health Department Leader steps down, their Assistant automatically becomes the Health Department Leader.')
+   :acctNote('You are this church’s only admin: if you step down it has no admin until the Expo admin appoints one.')}`;
 }
 export async function stepDown(){
+ const sole=!((cloud.members&&cloud.members.list)||[]).some(u=>u.role==='admin'&&u.status==='approved'&&cloud.acct&&u.user_id!==cloud.acct.user_id);
  const yes=await confirmAsk({title:'Step down as admin?',
-  body:'You become a plain member: this church’s visitors, volunteers and queue are hidden from you. Your account and your own results stay.',
+  body:'You become a plain member: this church’s visitors, volunteers and queue are hidden from you. Your account and your own results stay.'+(sole?' The church will have no admin until the Expo admin appoints one.':''),
   label:'Step down',danger:true});
  if(!yes)return;
  const uid=cloud.acct&&cloud.acct.user_id;
@@ -882,8 +963,38 @@ export function platformHTML(){
  if(cloud.audit===null)loadAudit();
  return `<div class="grid grid-cols-3 gap-2">${tile('Churches',L.length)}${tile('Waiting',n('pending'))}${tile('Members',sum('members'))}</div>
   ${acctBox('Churches',!L.length?acctNote('No church has registered yet.'):L.map(churchRow).join(''))}
+  ${platformAdminsHTML()}
   ${acctBox('Recent changes',!cloud.audit?acctNote('Loading…'):!cloud.audit.length?acctNote('Nothing changed yet.')
-   :cloud.audit.map(x=>`<div class="leading-snug border-t border-[#123033]/[.07] py-1.5 text-[11px] text-[#33504f]">${esc(String(x.at||'').slice(0,16).replace('T',' '))} · ${esc(x.church||'—')} · ${esc(x.actor||'?')} · ${esc(String(x.op||'').toLowerCase())} ${x.tbl==='attendees'?'visitor':'volunteer'} ${esc(x.row_id||'')}</div>`).join(''))}`;
+   :cloud.audit.map(x=>`<div class="leading-snug border-t border-[#123033]/[.07] py-1.5 text-[11px] text-[#33504f]">${esc(String(x.at||'').slice(0,16).replace('T',' '))} · ${esc(x.church||'—')} · ${esc(x.actor||'?')} · ${esc(String(x.op||'').toLowerCase())} ${x.tbl==='platform_admins'?'platform admin':x.tbl==='attendees'?'visitor':'volunteer'} ${esc(x.row_id||'')}</div>`).join(''))}`;
+}
+/* the platform admins: who they are, and add one by email. The first is made once in the SQL editor; removing one is not in the app yet. */
+function platformAdminsHTML(){
+ if(cloud.pAdmins===null){loadPlatformAdmins();return acctBox('Platform admins',acctNote('Loading…'));}
+ const L=cloud.pAdmins,me=cloud.acct&&cloud.acct.user_id;
+ return acctBox('Platform admins',`${acctNote('Platform admins approve churches and can open every church. Add someone who already has an account in this app with a confirmed email.')}
+  ${L.map(p=>`<div class="flex items-center gap-2 border-t border-[#123033]/[.07] py-2">
+    <div class="min-w-0 flex-1 truncate text-[13px] font-bold text-[#123033]">${esc(p.email||'')}${p.user_id===me?' <span class="font-semibold text-[#667d83]">(you)</span>':''}</div>
+    </div>`).join('')}
+  <form data-action="padmin-add" class="mt-2 flex gap-2">
+   <input id="paEmail" type="email" inputmode="email" autocomplete="off" required maxlength="254" placeholder="their email address" aria-label="Email of the new platform admin" class="field min-w-0 flex-1">
+   <button id="paGo" class="btn btn-primary flex-none px-4 py-2 text-xs">Add</button></form>`);
+}
+async function loadPlatformAdmins(){
+ if(cloud.pAdminsBusy)return;
+ cloud.pAdminsBusy=true;
+ const r=await acctRpc('admin_platform_admins');
+ cloud.pAdminsBusy=false;
+ cloud.pAdmins=r&&Array.isArray(r.data)?r.data:[];
+ renderAcct();
+}
+export async function addPlatformAdmin(e){
+ e.preventDefault();
+ const em=(($('#paEmail')||{}).value||'').trim();
+ if(!validEmail(em)){toast('Enter their email address.');return;}
+ const b=$('#paGo');if(b){b.disabled=true;b.textContent='…';}
+ const r=await acctRpc('admin_add_platform_admin',{p_email:em},em+' is now a platform admin ✓');
+ if(!r){if(b){b.disabled=false;b.textContent='Add';}return;}
+ cloud.pAdmins=null;cloud.audit=null;renderAcct();
 }
 function churchRow(c){
  const id=qSafe(c.id);
@@ -909,14 +1020,14 @@ export function adminDataHTML(){
   ${!d?acctNote('Loading…'):d.error?acctNote('Could not load this church’s data. Check your connection and try again.')
    :`${acctBox('Visitors'+(d.visitor_count?` · ${d.visitor_count}`:''),d.visitors.length?d.visitors.map(a=>`
    <div class="border-t border-[#123033]/[.07] py-2">
-    <div class="flex items-center gap-2"><div class="min-w-0 flex-1"><div class="truncate text-[12.5px] font-bold text-[#123033]">${esc(a.name)}</div>
+    <div class="flex items-center gap-2"><div class="min-w-0 flex-1"><div class="truncate text-[13px] font-bold text-[#123033]">${esc(a.name)}</div>
      <div class="truncate text-[11px] text-[#4f6870]">${esc(a.id)}${a.phone?' · '+esc(a.phone):''}${a.email?' · '+esc(a.email):''}</div></div>
      <span class="${chipClass(a.done?'ok':'watch')}">${a.done?'Done':'In progress'}</span></div>
     <div class="text-[10px] text-[#8a9aa0]">visited ${when(a.created_at)}${a.updated_at&&a.updated_at!==a.created_at?' · updated '+when(a.updated_at):''}</div></div>`).join('')
     :acctNote('No visitors yet.'))}
    ${acctBox('Volunteers'+(d.volunteer_count?` · ${d.volunteer_count}`:''),d.volunteers.length?d.volunteers.map(v=>`
    <div class="border-t border-[#123033]/[.07] py-2">
-    <div class="flex items-center gap-2"><div class="min-w-0 flex-1"><div class="truncate text-[12.5px] font-bold text-[#123033]">${esc(v.name)}</div>
+    <div class="flex items-center gap-2"><div class="min-w-0 flex-1"><div class="truncate text-[13px] font-bold text-[#123033]">${esc(v.name)}</div>
      <div class="truncate text-[11px] text-[#4f6870]">${esc(v.id)}${v.phone?' · '+esc(v.phone):''}${v.email?' · '+esc(v.email):''}</div></div>
      <span class="${chipClass(v.status==='checkedin'?'ok':'watch')}">${esc(v.status||'')}</span></div>
     <div class="text-[10px] text-[#8a9aa0]">joined ${when(v.created_at)}</div></div>`).join('')
@@ -1028,7 +1139,7 @@ export async function cloudSignOut(force){
  cloud.signingOut=true;
  try{await cloud.client.auth.signOut({scope:'local'});}catch(e){}
  cloud.signingOut=false;cloud.ready=false;cloud.demo=false;cloud.gateHide=false;cloud.gateKey='';cloud.isAdmin=undefined;cloud.pendingUsers=null;
- cloud.acct=null;cloud.churchId='';cloud.health=undefined;cloud.dir=null;cloud.regChurch=false;cloud.members=null;cloud.plat=null;cloud.audit=null;cloud.adminChurch='';cloud.adminData='';cloud.adminRows=null;closeAcct();
+ cloud.acct=null;cloud.churchId='';cloud.health=undefined;cloud.dir=null;cloud.regChurch=false;cloud.members=null;cloud.plat=null;cloud.audit=null;cloud.pAdmins=null;cloud.adminChurch='';cloud.adminData='';cloud.adminRows=null;closeAcct();
  cloud.view='login';cloud.viewEmail='';cloud.pending=false;cloud.recovery=false;cloud.formErr='';cloud.gateForce=false;cloud.delOpen=false;
  cloud.plans=null;cloud.adminPlans=null;cloud.planEdit=null;try{localStorage.removeItem(CHURCH_PLANS_KEY);}catch(e){}
  cloud.followups=null;cloud.adminFollowups=null;cloud.myFollow=null;cloud.inviteLink=null;clearInvite();   /* a stale invite link must not join the next account on this desk */

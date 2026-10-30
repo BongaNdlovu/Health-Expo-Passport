@@ -453,11 +453,70 @@ alter table public.memberships add column if not exists followup boolean not nul
 alter table public.memberships add column if not exists volunteer_id text check (volunteer_id ~ '^VOL-[0-9]+$');
 create unique index if not exists memberships_volunteer_idx on public.memberships (church_id, volunteer_id)
   where volunteer_id is not null;                       -- one volunteer record belongs to one member
+-- the church's two admin posts, explicit so either one can be given, taken away or swapped: 'leader' is the Health
+-- Department Leader and 'assistant' their Assistant. Only an approved admin holds one (the trigger below keeps it so).
+alter table public.memberships add column if not exists admin_post text check (admin_post in ('leader', 'assistant'));
+-- what the person asked to be when they joined; an admin sees it beside the Approve button
+alter table public.memberships add column if not exists wants text not null default 'member'
+  check (wants in ('member', 'assistant', 'team_leader', 'team_member', 'pledge'));
+alter table public.memberships add column if not exists wants_booths text[] not null default '{}'
+  check (cardinality(wants_booths) <= 2);
+-- databases from before the posts were stored: the oldest approved admin of a church is its Leader, the next its
+-- Assistant (what the screens always showed)
+update public.memberships m set admin_post = case r.rn when 1 then 'leader' else 'assistant' end
+from (select user_id, row_number() over (partition by church_id order by created_at, user_id) rn
+      from public.memberships where role = 'admin' and status = 'approved') r
+where m.user_id = r.user_id and m.admin_post is null and r.rn <= 2;
+create unique index if not exists memberships_admin_post_idx on public.memberships (church_id, admin_post) where admin_post is not null;
 create index if not exists memberships_church_idx on public.memberships (church_id, status);
 create unique index if not exists memberships_attendee_idx on public.memberships (church_id, attendee_id) where attendee_id is not null;
 drop trigger if exists memberships_touch on public.memberships;
 create trigger memberships_touch before update on public.memberships
   for each row execute function public.touch_updated_at();
+
+-- An approved admin always holds exactly one post (the Leader's if it is free, otherwise the Assistant's); anyone else
+-- holds none. set_admin_post switches this off for the moment of a swap ('newstart.post_swap').
+create or replace function public.memberships_admin_post()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new.role = 'admin' and new.status = 'approved' then
+    if new.admin_post is null and coalesce(current_setting('newstart.post_swap', true), '') <> 'on' then
+      new.admin_post := case when exists (select 1 from public.memberships m where m.church_id = new.church_id
+                                          and m.admin_post = 'leader' and m.user_id <> new.user_id) then 'assistant' else 'leader' end;
+    end if;
+  else
+    new.admin_post := null;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists memberships_admin_post on public.memberships;
+create trigger memberships_admin_post before insert or update on public.memberships
+  for each row execute function public.memberships_admin_post();
+
+-- When the Leader's post falls vacant (stepped down, removed, account deleted) the Assistant becomes the Leader.
+create or replace function public.memberships_admin_succession()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if coalesce(current_setting('newstart.post_swap', true), '') = 'on' then return null; end if;
+  if old.admin_post = 'leader' and (tg_op = 'DELETE' or new.admin_post is distinct from 'leader') then
+    update public.memberships m set admin_post = 'leader'
+    where m.church_id = old.church_id and m.admin_post = 'assistant' and m.user_id <> old.user_id;
+  end if;
+  return null;
+end;
+$$;
+revoke all on function public.memberships_admin_succession() from public, anon, authenticated;
+drop trigger if exists memberships_admin_succession on public.memberships;
+create trigger memberships_admin_succession after update of admin_post, role, status or delete on public.memberships
+  for each row execute function public.memberships_admin_succession();
 alter table public.memberships enable row level security;
 revoke all on public.memberships from anon, authenticated;
 
@@ -517,6 +576,20 @@ as $$
   select public.is_platform_admin() or exists (select 1 from public.memberships m join public.churches c on c.id = m.church_id
     where m.user_id = (select auth.uid()) and m.church_id = p_church and m.status = 'approved' and m.role = 'admin'
       and c.status <> 'suspended');
+$$;
+
+-- may the caller give and take the admin posts of this church? its Health Department Leader (unless suspended), or the
+-- platform admin. The Assistant runs the members but cannot change who the admins are.
+create or replace function public.church_leader_of(p_church uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select public.is_platform_admin() or exists (select 1 from public.memberships m join public.churches c on c.id = m.church_id
+    where m.user_id = (select auth.uid()) and m.church_id = p_church and m.status = 'approved' and m.role = 'admin'
+      and m.admin_post = 'leader' and c.status <> 'suspended');
 $$;
 
 -- ---------------------------------------------------------------- one-time move of existing data into a church
@@ -711,19 +784,21 @@ as $$
                      'phone', m.phone, 'area', m.area, 'birth_date', m.birth_date, 'attendee_id', m.attendee_id, 'followup', m.followup,
                      'volunteer_id', m.volunteer_id,
                      'admin_rank', case when m.role = 'admin' and m.status = 'approved'
-                                   then (select count(*) + 1 from public.memberships o
-                                         where o.church_id = m.church_id and o.role = 'admin' and o.status = 'approved'
-                                           and (o.created_at, o.user_id) < (m.created_at, m.user_id))
-                                   else 0 end)
+                                   then case m.admin_post when 'leader' then 1 else 2 end
+                                   else 0 end,
+                     'wants', m.wants, 'wants_booths', to_jsonb(m.wants_booths))
                    from public.memberships m where m.user_id = u.id),
     'church', (select jsonb_build_object('id', c.id, 'name', c.name, 'city', c.city, 'phone', c.phone, 'email', c.email, 'status', c.status)
                from public.memberships m join public.churches c on c.id = m.church_id where m.user_id = u.id))
   from auth.users u where u.id = (select auth.uid());
 $$;
 
--- active churches a person can join (name and town only)
+-- the churches a person can find when they register: active ones (they can join) and ones still waiting for the
+-- platform admin (listed so nobody registers the same church twice; they cannot be joined yet). Name, town and
+-- status only. The status column came later, so the old shape is replaced outright.
+drop function if exists public.church_directory(text);
 create or replace function public.church_directory(p_search text default '')
-returns table (id uuid, name text, city text)
+returns table (id uuid, name text, city text, status text)
 language plpgsql
 stable
 security definer
@@ -736,20 +811,24 @@ begin
     raise exception 'sign in first' using errcode = '42501';
   end if;
   return query
-    select c.id, c.name, c.city from public.churches c
-    where c.status = 'active' and (v_q = '' or position(v_q in lower(c.name || ' ' || c.city)) > 0)
-    order by lower(c.name), c.id
+    select c.id, c.name, c.city, c.status from public.churches c
+    where c.status in ('active', 'pending') and (v_q = '' or position(v_q in lower(c.name || ' ' || c.city)) > 0)
+    order by (c.status = 'pending'), lower(c.name), c.id
     limit 50;
 end;
 $$;
 
-create or replace function public.join_church(p_church uuid, p_full_name text default '', p_phone text default '')
+-- the person says what they would like to be; an admin sees it when approving (see memberships.wants). Nothing here
+-- gives any right: the role stays 'member' until an admin approves and changes it.
+drop function if exists public.join_church(uuid, text, text);
+create or replace function public.join_church(p_church uuid, p_full_name text default '', p_phone text default '',
+                                              p_wants text default 'member', p_booths text[] default '{}')
 returns void
 language plpgsql
 security definer
 set search_path = ''
 as $$
-declare v_uid uuid := (select auth.uid());
+declare v_uid uuid := (select auth.uid()); v_wants text := coalesce(nullif(btrim(p_wants), ''), 'member'); v_booths text[];
 begin
   if v_uid is null then raise exception 'sign in first' using errcode = '42501'; end if;
   if exists (select 1 from public.memberships m where m.user_id = v_uid) then
@@ -758,9 +837,16 @@ begin
   if not exists (select 1 from public.churches c where c.id = p_church and c.status = 'active') then
     raise exception 'That church is not taking members at the moment.';
   end if;
-  insert into public.memberships (user_id, church_id, role, status, full_name, phone)
+  if v_wants not in ('member', 'assistant', 'team_leader', 'team_member', 'pledge') then raise exception 'Choose what you would like to be.'; end if;
+  v_booths := coalesce((select array_agg(t.b) from (select left(btrim(x), 40) b from unnest(coalesce(p_booths, '{}'::text[])) x
+                                                    where btrim(x) <> '' limit 2) t), '{}'::text[]);
+  if v_wants = 'team_leader' and cardinality(v_booths) <> 1 then raise exception 'Choose the one station you would lead.'; end if;
+  if v_wants = 'team_member' and cardinality(v_booths) = 0 then raise exception 'Choose the station you would like to help at.'; end if;
+  if v_wants not in ('team_leader', 'team_member', 'pledge') then v_booths := '{}'::text[]; end if;
+  insert into public.memberships (user_id, church_id, role, status, full_name, phone, wants, wants_booths)
   select v_uid, p_church, 'member', 'pending',
-         left(coalesce(nullif(btrim(p_full_name), ''), u.raw_user_meta_data ->> 'full_name', ''), 200), left(btrim(coalesce(p_phone, '')), 40)
+         left(coalesce(nullif(btrim(p_full_name), ''), u.raw_user_meta_data ->> 'full_name', ''), 200), left(btrim(coalesce(p_phone, '')), 40),
+         v_wants, v_booths
   from auth.users u where u.id = v_uid;
 end;
 $$;
@@ -814,17 +900,13 @@ declare v_m public.memberships;
 begin
   select * into v_m from public.memberships m where m.user_id = (select auth.uid());
   if not found then return; end if;
-  if v_m.role = 'admin' and v_m.status = 'approved' and not exists (select 1 from public.memberships o
-     where o.church_id = v_m.church_id and o.user_id <> v_m.user_id and o.role = 'admin' and o.status = 'approved') then
-    raise exception 'You are this church''s only admin. Make someone else an admin first.';
-  end if;
   delete from public.memberships m where m.user_id = v_m.user_id;
 end;
 $$;
 
 -- delete the caller's own login. Their membership, platform-admin and old staff rows go with it (on delete cascade);
--- the church's visitors, volunteers and queue stay with the church. Refused for a church's only admin and for the only
--- platform admin, so a church or the platform is never left with nobody in charge.
+-- the church's visitors, volunteers and queue stay with the church. A church may be left with no admin (the Expo admin
+-- appoints one); the only platform admin cannot delete themselves, so the platform is never left with nobody.
 create or replace function public.delete_my_account()
 returns void
 language plpgsql
@@ -837,11 +919,6 @@ begin
   if exists (select 1 from public.platform_admins p where p.user_id = v_uid)
      and not exists (select 1 from public.platform_admins p where p.user_id <> v_uid) then
     raise exception 'You are the only platform admin. Add another one in the database first.';
-  end if;
-  select * into v_m from public.memberships m where m.user_id = v_uid;
-  if found and v_m.role = 'admin' and v_m.status = 'approved' and not exists (select 1 from public.memberships o
-     where o.church_id = v_m.church_id and o.user_id <> v_m.user_id and o.role = 'admin' and o.status = 'approved') then
-    raise exception 'You are this church''s only admin. Make someone else an admin first.';
   end if;
   delete from auth.users u where u.id = v_uid;
 end;
@@ -883,7 +960,8 @@ $$;
 drop function if exists public.church_members(uuid);
 create or replace function public.church_members(p_church uuid)
 returns table (user_id uuid, email text, full_name text, phone text, area text, birth_date date, role text, status text,
-               attendee_id text, confirmed boolean, created_at timestamptz, volunteer_id text)
+               attendee_id text, confirmed boolean, created_at timestamptz, volunteer_id text,
+               admin_post text, wants text, wants_booths text[])
 language plpgsql
 stable
 security definer
@@ -894,7 +972,7 @@ begin
   if not public.church_admin_of(p_church) then raise exception 'church admins only' using errcode = '42501'; end if;
   return query
     select m.user_id, u.email::text, m.full_name, m.phone, m.area, m.birth_date, m.role, m.status, m.attendee_id,
-           u.email_confirmed_at is not null, m.created_at, m.volunteer_id
+           u.email_confirmed_at is not null, m.created_at, m.volunteer_id, m.admin_post, m.wants, m.wants_booths
     from public.memberships m join auth.users u on u.id = m.user_id
     where m.church_id = p_church
     order by (m.status = 'pending') desc, lower(m.full_name), m.created_at
@@ -902,37 +980,79 @@ begin
 end;
 $$;
 
--- change a member's role or approval. A church always keeps at least one approved admin, and fills only its two posts:
--- the Health Department Leader and their Assistant.
+-- change a member's role or approval. A church fills only its two admin posts (the Health Department Leader and their
+-- Assistant) and may have no admin at all. Giving or taking an admin post is for the Leader and the Expo admin (see
+-- set_admin_post for choosing which post); anyone may step down from their own.
 create or replace function public.set_member(p_user uuid, p_role text, p_status text)
 returns void
 language plpgsql
 security definer
 set search_path = ''
 as $$
-declare v_m public.memberships;
+declare v_m public.memberships; v_uid uuid := (select auth.uid()); v_was boolean; v_will boolean;
 begin
   select * into v_m from public.memberships m where m.user_id = p_user;
   if not found or not public.church_admin_of(v_m.church_id) then raise exception 'church admins only' using errcode = '42501'; end if;
-  -- hold the church row so two admins changing roles at the same moment cannot both pass the one/two-admin checks
+  -- hold the church row so two admins changing roles at the same moment cannot both pass the two-post check
   perform 1 from public.churches c where c.id = v_m.church_id for update;
   if p_role not in ('member', 'staff', 'admin') or p_status not in ('pending', 'approved') then raise exception 'Unknown role or status.'; end if;
   if p_status = 'approved' and not exists (select 1 from auth.users u where u.id = p_user and u.email_confirmed_at is not null) then
     raise exception 'This person has not confirmed their email yet.';
   end if;
-  if v_m.role = 'admin' and v_m.status = 'approved' and (p_role <> 'admin' or p_status <> 'approved')
-     and not exists (select 1 from public.memberships o where o.church_id = v_m.church_id and o.user_id <> p_user
-                     and o.role = 'admin' and o.status = 'approved') then
-    raise exception 'A church needs at least one admin. Make someone else an admin first.';
+  v_was := v_m.role = 'admin' and v_m.status = 'approved';
+  v_will := p_role = 'admin' and p_status = 'approved';
+  if v_was is distinct from v_will and p_user <> v_uid and not public.church_leader_of(v_m.church_id) then
+    raise exception 'Only the Health Department Leader or the Expo admin can change the admin posts.' using errcode = '42501';
   end if;
-  -- the church's two admin posts (Health Department Leader, then their Assistant) are both filled:
   -- a third promotion (or approval) is refused until one steps down
-  if p_role = 'admin' and p_status = 'approved' and not (v_m.role = 'admin' and v_m.status = 'approved')
+  if v_will and not v_was
      and (select count(*) from public.memberships o where o.church_id = v_m.church_id and o.user_id <> p_user
           and o.role = 'admin' and o.status = 'approved') >= 2 then
     raise exception 'A church has two admin posts: the Health Department Leader and their Assistant. Both are filled — one must step down first.';
   end if;
   update public.memberships m set role = p_role, status = p_status where m.user_id = p_user;
+end;
+$$;
+
+-- give someone the Leader's or the Assistant's post, swap the two, or take a post away ('none'). Only the church's Leader
+-- or the Expo admin may. The person must be an approved member with a confirmed email. Giving a post that is held
+-- replaces its holder, who stays on as staff — unless the person already holds the other post, then the two swap.
+create or replace function public.set_admin_post(p_user uuid, p_post text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_m public.memberships; v_other public.memberships; v_mine text;
+begin
+  select * into v_m from public.memberships m where m.user_id = p_user;
+  if not found or not public.church_leader_of(v_m.church_id) then
+    raise exception 'Only the Health Department Leader or the Expo admin can change the admin posts.' using errcode = '42501';
+  end if;
+  if p_post not in ('leader', 'assistant', 'none') then raise exception 'Unknown post.'; end if;
+  perform 1 from public.churches c where c.id = v_m.church_id for update;
+  if v_m.status <> 'approved' then raise exception 'Approve this person as a member first.'; end if;
+  if not exists (select 1 from auth.users u where u.id = p_user and u.email_confirmed_at is not null) then
+    raise exception 'This person has not confirmed their email yet.';
+  end if;
+  perform set_config('newstart.post_swap', 'on', true);          -- this function keeps the posts consistent itself
+  if p_post = 'none' then
+    update public.memberships m set role = case when m.role = 'admin' then 'staff' else m.role end, admin_post = null where m.user_id = p_user;
+    return;
+  end if;
+  v_mine := case when v_m.role = 'admin' then v_m.admin_post end;
+  if v_mine = p_post then return; end if;
+  select * into v_other from public.memberships m where m.church_id = v_m.church_id and m.admin_post = p_post and m.user_id <> p_user;
+  if v_other.user_id is not null and v_mine is not null then       -- swap
+    update public.memberships m set admin_post = null where m.user_id in (p_user, v_other.user_id);
+    update public.memberships m set admin_post = p_post where m.user_id = p_user;
+    update public.memberships m set admin_post = v_mine where m.user_id = v_other.user_id;
+  else
+    if v_other.user_id is not null then                            -- replace: the old holder stays on as staff
+      update public.memberships m set role = 'staff', admin_post = null where m.user_id = v_other.user_id;
+    end if;
+    update public.memberships m set role = 'admin', admin_post = p_post where m.user_id = p_user;
+  end if;
 end;
 $$;
 
@@ -970,11 +1090,10 @@ declare v_m public.memberships;
 begin
   select * into v_m from public.memberships m where m.user_id = p_user;
   if not found or not public.church_admin_of(v_m.church_id) then raise exception 'church admins only' using errcode = '42501'; end if;
-  -- hold the church row so a remove racing a promotion cannot drop a church's last admin
   perform 1 from public.churches c where c.id = v_m.church_id for update;
-  if v_m.role = 'admin' and v_m.status = 'approved' and not exists (select 1 from public.memberships o
-     where o.church_id = v_m.church_id and o.user_id <> p_user and o.role = 'admin' and o.status = 'approved') then
-    raise exception 'A church needs at least one admin. Make someone else an admin first.';
+  -- removing an admin is the Leader's or the Expo admin's to do (the Assistant removes everyone else)
+  if v_m.role = 'admin' and v_m.status = 'approved' and p_user <> (select auth.uid()) and not public.church_leader_of(v_m.church_id) then
+    raise exception 'Only the Health Department Leader or the Expo admin can remove an admin.' using errcode = '42501';
   end if;
   delete from public.memberships m where m.user_id = p_user;
 end;
@@ -1017,6 +1136,51 @@ begin
   if not found then raise exception 'No such church.'; end if;
 end;
 $$;
+
+-- The platform admins themselves: listed and added by email in the app (platform admin only), so that after the first
+-- one no SQL is needed. The first is still made by hand in the SQL editor, because nobody may promote themselves.
+-- Additions are written to audit_log (tbl 'platform_admins', row_id = the person's email).
+create or replace function public.admin_platform_admins()
+returns table (user_id uuid, email text, created_at timestamptz)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+begin
+  if not public.is_platform_admin() then raise exception 'platform admin only' using errcode = '42501'; end if;
+  return query
+    select p.user_id, u.email::text, p.created_at
+    from public.platform_admins p join auth.users u on u.id = p.user_id
+    order by p.created_at, p.user_id;
+end;
+$$;
+
+-- the person must already have an account with a confirmed email: that is what proves the address is theirs
+create or replace function public.admin_add_platform_admin(p_email text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_email text := lower(btrim(coalesce(p_email, ''))); v_user uuid; v_confirmed timestamptz;
+begin
+  if not public.is_platform_admin() then raise exception 'platform admin only' using errcode = '42501'; end if;
+  if v_email = '' then raise exception 'Enter their email address.'; end if;
+  perform pg_advisory_xact_lock(hashtext('platform_admins'));
+  select u.id, u.email_confirmed_at into v_user, v_confirmed from auth.users u where lower(u.email) = v_email;
+  if v_user is null then raise exception 'No account has that email. They must create an account in the app first.'; end if;
+  if v_confirmed is null then raise exception 'That account has not confirmed its email yet.'; end if;
+  if exists (select 1 from public.platform_admins p where p.user_id = v_user) then raise exception 'They are already a platform admin.'; end if;
+  insert into public.platform_admins (user_id) values (v_user);
+  insert into public.audit_log (tbl, op, row_id) values ('platform_admins', 'INSERT', v_email);
+end;
+$$;
+
+-- Removing a platform admin is deliberately not in the app yet: for now the owner is the only one. An earlier draft
+-- had a remove function; make sure no database still has it.
+drop function if exists public.admin_remove_platform_admin(uuid);
 
 -- the latest changes to visitors and volunteers in every church (who, where, what)
 create or replace function public.admin_audit(p_limit integer default 50)
@@ -2111,10 +2275,11 @@ declare f text;
 begin
   foreach f in array array['is_platform_admin()', 'staff_church()', 'is_staff()', 'is_admin()', 'church_admin_of(uuid)',
     'queue_call_next(text)', 'staff_pending()', 'staff_approve(uuid)', 'my_account()', 'church_directory(text)',
-    'join_church(uuid, text, text)', 'register_church(text, text, text, text)', 'update_my_details(text, text, text, date)',
+    'join_church(uuid, text, text, text, text[])', 'register_church(text, text, text, text)', 'update_my_details(text, text, text, date)',
     'leave_church()', 'delete_my_account()', 'my_health()', 'update_church(uuid, text, text, text, text)', 'church_members(uuid)',
     'set_member(uuid, text, text)', 'link_member(uuid, text)', 'remove_member(uuid)', 'admin_churches()',
     'admin_set_church_status(uuid, text)', 'admin_audit(integer)', 'admin_church_data(uuid)',
+    'admin_platform_admins()', 'admin_add_platform_admin(text)', 'church_leader_of(uuid)', 'set_admin_post(uuid, text)',
     'church_plans(uuid)', 'save_church_plan(uuid, uuid, text, text, jsonb, text)', 'delete_church_plan(uuid)',
     'church_followups(uuid)', 'set_followup(uuid, boolean)', 'my_followups()',
     'create_church_invite(uuid, text)', 'cancel_church_invites(uuid)', 'church_invite_info(text)', 'join_with_invite(text, text, text)'] loop

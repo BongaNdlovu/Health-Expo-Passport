@@ -975,7 +975,7 @@ function renderVolModal(){
  $('#volModalTitle').textContent=EXPO_UPCOMING.name;
  $('#volModalSub').textContent=`${hired} of ${need} helpers pledged`;
  $('#volBody').innerHTML=`
-  <div class="modal-in rounded-[20px] border border-white/90 bg-white/85 p-4 shadow-sm backdrop-blur">
+  <div class="modal-in rounded-[20px] border border-white/90 bg-white/85 p-4 shadow-sm">
    <div class="flex items-center justify-between border-b border-[#123033]/[.07] pb-2">
     <span class="text-sm font-bold text-[#8f5420]">🌿 ${esc(EXPO_UPCOMING.venue)}</span>
     <span class="mono rounded-md tint hue-peach px-2 py-0.5 text-[10px] font-bold">${esc(EXPO_UPCOMING.id)}</span>
@@ -1011,7 +1011,7 @@ function paperLines(a){
 /* the scorecard-and-plan preview both sending ways share (the message that goes out is waMessage(a)) */
 function waPreviewHTML(a){
  const ha=healthAge(a),{sys,dia}=simBP(a),proj=projection(a),P=planFor(a),pk=P.pk,p=P.p;
- return `<div class="modal-in rounded-[20px] rounded-tl-md border border-white/90 bg-white/85 p-4 shadow-sm backdrop-blur">
+ return `<div class="modal-in rounded-[20px] rounded-tl-md border border-white/90 bg-white/85 p-4 shadow-sm">
   <div class="flex items-center justify-between border-b border-[#123033]/[.07] pb-2">
    <span class="text-sm font-bold text-brand-800">🌿 Hi ${esc(firstName(a.name))}!</span>
    <span class="mono rounded-md tint px-2 py-0.5 text-[10px] font-bold">${esc(a.id)}</span>

@@ -28,6 +28,16 @@ Next.js files in the Supabase quickstart (`utils/supabase/*`, middleware) do not
    on conflict do nothing;
    ```
 
+   This is the only platform admin you ever make by hand: nobody may promote themselves. Once you are in, add more
+   in the app (logo → Admin → All churches → **Platform admins**, by email), and approve churches there too.
+   After changing `schema.sql`, run the whole file again in the SQL editor — it is safe to re-run — so the app's new
+   functions exist (the church list with its waiting churches, the Platform admins box, the admin posts and the
+   position a person asks for when they sign up). Removing a platform admin is not in the app yet; the SQL editor does it.
+
+   Church admin posts: each church has a Health Department Leader and an Assistant. The Leader and the platform admin
+   give, swap and take them (members list → admin post); the Assistant approves and removes members. A church may have
+   no admin; the platform admin appoints one.
+
    Then register your church in the app, or rename the one the upgrade made (see *Churches, members and the platform
    admin* below).
 
@@ -46,8 +56,8 @@ Settings the repo cannot prove on its own; tick each one off (security pass 2026
       upgrade; Security Advisor will keep warning until then. Checks new passwords against known breaches.
 - [ ] **SMTP is connected** (step 4) — sign-up and reset emails survive real volume.
 - [ ] **Site URL and Redirect URLs are exact** (step 3) — no wildcards.
-- [ ] **A platform admin exists** (step 5) and **2FA is on** for the Supabase, GitHub and Cloudflare/registrar accounts
-      that own this project.
+- [x] **A platform admin exists** (step 5) — `fanelesibonge50@gmail.com` added 2026-10-30. Still tick **2FA is on** for the
+      Supabase, GitHub and Cloudflare/registrar accounts that own this project.
 
 ## Retention: readings are kept 7 days, follow-up 2 years
 

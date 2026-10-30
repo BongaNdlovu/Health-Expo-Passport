@@ -337,7 +337,7 @@ export function renderGate(){
  }
  html=who+back+html;
  body.innerHTML=html;
- if(st==='church'&&!cloud.regChurch&&cloud.dir==null)churchSearch('');
+ if(st==='church'&&cloud.dir==null)churchSearch('');
  if(['form','signup','forgot'].includes(st))setTimeout(()=>{const e=$(st==='signup'?'#gateName':'#gateEmail');if(e&&e.focus)e.focus();},60);
  if(st==='newpass')setTimeout(()=>{const e=$('#gatePass');if(e&&e.focus)e.focus();},60);
 }
