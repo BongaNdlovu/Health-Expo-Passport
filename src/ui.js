@@ -117,7 +117,7 @@ export function shares(parts){
 }
 
 /**
- * Triage deck: Action (any red reading or red flag), Watch (something raised), Optimal (BP, sugar and BMI all
+ * Triage deck: Emergency (any red reading or red flag: attend quickly), Watch (something raised), Optimal (BP, sugar and BMI all
  * normal). The shares are of the visitors whose three core checks are in, so the cards add up to 100%; anyone
  * still in their checks is counted on its own line and as a grey run on the rail, which is sized by head count.
  * @param {number[]} counts [action, watch, optimal, still in checks]
@@ -127,7 +127,7 @@ export function spectrumHTML(counts){
  const screened = flag + watch + ok, total = screened + pending;
  const [pf, pw, po] = shares([flag, watch, ok]);
  const aria = total
-  ? `Screening distribution of ${screened} screened visitors: ${flag} action needed (${pf}%), ${watch} under watch (${pw}%), ${ok} optimal (${po}%)${pending ? `; ${pending} still in their checks` : ''}`
+  ? `Screening distribution of ${screened} screened visitors: ${flag} emergency, attend quickly (${pf}%), ${watch} under watch (${pw}%), ${ok} optimal (${po}%)${pending ? `; ${pending} still in their checks` : ''}`
   : 'Screening distribution: no visitors yet';
  const card = (tone, title, n, p, word) => `<div class="hx-triage-card hx-triage-${tone}">
     <div class="hx-triage-head"><span class="hx-triage-dot"></span><span class="hx-triage-title">${title}</span></div>
@@ -137,7 +137,7 @@ export function spectrumHTML(counts){
  const bar = (tone, n) => n ? `<div class="hx-triage-bar hx-bar-${tone}" style="flex-grow:${n}"></div>` : '';
  return `<div class="hx-triage-deck" role="region" aria-label="${esc(aria)}">
   <div class="hx-triage-grid">
-   ${card('ruby', 'Action', flag, pf, 'Nurse')}
+   ${card('ruby', 'Emergency', flag, pf, 'Attend quickly')}
    ${card('amber', 'Watch', watch, pw, 'Elevated')}
    ${card('mint', 'Optimal', ok, po, 'Healthy')}
   </div>

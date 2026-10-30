@@ -24,7 +24,7 @@ export const DEMO_CHURCH_PLANS=[
   actions:[{do:'Move every joint gently each morning',why:'Gentle movement keeps joints from stiffening.',how:['5 minutes of slow stretches after you get up','Stop if a joint is hot or swollen']},
    {do:'Use a warm, never hot, compress on stiff joints',why:'Warmth eases stiffness.',how:['A warm, wet towel on the joint for 10 minutes','Test the heat on your wrist first']},
    {do:'Walk a little every day',why:'Walking keeps the muscles round the joints strong.',how:['Start with 10 minutes on flat ground']},
-   {do:'See the clinic if a joint is red, hot or swollen',why:'That needs a check, not only home care.',how:['Ask the triage nurse today']}]},
+   {do:'See the clinic if a joint is red, hot or swollen',why:'That needs a check, not only home care.',how:['Tell the health team today']}]},
  {id:'demo-bp',church_id:'demo',problem:'bp',title:'Our church’s blood-pressure walking club',
   note:'This is an example from a practice church.',
   actions:[{do:'Join the Sunday walking group',why:'Walking with others keeps you going.',how:['Meet at the church gate at 07:00 on Sundays']},

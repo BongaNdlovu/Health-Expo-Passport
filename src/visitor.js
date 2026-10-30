@@ -28,7 +28,7 @@ export function journeyTop(){
  return `<div class="jr">
   <button class="jr-who" data-action="openSwitcher" aria-label="Change visitor">
    <span class="jr-av av hue-${hueOf(a.id)}">${initials(a.name)}</span>
-   <span class="jr-name"><b>${esc(a.name)}</b><span>${esc(a.id)}${redFlag(a)?' · <em>⚠ refer to triage</em>':''}</span></span>
+   <span class="jr-name"><b>${esc(a.name)}</b><span>${esc(a.id)}${redFlag(a)?' · <em>⚠ emergency, attend quickly</em>':''}</span></span>
    <span class="jr-change">Change</span>
   </button>
   ${a.id&&(!cloud.user||mayPlace())?`<div class="jr-tools"><button class="jr-remove" data-action="visitor-remove" data-args="${esc(a.id)}">Remove visitor</button></div>`:''}
@@ -210,7 +210,7 @@ export function viewHome(){
   </div>
 
   ${redFlag(a)?`<div style="display:flex;gap:8px;padding:10px 12px;border-radius:16px;background:var(--hx-rose-bg);border:1px solid var(--hx-rose-line);color:var(--hx-rose);font-size:11px;font-weight:700;line-height:1.35">
-    <span>⚠</span><span>Clinical red flag: skip the fitness test and refer to the triage nurse now.</span></div>`:''}
+    <span>⚠</span><span>Emergency: skip the fitness test and attend to this visitor quickly.</span></div>`:''}
 
   <button data-action="goVisit" style="display:block;width:100%;border:0;background:none;padding:0;cursor:pointer" aria-label="${esc(ctaLabel)}">
    ${ctaHTML({label:ctaLabel})}
@@ -527,7 +527,7 @@ export function viewScreen(){
   <div id="redBanner" class="${redFlag(a)?'':'hidden'} flex items-start gap-2.5 rounded-2xl border border-rose-200/70 bg-rose-50/90 p-4 text-rose-700">
    <span class="flex h-8 w-8 flex-none items-center justify-center rounded-[12px] bg-rose-500/15 font-extrabold">!</span>
    <div><div class="text-[11px] font-extrabold uppercase tracking-wider">Clinical red flag</div>
-   <p class="mt-1 text-[11px] leading-relaxed text-rose-600/90">BP ≥ 160/100, or sugar ≥ 15 or under 3: do NOT run the step test. Send the visitor to the triage nurse now.</p></div>
+   <p class="mt-1 text-[11px] leading-relaxed text-rose-600/90">BP ≥ 160/100, or sugar ≥ 15 or under 3: do NOT run the step test. Emergency: attend to the visitor quickly.</p></div>
   </div>
 
   <div class="glass p-4">

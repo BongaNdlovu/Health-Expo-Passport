@@ -73,7 +73,7 @@ export const EXPO_UPCOMING={
 export const BOOTHS=[
  {k:'welcome', label:'Welcome & Registration', letter:'WE',hue:'mint', cap:3, blurb:'Greet visitors, write badges, start the passport.'},
  {k:'vitals',  label:'Vitals & BMI',           letter:'VI',hue:'sky',  cap:3, blurb:'Height, weight, BMI and waist — the first numbers.'},
- {k:'bp',      label:'Blood Pressure',         letter:'BP',hue:'blush',cap:4, blurb:'Cuff readings, red-flag triage and calm reassurance.'},
+ {k:'bp',      label:'Blood Pressure',         letter:'BP',hue:'blush',cap:4, blurb:'Cuff readings, red-flag checks and calm reassurance.'},
  {k:'sugar',   label:'Blood Sugar & Chol.',    letter:'SU',hue:'sand', cap:3, blurb:'Glucose and cholesterol finger-prick testing.'},
  {k:'kitchen', label:'Kitchen Pharmacy',       letter:'KP',hue:'sage', cap:3, blurb:'Cooking school, tastings and the R25 pouch.'},
  {k:'plan',    label:'Health Counselling',   letter:'NS',hue:'lilac',cap:4, blurb:'Walk visitors through their 90-day plan.'},
@@ -147,7 +147,7 @@ export const SEED_VOL=[
  {id:'VOL-1005',name:'Dr Samuel Adeyemi',phone:'+27 82 664 2210',email:'sam@example.co.za',
   status:'registered',pledgeExpos:3,skills:['clinic','counselling','prayer'],pref:['plan','prayer'],pref2:'bp',
   booth:'plan',availability:['saturday'],shirt:'XL',emergency:'Bisi 082 664 2210',
-  since:'2021-03-01',notes:'Retired GP — supervises the red-flag triage.',pledgedOn:'2026-01-08',registeredOn:'2026-02-14',checkedIn:false,role:'Clinical lead',
+  since:'2021-03-01',notes:'Retired GP — supervises the red-flag checks.',pledgedOn:'2026-01-08',registeredOn:'2026-02-14',checkedIn:false,role:'Clinical lead',
   history:[{expo:'EXPO-2023-03',name:'Autumn Health Expo',date:'2023-03-11',booth:'plan',hours:7},
            {expo:'EXPO-2024-09',name:'Spring Health Expo',date:'2024-09-14',booth:'plan',hours:7.5},
            {expo:'EXPO-2025-09',name:'Spring Health Expo',date:'2025-09-13',booth:'prayer',hours:6}]},
@@ -599,7 +599,7 @@ export const ACTIONS={
   {do:'Eat slowly and calmly',why:'Food eaten in a hurry or while anxious does less good.',ref:'CD:168',
    how:['Sit down for meals and chew well']},
   {do:'See the clinic if you lost weight without trying',why:'Weight loss you cannot explain needs a check.',ref:'S',
-   how:['Ask the triage nurse today if you are worried']}],
+   how:['Tell the health team today if you are worried']}],
  veg:[
   {do:'Fruit with every breakfast',why:'Eat plenty of fruit; fruit is a gift to be thankful for.',ref:'CD:475 · CD:464',foods:['fruit'],
    how:['A banana or seasonal fruit on your porridge']},

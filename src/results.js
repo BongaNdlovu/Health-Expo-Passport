@@ -122,14 +122,14 @@ export function viewMetric(key){
   if(a.s.sys!=null||a.s.dia!=null)value=`${a.s.sys??'—'}/${a.s.dia??'—'}`;
   c=cat('bp',{sys:a.s.sys,dia:a.s.dia});
   entry=[['Top (systolic)',a.s.sys==null?'—':`${a.s.sys} mmHg`],['Bottom (diastolic)',a.s.dia==null?'—':`${a.s.dia} mmHg`]];
-  line=c[0]==='flag'?'See the triage nurse before anything else today.'
+  line=c[0]==='flag'?'Emergency: the health team attends to you first, before anything else today.'
    :c[0]==='watch'?'Have it checked again in 3 weeks, cut down on salt and walk every day.'
    :c[0]==='ok'?'Keep it there with less salt, daily walks and plenty of vegetables.':'';
  }else if(k==='sugar'){
   if(a.s.sugar!=null)value=`${a.s.sugar} mmol/L`;
   c=cat('sugar',a.s.sugar);
   entry=[['Reading',a.s.sugar==null?'—':`${a.s.sugar} mmol/L`]];
-  line=c[0]==='flag'?'See the triage nurse before anything else today.'
+  line=c[0]==='flag'?'Emergency: the health team attends to you first, before anything else today.'
    :c[0]==='watch'?'Cut out sugar and sweet drinks, and have it checked again in 3 weeks.'
    :c[0]==='ok'?'Keep it in range: no sugar or sweet drinks, and a walk every day.':'';
  }else{
@@ -289,7 +289,7 @@ export function careNotes(a){
 }
 /* a reading in the red range comes before any home plan (the expo's safety rule, not a book claim) */
 export function urgentOf(a,pk){
- if(redFlag(a))return {t:'See the triage nurse now, before anything else',w:'A reading is in the danger range: blood pressure 160/100 or more, or blood sugar 15 or more, or under 3.'};
+ if(redFlag(a))return {t:'Emergency: the team attends to you now, before anything else',w:'A reading is in the danger range: blood pressure 160/100 or more, or blood sugar 15 or more, or under 3.'};
  const red=pk==='bp'?cat('bp',{sys:a.s.sys,dia:a.s.dia})[0]==='flag':pk==='sugar'?cat('sugar',a.s.sugar)[0]==='flag'
   :pk==='bmi'?cat('chol',a.s.chol)[0]==='flag'||cat('bmi',bmi(a))[0]==='flag':false;
  return red?{t:'Book a clinic visit this week',w:'This reading is in the red range. The plan below helps, but a clinic must check it.'}:null;
@@ -525,7 +525,7 @@ export function viewCare(){
     ${countTile(inter.length,'Interests','border-lilac-200/80 bg-lilac-50/90 text-lilac-700')}
    </div>
   </div>
-  ${listSection('Urgent — refer to triage',urgent,'rose')}
+  ${listSection('Emergency — attend quickly',urgent,'rose')}
   ${listSection('48-hour nurse calls',calls,'amber')}
   ${listSection('Seminar & co-op interests',inter,'brand')}
  </section>`;

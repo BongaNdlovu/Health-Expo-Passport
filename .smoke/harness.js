@@ -516,7 +516,7 @@ g.resetDemo();
     && !$main.innerHTML.includes('152/96'), '');
   g.state.tab = 'plan'; g.render();
   ok('7 days: the Plan says the readings are gone and shows no danger banner from them', /Readings were deleted 7 days after the visit/.test($main.innerHTML)
-    && !/See the triage nurse now/.test($main.innerHTML), '');
+    && !/Emergency: the team attends to you now/.test($main.innerHTML), '');
   g.openWhatsApp();
   ok('7 days: the WhatsApp message no longer carries the old readings, and says they are deleted', /deletes your health readings 7 days after/.test($el('waBody').innerHTML)
     && !$el('waBody').innerHTML.includes('152'), '');
@@ -2041,14 +2041,14 @@ function makeServer() {
       && sh([0, 0, 0]).every(n => n === 0) && sh([1, 1, 1]).join() === '34,33,33', JSON.stringify(sh([1, 1, 1])));
     const d = txt(g.spectrumHTML([2, 1, 1, 3]));
     ok('the deck shows counts and shares of the screened, with the unscreened on their own line',
-      /Action 2 50% · Nurse/.test(d) && /Watch 1 25% · Elevated/.test(d) && /Optimal 1 25% · Healthy/.test(d)
+      /Emergency 2 50% · Attend quickly/.test(d) && /Watch 1 25% · Elevated/.test(d) && /Optimal 1 25% · Healthy/.test(d)
       && /4 of 7 screened · 3 still in checks/.test(d), d);
     const h = g.spectrumHTML([2, 1, 1, 3]);
     ok('the rail runs are sized by head count, grey for those still in checks',
       /hx-bar-ruby" style="flex-grow:2"/.test(h) && /hx-bar-amber" style="flex-grow:1"/.test(h)
       && /hx-bar-mint" style="flex-grow:1"/.test(h) && /hx-bar-slate" style="flex-grow:3"/.test(h));
     const e = txt(g.spectrumHTML([0, 0, 0, 0]));
-    ok('an empty deck shows zeros, no percent signs and no note', /Action 0 Nurse/.test(e) && !/%/.test(e) && !/screened/.test(e), e);
+    ok('an empty deck shows zeros, no percent signs and no note', /Emergency 0 Attend quickly/.test(e) && !/%/.test(e) && !/screened/.test(e), e);
   }
   { /* a re-render (every sync) rebuilt the trace and snapped the sweep back to the left edge */
     const ui = require('fs').readFileSync(require('path').join(__dirname, '..', 'src', 'ui.js'), 'utf8').replace(/\r/g, '');
@@ -2056,6 +2056,11 @@ function makeServer() {
     ok('a rebuilt ECG starts at the clock\'s point in the beat, so a re-render does not restart the sweep',
       ui.includes('const ECG_BEAT_MS = 2400;') && ui.includes('style="--hx-ecg-ph:-${phase}ms"')
       && ['Tail', 'Halo', 'Head'].every(k => html.includes('animation:hxSweep' + k + ' 2.4s linear var(--hx-ecg-ph,0s) infinite}')));
+  }
+  { /* the expos have no triage desk or triage nurse: urgent readings say "Emergency", the team attends quickly */
+    ok('no screen sends anyone to a triage nurse or to triage; urgent cases read as an emergency to attend quickly',
+      !/triage nurse|refer to triage|red-flag triage/i.test(srcText)
+      && srcText.includes("listSection('Emergency — attend quickly'") && srcText.includes("card('ruby', 'Emergency', flag, pf, 'Attend quickly')"));
   }
   const actionsOf = h => [...h.matchAll(/data-action="([^"]*)"/g)].map(m => m[1]);
   const unwired = [];
@@ -4732,7 +4737,7 @@ function makeServer() {
   ok('a chosen church plan replaces the app\'s plan, labelled as the church\'s own, with the pills rule', cpDav.interests.churchPlan === 'demo-joints'
     && $main.innerHTML.includes('Easing stiff, painful joints') && /Written by Practice church/.test($main.innerHTML) && /not reviewed by the app/.test($main.innerHTML)
     && /Never stop prescribed pills suddenly/.test($main.innerHTML) && /data-action="chooseChurchPlan" data-args=""/.test($main.innerHTML));
-  ok('…a red-range reading still shows the warning first', /See the triage nurse now|Book a clinic visit this week/.test($main.innerHTML) === !!g.urgentOf(cpDav, 'bp'));
+  ok('…a red-range reading still shows the warning first', /Emergency: the team attends to you now|Book a clinic visit this week/.test($main.innerHTML) === !!g.urgentOf(cpDav, 'bp'));
   const cpMsg = g.waMessage(cpDav);
   ok('the WhatsApp message carries the church plan, its church and the pills rule, and no book credit', cpMsg.includes('EASING STIFF, PAINFUL JOINTS') && cpMsg.includes('Move every joint gently each morning') && cpMsg.includes('Practice church')
     && /do not stop them suddenly/.test(cpMsg) && !/Ministry of Healing/.test(cpMsg), cpMsg.slice(0, 300));
