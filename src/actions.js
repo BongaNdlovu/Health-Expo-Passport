@@ -10,6 +10,9 @@ const ACTIONS = {};
 /** Registers action adapters; a plain function receives (element, event) and may ignore both. */
 export function registerActions(map) { for (const k of Object.keys(map)) ACTIONS[k] = map[k]; }
 
+/** True when an adapter is registered under this name (the harness checks every rendered button against it). */
+export const hasAction = name => name in ACTIONS;
+
 /** Runs the action declared on the nearest data-action element around `el` (or null). */
 export function dispatch(el, ev) {
   const t = el && el.closest ? el.closest('[data-action],[data-on-input],[data-on-change],[data-on-toggle]') : null;

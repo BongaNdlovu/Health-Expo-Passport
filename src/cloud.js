@@ -255,7 +255,7 @@ export function renderGate(){
  const keepEmail=($('#gateEmail')||{}).value||cloud.viewEmail||'',keepName=($('#gateName')||{}).value||'';
  const title=t=>`<div class="display hx-gate-title text-[17px] font-extrabold">${t}</div>`;
  const note=(t,cls)=>`<p class="mt-1.5 text-[11px] leading-relaxed ${cls||'text-[#5c747a]'}">${t}</p>`;
- const link=(fn,t)=>`<button type="button" data-action="${fn}" class="text-[11px] font-extrabold text-brand-700">${t}</button>`;
+ const link=(view,t)=>`<button type="button" data-action="gateView" data-args="${view}" class="text-[11px] font-extrabold text-brand-700">${t}</button>`;
  const err=`<p id="gateErr" role="alert" class="text-[11px] font-bold text-rose-600">${esc(cloud.formErr)}</p>`;
  const emailField=`<label class="block"><span class="microlabel">Email</span>
    <input id="gateEmail" type="email" inputmode="email" autocomplete="username" required placeholder="you@example.org" class="field mt-1" value="${esc(keepEmail)}"></label>`;
@@ -271,7 +271,7 @@ export function renderGate(){
      <span class="hx-cta-main">Sign In to Expo</span><span class="hx-cta-circle" aria-hidden="true">→</span>
     </button>
    </form>
-   <div class="mt-3 flex items-center justify-between">${link("gateView('forgot')",'Forgot password?')}${link("gateView('signup')",'Create an account')}</div>`;
+   <div class="mt-3 flex items-center justify-between">${link("forgot",'Forgot password?')}${link("signup",'Create an account')}</div>`;
    /* the demo entry lives in the sandbox tiles under the card, not duplicated here */
  }else if(st==='signup'){
   html=`${title('Create your account')}${note('Use your own email. We will send a link to confirm it. After that, an administrator approves your account before you can see any visitor data.')}
@@ -286,7 +286,7 @@ export function renderGate(){
     <button id="gateGo" class="btn btn-primary w-full py-3 text-sm">Create account</button>
    </form>
    ${fileWarn}
-   <div class="mt-3 text-center">${link("gateView('login')",'I already have an account — sign in')}</div>`;
+   <div class="mt-3 text-center">${link("login",'I already have an account — sign in')}</div>`;
  }else if(st==='verify'){
   html=`${title('Check your email')}
    ${note('We sent a confirmation link to <b class="text-[#33504f]">'+esc(cloud.viewEmail||'your email')+'</b>. Open it, then come back here and sign in. It can take a minute — check spam too.')}
@@ -301,7 +301,7 @@ export function renderGate(){
     <button id="gateGo" class="btn btn-primary w-full py-3 text-sm">Send reset link</button>
    </form>
    ${fileWarn}
-   <div class="mt-3 text-center">${link("gateView('login')",'Back to sign-in')}</div>`;
+   <div class="mt-3 text-center">${link("login",'Back to sign-in')}</div>`;
  }else if(st==='forgotSent'){
   html=`${title('Check your email')}
    ${note('If <b class="text-[#33504f]">'+esc(cloud.viewEmail||'that address')+'</b> has an account, a reset link is on its way. Open it to choose a new password.')}

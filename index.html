@@ -1177,6 +1177,8 @@
     box-shadow:0 0 0 2px var(--hx-surface);letter-spacing:0}
   .hx-sheet-actions button,.hx-practice-go{position:relative}
   .hx-sheet-actions button::after,.hx-practice-go::after{content:"";position:absolute;inset:-12px -8px}
+  /* a bottom sheet never grows past the screen: it scrolls inside, so its title is not hidden under the status bar */
+  .sheet-up{max-height:92vh;overflow-y:auto;overscroll-behavior:contain}
 </style>
 </head>
 <body>
@@ -1270,9 +1272,10 @@
 
 <!-- ===== Cloud sync / staff sign-in ===== -->
 <div id="cloudModal" role="dialog" aria-modal="true" aria-label="Cloud sync" class="fixed inset-0 z-50 hidden items-end bg-[#0b1a1c]/40 backdrop-blur-md" data-action="closeCloud" data-backdrop="1">
-  <div class="glass sheet-up mx-auto w-full max-w-md rounded-b-none rounded-t-[28px] p-5">
+  <div class="glass sheet-up mx-auto flex max-h-[92vh] w-full max-w-md flex-col rounded-b-none rounded-t-[28px] p-5">
     <div class="mx-auto mb-4 h-1.5 w-10 rounded-full bg-[#123033]/10"></div>
-    <div id="cloudBody"></div>
+    <button type="button" data-action="closeCloud" style="align-self:flex-start;margin-bottom:.25rem" class="tap-link text-[12px] font-extrabold text-brand-700">&larr; Back</button>
+    <div id="cloudBody" class="flex-1 overflow-y-auto no-scrollbar"></div>
   </div>
 </div>
 

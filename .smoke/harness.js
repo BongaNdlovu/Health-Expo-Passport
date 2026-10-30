@@ -1953,10 +1953,14 @@ function makeServer() {
   const signupForm = (o = {}) => fill({ gateName: 'Thandi M', gateEmail: 'new@example.org', gatePass: 'Goodpass1', gatePass2: 'Goodpass1', ...o });
 
   await toLogin();
-  ok('login screen links to Create an account and Forgot password', g.gateState() === 'form' && gateHTML().includes("gateView('signup')") && gateHTML().includes("gateView('forgot')"));
+  ok('login screen links to Create an account and Forgot password', g.gateState() === 'form' && gateHTML().includes('data-action="gateView" data-args="signup"') && gateHTML().includes('data-action="gateView" data-args="forgot"'));
+  const actionsOf = h => [...h.matchAll(/data-action="([^"]*)"/g)].map(m => m[1]);
+  const unwired = [];
+  for (const v of ['login', 'signup', 'forgot']) { g.gateView(v); actionsOf(gateHTML()).forEach(n => { if (!g.hasAction(n)) unwired.push(v + ':' + n); }); }
+  ok('every button on the login, create-account and reset screens names an action that exists', unwired.length === 0, unwired.join());
   g.gateView('signup');
   ok('Create account screen has name, email, password and repeat-password', g.gateState() === 'signup' && ['gateName', 'gateEmail', 'gatePass"', 'gatePass2'].every(id => gateHTML().includes(id)));
-  ok('…and a way back to sign-in', gateHTML().includes("gateView('login')"));
+  ok('…and a way back to sign-in', gateHTML().includes('data-action="gateView" data-args="login"'));
 
   ok('password rules: too short', /8 characters/.test(g.passwordProblem('abc1')));
   ok('password rules: needs a number', /letter and one number/.test(g.passwordProblem('abcdefghij')));
