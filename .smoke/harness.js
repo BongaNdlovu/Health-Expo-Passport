@@ -3442,28 +3442,38 @@ function makeServer() {
       const was = { busy: C.busy, status: C.status, phase: C.phase, prog: { ...C.prog }, tab: g.state.tab };
       ok('a successful sync records when it happened and the profile card shows it',
         C.syncedAt > 0 && /id="profSyncLine"/.test(profHTML()) && /synced (just now|\d+ min ago|at \d\d:\d\d)/.test(profHTML()), String(C.syncedAt));
-      C.busy = true; C.status = 'syncing';
-      C.phase = 'pull'; const a = g.syncStatusText();
-      C.phase = 'push'; C.prog = { done: 2, total: 5 }; const b = g.syncStatusText();
-      ok('while syncing the words say what is happening: downloading, then uploading with a count',
-        a === 'Downloading the latest…' && b === 'Uploading 2 of 5…', a + ' | ' + b);
-      g.syncChrome();
-      g.renderCloudBody();
-      ok('the cloud dot carries the busy ring and the sheet disables Sync now while it runs',
-        $el('cloudDot').getAttribute('data-busy') === '1' && $el('cloudDot').style.background === g.CLOUD_UI.syncing[0] && /disabled/.test($el('cloudBody').innerHTML),
-        $el('cloudDot').getAttribute('data-busy') + '|' + $el('cloudDot').style.background);
-      g.syncChrome();                                    /* busy: the badge stands down while the ring speaks */
-      ok('the pending badge stands down while syncing', $el('cloudBadge').style.display === 'none', $el('cloudBadge').style.display);
-      C.busy = false; C.status = 'online'; C.phase = was.phase; C.prog = was.prog;
-      registerLocal('Badge Count', 'EXPO-322');
-      g.syncChrome();
-      ok('the header badge counts what is waiting to upload', $el('cloudBadge').style.display !== 'none' && $el('cloudBadge').textContent === '1',
-        $el('cloudBadge').style.display + '|' + $el('cloudBadge').textContent);
-      ok('…the dot drops the busy ring at rest', $el('cloudDot').getAttribute('data-busy') === null, $el('cloudDot').getAttribute('data-busy'));
-      await g.cloudSync(true); await flush();
-      ok('…and the badge hides again once the change is up', $el('cloudBadge').style.display === 'none' && C.syncedAt > 0 && srv.tables.attendees.has('EXPO-322'),
-        $el('cloudBadge').style.display);
-      g.state.tab = was.tab; g.render();
+      /* the manual state below must not be stomped by the 60s interval or a pending retry/push: hide the document
+         (the interval respects it) and clear the two timers, restoring all three after the window */
+      const wasHidden = document.hidden, wasRetry = C.retryT, wasPush = C.pushT;
+      document.hidden = true;
+      clearTimeout(C.retryT); clearTimeout(C.pushT);
+      try {
+        C.busy = true; C.status = 'syncing';
+        C.phase = 'pull'; const a = g.syncStatusText();
+        C.phase = 'push'; C.prog = { done: 2, total: 5 }; const b = g.syncStatusText();
+        ok('while syncing the words say what is happening: downloading, then uploading with a count',
+          a === 'Downloading the latest…' && b === 'Uploading 2 of 5…', a + ' | ' + b);
+        g.syncChrome();
+        g.renderCloudBody();
+        ok('the cloud dot carries the busy ring and the sheet disables Sync now while it runs',
+          $el('cloudDot').getAttribute('data-busy') === '1' && $el('cloudDot').style.background === g.CLOUD_UI.syncing[0] && /disabled/.test($el('cloudBody').innerHTML),
+          $el('cloudDot').getAttribute('data-busy') + '|' + $el('cloudDot').style.background);
+        g.syncChrome();                                    /* busy: the badge stands down while the ring speaks */
+        ok('the pending badge stands down while syncing', $el('cloudBadge').style.display === 'none', $el('cloudBadge').style.display);
+        C.busy = false; C.status = 'online'; C.phase = was.phase; C.prog = was.prog;
+        registerLocal('Badge Count', 'EXPO-322');
+        g.syncChrome();
+        ok('the header badge counts what is waiting to upload', $el('cloudBadge').style.display !== 'none' && $el('cloudBadge').textContent === '1',
+          $el('cloudBadge').style.display + '|' + $el('cloudBadge').textContent);
+        ok('…the dot drops the busy ring at rest', $el('cloudDot').getAttribute('data-busy') === null, $el('cloudDot').getAttribute('data-busy'));
+        document.hidden = wasHidden; C.retryT = wasRetry; C.pushT = wasPush;   /* the real sync below runs normally */
+        await g.cloudSync(true); await flush();
+        ok('…and the badge hides again once the change is up', $el('cloudBadge').style.display === 'none' && C.syncedAt > 0 && srv.tables.attendees.has('EXPO-322'),
+          $el('cloudBadge').style.display);
+        g.state.tab = was.tab; g.render();
+      } finally {
+        document.hidden = wasHidden; C.retryT = wasRetry; C.pushT = wasPush;
+      }
     }
 
     /* the live connection reports its own state */
