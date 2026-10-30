@@ -2011,6 +2011,28 @@ function makeServer() {
     ok('every placement Undo redraws the open sheet (it kept showing the old station)',
       vol.split('afterPlace();rerenderPlace();}})').length - 1 === 3 && !vol.includes('then(r2=>{if(r2)afterPlace();})'));
   }
+  { /* a chip inside the member's pledge <form> was a submit button: the first tap sent a half-filled pledge */
+    const vs = require('fs').readFileSync(require('path').join(__dirname, '..', 'src', 'volunteer.js'), 'utf8').replace(/\r/g, '');
+    const part = h => { const i = vs.indexOf(h); return i < 0 ? '' : vs.slice(i, vs.indexOf('\n}', i)); };
+    const chips = part('export function pledgeFormParts') + part('function boothPicker');
+    ok('every pledge-form chip is type="button", so tapping one never submits the pledge',
+      chips.length > 0 && (chips.match(/<button /g) || []).length === 5 && (chips.match(/<button type="button" /g) || []).length === 5);
+  }
+  { /* Edit my pledge and the form's chips did nothing on a member's screen: the gate never saw a new acctV */
+    const ac = require('fs').readFileSync(require('path').join(__dirname, '..', 'src', 'account.js'), 'utf8').replace(/\r/g, '');
+    ok('member pledge taps (edit, chips, retry, expo reload) all redraw through acctRedraw, which bumps acctV',
+      ac.includes('const acctRedraw=()=>{cloud.acctV++;renderGate();') && ac.includes('const myRedraw=acctRedraw;')
+      && /export function myPledgeEdit\(\)\{[^\n]*acctRedraw\(\);\}/.test(ac)
+      && /const reloadExpos=[^\n]*acctRedraw\(\)/.test(ac) && /if\(cloud\.pledge\)myPledgeEdit\(\);else acctRedraw\(\);/.test(ac)
+      && !/^ ?(const myRedraw=\(\)=>\{renderAcct\(\);render\(\);\})/m.test(ac));
+  }
+  { /* the minute sync re-ran loadAccount, which shut a member's open pledge form and threw their draft away */
+    const ac = require('fs').readFileSync(require('path').join(__dirname, '..', 'src', 'account.js'), 'utf8').replace(/\r/g, '');
+    const la = ac.slice(ac.indexOf('export async function loadAccount('), ac.indexOf('\n}', ac.indexOf('export async function loadAccount(')));
+    ok('a background account reload keeps an open pledge form and its draft (same church)',
+      la.includes('const keepDraft=sameChurch&&(cloud.pledgeEdit||') && la.includes('if(keepDraft)loadPledge(true);else{cloud.pledge=undefined;cloud.pledgeEdit=false;state.mf=null;}')
+      && !/cloud\.acct=r\.data;[^\n]*cloud\.pledgeEdit=false/.test(la));
+  }
   const actionsOf = h => [...h.matchAll(/data-action="([^"]*)"/g)].map(m => m[1]);
   const unwired = [];
   for (const v of ['login', 'signup', 'forgot']) { g.gateView(v); actionsOf(gateHTML()).forEach(n => { if (!g.hasAction(n)) unwired.push(v + ':' + n); }); }

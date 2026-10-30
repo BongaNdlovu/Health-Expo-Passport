@@ -534,7 +534,7 @@ function boothPicker(d,{onToggleA,onToggleB}){
   <div class="microlabel">First choice booth <span class="font-bold normal-case tracking-normal text-[#8a9aa0]">(tap to change)</span></div>
   <div class="grid grid-cols-2 gap-2">
    ${BOOTHS.map(b=>{const on=selA.includes(b.k);
-    return `<button data-action="${onToggleA}" data-args="${b.k}" class="boothpick hue-${b.hue} ${on?'boothpick-sel':''}">
+    return `<button type="button" data-action="${onToggleA}" data-args="${b.k}" class="boothpick hue-${b.hue} ${on?'boothpick-sel':''}">
      ${on?`<span class="boothpick-tick"><svg viewBox="0 0 24 24" style="width:.6rem;height:.6rem" fill="none" stroke="currentColor" stroke-width="3.4"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></span>`:''}
      <span class="flex items-center gap-2">
       <span class="boothpick-glyph">${b.letter}</span>
@@ -546,7 +546,7 @@ function boothPicker(d,{onToggleA,onToggleB}){
   <div class="microlabel pt-1">Second choice <span class="font-bold normal-case tracking-normal text-[#8a9aa0]">(backup if the first is full)</span></div>
   <div class="no-scrollbar -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5">
    ${BOOTHS.map(b=>{const on=selB===b.k;
-    return `<button data-action="${onToggleB}" data-args="${b.k}" class="availpill flex-none hue-${b.hue} ${on?'availpill-on':''}">${on?'✓ ':''}${esc(b.label)}</button>`;}).join('')}
+    return `<button type="button" data-action="${onToggleB}" data-args="${b.k}" class="availpill flex-none hue-${b.hue} ${on?'availpill-on':''}">${on?'✓ ':''}${esc(b.label)}</button>`;}).join('')}
   </div>
  </div>`;
 }
@@ -705,19 +705,19 @@ export function pledgeFormParts(d,pfx,acts){
    <div class="mt-2">
     <span class="microlabel">How many expos are you pledging to help at?</span>
     <div class="mt-1.5 flex flex-wrap gap-1.5">
-     ${[1,2,3,4,6,12].map(n=>`<button data-action="${acts.pledge}" data-args="${n}" class="availpill hue-peach ${d.pledgeExpos===n?'availpill-on':''}">${n}${n===12?'+':''} expo${n>1?'s':''}</button>`).join('')}
+     ${[1,2,3,4,6,12].map(n=>`<button type="button" data-action="${acts.pledge}" data-args="${n}" class="availpill hue-peach ${d.pledgeExpos===n?'availpill-on':''}">${n}${n===12?'+':''} expo${n>1?'s':''}</button>`).join('')}
     </div>
    </div>
    <div class="mt-3">
     <span class="microlabel">What can you help with?</span>
     <div class="mt-1.5 flex flex-wrap gap-1.5">
-     ${SKILLS.map(([k,l])=>`<button data-action="${acts.list}" data-list="${acts.skillsKey}" data-args="${k}" class="availpill hue-aqua ${d.skills.includes(k)?'availpill-on':''}">${l}</button>`).join('')}
+     ${SKILLS.map(([k,l])=>`<button type="button" data-action="${acts.list}" data-list="${acts.skillsKey}" data-args="${k}" class="availpill hue-aqua ${d.skills.includes(k)?'availpill-on':''}">${l}</button>`).join('')}
     </div>
    </div>
    <div class="mt-3">
     <span class="microlabel">When are you usually free?</span>
     <div class="mt-1.5 flex flex-wrap gap-1.5">
-     ${AVAIL.map(([k,l])=>`<button data-action="${acts.list}" data-list="${acts.availKey}" data-args="${k}" class="availpill hue-sage ${d.avail.includes(k)?'availpill-on':''}">${l}</button>`).join('')}
+     ${AVAIL.map(([k,l])=>`<button type="button" data-action="${acts.list}" data-list="${acts.availKey}" data-args="${k}" class="availpill hue-sage ${d.avail.includes(k)?'availpill-on':''}">${l}</button>`).join('')}
     </div>
    </div>
   </div>

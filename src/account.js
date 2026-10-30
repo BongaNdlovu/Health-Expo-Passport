@@ -63,7 +63,12 @@ export async function loadAccount(){
   if(chk.error)throw chk.error;
   return chk.data===true;
  }
- cloud.acct=r.data;cloud.acctV++;cloud.health=undefined;cloud.pledge=undefined;cloud.pledgeEdit=false;cloud.myTeam=undefined;state.mf=null;          /* Check again also reloads the member's results, pledge and team */
+ /* a background sync (every minute, and on focus) lands here too: a member half-way through their pledge form keeps
+    the form and their draft, and the pledge refreshes quietly instead of blanking to Loading… */
+ const sameChurch=!!(cloud.acct&&cloud.acct.church&&r.data.church&&cloud.acct.church.id===r.data.church.id);
+ const keepDraft=sameChurch&&(cloud.pledgeEdit||(!!state.mf&&cloud.pledge===null));
+ cloud.acct=r.data;cloud.acctV++;cloud.health=undefined;cloud.myTeam=undefined;          /* Check again also reloads the member's results, pledge and team */
+ if(keepDraft)loadPledge(true);else{cloud.pledge=undefined;cloud.pledgeEdit=false;state.mf=null;}
  if(cloud.user&&cloud.notifWatched!==cloud.user.id){cloud.notifWatched=cloud.user.id;notifCountSoon();}   /* the bell count: once per sign-in */
  const m=r.data.membership,c=r.data.church;
  /* an invite link opened on this device: join that church now, approved (it is used once, whatever the answer) */
@@ -381,11 +386,13 @@ function myPledgeFormHTML(){
   <button id="mfGo" data-label="${cloud.pledge?'Save my pledge':'Send my pledge'}" class="btn btn-primary w-full py-3 text-sm">${cloud.pledge?'Save my pledge':'Send my pledge →'}</button>
   <p class="text-[10px] leading-relaxed text-[#8a9aa0]">Your pledge counts straight away — no approval step. Your church’s admin places you at a station.</p></form>`;
 }
-export function myPledgeEdit(){cloud.pledgeEdit=true;if(state.mf)delete state.mf._init;renderAcct();render();}
+export function myPledgeEdit(){cloud.pledgeEdit=true;if(state.mf)delete state.mf._init;acctRedraw();}
 /* the member form's field and chip handlers write state.mf; chips redraw, text fields only store (a redraw while
    typing would throw the person off the field, exactly like the staff form) */
 export function myField(k,val){myDraftInit()[k]=val;}
-const myRedraw=()=>{renderAcct();render();};
+/* a member sees this screen inside the gate, which redraws only when acctV moves: every tap here must bump it */
+const acctRedraw=()=>{cloud.acctV++;renderGate();renderAcct();render();};
+const myRedraw=acctRedraw;
 export function myPickPledge(n){myDraftInit().pledgeExpos=n;myRedraw();}
 export function myToggleList(k,v){
  const a=myDraftInit()[k];const i=a.indexOf(v);
@@ -1024,9 +1031,9 @@ export function acctRetry(what){
  if(what==='members')cloud.members=null;
  else if(what==='pAdmins')cloud.pAdmins=null;
  else if(what==='expos'){cloud.expos=undefined;cloud.adminExpos=undefined;}
- renderAcct();render();
+ acctRedraw();
 }
-const reloadExpos=()=>{cloud.expos=undefined;cloud.adminExpos=undefined;renderAcct();render();};
+const reloadExpos=()=>{cloud.expos=undefined;cloud.adminExpos=undefined;acctRedraw();};
 
 /* one expo as a card: the members' version, and the admin's with its status, stations and buttons */
 function expoCard(x,admin){
@@ -1066,7 +1073,7 @@ export function expoMemberHTML(){
 }
 export function pledgeToExpo(id){
  cloud.pledgeExpo=id;
- if(cloud.pledge)myPledgeEdit();else{renderAcct();render();}
+ if(cloud.pledge)myPledgeEdit();else acctRedraw();
  const el=$('#mfName');if(el&&el.scrollIntoView)el.scrollIntoView({block:'center'});
 }
 /* the expo a pledge is for: the only open one, or the one the member chose */
