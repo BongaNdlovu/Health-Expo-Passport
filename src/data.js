@@ -54,7 +54,7 @@ export const SURVEY=[
 ];
 /* yes/no on the paper form, kept as 1 or 0 */
 export const MED_YN=[['preg','Pregnant'],['ops','Major operations'],['chronic','Chronic illnesses'],['bpMed','On BP medication']];
-export const INT={nurse:'Nurse call',cook:'Cooking school',stress:'Stress & peace',pouch:'R25 pouch'};
+export const INT={nurse:'Follow-up call',cook:'Cooking school',stress:'Stress & peace',pouch:'R25 pouch'};
 /* the free seminars and "how did you hear" on the paper survey; Healthy Cooking Classes is the existing Cooking school */
 export const SEMINARS={coaching:'Wellness & weight-loss coaching (6 weeks)',habits:'21 Days of Healthy Habits (WhatsApp)',lifestyle:'Lifestyle diseases seminar',
  marriage:'Marriage seminar',parenting:'Parenting seminar',financial:'Financial health seminar',spiritual:'Spiritual health (Bible study)'};

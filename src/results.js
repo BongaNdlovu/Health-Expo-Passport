@@ -521,12 +521,12 @@ export function viewCare(){
    </div>
    <div class="mt-3.5 grid grid-cols-3 gap-2">
     ${countTile(urgent.length,'Urgent','border-rose-200/70 bg-rose-50/70 text-rose-700')}
-    ${countTile(calls.length,'Nurse calls','border-amber-200/70 bg-amber-50/70 text-amber-700')}
+    ${countTile(calls.length,'Follow-up calls','border-amber-200/70 bg-amber-50/70 text-amber-700')}
     ${countTile(inter.length,'Interests','border-lilac-200/80 bg-lilac-50/90 text-lilac-700')}
    </div>
   </div>
   ${listSection('Emergency — attend quickly',urgent,'rose')}
-  ${listSection('48-hour nurse calls',calls,'amber')}
+  ${listSection('48-hour follow-up calls',calls,'amber')}
   ${listSection('Seminar & co-op interests',inter,'brand')}
  </section>`;
 }

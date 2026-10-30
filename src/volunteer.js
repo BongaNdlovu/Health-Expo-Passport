@@ -1233,7 +1233,7 @@ export function buildPrintCard(){
    <div class="pc-foot">
     <div class="pc-safety">Not a replacement for your clinic: given by volunteers, not health professionals, as general information, not medical advice. <b>Never stop prescribed pills suddenly</b>; your clinic will adjust them. In an emergency, go to the nearest emergency unit.${p.help?` ${esc(p.help)}`:''} Your health readings are deleted ${GRACE_DAYS} days after your visit — keep this card.</div>
     <div class="pc-verse">“Beloved, I pray that you may prosper in all things and be in health.” — 3 John 1:2${p.credit?` · From: ${esc(p.credit)}`:''}</div>
-    <div class="pc-bottom"><span>${a.interests.nurse?'☎ A nurse will call you within 48 hours':'Questions? Speak to the Health Ministries team'}</span><span>Badge ${esc(a.id)}</span></div>
+    <div class="pc-bottom"><span>${a.interests.nurse?'☎ Our health team will call you within 48 hours':'Questions? Speak to the Health Ministries team'}</span><span>Badge ${esc(a.id)}</span></div>
    </div>
   </div>
  </div>`;

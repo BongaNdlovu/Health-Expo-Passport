@@ -590,7 +590,7 @@ g.resetDemo();
   ok('send home: follow-up agreed with nothing ticked does not say they asked for nothing', /agreed to follow-up, with nothing specific asked for yet/.test($main.innerHTML)
     && !/did not ask for a call back/.test($main.innerHTML), '');
   v.interests.nurse = true; g.render();
-  ok('send home: follow-up agreed with a nurse call lists it', /agreed to follow-up and asked for: <b>/.test($main.innerHTML), '');
+  ok('send home: follow-up agreed with a follow-up call lists it', /agreed to follow-up and asked for: <b>/.test($main.innerHTML), '');
   v.interests.optin = false; g.render();
   ok('send home: a tick without contact consent says no one will follow up', /did not agree to be contacted, so no one will follow up/.test($main.innerHTML), '');
   v.interests.nurse = false; g.render();
@@ -2068,6 +2068,11 @@ function makeServer() {
     ok('no care note sends anyone to a nurse; each says what the team does instead',
       notes.every(n => n && !/nurse/i.test(n)) && /Emergency: attend to them quickly/.test(notes[0])
       && /skip the step test/.test(notes[1]) && /skip the step test/.test(notes[2]) && /Skip the step test/.test(notes[3]), JSON.stringify(notes));
+  }
+  { /* nobody at the expos is a nurse: the call-back option and its lists name the health team, not a nurse */
+    ok('the call-back is a "Follow-up call" from the health team everywhere a visitor or volunteer reads it',
+      g.INT.nurse === 'Follow-up call' && !/Nurse call|nurse calls|A nurse will call/i.test(srcText)
+      && srcText.includes("'☎ Our health team will call you within 48 hours'"));
   }
   const actionsOf = h => [...h.matchAll(/data-action="([^"]*)"/g)].map(m => m[1]);
   const unwired = [];
@@ -4463,9 +4468,9 @@ function makeServer() {
     Object.values(g.INT).every(l => $main.innerHTML.includes(l)) && $main.innerHTML.includes('id="prayerNote"') && $main.innerHTML.includes('Prayer request'));
   const nBefore = g.attendees.filter(a => a.interests.nurse).length;
   g.toggleInterest(fakeBtn, 'EXPO-088', 'nurse');
-  ok('ticking "Nurse call" records it and updates the button', sipho.interests.nurse === true && fakeBtn.classList.on === true && fakeBtn.textContent.startsWith('✓') && fakeBtn.aria === 'true');
+  ok('ticking "Follow-up call" records it and updates the button', sipho.interests.nurse === true && fakeBtn.classList.on === true && fakeBtn.textContent.startsWith('✓') && fakeBtn.aria === 'true');
   g.state.tab = 'care'; g.render();
-  ok('…and Sipho now appears on the Care lists', g.attendees.filter(a => a.interests.nurse).length === nBefore + 1 && $main.innerHTML.includes('Sipho Ndlovu') && $main.innerHTML.includes('Nurse call'));
+  ok('…and Sipho now appears on the Care lists', g.attendees.filter(a => a.interests.nurse).length === nBefore + 1 && $main.innerHTML.includes('Sipho Ndlovu') && $main.innerHTML.includes('Follow-up call'));
   g.toggleInterest(fakeBtn, 'EXPO-088', 'nurse');
   ok('unticking removes it again', sipho.interests.nurse === false && fakeBtn.classList.on === false && fakeBtn.textContent === g.INT.nurse);
   g.onPrayer('EXPO-088', 'Please pray for my <script>x</script> mother');
