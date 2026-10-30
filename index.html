@@ -926,24 +926,28 @@
      filter, box-shadow or gradient, and the still trace is one static path. */
   .hx-ecg path{fill:none;stroke:var(--hx-mint);stroke-linecap:round;stroke-linejoin:round}
   .hx-ecg-base{stroke-width:1.5;opacity:.22}
-  .hx-ecg-tail,.hx-ecg-neck,.hx-ecg-halo,.hx-ecg-head{stroke-dasharray:var(--d) calc(101 - var(--d));
-    stroke-dashoffset:var(--d);animation:hxSweep 2.4s linear infinite}
-  .hx-ecg-tail{--d:34;stroke-width:2;opacity:.28}
-  .hx-ecg-neck{--d:13;stroke-width:2.2;opacity:.6}
-  .hx-ecg-halo{--d:6;stroke-width:10;opacity:.22}
-  .hx-ecg-head{--d:2.2;stroke-width:2.8;opacity:1;stroke:var(--hx-ecg-head,#eafff2)}
+  /* Each moving layer is one dash on the same 101-long path; its keyframe runs the dash start from -length to
+     101-length, so every front sits on the same point and they travel together. The numbers are written out:
+     a var() inside a keyframe does not interpolate in Chrome/WebView, and the sweep then froze on its last frame.
+     --hx-ecg-ph (set where the trace is built) starts a redrawn copy at the clock's point in the beat, so a
+     re-render carries on the sweep instead of snapping it back to the left edge. */
+  .hx-ecg-tail{stroke-width:2;opacity:.38;stroke-dasharray:30 71;animation:hxSweepTail 2.4s linear var(--hx-ecg-ph,0s) infinite}
+  .hx-ecg-halo{stroke-width:9;opacity:.2;stroke-dasharray:5 96;animation:hxSweepHalo 2.4s linear var(--hx-ecg-ph,0s) infinite}
+  .hx-ecg-head{stroke-width:2.8;stroke:var(--hx-ecg-head,#eafff2);stroke-dasharray:2.5 98.5;animation:hxSweepHead 2.4s linear var(--hx-ecg-ph,0s) infinite}
+  @keyframes hxSweepTail{from{stroke-dashoffset:30}to{stroke-dashoffset:-71}}
+  @keyframes hxSweepHalo{from{stroke-dashoffset:5}to{stroke-dashoffset:-96}}
+  @keyframes hxSweepHead{from{stroke-dashoffset:2.5}to{stroke-dashoffset:-98.5}}
   html[data-theme="light"] .hx-ecg{opacity:.9}
   html[data-theme="light"] .hx-ecg-base{opacity:.3}
   html[data-theme="light"] .hx-ecg-head{--hx-ecg-head:var(--hx-mint-deep)}
-  @keyframes hxSweep{from{stroke-dashoffset:var(--d)}to{stroke-dashoffset:calc(var(--d) - 101)}}
-  /* lite (4 cores or fewer, or a choppy first second: most budget phones) keeps the sweep, which is a few thin
-     strokes moving one value, and only drops the wide halo. A hidden page stops everything. */
+  /* lite (4 cores or fewer, or a choppy first second: most budget phones) keeps the sweep, two thin strokes,
+     and drops the wide halo. A hidden page and reduced motion stop it and show the still trace. */
   html.lite .hx-ecg-halo{display:none}
   html.page-hidden .hx-ecg-base{opacity:.7;stroke-width:2}
-  html.page-hidden :is(.hx-ecg-tail,.hx-ecg-neck,.hx-ecg-halo,.hx-ecg-head){animation:none;display:none}
+  html.page-hidden :is(.hx-ecg-tail,.hx-ecg-halo,.hx-ecg-head){animation:none;display:none}
   @media (prefers-reduced-motion:reduce){
     html .hx-ecg-base,html[data-theme] .hx-ecg-base{opacity:.7;stroke-width:2}
-    .hx-ecg-tail,.hx-ecg-neck,.hx-ecg-halo,.hx-ecg-head{animation:none;display:none}}
+    .hx-ecg-tail,.hx-ecg-halo,.hx-ecg-head{animation:none;display:none}}
 
   .hx-capsule{display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:4px 12px;border-radius:999px;
     background:var(--hx-mint-soft);border:1px solid var(--hx-mint-line);color:var(--hx-mint-deep);
@@ -1454,7 +1458,6 @@
      <svg viewBox="0 0 340 70" preserveAspectRatio="none" focusable="false">
       <path class="hx-ecg-base" pathLength="101" d="M 0 35 L 50 35 L 64 35 L 72 31 Q 78 28 84 35 L 96 35 L 102 41 L 114 8 L 126 62 L 136 31 Q 148 24 162 35 L 195 35 L 210 35 L 218 31 Q 224 28 230 35 L 242 35 L 248 41 L 260 8 L 272 62 L 282 31 Q 294 24 308 35 L 340 35"/>
       <path class="hx-ecg-tail" pathLength="101" d="M 0 35 L 50 35 L 64 35 L 72 31 Q 78 28 84 35 L 96 35 L 102 41 L 114 8 L 126 62 L 136 31 Q 148 24 162 35 L 195 35 L 210 35 L 218 31 Q 224 28 230 35 L 242 35 L 248 41 L 260 8 L 272 62 L 282 31 Q 294 24 308 35 L 340 35"/>
-      <path class="hx-ecg-neck" pathLength="101" d="M 0 35 L 50 35 L 64 35 L 72 31 Q 78 28 84 35 L 96 35 L 102 41 L 114 8 L 126 62 L 136 31 Q 148 24 162 35 L 195 35 L 210 35 L 218 31 Q 224 28 230 35 L 242 35 L 248 41 L 260 8 L 272 62 L 282 31 Q 294 24 308 35 L 340 35"/>
       <path class="hx-ecg-halo" pathLength="101" d="M 0 35 L 50 35 L 64 35 L 72 31 Q 78 28 84 35 L 96 35 L 102 41 L 114 8 L 126 62 L 136 31 Q 148 24 162 35 L 195 35 L 210 35 L 218 31 Q 224 28 230 35 L 242 35 L 248 41 L 260 8 L 272 62 L 282 31 Q 294 24 308 35 L 340 35"/>
       <path class="hx-ecg-head" pathLength="101" d="M 0 35 L 50 35 L 64 35 L 72 31 Q 78 28 84 35 L 96 35 L 102 41 L 114 8 L 126 62 L 136 31 Q 148 24 162 35 L 195 35 L 210 35 L 218 31 Q 224 28 230 35 L 242 35 L 248 41 L 260 8 L 272 62 L 282 31 Q 294 24 308 35 L 340 35"/>
      </svg>

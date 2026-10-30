@@ -2050,6 +2050,13 @@ function makeServer() {
     const e = txt(g.spectrumHTML([0, 0, 0, 0]));
     ok('an empty deck shows zeros, no percent signs and no note', /Action 0 Nurse/.test(e) && !/%/.test(e) && !/screened/.test(e), e);
   }
+  { /* a re-render (every sync) rebuilt the trace and snapped the sweep back to the left edge */
+    const ui = require('fs').readFileSync(require('path').join(__dirname, '..', 'src', 'ui.js'), 'utf8').replace(/\r/g, '');
+    const html = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.html'), 'utf8').replace(/\r/g, '');
+    ok('a rebuilt ECG starts at the clock\'s point in the beat, so a re-render does not restart the sweep',
+      ui.includes('const ECG_BEAT_MS = 2400;') && ui.includes('style="--hx-ecg-ph:-${phase}ms"')
+      && ['Tail', 'Halo', 'Head'].every(k => html.includes('animation:hxSweep' + k + ' 2.4s linear var(--hx-ecg-ph,0s) infinite}')));
+  }
   const actionsOf = h => [...h.matchAll(/data-action="([^"]*)"/g)].map(m => m[1]);
   const unwired = [];
   for (const v of ['login', 'signup', 'forgot']) { g.gateView(v); actionsOf(gateHTML()).forEach(n => { if (!g.hasAction(n)) unwired.push(v + ':' + n); }); }
@@ -4504,12 +4511,17 @@ function makeServer() {
       && !/transition:transform \.45s cubic-bezier\(\.34,1\.56,\.64,1\),box-shadow/.test(html));
     ok('the queue pulse no longer animates box-shadow',
       /@keyframes qpulse\{/.test(html) && !/@keyframes qpulse\{[^}]*box-shadow/.test(html));
-    ok('the monitor sweep moves only stroke-dashoffset: no filter, shadow or gradient in its keyframe',
-      /\.hx-ecg-halo\{--d:6;stroke-width:10/.test(html) && /@keyframes hxSweep\{/.test(html)
-      && !/@keyframes hxSweep\{[^}]*?(box-shadow|filter|gradient|opacity)/.test(html));
-    ok('both copies of the ECG draw the still trace and the four sweep layers from one path each',
-      ['base', 'tail', 'neck', 'halo', 'head'].every(k => html.includes('class="hx-ecg-' + k + '" pathLength="101"'))
-      && srcText.includes("const ECG_LAYERS = ['base', 'tail', 'neck', 'halo', 'head'];"));
+    /* the sweep once froze on its last frame: its keyframe read var(--d), which Chrome/WebView does not interpolate */
+    const sweepKf = html.match(/@keyframes hxSweep(Tail|Halo|Head)\{from\{[^}]*\}to\{[^}]*\}\}/g) || [];
+    ok('the monitor sweep has three keyframes of plain numbers moving only stroke-dashoffset',
+      sweepKf.length === 3 && sweepKf.every(k => /^@keyframes hxSweep\w+\{from\{stroke-dashoffset:[\d.]+\}to\{stroke-dashoffset:-[\d.]+\}\}$/.test(k))
+      && !/@keyframes[^{]*\{[^@]*var\(--d\)/.test(html), JSON.stringify(sweepKf));
+    ok('each sweep dash starts one dash-length back, so tail, halo and head share their front',
+      sweepKf.every(k => { const [, a, b] = k.match(/from\{stroke-dashoffset:([\d.]+)\}to\{stroke-dashoffset:-([\d.]+)\}/) || [];
+        return Math.abs(Number(a) + Number(b) - 101) < 1e-9; }));
+    ok('both copies of the ECG draw the still trace and the three sweep layers from one path each',
+      ['base', 'tail', 'halo', 'head'].every(k => html.includes('class="hx-ecg-' + k + '" pathLength="101"'))
+      && srcText.includes("const ECG_LAYERS = ['base', 'tail', 'halo', 'head'];"));
     /* 4-core phones are lite from the start: the sweep must keep running there (it once did not), minus the halo */
     ok('the ECG sweep runs under lite (halo dropped), stops on a hidden page and under reduced motion',
       /html\.lite \.hx-ecg-halo\{display:none\}/.test(html) && !/html\.lite[^{]*\.hx-ecg-(head|neck|tail)/.test(html)
