@@ -12,7 +12,7 @@ import { cloud, migrateAttendee, persist, seedDemo } from './state.js';
 import { GRACE_DAYS, RETENTION_YEARS, visitIsOld } from './retention.js';
 import { homeHealthHTML, installEvt, validEmail } from './cloud.js';
 import { hiredCountLabel, mayPlace, pendingLabel, todayStr } from './volunteer.js';
-import { bannerHTML, capsuleHTML, ctaHTML, ecgHTML, rulerHTML, spectrumHTML, splitBtnHTML, tileHTML } from './ui.js';
+import { bannerHTML, capsuleHTML, ctaHTML, ecgHTML, journeyRailHTML, rulerHTML, spectrumHTML, splitBtnHTML, tileHTML } from './ui.js';
 import { confirmAsk } from './feedback.js';
 /* The visitor journey: Check → Results entry, registration, the paper record and the survey. Split from the original single-file app; bundled back into one file by tools/build.js. */
 /* ================= THE VISITOR JOURNEY: Check → Results → Plan → Send home ================= */

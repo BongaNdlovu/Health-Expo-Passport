@@ -24,11 +24,47 @@ export function capsuleHTML(text){
  return `<span class="hx-capsule"><i></i>${esc(text)}</span>`;
 }
 
-/** Tick ruler with a progress pin; pct is clamped to 0-100. */
-export function rulerHTML(pct){
- const p=Math.max(0,Math.min(100,Number(pct)||0));
- return `<div class="hx-ruler" aria-hidden="true"><span class="hx-ruler-pin" style="left:${p}%"></span></div>`;
+/**
+ * Cinematic 4-stage journey conduit (Check → Results → Plan → Send).
+ * Replaces the old barcode tick ruler with an intuitive, luminous milestone rail.
+ * @param {number} [stepIdx] 0=Check, 1=Results, 2=Plan, 3=Send (or 0-100 percentage)
+ * @param {boolean} [isDone] whether all 4 steps are complete
+ */
+export function journeyRailHTML(stepIdx, isDone){
+ const steps = [
+  { label: 'Check' },
+  { label: 'Results' },
+  { label: 'Plan' },
+  { label: 'Send' }
+ ];
+ let cur = Number(stepIdx) || 0;
+ if (cur > 3) cur = Math.max(0, Math.min(3, Math.round((cur / 100) * 4) - 1));
+ if (isDone) cur = 4;
+ const pctFill = isDone ? 100 : Math.round((cur / 3) * 100);
+
+ return `<div class="hx-journey-rail" role="progressbar" aria-valuenow="${isDone ? 4 : cur + 1}" aria-valuemin="1" aria-valuemax="4" aria-label="Journey progress: Step ${isDone ? 4 : cur + 1} of 4">
+  <div class="hx-rail-track" aria-hidden="true"><div class="hx-rail-fill" style="width:${pctFill}%"></div></div>
+  <div class="hx-rail-steps">
+   ${steps.map((s, i) => {
+    const done = isDone || i < cur;
+    const active = !isDone && i === cur;
+    const cls = done ? 'is-done' : active ? 'is-active' : 'is-pending';
+    const icon = done
+     ? `<svg class="hx-step-check" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.5 6.2l2.3 2.3 4.7-5"/></svg>`
+     : active
+      ? `<span class="hx-step-beacon"></span>`
+      : `<span class="hx-step-num">${i + 1}</span>`;
+    return `<div class="hx-rail-step ${cls}">
+     <span class="hx-step-node">${icon}</span>
+     <span class="hx-step-lbl">${s.label}</span>
+    </div>`;
+   }).join('')}
+  </div>
+ </div>`;
 }
+
+/** Backward-compatible alias for journeyRailHTML */
+export const rulerHTML = journeyRailHTML;
 
 /**
  * Jewelled vitals tile. `pill` adds the split High/Watch badge from the reference.
@@ -62,14 +98,46 @@ export function ctaHTML(o){
  return `<span class="hx-cta${dark}"><span class="hx-cta-main">${esc(o.label||'')}</span><span class="hx-cta-circle" aria-hidden="true">${I.arrow}</span></span>`;
 }
 
-/** Five-segment screening spectrum, proportional to real counts. */
+/**
+ * Cinematic Triage Distribution Deck: Ruby Action, Amber Watch, and Mint Optimal status cards with luminous rail.
+ * Replaces the old mystery 5-color block bar with clear clinical categories and counts.
+ */
 export function spectrumHTML(counts){
- const vals=(Array.isArray(counts)&&counts.length===5?counts:[0,0,0,0,0]).map(n=>Math.max(0,Number(n)||0));
- const total=vals.reduce((a,b)=>a+b,0);
- const flex=total?vals.map(n=>n/total*100):[20,20,20,20,20];
- const names=['orange','amber','lime','green','purple'];
- const aria=total?`Screening spectrum, ${total} visitors`:'Screening spectrum, no visitors yet';
- return `<div class="hx-spectrum" role="img" aria-label="${esc(aria)}">${vals.map((n,i)=>`<i class="hx-seg-${names[i]}" style="flex:${flex[i].toFixed(2)}"></i>`).join('')}</div>`;
+ const vals = (Array.isArray(counts) && counts.length >= 3 ? counts : [0, 0, 0, 0, 0]).map(n => Math.max(0, Number(n) || 0));
+ const [flag, watch, ok, pending] = vals;
+ const total = flag + watch + ok + (pending || 0);
+ const pct = (n) => total ? Math.round((n / total) * 100) : 0;
+ const aria = total
+  ? `Screening distribution: ${flag} action needed, ${watch} under watch, ${ok} optimal`
+  : 'Screening distribution: no visitors screened yet';
+
+ return `<div class="hx-triage-deck" role="region" aria-label="${esc(aria)}">
+  <div class="hx-triage-grid">
+   <div class="hx-triage-card hx-triage-ruby">
+    <div class="hx-triage-head"><span class="hx-triage-dot"></span><span class="hx-triage-title">Action</span></div>
+    <div class="hx-triage-val">${flag}</div>
+    <div class="hx-triage-sub">${pct(flag)}% · Nurse</div>
+   </div>
+   <div class="hx-triage-card hx-triage-amber">
+    <div class="hx-triage-head"><span class="hx-triage-dot"></span><span class="hx-triage-title">Watch</span></div>
+    <div class="hx-triage-val">${watch}</div>
+    <div class="hx-triage-sub">${pct(watch)}% · Elevated</div>
+   </div>
+   <div class="hx-triage-card hx-triage-mint">
+    <div class="hx-triage-head"><span class="hx-triage-dot"></span><span class="hx-triage-title">Optimal</span></div>
+    <div class="hx-triage-val">${ok}</div>
+    <div class="hx-triage-sub">${pct(ok)}% · Healthy</div>
+   </div>
+  </div>
+  <div class="hx-triage-rail" aria-hidden="true">
+   ${total === 0 ? `<div class="hx-triage-bar hx-bar-empty" style="flex:1"></div>` : `
+    ${flag ? `<div class="hx-triage-bar hx-bar-ruby" style="flex:${Math.max(1, pct(flag))}"></div>` : ''}
+    ${watch ? `<div class="hx-triage-bar hx-bar-amber" style="flex:${Math.max(1, pct(watch))}"></div>` : ''}
+    ${ok ? `<div class="hx-triage-bar hx-bar-mint" style="flex:${Math.max(1, pct(ok))}"></div>` : ''}
+    ${pending ? `<div class="hx-triage-bar hx-bar-slate" style="flex:${Math.max(1, pct(pending))}"></div>` : ''}
+   `}
+  </div>
+ </div>`;
 }
 
 /** One ivory-sheet row: status dot, name, detail line, optional right badge. */

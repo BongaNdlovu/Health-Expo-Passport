@@ -939,6 +939,54 @@
     font-size:11.5px;font-weight:700}
   .hx-capsule i{width:6px;height:6px;border-radius:50%;background:var(--hx-mint);flex:none}
 
+  /* ---- CINEMATIC 4-STAGE JOURNEY RAIL (REPLACES BARCODE RULER) ---- */
+  .hx-journey-rail{position:relative;margin:12px 2px 2px;padding:8px 8px 6px;border-radius:18px;
+    background:rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.09);
+    box-shadow:inset 0 1px 2px rgba(0,0,0,.35)}
+  html[data-theme="light"] .hx-journey-rail{
+    background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.08);
+    box-shadow:inset 0 1px 2px rgba(0,0,0,.04)}
+  .hx-rail-track{position:absolute;top:21px;left:28px;right:28px;height:2px;border-radius:999px;
+    background:rgba(255,255,255,.12);overflow:hidden;pointer-events:none}
+  html[data-theme="light"] .hx-rail-track{background:rgba(0,0,0,.10)}
+  .hx-rail-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#34d375,#10b981);
+    box-shadow:0 0 10px rgba(52,211,117,.8);transition:width .45s cubic-bezier(.22,1,.36,1)}
+  .hx-rail-steps{position:relative;display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+  .hx-rail-step{display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center}
+  .hx-step-node{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;
+    font-size:10.5px;font-weight:800;background:rgba(255,255,255,.08);
+    border:1.5px solid rgba(255,255,255,.15);color:rgba(255,255,255,.55);
+    transition:all .3s cubic-bezier(.22,1,.36,1)}
+  html[data-theme="light"] .hx-step-node{
+    background:#ffffff;border-color:rgba(0,0,0,.12);color:#64748b;
+    box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .hx-step-lbl{font-size:9.5px;font-weight:750;letter-spacing:.02em;text-transform:uppercase;
+    color:rgba(255,255,255,.45);transition:color .3s}
+  html[data-theme="light"] .hx-step-lbl{color:#64748b}
+
+  /* Done stage */
+  .hx-rail-step.is-done .hx-step-node{background:linear-gradient(135deg,#10b981,#059669);
+    border-color:#34d375;color:#ffffff;box-shadow:0 0 12px rgba(52,211,117,.55)}
+  .hx-rail-step.is-done .hx-step-lbl{color:#34d375;font-weight:800}
+  html[data-theme="light"] .hx-rail-step.is-done .hx-step-lbl{color:#059669}
+  .hx-step-check{width:13px;height:13px}
+  /* Pending stage: the node's own grey is the look; the number only needs a steady line */
+  .hx-rail-step.is-pending .hx-step-node{cursor:default}
+  .hx-step-num{line-height:1}
+
+  /* Active stage (pulsing beacon) */
+  .hx-rail-step.is-active .hx-step-node{background:#ffffff;border-color:#34d375;color:#0f172a;
+    box-shadow:0 0 16px rgba(52,211,117,.85),0 0 0 3px rgba(52,211,117,.25);transform:scale(1.1)}
+  html[data-theme="light"] .hx-rail-step.is-active .hx-step-node{
+    background:#0f172a;border-color:#10b981;color:#ffffff;
+    box-shadow:0 0 14px rgba(16,185,129,.5),0 0 0 3px rgba(16,185,129,.2);transform:scale(1.1)}
+  .hx-rail-step.is-active .hx-step-lbl{color:#ffffff;font-weight:800}
+  html[data-theme="light"] .hx-rail-step.is-active .hx-step-lbl{color:#0f172a}
+  .hx-step-beacon{width:9px;height:9px;border-radius:50%;background:#10b981;box-shadow:0 0 8px #34d375;
+    animation:hxBeacon 1.8s ease-in-out infinite}
+  @keyframes hxBeacon{0%,100%{transform:scale(.9);opacity:.8}50%{transform:scale(1.25);opacity:1}}
+  @media (prefers-reduced-motion:reduce){.hx-step-beacon{animation:none}}
+
   .hx-ruler{position:relative;height:20px;margin:12px 4px 2px;opacity:.55;background-repeat:no-repeat;
     background-image:repeating-linear-gradient(90deg,var(--hx-ink-2) 0 1px,transparent 1px 48px),
       repeating-linear-gradient(90deg,var(--hx-line) 0 1px,transparent 1px 8px);
@@ -981,6 +1029,57 @@
   .hx-ivory-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px}
   .hx-ivory h3{margin:0;font-size:18px;font-weight:750;letter-spacing:-.4px}
   .hx-ivory-sub{margin:2px 0 0;font-size:11.5px;color:#545b53}
+  /* ---- CINEMATIC TRIAGE DISTRIBUTION DECK (REPLACES MYSTERY SPECTRUM BAR) ---- */
+  .hx-triage-deck{margin-bottom:12px;display:flex;flex-direction:column;gap:8px}
+  .hx-triage-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .hx-triage-card{position:relative;border-radius:14px;padding:9px 10px;display:flex;flex-direction:column;
+    justify-content:space-between;min-height:64px;border:1px solid transparent;transition:transform .2s}
+  .hx-triage-card:hover{transform:translateY(-1px)}
+  .hx-triage-head{display:flex;align-items:center;gap:5px}
+  .hx-triage-dot{width:7px;height:7px;border-radius:50%;flex:none}
+  .hx-triage-title{font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
+  .hx-triage-val{font-size:20px;font-weight:800;line-height:1;margin:3px 0 2px;font-variant-numeric:tabular-nums}
+  .hx-triage-sub{font-size:9.5px;font-weight:600;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  /* Ruby card (Action / Nurse) */
+  .hx-triage-ruby{background:linear-gradient(155deg,rgba(168,28,28,.18),rgba(99,12,12,.28));
+    border-color:rgba(239,68,68,.3);color:#fca5a5}
+  .hx-triage-ruby .hx-triage-dot{background:#ef4444;box-shadow:0 0 6px #ef4444}
+  .hx-triage-ruby .hx-triage-val{color:#ffffff}
+  html[data-theme="light"] .hx-triage-ruby{background:linear-gradient(155deg,#fef2f2,#fee2e2);
+    border-color:rgba(239,68,68,.25);color:#991b1b}
+  html[data-theme="light"] .hx-triage-ruby .hx-triage-val{color:#b91c1c}
+
+  /* Amber card (Watch / Borderline) */
+  .hx-triage-amber{background:linear-gradient(155deg,rgba(180,83,9,.16),rgba(120,53,15,.26));
+    border-color:rgba(245,158,11,.3);color:#fde68a}
+  .hx-triage-amber .hx-triage-dot{background:#f59e0b;box-shadow:0 0 6px #f59e0b}
+  .hx-triage-amber .hx-triage-val{color:#ffffff}
+  html[data-theme="light"] .hx-triage-amber{background:linear-gradient(155deg,#fffbeb,#fef3c7);
+    border-color:rgba(245,158,11,.25);color:#92400e}
+  html[data-theme="light"] .hx-triage-amber .hx-triage-val{color:#b45309}
+
+  /* Mint card (Optimal / Healthy) */
+  .hx-triage-mint{background:linear-gradient(155deg,rgba(16,185,129,.16),rgba(6,95,70,.26));
+    border-color:rgba(52,211,117,.3);color:#a7f3d0}
+  .hx-triage-mint .hx-triage-dot{background:#10b981;box-shadow:0 0 6px #10b981}
+  .hx-triage-mint .hx-triage-val{color:#ffffff}
+  html[data-theme="light"] .hx-triage-mint{background:linear-gradient(155deg,#f0fdf4,#dcfce7);
+    border-color:rgba(34,197,94,.25);color:#166534}
+  html[data-theme="light"] .hx-triage-mint .hx-triage-val{color:#15803d}
+
+  /* Luminous slender distribution rail */
+  .hx-triage-rail{display:flex;height:6px;border-radius:999px;overflow:hidden;gap:2px;
+    background:rgba(0,0,0,.15);padding:1px;box-shadow:inset 0 1px 2px rgba(0,0,0,.3)}
+  html[data-theme="light"] .hx-triage-rail{background:rgba(0,0,0,.08);box-shadow:inset 0 1px 2px rgba(0,0,0,.08)}
+  .hx-triage-bar{height:100%;border-radius:999px;transition:flex .4s ease}
+  .hx-bar-ruby{background:linear-gradient(90deg,#ef4444,#dc2626);box-shadow:0 0 6px rgba(239,68,68,.6)}
+  .hx-bar-amber{background:linear-gradient(90deg,#f59e0b,#d97706);box-shadow:0 0 6px rgba(245,158,11,.6)}
+  .hx-bar-mint{background:linear-gradient(90deg,#10b981,#059669);box-shadow:0 0 6px rgba(16,185,129,.6)}
+  .hx-bar-slate{background:linear-gradient(90deg,#94a3b8,#64748b)}
+  .hx-bar-empty{background:rgba(255,255,255,.12);border-radius:999px}
+  html[data-theme="light"] .hx-bar-empty{background:rgba(0,0,0,.08)}
+
   .hx-spectrum{display:flex;height:20px;border-radius:6px;overflow:hidden;gap:1.5px;margin-bottom:12px;background:rgba(0,0,0,.08)}
   .hx-spectrum i{display:block;height:100%}
   .hx-seg-orange{background:linear-gradient(90deg,#e45d29,#db7123)}
@@ -1408,7 +1507,15 @@
      <div class="hx-id" style="font-size:36px;letter-spacing:-1px;margin:5px 0">Passport</div>
      <p style="margin:0;color:var(--hx-hero-sub);font-size:13.5px">Sign in with your staff credentials</p>
      <div style="margin-top:10px"><span class="hx-capsule"><i></i>Ready for Booth Check-in</span></div>
-     <div class="hx-ruler"><span class="hx-ruler-pin" style="left:50%"></span></div>
+     <div class="hx-journey-rail" role="progressbar" aria-valuenow="1" aria-valuemin="1" aria-valuemax="4" aria-label="Staff booth entry: Step 1 of 4">
+       <div class="hx-rail-track" aria-hidden="true"><div class="hx-rail-fill" style="width:25%"></div></div>
+       <div class="hx-rail-steps">
+        <div class="hx-rail-step is-active"><span class="hx-step-node"><span class="hx-step-beacon"></span></span><span class="hx-step-lbl">Check</span></div>
+        <div class="hx-rail-step is-pending"><span class="hx-step-node"><span class="hx-step-num">2</span></span><span class="hx-step-lbl">Results</span></div>
+        <div class="hx-rail-step is-pending"><span class="hx-step-node"><span class="hx-step-num">3</span></span><span class="hx-step-lbl">Plan</span></div>
+        <div class="hx-rail-step is-pending"><span class="hx-step-node"><span class="hx-step-num">4</span></span><span class="hx-step-lbl">Send</span></div>
+       </div>
+      </div>
     </div>
    </div>
   </section>
