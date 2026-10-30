@@ -57,7 +57,10 @@ const policy = scripts => [
 /* the browser hashes the exact text between <script> and </script>, so the hash is taken of exactly what is
    injected below — newlines included */
 const inlineBundle = '\n' + bundle + '\n';
-const SB_CDN = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4';   /* keep in step with SB_LIB in src/cloud.js */
+/* The exact URL the app loads (SB_LIB in src/cloud.js). A CSP source without a trailing slash matches that path
+   only, so it must be the whole file path — a shortened one blocks the library and sign-in never loads. */
+const SB_CDN = (/export const SB_LIB='([^']+)'/.exec(fs.readFileSync(path.join(root, 'src', 'cloud.js'), 'utf8')) || [])[1];
+if (!SB_CDN) throw new Error('src/cloud.js lost its SB_LIB line — the CSP cannot name the library it must allow');
 const CSP_DEV = policy("script-src 'self' " + SB_CDN);
 const CSP_DIST = policy("script-src 'self' " + hashOf(inlineBundle) + ' ' + SB_CDN);
 

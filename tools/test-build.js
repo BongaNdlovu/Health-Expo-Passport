@@ -50,6 +50,14 @@ ok('version.json is never cached', /\/version\.json[\s\S]{0,60}no-store/.test(he
 ok('sw.js is never cached', /\/sw\.js[\s\S]{0,60}no-cache/.test(headers));
 ok('the APK is served as an attachment', /\/newstart\.apk[\s\S]{0,120}Content-Disposition: attachment/.test(headers));
 ok('the page sends a CSP', /Content-Security-Policy:/.test(headers) && /http-equiv="Content-Security-Policy"/.test(html));
+{
+  /* the browser matches a CSP host source with a path by exact path, or by prefix when it ends in "/" — a
+     shortened path once blocked the library and with it every sign-in on the hosted site */
+  const sbLib = (/export const SB_LIB='([^']+)'/.exec(fs.readFileSync(path.join(__dirname, '..', 'src', 'cloud.js'), 'utf8')) || [])[1];
+  const scriptSrc = ((/Content-Security-Policy: (.*)/.exec(headers) || [])[1] || '').split(';').map(s => s.trim()).find(s => s.startsWith('script-src ')) || '';
+  const allows = src => src.startsWith('https://') && (src.endsWith('/') ? sbLib.startsWith(src) : sbLib === src);
+  ok('the CSP script-src allows the Supabase library URL the app loads', !!sbLib && scriptSrc.split(/\s+/).some(allows), sbLib + ' vs ' + scriptSrc);
+}
 
 console.log('\n5. the new UI is in the shipped page');
 ok('the update banner', /id="updateBar"/.test(html) && /data-action="updateNow"/.test(html));
