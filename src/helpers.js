@@ -119,9 +119,12 @@ const adultAge=(age,total)=>Math.max(18,+(age+total).toFixed(1));
 export function healthAge(a){
  const f=factorsOf({...a.s,bmi:bmi(a)});
  const total=capTotal(f);
- const complete=doneCount(a)===8;
+ /* all 8 checks AND a height: weight alone gives no BMI, and leaving BMI out would quietly make a heavy visitor
+    look younger, so without a height there is no health age yet */
+ const needsHeight=doneCount(a)===8&&bmi(a)==null;
+ const complete=doneCount(a)===8&&!needsHeight;
  /* a health age still has to be a plausible adult age, however good the readings are */
- return {f,total,complete,health:complete?adultAge(a.age,total):null};
+ return {f,total,complete,needsHeight,health:complete?adultAge(a.age,total):null};
 }
 export const DROPS={kSys:[0,4,8,11],kDia:[0,2,4,6],hSys:[0,3,5],hDia:[0,2,3]};
 export function simBP(a){

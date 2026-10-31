@@ -3,7 +3,7 @@
    it loads from CDNs. It NEVER stores anything from Supabase — visitor health data, volunteer details and sign-in
    tokens travel only between the app and the database (the app keeps its own saved copy on the device).
    VERSION is stamped by tools/build.js so every release replaces the old cache. */
-const VERSION = '9e0847cb96';
+const VERSION = '69eb90bc41';
 const SHELL = 'newstart-shell-' + VERSION;
 const LIBS = 'newstart-libs-v3';              /* v3: the scanner and QR libraries are gone, so their cached copies are dropped */
 

@@ -2,7 +2,7 @@
 import { I } from './icons.js';
 import { $, A } from './helpers.js';
 import { INT } from './data.js';
-import { DROPS, FOOD_PRICES, PRICE_DATE, SEX_RANGE, autoProtocol, bmi, cat, chipClass, clamp, costOf, esc, firstName, fmt1, healthAge, initials, money, pefPct, projection, redFlag, simBP, tweenGoal } from './helpers.js';
+import { DROPS, FOOD_PRICES, PRICE_DATE, SEX_RANGE, autoProtocol, bmi, cat, chipClass, clamp, costOf, doneCount, esc, firstName, fmt1, healthAge, initials, money, pefPct, projection, redFlag, simBP, tweenGoal } from './helpers.js';
 import { ACTIONS, DISCLAIMER, FOOD_WHY, HEARD, HUE_P, PLAN_GOAL, PROTOCOLS, RECHECK, SEMINARS, SURVEY, attendees, cholUp, heavy, hueOf, planBooks, precautionsHTML, refLabel, state } from './data.js';
 import { persist } from './state.js';
 import { IS_APP } from './platform.js';
@@ -14,7 +14,7 @@ import { hasConsent, optedIn } from './visitor.js';
 /* the three numbers at the top of Results: actual age, health age now, and the 90-day goal */
 function scoreTiles(tile,a,ha,proj,gone){
  return `${tile('Actual age',fmt1(a.age),'yrs old','border-sky-200/70 bg-sky-50/80 text-sky-800')}
-    ${tile('Now',gone?'—':ha.health!=null?fmt1(ha.health):'—',gone?'readings deleted':ha.complete?`${ha.total>0?'+':''}${fmt1(ha.total)} yrs`:ha.f.length+'/8 done',
+    ${tile('Now',gone?'—':ha.health!=null?fmt1(ha.health):'—',gone?'readings deleted':ha.complete?`${ha.total>0?'+':''}${fmt1(ha.total)} yrs`:ha.needsHeight?'add height':doneCount(a)+'/8 done',
       ha.total>0.4?'border-rose-200/70 bg-rose-50/70 text-rose-700':'border-sage-200/80 bg-sage-50/90 text-sage-800')}
     ${tile('90-day goal',gone||proj.age==null?'—':fmt1(proj.age),gone?'readings deleted':proj.age==null?'after all 8 checks':`win ${fmt1(proj.yearsWon)} yrs`,'border-lilac-200/80 bg-lilac-50/90 text-lilac-700','scoreGoal')}`;
 }
@@ -64,7 +64,7 @@ export function viewResults(){
    ${gone?goneNote('mt-2 rounded-2xl border border-sky-200/70 bg-sky-50/70 px-3 py-2 text-[10.5px] font-semibold leading-snug text-sky-800'):''}
    <div class="mt-3.5 grid grid-cols-3 gap-2">${scoreTiles(tile,a,ha,proj,gone)}</div>
    ${gone||ha.complete?'':`<div class="mt-3 rounded-2xl border border-amber-200/70 bg-amber-50/70 px-3 py-2 text-[10px] font-semibold leading-snug text-amber-800">
-     Finish all 8 checks for the exact score. Missing checks use typical values in the goal above.</div>`}
+     ${ha.needsHeight?'Add their height at the weight station: the health age needs it for the BMI.':'Finish all 8 checks, with their height, to see the health age and the 90-day goal.'}</div>`}
   </div>
 
   <div class="glass p-4">

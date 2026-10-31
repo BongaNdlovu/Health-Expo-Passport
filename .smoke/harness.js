@@ -2117,6 +2117,18 @@ function makeServer() {
     ok('90-day goal is not invented before all 8 checks are in', g.projection(part).age === null && g.projection(part).yearsWon === null && g.healthAge(part).health === null);
     Object.assign(sim, keep);
   }
+  { /* no height, no BMI: a health age without it quietly skipped the weight factor, so it waits for the height */
+    const s = { sys: 120, dia: 78, sugar: 5.0, chol: 4.5, weight: 95, veg: 5, walk: 30, water: 8, sleep: 8 };
+    const noH = { age: 40, heightCm: null, s: { ...s }, interests: {} }, withH = { ...noH, heightCm: 170 };
+    const h0 = g.healthAge(noH), h1 = g.healthAge(withH);
+    ok('all 8 checks but no height: no health age and no goal yet, and it says height is what is missing',
+      h0.complete === false && h0.needsHeight === true && h0.health === null && g.projection(noH).age === null
+      && h1.complete === true && h1.needsHeight === false && h1.health > 40, JSON.stringify({ h0: h0.health, h1: h1.health }));
+    ok('the results screen asks for the height instead of showing a partial health age',
+      srcText.includes("ha.needsHeight?'add height':doneCount(a)+'/8 done'")
+      && srcText.includes("Add their height at the weight station: the health age needs it for the BMI.")
+      && !srcText.includes('Missing checks use typical values in the goal above'));
+  }
   const actionsOf = h => [...h.matchAll(/data-action="([^"]*)"/g)].map(m => m[1]);
   const unwired = [];
   for (const v of ['login', 'signup', 'forgot']) { g.gateView(v); actionsOf(gateHTML()).forEach(n => { if (!g.hasAction(n)) unwired.push(v + ':' + n); }); }
