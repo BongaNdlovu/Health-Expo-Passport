@@ -1033,7 +1033,7 @@ function waPreviewHTML(a){
    <div>Blood sugar: ${a.s.sugar??'—'} mmol/L</div>
    <div>BMI: ${bmi(a)?fmt1(bmi(a)):'—'}</div>
    ${paperLines(a).map(l=>`<div>${esc(l)}</div>`).join('')}
-   <div>Health age: ${ha.health!=null?fmt1(ha.health):'—'} → <b class="text-brand-800">${fmt1(proj.age)} yrs in 90 days</b></div>
+   <div>Health age: ${ha.health!=null?fmt1(ha.health):'—'} → <b class="text-brand-800">${proj.age!=null?fmt1(proj.age)+' yrs':'—'} in 90 days</b></div>
   </div>
   <div class="mt-3"><div class="text-[10px] font-extrabold uppercase tracking-wider text-brand-900">Your plan: ${esc(P.goal)}</div>
    <p class="mt-1 text-[11px] font-bold leading-relaxed text-[#33504f]">${esc(P.problem)}</p>
@@ -1116,7 +1116,7 @@ export function waMessage(a){
   `• Blood sugar: ${a.s.sugar??'—'} mmol/L`,
   `• BMI: ${bmi(a)?fmt1(bmi(a)):'—'}`,
   ...paperLines(a).map(l=>'• '+l),
-  `• Health age: ${ha.health!=null?fmt1(ha.health):'—'} → ${fmt1(proj.age)} yrs in 90 days`,
+  `• Health age: ${ha.health!=null?fmt1(ha.health):'—'} → ${proj.age!=null?fmt1(proj.age)+' yrs':'—'} in 90 days`,
   '',
   `YOUR PLAN: ${P.goal.toUpperCase()}`,
   P.problem,
@@ -1222,7 +1222,7 @@ export function buildPrintCard(){
     <div class="pc-metric"><span class="pc-ml">Blood pressure</span><span class="pc-mv">${a.s.sys??'—'}/${a.s.dia??'—'} → ${sys}/${dia}</span></div>
     <div class="pc-metric"><span class="pc-ml">Blood sugar</span><span class="pc-mv">${a.s.sugar??'—'} mmol/L</span></div>
     <div class="pc-metric"><span class="pc-ml">BMI</span><span class="pc-mv">${bmi(a)?fmt1(bmi(a)):'—'}</span></div>
-    <div class="pc-metric pc-hot"><span class="pc-ml">Health age</span><span class="pc-mv">${ha.health!=null?fmt1(ha.health):'—'} → ${fmt1(proj.age)}</span></div>
+    <div class="pc-metric pc-hot"><span class="pc-ml">Health age</span><span class="pc-mv">${ha.health!=null?fmt1(ha.health):'—'} → ${proj.age!=null?fmt1(proj.age):'—'}</span></div>
    </div>
    <div class="pc-sec-title">My plan: ${esc(P.goal)}</div>
    <div class="pc-problem">${esc(P.problem)}${P.urgent?` <b>${esc(P.urgent.t)}.</b>`:''}</div>

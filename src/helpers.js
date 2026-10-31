@@ -84,19 +84,28 @@ export const chipClass=c=>c==='flag'?'chip chip-flag':c==='watch'?'chip chip-wat
    This is a screening ESTIMATE for teaching, not a validated risk score. The published models also need
    smoking status, which this expo does not ask for, so their coefficients cannot honestly be applied here.
    Credit for beating a target is deliberately small and capped: going further below a target is not linearly
-   healthier, and for glucose and BMI it is harmful. The total is capped either way so no single reading runs
-   away with the answer. */
+   healthier, and for glucose, blood pressure and BMI it is harmful. So each of those has a healthy band: below
+   it the credit fades away, and a dangerously low reading puts years ON (hypoglycaemia under 4.0 mmol/L,
+   hypotension under 90/60, underweight under BMI 18.5). Every curve is continuous, so a reading 0.1 either side
+   of a boundary moves the answer by a hair, never by a jump. The total is capped either way so no single
+   reading runs away with the answer. */
 const HA_CAP=15;
 const span=(v,lo,hi)=>v<lo?lo-v:v>hi?v-hi:0;
+/* blood pressure, each number on its own: the full credit at 110 systolic / 70 diastolic, fading to none at
+   90/60, and under 90/60 (hypotension) a penalty */
+const sysYears=v=>v>=110?(v-125)*0.08:v>=90?-1.2*(v-90)/20:(90-v)*0.08;
+const diaYears=v=>v>=70?(v-80)*0.10:v>=60?-1.0*(v-60)/10:(60-v)*0.10;
+const bpYears=(sys,dia)=>sysYears(sys)+diaYears(dia);
+/* sugar: the full 0.6-year credit at 4.5, fading to none at 4.0, and under 4.0 (hypoglycaemia) a penalty */
+const sugarYears=v=>v>=4.5?(v-5.5)*0.6:v>=4?-0.6*(v-4)/0.5:(4-v)*1.0;
+/* BMI: the best credit is mid-band (20.5), none at either edge of 18.5-22.5, a penalty outside it */
+const bmiYears=b=>b<18.5?(18.5-b)*0.25:b>22.5?(b-22.5)*0.15:-0.10*Math.min(b-18.5,22.5-b);
 function factorsOf(m){
  const f=[],yr=(name,shown,years,lo,hi)=>f.push([name,shown,clamp(years,lo,hi)]);
- if(m.sys&&m.dia) yr('Blood pressure',`${m.sys}/${m.dia}`,(m.sys-125)*0.08+(m.dia-80)*0.10,-3,8);
- /* below about 4.5 mmol/L is a low reading, not a better one, so the credit stops there */
- if(m.sugar!=null) yr('Blood sugar',`${m.sugar} mmol/L`,(m.sugar-5.5)*0.6,-0.6,6);
+ if(m.sys&&m.dia) yr('Blood pressure',`${m.sys}/${m.dia}`,bpYears(m.sys,m.dia),-3,8);
+ if(m.sugar!=null) yr('Blood sugar',`${m.sugar} mmol/L`,sugarYears(m.sugar),-0.6,6);
  if(m.chol!=null) yr('Cholesterol',`${m.chol} mmol/L`,(m.chol-5)*0.3,-1.5,5);
- /* BMI reads both ways: too light carries its own risk, so under 18.5 is a penalty, not a credit */
- if(m.bmi!=null) yr('Body weight (BMI)',fmt1(m.bmi),
-   m.bmi<18.5?(18.5-m.bmi)*0.25:m.bmi>22.5?(m.bmi-22.5)*0.15:-(22.5-m.bmi)*0.10,-0.4,6);
+ if(m.bmi!=null) yr('Body weight (BMI)',fmt1(m.bmi),bmiYears(m.bmi),-0.2,6);
  if(m.veg!=null) yr('Fruit & veg',`${m.veg} servings/day`,(5-m.veg)*0.10,-0.3,1.5);
  if(m.walk!=null) yr('Exercise',`${m.walk} min/day`,(30-m.walk)*0.02,-1.2,1.5);
  if(m.water!=null) yr('Water',`${m.water} glasses/day`,(8-m.water)*0.06,-0.3,0.8);
@@ -104,12 +113,15 @@ function factorsOf(m){
    span(m.sleep,7,9)*(m.sleep<7?0.25:0.15)||-0.2,-0.2,3);
  return f;
 }
+/* the same cap and adult floor for today's health age and the 90-day goal, so the two are always comparable */
+const capTotal=f=>clamp(f.reduce((t,x)=>t+x[2],0),-HA_CAP,HA_CAP);
+const adultAge=(age,total)=>Math.max(18,+(age+total).toFixed(1));
 export function healthAge(a){
  const f=factorsOf({...a.s,bmi:bmi(a)});
- const total=clamp(f.reduce((t,x)=>t+x[2],0),-HA_CAP,HA_CAP);
+ const total=capTotal(f);
  const complete=doneCount(a)===8;
  /* a health age still has to be a plausible adult age, however good the readings are */
- return {f,total,complete,health:complete?Math.max(18,+(a.age+total).toFixed(1)):null};
+ return {f,total,complete,health:complete?adultAge(a.age,total):null};
 }
 export const DROPS={kSys:[0,4,8,11],kDia:[0,2,4,6],hSys:[0,3,5],hDia:[0,2,3]};
 export function simBP(a){
@@ -120,16 +132,23 @@ export function simBP(a){
  const dia=clamp(baseD-DROPS.kDia[kitchen]-wD-DROPS.hDia[hydro],55,140);
  return {sys,dia,dS:baseS-sys,dD:baseD-dia};
 }
+/* The 90-day goal: today's readings moved by the plan sliders, scored by the same engine, cap and floor as today.
+   It only exists when today's health age does (all 8 checks), so it never rests on invented readings. The plan
+   only improves: it lowers a raised BP or BMI toward its healthy band but never past it, and never takes away
+   what someone already does (more than 5 servings, 8 glasses or 9 hours stay as they are). */
 export function projection(a){
- const s=a.s,{sys,dia}=simBP(a),{kitchen,walk,hydro}=state.sim;
- const m={sys,dia,sugar:s.sugar,chol:s.chol,
-  bmi:Math.max(18,(bmi(a)??25)-(kitchen>=2?2:0)-(walk>=30?1:0)),
-  veg:Math.min(5,(s.veg??2)+kitchen*1.5),
-  walk:Math.max(s.walk??0,walk),
-  water:Math.min(8,(s.water??4)+kitchen*1.5+(walk>=30?1:0)),
-  sleep:Math.min(9,(s.sleep??7)+hydro*0.6)};
- const t=factorsOf(m).reduce((x,y)=>x+y[2],0);
- return {age:+(a.age+t).toFixed(1),yearsWon:healthAge(a).total-t};
+ const ha=healthAge(a);
+ if(!ha.complete)return {age:null,yearsWon:null};
+ const s=a.s,{sys,dia}=simBP(a),{kitchen,walk,hydro}=state.sim,b=bmi(a);
+ const toward=(now,planned,floor)=>now<=floor?now:Math.max(floor,planned);
+ const m={sys:toward(s.sys,sys,120),dia:toward(s.dia,dia,80),sugar:s.sugar,chol:s.chol,
+  bmi:b==null?null:toward(b,b-(kitchen>=2?2:0)-(walk>=30?1:0),22.5),
+  veg:Math.max(s.veg,Math.min(5,s.veg+kitchen*1.5)),
+  walk:Math.max(s.walk,walk),
+  water:Math.max(s.water,Math.min(8,s.water+kitchen*1.5+(walk>=30?1:0))),
+  sleep:s.sleep>=7?s.sleep:Math.min(9,s.sleep+hydro*0.6)};
+ const age=adultAge(a.age,capTotal(factorsOf(m)));
+ return {age,yearsWon:+(ha.health-age).toFixed(1)};
 }
 /* The plan opened first is the top of the "what this person needs" list (planNeeds, further down), so the two cannot disagree.
    Nothing flagged → the sleep plan, the gentlest general one. */

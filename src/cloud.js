@@ -3,7 +3,7 @@ import { APP_SITE, IS_APP } from './platform.js';
 import { $ } from './helpers.js';
 import { cloud, migrateAttendee, migrateVolunteer, storageFull } from './state.js';
 import { SEED, SEED_VOL, attendees, state, volunteers } from './data.js';
-import { ACCT_GATES, acctButtons, acctGate, acctGateHTML, churchSearch, cloudInit, cloudRefresh, profileChanged } from './account.js';
+import { ACCT_GATES, acctButtons, acctGate, acctGateHTML, churchSearch, cloudInit, cloudRefresh, profileChanged, roleLabel } from './account.js';
 import { render, toast } from './shell.js';
 import { esc } from './helpers.js';
 import { pendingInvite } from './churchPlans.js';
@@ -277,6 +277,9 @@ function gateFail(m){cloud.formErr=m;cloud.gateKey='';renderCloudBody();renderGa
 export function gateBusy(pre,label){const b=$('#'+pre+'Go');if(b){b.disabled=true;const l=b.querySelector('.hx-cta-main');if(l)l.textContent=label;else b.textContent=label;}}
 export const isNet=m=>/fetch|network|load failed/i.test(String(m||''))||!navigator.onLine;
 
+/* the signed-in hero's status line for each signed-in gate; an approved member's says their role instead */
+const GATE_WHO={church:'choose your church',churchwait:'church waiting for approval',suspended:'church paused',pending:'waiting for approval',
+ loading:'loading your data',error:'not ready yet'};
 export function renderGate(){
  const el=$('#authGate'),body=$('#authGateBody');
  if(!el||!body)return;
@@ -287,6 +290,12 @@ export function renderGate(){
  /* the practice sandbox is for a signed-out desk: a signed-in account must not drop into demo data through it */
  const sandbox=$('#gateSandbox');if(sandbox)sandbox.style.display=(cloud.mode||cloud.user)?'none':'';
  if(st==='hidden'){cloud.gateKey='';return;}
+ /* an account screen (member, waiting, choose a church) and the first load or its error are signed in: the hero
+    drops "Sign in with your staff credentials" and the booth steps, says who is in and offers Sign out at the top */
+ const acctUp=!!cloud.user&&(ACCT_GATES.includes(st)||st==='loading'||st==='error');
+ el.dataset.acct=acctUp?'1':'';
+ const heroWho=$('#gateHeroWho');
+ if(heroWho&&acctUp){const m=cloud.acct&&cloud.acct.membership;heroWho.textContent='Signed in · '+(GATE_WHO[st]||(m?roleLabel(m):''));}
  /* Back is offered only when there is an app to go back to: the practice sandbox, a saved copy, or a gate the
     app opened over itself. A fresh signed-out device has nothing behind it, so the control stays hidden (Q3).
     A first sign-in's loading screen is excluded: the data has not arrived yet. New-password and the account-status

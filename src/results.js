@@ -16,7 +16,7 @@ function scoreTiles(tile,a,ha,proj,gone){
  return `${tile('Actual age',fmt1(a.age),'yrs old','border-sky-200/70 bg-sky-50/80 text-sky-800')}
     ${tile('Now',gone?'—':ha.health!=null?fmt1(ha.health):'—',gone?'readings deleted':ha.complete?`${ha.total>0?'+':''}${fmt1(ha.total)} yrs`:ha.f.length+'/8 done',
       ha.total>0.4?'border-rose-200/70 bg-rose-50/70 text-rose-700':'border-sage-200/80 bg-sage-50/90 text-sage-800')}
-    ${tile('90-day goal',gone?'—':fmt1(proj.age),gone?'readings deleted':`win ${fmt1(proj.yearsWon)} yrs`,'border-lilac-200/80 bg-lilac-50/90 text-lilac-700','scoreGoal')}`;
+    ${tile('90-day goal',gone||proj.age==null?'—':fmt1(proj.age),gone?'readings deleted':proj.age==null?'after all 8 checks':`win ${fmt1(proj.yearsWon)} yrs`,'border-lilac-200/80 bg-lilac-50/90 text-lilac-700','scoreGoal')}`;
 }
 /* the "What adds the most years" list, longest first, with the rest behind a tap */
 function yearsHTML(byYears,row){
@@ -94,7 +94,7 @@ export function viewResults(){
     </div>
     <div class="mt-3.5 flex items-center justify-between rounded-[14px] border border-white/90 bg-white/70 px-3 py-2">
      <span class="text-[11px] font-bold text-[#33504f]">90-day health age</span>
-     <span id="simAge" class="mono text-sm font-bold text-brand-700">${fmt1(proj.age)} yrs</span>
+     <span id="simAge" class="mono text-sm font-bold text-brand-700">${proj.age==null?'—':fmt1(proj.age)+' yrs'}</span>
     </div>
    </div>
    <div class="mt-3 space-y-2.5">
@@ -179,8 +179,7 @@ export function updateSimUI(){syncRanges();
  set('simSysLbl',`${a.s.sys??130} → ${sys}`);set('simDiaLbl',`${a.s.dia??85} → ${dia}`);
  const sb=document.getElementById('simSysBar');if(sb)sb.style.width=clamp(sys/(a.s.sys??130)*100,30,100)+'%';
  const db=document.getElementById('simDiaBar');if(db)db.style.width=clamp(dia/(a.s.dia??85)*100,30,100)+'%';
- tweenGoal(proj.age);
- set('scoreGoalSub',`win ${fmt1(proj.yearsWon)} yrs`);
+ if(proj.age!=null){tweenGoal(proj.age);set('scoreGoalSub',`win ${fmt1(proj.yearsWon)} yrs`);}
  const wS=Math.min(8,Math.round(state.sim.walk*0.2)),wD=Math.min(5,Math.round(state.sim.walk*0.1333));
  set('simKBadge',`L${state.sim.kitchen+1} · −${DROPS.kSys[state.sim.kitchen]}/−${DROPS.kDia[state.sim.kitchen]}`);
  set('simWBadge',`${state.sim.walk}min · −${wS}/−${wD}`);

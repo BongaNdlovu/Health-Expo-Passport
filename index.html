@@ -1091,6 +1091,11 @@
   .hx-staff-meta span{color:rgba(255,255,255,.65);font-weight:500}
   .hx-staff>svg{width:12px;height:12px;color:rgba(255,255,255,.65);flex:none}
   .hx-hero-tools{display:inline-flex;align-items:center;gap:6px;flex:none}
+  /* the sign-in hero has two faces: signed out it invites a staff sign-in and shows the booth steps; once an account
+     screen is up (member, waiting, choose a church) renderGate sets data-acct and it shows who is signed in instead */
+  #authGate[data-acct="1"] .hx-gate-sign,#authGate:not([data-acct="1"]) .hx-gate-acct{display:none}
+  .hx-gate-out{height:30px;padding:0 12px;border-radius:999px;border:1px solid var(--hx-line);background:var(--hx-surface);
+    color:var(--hx-ink);font-size:12px;font-weight:700;cursor:pointer}
   /* the light/dark switch is one round icon button: a sun in the light theme, a moon in the dark one */
   .hx-theme{display:grid;place-items:center;width:30px;height:30px;padding:0;border-radius:50%;
     border:1px solid var(--hx-line);background:var(--hx-surface);color:var(--hx-ink-2);cursor:pointer}
@@ -1472,6 +1477,7 @@
       <span class="hx-staff-meta"><b>HealthExpo</b><span>· v4.2</span></span>
      </span>
      <span class="hx-hero-tools">
+      <button type="button" data-action="cloudSignOut" class="hx-gate-out hx-gate-acct">Sign out</button>
       <button type="button" data-action="toggleTheme" class="hx-theme" aria-label="Switch light or dark" title="Switch light or dark">
        <svg class="hx-theme-light" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path stroke-linecap="round" d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg><svg class="hx-theme-dark" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
       </button>
@@ -1480,9 +1486,10 @@
     <div style="text-align:center;margin-top:6px">
      <div class="hx-eyebrow">Community Screening Companion</div>
      <div class="hx-id" style="font-size:36px;letter-spacing:-1px;margin:5px 0">Passport</div>
-     <p style="margin:0;color:var(--hx-hero-sub);font-size:13.5px">Sign in with your staff credentials</p>
-     <div style="margin-top:10px"><span class="hx-capsule"><i></i>Ready for Booth Check-in</span></div>
-     <div class="hx-journey-rail" role="progressbar" aria-valuenow="1" aria-valuemin="1" aria-valuemax="4" aria-label="Staff booth entry: Step 1 of 4">
+     <p class="hx-gate-sign" style="margin:0;color:var(--hx-hero-sub);font-size:13.5px">Sign in with your staff credentials</p>
+     <p id="gateHeroWho" class="hx-gate-acct" style="margin:0;color:var(--hx-hero-sub);font-size:13.5px"></p>
+     <div class="hx-gate-sign" style="margin-top:10px"><span class="hx-capsule"><i></i>Ready for Booth Check-in</span></div>
+     <div class="hx-journey-rail hx-gate-sign" role="progressbar" aria-valuenow="1" aria-valuemin="1" aria-valuemax="4" aria-label="Staff booth entry: Step 1 of 4">
        <div class="hx-rail-track" aria-hidden="true"><div class="hx-rail-fill" style="--hx-fill:0"></div></div>
        <div class="hx-rail-steps">
         <div class="hx-rail-step is-active"><span class="hx-step-node"><span class="hx-step-beacon"></span></span><span class="hx-step-lbl">Check</span></div>

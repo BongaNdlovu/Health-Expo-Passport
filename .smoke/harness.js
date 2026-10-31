@@ -2074,6 +2074,49 @@ function makeServer() {
       g.INT.nurse === 'Follow-up call' && !/Nurse call|nurse calls|A nurse will call/i.test(srcText)
       && srcText.includes("'☎ Our health team will call you within 48 hours'"));
   }
+  { /* a signed-in member saw "Sign in with your staff credentials" and the booth steps above their own account */
+    const ix = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.html'), 'utf8').replace(/\r/g, '');
+    ok('the sign-in hero swaps to a signed-in status line and a Sign out button on account screens',
+      /<p class="hx-gate-sign"[^>]*>Sign in with your staff credentials<\/p>/.test(ix) && ix.includes('<div class="hx-journey-rail hx-gate-sign"')
+      && ix.includes('<p id="gateHeroWho" class="hx-gate-acct"') && ix.includes('data-action="cloudSignOut" class="hx-gate-out hx-gate-acct">Sign out</button>')
+      && ix.includes('#authGate[data-acct="1"] .hx-gate-sign,#authGate:not([data-acct="1"]) .hx-gate-acct{display:none}')
+      && srcText.includes("el.dataset.acct=acctUp?'1':'';") && srcText.includes("const acctUp=!!cloud.user&&(ACCT_GATES.includes(st)||st==='loading'||st==='error');"));
+  }
+  { /* health age audit: low readings never earn credit, curves have no jumps, the 90-day goal uses the same rules */
+    const base = { sys: 120, dia: 78, sugar: 5.0, chol: 4.5, weight: 65, veg: 5, walk: 30, water: 8, sleep: 8 };
+    const mk = (s, h = 170, age = 40) => ({ age, heightCm: h, s: { ...base, ...s }, interests: {} });
+    const yrs = (a, name) => { const f = g.healthAge(a).f.find(x => x[0].startsWith(name)); return f ? f[2] : null; };
+    const wFor = b => b * 1.7 * 1.7, sim = g.state.sim, keep = { ...sim };
+    const near = (x, y, e = 0.051) => Math.abs(x - y) <= e;
+    ok('health age: a low blood sugar earns no credit, and under 4.0 mmol/L it adds years',
+      yrs(mk({ sugar: 4.0 }), 'Blood sugar') === 0 && yrs(mk({ sugar: 3.0 }), 'Blood sugar') > 0 && yrs(mk({ sugar: 2.5 }), 'Blood sugar') > yrs(mk({ sugar: 3.0 }), 'Blood sugar')
+      && near(yrs(mk({ sugar: 4.5 }), 'Blood sugar'), -0.6));
+    ok('health age: blood pressure credit peaks at 110/70, is gone at 90/60, and lower adds years',
+      near(yrs(mk({ sys: 110, dia: 70 }), 'Blood pressure'), -2.2) && near(yrs(mk({ sys: 90, dia: 60 }), 'Blood pressure'), 0)
+      && yrs(mk({ sys: 80, dia: 50 }), 'Blood pressure') > 0 && yrs(mk({ sys: 100, dia: 65 }), 'Blood pressure') > -2.2);
+    ok('health age: the BMI credit peaks mid-band (20.5) and is zero at both edges',
+      near(yrs(mk({ weight: wFor(20.5) }), 'Body weight'), -0.2) && near(yrs(mk({ weight: wFor(18.5) }), 'Body weight'), 0)
+      && near(yrs(mk({ weight: wFor(22.5) }), 'Body weight'), 0) && yrs(mk({ weight: wFor(17) }), 'Body weight') > 0);
+    const jumps = [['sugar', [4.0, 4.5]], ['sys', [90, 110]], ['dia', [60, 70]]].flatMap(([k, pts]) => pts.map(p => {
+      const lo = g.healthAge(mk({ [k]: p - 0.01 })).total, hi = g.healthAge(mk({ [k]: p + 0.01 })).total; return Math.abs(hi - lo); }))
+      .concat([18.5, 22.5].map(b => Math.abs(g.healthAge(mk({ weight: wFor(b - 0.01) })).total - g.healthAge(mk({ weight: wFor(b + 0.01) })).total)));
+    ok('health age: no jump at any band edge (0.02 apart moves it under 0.05 years)', jumps.every(d => d < 0.05), JSON.stringify(jumps));
+    sim.kitchen = 0; sim.walk = 0; sim.hydro = 0;
+    const big = mk({ veg: 8, water: 12, sleep: 10 }), sick = mk({ sys: 200, dia: 120, sugar: 16, chol: 8, weight: wFor(38), veg: 0, walk: 0, water: 1, sleep: 4 }, 170, 60);
+    const young = mk({ sys: 112, dia: 72, sugar: 4.8, chol: 3, weight: wFor(20.5), veg: 9, walk: 120, water: 10, sleep: 8 }, 170, 18);
+    ok('90-day goal with no plan changes equals today\'s health age (never "win −x")',
+      [big, sick, young, mk({})].every(a => g.projection(a).age === g.healthAge(a).health && g.projection(a).yearsWon === 0),
+      JSON.stringify([big, sick, young].map(a => [g.healthAge(a).health, g.projection(a).age])));
+    sim.kitchen = 3; sim.walk = 60; sim.hydro = 2;
+    const lean = mk({ weight: wFor(19), sys: 100, dia: 65 });
+    ok('90-day goal: the plan never makes anyone older, never pushes BMI or BP below the healthy band, and keeps the 18 floor',
+      [big, sick, young, lean, mk({})].every(a => g.projection(a).age <= g.healthAge(a).health) && g.projection(young).age >= 18
+      && g.projection(sick).age >= g.healthAge(sick).health - 2 * 15
+      && Math.abs(g.projection(lean).yearsWon - 0.6) < 0.051);   /* slim, low-BP visitor: only the walk (30 to 60 min) earns, BMI and BP stay */
+    const part = { age: 40, heightCm: 170, s: { sys: 130, dia: 85 }, interests: {} };
+    ok('90-day goal is not invented before all 8 checks are in', g.projection(part).age === null && g.projection(part).yearsWon === null && g.healthAge(part).health === null);
+    Object.assign(sim, keep);
+  }
   const actionsOf = h => [...h.matchAll(/data-action="([^"]*)"/g)].map(m => m[1]);
   const unwired = [];
   for (const v of ['login', 'signup', 'forgot']) { g.gateView(v); actionsOf(gateHTML()).forEach(n => { if (!g.hasAction(n)) unwired.push(v + ':' + n); }); }
