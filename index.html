@@ -1116,6 +1116,11 @@
   .hx-row-x{flex:none;display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border:0;border-radius:14px;cursor:pointer;
     background:rgba(214,88,74,.1);color:#b04a42}
   .hx-row-x:active{transform:scale(.94)}
+  .pf-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.4rem}
+  .pf-tab{min-height:50px;border:1px solid var(--hx-line);border-radius:16px;padding:.45rem .3rem;background:var(--hx-surface);font:inherit;font-size:11px;font-weight:800;line-height:1.25;color:var(--hx-ink-2);text-align:center;cursor:pointer}
+  .pf-tab.is-on{background:linear-gradient(135deg,#46a597,#2b8074);border-color:transparent;color:#fff}
+  .pf-now{display:flex;flex-direction:column;gap:.2rem;margin-top:1rem;border-radius:16px;padding:.7rem .85rem;background:var(--hx-mint-soft);font-size:11.5px;line-height:1.45;color:var(--hx-mint-deep)}
+  .pf-now b{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase}
   .hx-row-main{display:flex;align-items:center;gap:10px;min-width:0}
   .hx-row-dot{width:8px;height:8px;border-radius:50%;flex:none}
   .hx-row-name{display:block;font-size:13.5px;font-weight:700;color:#141715}
@@ -1612,19 +1617,6 @@
       <button id="cfAlt" data-action="confirmAlt" class="btn btn-glass flex-1 py-2.5 text-xs hidden"></button>
       <button id="cfGo" data-action="confirmYes" class="btn btn-primary flex-1 py-2.5 text-xs">Confirm</button>
     </div>
-  </div>
-</div>
-
-<!-- ===== Settings, nested inside the profile (src/account.js) ===== -->
-<div id="setSheet" role="dialog" aria-modal="true" aria-label="Settings" class="fixed inset-0 hidden items-end bg-[#0b1a1c]/40 backdrop-blur-md" style="z-index:70" data-action="closeSettings" data-backdrop="1">
-  <div class="glass sheet-up mx-auto flex max-h-[92vh] w-full max-w-md flex-col rounded-b-none rounded-t-[28px] p-5">
-    <div class="mx-auto mb-4 h-1.5 w-10 rounded-full bg-[#123033]/10"></div>
-    <div class="flex items-baseline justify-between">
-      <div class="display text-[16px] font-extrabold text-[#0f2a2c]">Settings</div>
-      <div class="microlabel">My commitments</div>
-    </div>
-    <div id="setBody" class="no-scrollbar mt-3 flex-1 overflow-y-auto"></div>
-    <button data-action="closeSettings" class="btn btn-glass mt-3 w-full py-2.5 text-xs">Close</button>
   </div>
 </div>
 

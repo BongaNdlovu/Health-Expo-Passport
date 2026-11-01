@@ -347,6 +347,10 @@ export function pledgeHTML(){
  if(!cloud.pledge)return acctBox('My pledge',acctNote('Pledge to help at the next expo and your name goes onto the team list straight away. Your church’s admin registers you and chooses your station. Your pledge details stay on the roster until you unpledge or your church’s admin removes them.')+myPledgeFormHTML());
  if(cloud.pledgeEdit)return acctBox('My pledge',myPledgeFormHTML());
  const p=cloud.pledge,st=STATUS_UI[p.status];
+ const row=(k,v)=>`<div class="flex items-baseline justify-between gap-3 border-b border-[#123033]/[.06] py-1.5 last:border-0"><span class="text-[11px] font-bold text-[#5c747a]">${k}</span><span class="text-right text-[11.5px] font-bold text-[#123033]">${v}</span></div>`;
+ const dated=s=>esc(String(s||'').slice(0,10))||'—';
+ const rows=[row('Health expos pledged to',`${Number(p.pledge_expos)||1} of ${EXPO_TOTAL}`),row('Pledged on',dated(p.pledged_on))];
+ if(p.registered_on&&(p.status==='registered'||p.status==='checkedin'))rows.push(row('Registered on',dated(p.registered_on)));
  return acctBox('My pledge',`
   <div class="mt-1 flex flex-wrap items-center gap-1.5">
    <span class="servechip ${st?st.cls:'sc-off'}">${esc(st?st.label:p.status)}</span>
@@ -355,12 +359,12 @@ export function pledgeHTML(){
   <div class="mt-2 text-[12px] font-bold text-[#123033]">${esc(p.name)}</div>
   <div class="mt-0.5 text-[11px] text-[#4f6870]">${p.booth?'Placed at '+esc(boothLabel(p.booth)):'Not placed yet — the admin chooses your station'}${p.shift?' · '+esc(p.shift):''}</div>
   ${(()=>{const e=((cloud.expos&&cloud.expos.list)||[]).find(x=>x.id===p.expo_id);return e?`<div class="mt-0.5 text-[11px] font-bold text-brand-700">For ${esc(e.name)} · ${esc(expoDate(e))}</div>`:'';})()}
-  <div class="mono mt-1 text-[10px] text-[#6b8187]">${esc(p.id)} · pledged ${esc(String(p.pledged_on||'').slice(0,10))}</div>
-  <div class="mt-2 flex gap-2">
+  <div class="mono mt-1 text-[10px] text-[#6b8187]">${esc(p.id)}</div>
+  <div class="mt-2">${rows.join('')}</div>
+  <div class="mt-3 flex gap-2">
    <button data-action="my-pledge-edit" class="btn btn-soft flex-1 py-2 text-xs">Edit my pledge</button>
    ${p.status==='prospect'?'<button data-action="my-pledge-withdraw" class="btn btn-glass flex-1 py-2 text-xs text-rose-700">Unpledge</button>'
      :p.status==='registered'?'<button data-action="my-pledge-deregister" class="btn btn-glass flex-1 py-2 text-xs text-rose-700">Deregister</button>':''}
-   <button data-action="openSettings" class="btn btn-glass flex-1 py-2 text-xs">Settings</button>
   </div>
   ${p.status==='checkedin'?acctNote('You are checked in for this expo: only your church’s admin can change that now.'):acctNote('Your pledge details (name and contacts) stay on your church’s roster until you unpledge or your church’s admin removes them.')}`);
 }
@@ -439,58 +443,28 @@ export async function withdrawMyPledge(){
   cloud.pledgeEdit=false;state.mf=null;
   await loadPledge(true);
   await acctReload();
-  renderSettings();
+  render();
   ok('Your pledge is withdrawn');
  }
 }
-/* ---------- settings: the commitments a member owns ----------
-   The profile says who you are; this panel says what you have signed up to, and is the only place a member can
-   take that back without an admin. Both buttons call a database function — the sheet only asks, and the server
-   decides (checked-in and unregistered states are refused there, not here). */
-export function openSettings(){renderSettings();showModal('#setSheet',closeSettings);}
-export function closeSettings(){hideModal('#setSheet');}
-export function renderSettings(){
- const el=$('#setBody');
- if(el)el.innerHTML=settingsBody();
-}
-function settingsBody(){
+/* ---------- Pledge & registration: everything about being on the expo team, in one place ----------
+   The Profile page's first section (it replaces the old Settings sheet, which showed the same thing a second time). A line at
+   the top says where the member stands and what they may do; Unpledge and Deregister are buttons that call database
+   functions, and the server decides (checked-in and unregistered states are refused there, not here). */
+function pledgeNowHTML(){
  const m=cloud.acct&&cloud.acct.membership;
- if(!m||m.status!=='approved')
-  return acctBox('Health expos',acctNote('Once your church approves your membership, the expos you pledge to appear here.'));
- if(cloud.pledge===undefined){loadPledge();return acctBox('Health expos',acctSkel(2,'Loading your commitments…'));}
- if(cloud.pledgeErr)
-  return acctBox('Health expos',acctNote('Commitments need the latest supabase/schema.sql — ask your church to update the database first.'));
+ if(!m||m.status!=='approved'||cloud.pledge===undefined||cloud.pledgeErr)return '';
  const p=cloud.pledge;
- if(!p)
-  return acctBox('Health expos',acctNote('You are not committed to an expo yet.')
-   +`<p class="mt-2 text-[11px] leading-relaxed text-[#5c747a]">Pledge from <b>My pledge</b> on your profile; the expo appears here as soon as you do.</p>`);
- const st=STATUS_UI[p.status]||{label:p.status,cls:'sc-off'};
- const row=(k,v)=>`<div class="flex items-baseline justify-between gap-3 border-b border-[#123033]/[.06] py-1.5 last:border-0"><span class="text-[11px] font-bold text-[#5c747a]">${k}</span><span class="text-right text-[11.5px] font-bold text-[#123033]">${v}</span></div>`;
- const dated=s=>esc(String(s||'').slice(0,10))||'—';
- const exposures=Number(p.pledge_expos)||1;
- const detail=[
-  row('Status',`<span class="servechip ${st.cls}">${esc(st.label)}</span>`),
-  row('Health expos pledged to',`${exposures} of ${EXPO_TOTAL}`),
-  row('Pledged on',dated(p.pledged_on)),
- ];
- if(p.status==='registered'||p.status==='checkedin'){
-  detail.push(row('Station',p.booth?esc(boothLabel(p.booth)):'Not placed yet'));
-  if(p.shift)detail.push(row('Shift',esc(p.shift)));
-  if(p.role)detail.push(row('Role',esc(p.role)+(p.lead?' ★ team leader':'')));
-  if(p.registered_on)detail.push(row('Registered on',dated(p.registered_on)));
- }
- const acts=p.status==='prospect'
-  ?`<button data-action="my-pledge-withdraw" class="btn btn-glass w-full py-2.5 text-xs text-rose-700">Unpledge from this expo</button>`
-  :p.status==='registered'
-  ?`<button data-action="my-pledge-deregister" class="btn btn-glass w-full py-2.5 text-xs text-rose-700">Deregister from this expo</button>`
-  :`<p class="text-[11px] leading-relaxed text-[#5c747a]">You are checked in for this expo — only your church's admin can change that now.</p>`;
- return acctBox('Health expos you are committed to',
-  `<div class="mt-1 flex items-center gap-1.5"><span class="servechip ${st.cls}">${esc(st.label)}</span>
-    ${p.lead?'<span class="servechip sc-warn">★ Team leader</span>':''}</div>
-   <div class="mt-2 text-[13px] font-extrabold text-[#123033]">${esc(p.name)}</div>
-   <div class="mono mt-0.5 text-[10px] text-[#6b8187]">${esc(p.id)}</div>
-   <div class="mt-2">${detail.join('')}</div>
-   <div class="mt-3">${acts}</div>`);
+ const t=!p?'You are not committed to an expo yet. Pledge below and your name goes on the team list; your church’s admin registers you and chooses your station.'
+  :p.status==='prospect'?'You are pledged. You can edit your pledge, or unpledge. Your church’s admin registers you and chooses your station.'
+  :p.status==='registered'?'You are registered. You can edit your pledge, or deregister: that releases your station and keeps your pledge on the team list.'
+  :p.status==='checkedin'?'You are checked in for this expo. Only your church’s admin can change that now.':'';
+ return t?`<div class="pf-now"><b>What you can do now</b><span>${esc(t)}</span></div>`:'';
+}
+export function pledgeSectionHTML(){
+ const m=cloud.acct&&cloud.acct.membership;
+ if(!m||m.status!=='approved')return acctBox('Pledge & registration',acctNote('Once your church approves your membership you can pledge to an expo here, and everything about your pledge and registration is on this page.'));
+ return pledgeNowHTML()+pledgeHTML()+expoMemberHTML()+myTeamHTML();
 }
 export async function deregisterMyPledge(){
  const yes=await confirmAsk({title:'Deregister from the expo?',
@@ -501,7 +475,7 @@ export async function deregisterMyPledge(){
   cloud.pledgeEdit=false;
   await loadPledge(true);
   await acctReload();
-  renderSettings();
+  render();
   ok('Deregistered — your pledge still stands');
  }
 }
@@ -748,7 +722,28 @@ function profSignedIn(){
     <div class="min-w-0"><div class="display truncate text-[19px] leading-tight font-extrabold text-[#0f2a2c]">${esc(w.name)}</div>
      <div class="truncate text-[11px] text-[#5c747a]">${esc(w.email)}</div></div></div>
    <div class="mt-3 flex flex-wrap gap-1.5">${profChips()}</div>${profShortcuts()}</div>`;
- return hero+profSync()+(m?meFormHTML('pm')+healthHTML()+expoMemberHTML()+pledgeHTML()+myTeamHTML():'')+profPasswordBox()+installBlock()+profAccountBox();
+ if(!m)return hero+profSync()+profPasswordBox()+installBlock()+profAccountBox();
+ const sec=profSection();
+ return hero+profSync()+profSectionBar()+(sec==='pledge'?pledgeSectionHTML():sec==='me'?meFormHTML('pm')+healthHTML():profPasswordBox()+installBlock()+profAccountBox());
+}
+/* The Profile page is three sections, one at a time, the last one used remembered on this device. */
+const PF_SECTIONS=[['pledge','Pledge & registration'],['me','My details & results'],['account','Account & security']];
+function profSection(){
+ if(state.pfSection===undefined){
+  let k='';try{k=localStorage.getItem('newstart.pfSection')||'';}catch(e){}
+  state.pfSection=PF_SECTIONS.some(x=>x[0]===k)?k:'pledge';
+ }
+ return state.pfSection;
+}
+export function setProfSection(k){
+ if(!PF_SECTIONS.some(x=>x[0]===k))return;
+ state.pfSection=k;
+ try{localStorage.setItem('newstart.pfSection',k);}catch(e){}
+ render();
+}
+export function profSectionBar(){
+ const cur=profSection();
+ return `<div class="pf-tabs" role="tablist" aria-label="Profile sections">${PF_SECTIONS.map(([k,l])=>`<button role="tab" aria-selected="${k===cur}" data-action="profSection" data-args="${k}" class="pf-tab${k===cur?' is-on':''}">${esc(l)}</button>`).join('')}</div>`;
 }
 /* role, church and approval as small labels under the name */
 function profChips(){
@@ -765,7 +760,7 @@ function profShortcuts(){
  if(!a)return '';
  const go=(t,l)=>`<button data-action="openAcct" data-args="${t}" class="btn btn-soft flex-1 py-2.5 text-xs">${l}</button>`;
  const row=(isChurchAdmin()?go('church','My church'):'')+(a.platform_admin?go('admin','All churches'):'');
- return `<div class="mt-3 flex gap-2">${row}<button data-action="openSettings" class="btn btn-soft flex-1 py-2.5 text-xs">Settings</button></div>`;
+ return row?`<div class="mt-3 flex gap-2">${row}</div>`:'';
 }
 function profSync(){
  const ui=CLOUD_UI[cloud.status]||CLOUD_UI.off;

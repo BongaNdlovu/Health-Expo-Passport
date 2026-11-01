@@ -195,7 +195,7 @@ export const HELP_PAGES = [
  { title: 'Profile', tab: 'me',
    what: 'Your account, your details, the expos you are committed to, the sync status and the settings.',
    sections: [
-    { name: 'Account', items: [
+    { name: 'Who you are', items: [
       ['Name, email and roles', 'Your roles (for example Health Department Leader) and your church.'],
       ['My church', 'For church admins: members, invitations, expos, church plans and follow-up people.'],
       ['All churches', 'For platform admins only: every church.'] ] },
@@ -204,17 +204,25 @@ export const HELP_PAGES = [
       ['Visitors, Volunteers, To upload', 'Counts held on this device. To upload is what is still waiting to be sent.'],
       ['Sync now', 'Sends what is waiting and fetches the latest changes.'],
       ['Details', 'Opens the full sync status.'] ] },
-    { name: 'My details', items: [
-      ['Full name, phone, area, date of birth', 'Only you and your church’s admins see these. Save my details keeps them.'] ] },
-    { name: 'My screening results', items: [
-      ['Results', 'Appear once a church admin links your expo badge to this account.'] ] },
-    { name: 'My pledge', items: [
+    { name: 'The three sections', items: [
+      ['The bar under Sync', 'Three buttons: Pledge & registration, My details & results, and Account & security. One section shows at a time, and the app remembers the one you used last on this device. Someone who is not in a church sees only the account part, with no bar.'],
+      ['Pledge & registration', 'Everything about helping at an expo: where you stand, your pledge, Unpledge and Deregister, the open expos, and your team if you lead a station.'],
+      ['My details & results', 'Your details form and your screening results.'],
+      ['Account & security', 'Password, installing the app, Help & tutorial, Sign out and Delete my account.'] ] },
+    { name: 'Pledge & registration', items: [
+      ['What you can do now', 'A line at the top says where you stand: not committed yet; pledged (you can edit or unpledge); registered (you can edit or deregister); or checked in (only your church’s admin can change it).'],
+      ['My pledge', 'Your status, your name, the station and shift you were given, which expo, how many expos you pledged to out of the programme, when you pledged and, once registered, when you were registered.'],
       ['Edit my pledge', 'Changes what you pledged.'],
-      ['Unpledge, Deregister', 'Unpledge before registration; Deregister after it.'],
-      ['Settings', 'Opens Health expos: the expos you have committed to, or a note that you have none yet.'] ] },
-    { name: 'Password', items: [
-      ['Change password', 'At least 8 characters, with a letter and a number.'] ] },
-    { name: 'Account', items: [
+      ['Unpledge', 'Only while you are pledged and not yet registered. It asks “Unpledge from the expo?”, then your name comes off the team list and your pledge is removed. You can pledge again at any time.'],
+      ['Deregister', 'Only once your church’s admin has registered you. It asks “Deregister from the expo?”, then takes you off the expo plan and releases your station; a station leader hands the station back. Your pledge stays on the team list, so you can be registered again later, and the app says “Deregistered — your pledge still stands”.'],
+      ['Checked in', 'There is no button: once you are checked in for an expo, only your church’s admin can change it.'],
+      ['Health expos', 'The open expos, each with “Pledge to help at this expo”.'],
+      ['My team', 'For station leaders: add people who asked for your station, take your own people off it and set their shifts.'] ] },
+    { name: 'My details & results', items: [
+      ['Full name, phone, area, date of birth', 'Only you and your church’s admins see these. Save my details keeps them.'],
+      ['My screening results', 'Appear once a church admin links your expo badge to this account.'] ] },
+    { name: 'Account & security', items: [
+      ['Change password', 'At least 8 characters, with a letter and a number.'],
       ['Help & tutorial', 'Opens this guide.'],
       ['Sign out', 'Asks you to confirm, then clears the visitor and volunteer data on this device. Changes not yet uploaded are lost, and you are warned first.'],
       ['Delete my account', 'Deletes your login and your details (name, phone, area, pledge and the position you asked for). Visitor and volunteer records stay with your church. Type DELETE to confirm.'] ] },
@@ -279,6 +287,12 @@ export const HELP_TUTORIALS = [
  { title: 'Send a visitor’s plan home', steps: [
     'Visitor → Send home.',
     'Preview the WhatsApp or email message, then send it. Or print the take-home card.' ] },
+ { title: 'Deregister, or unpledge', steps: [
+    'Profile → Pledge & registration.',
+    'Read “What you can do now” at the top.',
+    'Pledged, not yet registered: tap Unpledge and confirm. Your name leaves the team list and you can pledge again at any time.',
+    'Registered: tap Deregister and confirm. You come off the expo plan and your station is released; your pledge stays, so you can be registered again.',
+    'Checked in: ask your church’s admin; there is no button for it.' ] },
  { title: 'Register a volunteer and place them', steps: [
     'Home → tap the Pledge & Booth Registration banner. Start a new volunteer and fill in the details, booth choices and availability.',
     'In Team → Muster, tap a name under “Pledged — registration pending” to register them.',
@@ -351,6 +365,8 @@ export const HELP_MESSAGES = [
  ['The live queue is not set up yet', 'An admin runs supabase/schema.sql again in the Supabase SQL editor.'],
  ['This sign-in is not approved for the queue', 'Ask a church admin to approve your staff account.'],
  ['No connection — the queue cannot change', 'Queue changes need a connection. Reconnect, then try again.'],
+ ['Deregistered — your pledge still stands', 'Deregister worked: your station is released and your pledge stays on the team list.'],
+ ['Your pledge is withdrawn', 'Unpledge worked: your name is off the team list.'],
  ['One moment — the last queue change is still saving', 'Wait a moment, then tap again.'],
  ['Someone else just changed that one', 'Another desk changed the same person. The line has been refreshed; check it.'],
  ['… is already in this line', 'That person is already waiting or being served at that station.'],

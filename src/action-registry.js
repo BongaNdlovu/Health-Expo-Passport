@@ -1,7 +1,7 @@
 // @ts-check
 import { acctRetry, manageExpos, removeVisitorAsk, closeAcct, cloudInit, cloudSignIn, cloudSignOut, cloudSync, gateBack, joinChurch, leaveChurch, linkMember, linkVolunteer, manageChurch, markNotifsRead, myField, myPickPledge, myPledgeEdit, myPledgeSave, mySecondBooth, myToggleBooth, myToggleList, notifClose, notifOpen, openAcct, openNotifs, profDeleteAsk, profDeleteGo, profDeleteTyped, profGate, profPassword, registerChurch, removeMember, renderAcct, saveChurch, saveMyDetails, setChurchStatus, setMember, teamAdd, teamRelease, teamShift, withdrawMyPledge } from './account.js';
 import { addPlatformAdmin, approveAssistant, cancelExpo, churchSearchSoon, deleteExpoAsk, editExpo, expoField, expoStation, expoType, newExpo, openChurchData, pickExpo, pickWant, pickWantBooth, pledgeToExpo, saveExpoForm, setAdminPost, setExpoStatus, stepDown } from './account.js';
-import { closeSettings, deregisterMyPledge, openSettings } from './account.js';
+import { deregisterMyPledge, setProfSection } from './account.js';
 import { answer } from './feedback.js';
 import { updateLater, updateNow } from './update.js';
 import { cancelInvites, chooseChurchPlan, chooseFollowup, deleteChurchPlan, editChurchPlan, makeInvite, saveChurchPlan, setFollowup } from './churchPlans.js';
@@ -36,7 +36,7 @@ export const ACTION_MAP = {
   logExpoEntry, metricBack, queueClearHistory, openBigScreen, openCloud, openEmail, openFood, openSwitcher, openVolModal,
   openVolReg, openVolSwitcher, openWhatsApp, profDeleteAsk, profDeleteGo, recycleBadge, registerNew, resetDemo,
   saveExpoEntry, saveVolunteer, sendEmail, sendWhatsApp, shareInvite, startNewVolunteer, stepDown,
-  switchToVol, toggleReg, closeHelp, openHelp, closeSettings, deregisterMyPledge, openSettings, resetDemoAsk, updateLater, updateNow,
+  switchToVol, toggleReg, closeHelp, openHelp, deregisterMyPledge, resetDemoAsk, updateLater, updateNow,
 
   /* -- the confirmation sheet (src/feedback.js): these answer a question, they do not perform an action -- */
   confirmYes: () => answer(true),
@@ -57,6 +57,7 @@ export const ACTION_MAP = {
   pickAttendee: el => pickAttendee(el.dataset.args),
   pickVolunteer: el => pickVolunteer(el.dataset.args),
   profGate: el => profGate(el.dataset.args),
+  profSection: el => setProfSection(el.dataset.args),
   qPickAdd: el => qPickAdd(el.dataset.args),
   qSelect: el => qSelect(el.dataset.args),
   queueBack: el => queueBack(el.dataset.args),

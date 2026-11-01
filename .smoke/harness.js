@@ -1244,10 +1244,10 @@ function makeServer() {
   console.log('\n16e. Member commitments, confirmations & updates');
   const keep = { client: g.cloud.client, acct: g.cloud.acct, pledge: g.cloud.pledge, user: g.cloud.user, notifs: g.cloud.notifs };
   const approved = { membership: { role: 'member', status: 'approved' }, church: { name: 'Grace', city: 'Durban' } };
-  const settingsFor = (acct, pledge) => { g.cloud.acct = acct; g.cloud.pledge = pledge; g.renderSettings(); return $el('setBody').innerHTML; };
+  const settingsFor = (acct, pledge) => { g.cloud.acct = acct; g.cloud.pledge = pledge; g.cloud.expos = { list: [] }; g.cloud.myTeam = []; return g.pledgeSectionHTML(); };   /* the Pledge & registration section, which replaced the Settings sheet */
 
-  ok('the page carries the settings sheet, the confirm sheet and the update banner',
-    /id="setSheet"/.test(html) && /id="confirmSheet"/.test(html) && /id="updateBar"/.test(html));
+  ok('the page carries the confirm sheet and the update banner, and no separate Settings sheet',
+    /id="confirmSheet"/.test(html) && /id="updateBar"/.test(html) && !/id="setSheet"/.test(html) && !/data-action="openSettings"/.test(html) && !g.hasAction('openSettings'));
 
   ok('settings ask an unapproved member to wait first',
     /once your church approves/i.test(settingsFor({ membership: { role: 'member', status: 'pending' } }, null)));
@@ -1266,12 +1266,14 @@ function makeServer() {
   ok('a checked-in member gets no self-service button',
     !/my-pledge-deregister/.test(ci) && !/my-pledge-withdraw/.test(ci) && /checked in/i.test(ci));
 
-  /* opening it goes through the same sheet machinery (and the same Back-key stack) as every other panel */
-  g.cloud.acct = approved; g.cloud.pledge = null;
-  g.openSettings();
-  ok('the settings sheet opens from the profile', $el('setSheet').classList.contains('flex'));
-  g.closeSettings();
-  ok('...and closes on request', $el('setSheet').classList.contains('is-closing'));
+  /* what a member can do now, said at the top of the section */
+  ok('the section says what you can do now: not committed, pledged, registered, checked in',
+    /not committed to an expo yet/.test(settingsFor(approved, null)) && /What you can do now/.test(settingsFor(approved, null))
+    && /You are pledged\. You can edit your pledge, or unpledge/.test(settingsFor(approved, { id: 'VOL-1', name: 'T', status: 'prospect', pledge_expos: 1 }))
+    && /You are registered\. You can edit your pledge, or deregister: that releases your station and keeps your pledge on the team list/.test(settingsFor(approved, { id: 'VOL-1', name: 'T', status: 'registered', pledge_expos: 1 }))
+    && /You are checked in for this expo\. Only your church/.test(settingsFor(approved, { id: 'VOL-1', name: 'T', status: 'checkedin', pledge_expos: 1 })));
+  ok('…and says nothing while the pledge is still loading', !/What you can do now/.test(settingsFor(approved, undefined)));
+  ok('a registered member sees the registration date', /Registered on/.test(settingsFor(approved, { id: 'VOL-1', name: 'T', status: 'registered', pledge_expos: 1, registered_on: '2026-02-20' })) && /2026-02-20/.test(settingsFor(approved, { id: 'VOL-1', name: 'T', status: 'registered', pledge_expos: 1, registered_on: '2026-02-20' })));
 
   /* the buttons reach the database */
   const rpcs = [];
@@ -3153,8 +3155,30 @@ function makeServer() {
     ok('after signing in from Profile the page shows the person, not the form', !!C.user && h.includes('Thandi Mabaso') && h.includes('staff@example.org') && !h.includes('id="pfEmail"'), h.slice(0, 80));
     ok('…with role and church as labels, and no admin buttons for plain staff', h.includes('>Staff<') && h.includes('Grace Chapel · Durban') && !h.includes('Platform admin')
       && !h.includes('data-action="openAcct" data-args="church"') && !h.includes('data-action="openAcct" data-args="admin"'));
-    ok('…and the sync, details, password and account sections', h.includes('data-action=\"sync-now\"') && h.includes('id="pmName"') && h.includes('value="Thandi Mabaso"') && h.includes('id="pwNew"')
-      && h.includes('data-action="cloudSignOut"') && h.includes('data-action="profDeleteAsk"'));
+    localStorage.removeItem('newstart.pfSection'); g.state.pfSection = undefined; h = profile();
+    ok('…and the sync box, then a bar of three sections, one shown at a time, the pledge section first',
+      h.includes('data-action="sync-now"') && h.includes('class="pf-tabs"') && ['Pledge &amp; registration', 'My details &amp; results', 'Account &amp; security'].every(t => h.includes(t))
+      && /aria-selected="true" data-action="profSection" data-args="pledge"/.test(h) && !h.includes('id="pmName"') && !h.includes('id="pwNew"') && !h.includes('data-action="profDeleteAsk"'));
+    ok('…with no Settings button anywhere', !/>Settings</.test(h) && !h.includes('openSettings'));
+    g.setProfSection('me'); h = main();
+    ok('My details & results holds the details form, with the name filled in, and not the password', /aria-selected="true" data-action="profSection" data-args="me"/.test(h) && h.includes('id="pmName"') && h.includes('value="Thandi Mabaso"') && !h.includes('id="pwNew"'));
+    g.setProfSection('account'); h = main();
+    ok('Account & security holds the password, Help, Sign out and Delete my account, and not the details form',
+      /aria-selected="true" data-action="profSection" data-args="account"/.test(h) && h.includes('id="pwNew"') && h.includes('data-action="openHelp"') && h.includes('data-action="cloudSignOut"') && h.includes('data-action="profDeleteAsk"') && !h.includes('id="pmName"'));
+    g.setProfSection('nonsense');
+    ok('an unknown section is ignored, and the last one used is remembered on this device', g.state.pfSection === 'account' && localStorage.getItem('newstart.pfSection') === 'account');
+    g.state.pfSection = undefined; h = profile();
+    ok('…so the page opens on it again', /aria-selected="true" data-action="profSection" data-args="account"/.test(h));
+    g.state.pfSection = undefined; localStorage.setItem('newstart.pfSection', 'junk'); h = profile();
+    ok('a garbled remembered value falls back to the pledge section', /aria-selected="true" data-action="profSection" data-args="pledge"/.test(h));
+    ok('the bar\'s buttons are a registered action', g.hasAction('profSection'));
+    { const keepAcct = C.acct;
+      C.acct = null; h = profile();
+      ok('someone who is not in a church has no bar, only the account part', !h.includes('pf-tabs') && h.includes('id="pwNew"') && h.includes('data-action="profDeleteAsk"'));
+      C.acct = { ...keepAcct, membership: { ...keepAcct.membership, status: 'pending' } }; g.setProfSection('pledge'); h = main();
+      ok('a member still waiting for approval is told, in the pledge section, that approval comes first', /Once your church approves your membership/.test(h));
+      C.acct = keepAcct; }
+    g.setProfSection('me');
 
     /* admins get their shortcuts */
     me = who({ platform_admin: true, membership: membership({ role: 'admin' }) });
@@ -3165,11 +3189,13 @@ function makeServer() {
     await g.cloudSync(true); await sleep(400);
 
     /* my details */
+    g.setProfSection('me');
     typed('pmName', 'Thandi M. Mabaso'); typed('pmPhone', '083 111 2222'); typed('pmArea', 'Umlazi'); typed('pmBirth', '');
     await g.saveMyDetails({ preventDefault() {}, target: { dataset: { pre: 'pm' } } }); await sleep(450);
     ok('saving details from Profile calls the database and the page then shows the new name', rc.includes('details:Thandi M. Mabaso:083 111 2222') && main().includes('Thandi M. Mabaso'), rc.join());
 
     /* change password */
+    g.setProfSection('account');
     typed('pwNew', 'short1'); typed('pwNew2', 'short1'); await g.profPassword({ preventDefault() {} });
     ok('a short new password is refused on the page and never sent', /8 characters/.test($el('pwErr').textContent) && !srv.calls.includes('updateUser'), $el('pwErr').textContent);
     typed('pwNew', 'Goodpass2'); typed('pwNew2', 'Goodpass3'); await g.profPassword({ preventDefault() {} });
@@ -6174,6 +6200,10 @@ function makeServer() {
       ['readings in ✓', 'not filled in: top number, bottom number', 'not filled in · confirmed', 'Stop at Blood Pressure?', 'Put back in line', 'They left', 'Keep going'].every(t => JSON.stringify(g.HELP_PAGES).includes(t))
       && /'not filled in · confirmed'/.test(srcText) && /interests\['skip'\+st\]/.test(srcText) && /label:'Put back in line',alt:'They left',cancelLabel:'Keep going'/.test(srcText)
       && /top number/.test(srcText) && /queueConfirmGaps\(a\)/.test(srcText) && help.includes('Cancel, for an abrupt stop'));
+    ok('help: deregistering and unpledging are explained in the code\'s own words',
+      ['Deregister from the expo?', 'Unpledge from the expo?', 'Deregistered — your pledge still stands', 'Your pledge is withdrawn', 'What you can do now'].every(t => srcText.includes(t))
+      && ['Deregistered — your pledge still stands', 'Your pledge is withdrawn', 'What you can do now', 'Deregister, or unpledge', 'Pledge &amp; registration'].every(t => help.includes(t))
+      && /releases your station and keeps your pledge on the team list/.test(srcText) && /Your name comes off the team list, and your pledge is removed/.test(srcText) && /You come off the expo plan and your station is released/.test(srcText));
     ok('help: the route and the ten lines are the code\'s', JSON.stringify(g.HELP_PAGES).includes('Vitals → Blood Pressure → Sugar & Chol. → Fruit & Veg → Exercise → Water → Sleep → Counselling') && /QUEUE_FLOW=\['vitals','bp','sugar','veg','walk','water','sleep','plan'\]/.test(srcText)
       && /QUEUE_STATIONS=\['vitals','bp','sugar','veg','walk','water','sleep','kitchen','plan','prayer'\]/.test(srcText) && help.includes('Ten lines'));
     ok('help: the Finish visit and place-in-line messages are the code\'s',
