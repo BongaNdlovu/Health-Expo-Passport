@@ -274,6 +274,17 @@ export function gateView(v){
  cloud.view=v;cloud.formErr='';cloud.gateKey='';cloud.gateHide=false;renderGate();
 }
 function gateFail(m){cloud.formErr=m;cloud.gateKey='';renderCloudBody();renderGate();}
+/* The message from the last attempt goes as soon as the person edits the form again, or as soon as the browser stops
+   a submit before the app's own checks run (an empty required field, a malformed e-mail). Only the message text is
+   changed here: redrawing the form would take the cursor out of the field being typed in. */
+const GATE_FORMS=['cloudSignIn','cloudSignUp','cloudForgot'];
+const inGateForm=el=>{const f=el&&el.closest?el.closest('form'):null;return !!f&&GATE_FORMS.includes(f.dataset.action);};
+export function gateTouched(){
+ cloud.formErr='';
+ for(const id of ['gateErr','cloudErr']){const el=document.getElementById(id);if(el)el.textContent='';}
+}
+document.addEventListener('input',e=>{if(inGateForm(e.target))gateTouched();});
+document.addEventListener('invalid',e=>{if(inGateForm(e.target))gateTouched();},true);
 export function gateBusy(pre,label){const b=$('#'+pre+'Go');if(b){b.disabled=true;const l=b.querySelector('.hx-cta-main');if(l)l.textContent=label;else b.textContent=label;}}
 export const isNet=m=>/fetch|network|load failed/i.test(String(m||''))||!navigator.onLine;
 

@@ -224,9 +224,9 @@ function startQueueRealtime(){
  const mine=cloud.churchId?{filter:'church_id=eq.'+cloud.churchId}:{};
  const onQ=p=>{
   if(p.eventType==='DELETE'){
-   /* Realtime delete events carry no row-level security, so count one only when it names this device's church
-      (as onRemoteChange does for visitors and volunteers); the next full pull notices any real deletion. */
-   if(cloud.churchId&&!(p.old&&p.old.church_id===cloud.churchId))return;
+   /* A delete event carries only the row's id (the table does not keep full old rows), so the church cannot be checked
+      from it. Queue row ids are UUIDs, unique across churches, and this list holds only this church's rows: a delete is
+      matched by id, so a line changed on another desk does not stay on screen until the next manual sync. */
    const id=qSafe(p.old&&p.old.id),i=queue.findIndex(e=>e.id===id);if(i>=0)queue.splice(i,1);}
   else if(p.new&&p.new.id)qApply(p.new);
   else return;

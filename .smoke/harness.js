@@ -39,7 +39,7 @@ const EXPORTS = [
   'startRealtime', 'stopRealtime', 'pauseRealtime', 'saveSynced', 'loadSynced', 'viewNoVisitor', 'CLOUD_UI', 'attToRow', 'volToRow',
   'rowToAtt', 'rowToVol', 'openCloud', 'closeCloud', 'afterMerge',
   'showAllCare', 'filterVisitors', 'visitorsToShow', 'fetchRows', 'fetchIds', 'pruneRemote', 'timedFetch', 'netTimes', 'netSlowCount', 'isTimeoutErr', 'acctSkel', 'acctRetry', 'clearVisitorSearch',
-  'gateState', 'renderGate', 'gateDemo', 'togglePass',
+  'gateState', 'renderGate', 'gateTouched', 'gateDemo', 'togglePass',
   'gateView', 'cloudSignUp', 'cloudResend', 'cloudForgot', 'cloudNewPassword', 'passwordProblem', 'validEmail',
   'waNumber', 'waMessage', 'sendWhatsApp', 'openEmail', 'sendEmail', 'mailtoHref', 'toggleInterest', 'onPrayer', 'reservePouch', 'followUpCard', 'INT',
   'queue', 'qs', 'queueJoin', 'queueCallNext', 'queueServe', 'queueDone', 'queueBack', 'queueRemove', 'openBigScreen', 'closeBigScreen', 'qStats', 'qList', 'qMode', 'qCan', 'queueSync', 'viewQueue',
@@ -1959,6 +1959,56 @@ function makeServer() {
   sandbox.NEWSTART_NO_CLOUD = true; g.renderGate();
   C.user = null; g.stopRealtime(); srv.reset(); C.mode = false; C.ready = false; C.synced = { att: {}, vol: {} }; g.resetDemo();
   C.client = null; await g.cloudInit();            /* the "unreachable" case above left no client */
+
+  /* A phone that was signed in and synced, then reloaded with no signal, opens its saved copy at once (main.js sets
+     cloud.ready from the saved copy at startup), with the background sync still trying. Guards that boot path. */
+  {
+    device();
+    C.demo = false;                                      /* a practice visit earlier in this section leaves this set */
+    sandbox.NEWSTART_NO_CLOUD = false;                   /* the gate is only judged with the cloud on (set off just above) */
+    const keepCursor = { since: JSON.stringify(C.since), lastFull: C.lastFull, seen: C.seen };
+    srv.offline = false;
+    await signIn('reload@example.org');
+    registerLocal('Saved On Phone', 'EXPO-7001');
+    await sleep(60);
+    await g.cloudSync(true);
+    await sleep(60);
+    ok('(premise) signed in, synced once, so the device holds a copy', C.ready === true && g.attendees.length > 0,
+      C.status + ' ready=' + C.ready + ' rows=' + g.attendees.length);
+    g.persistNow();
+    const copy = g.attendees.length;
+    /* the reload: nothing is in memory, the saved copy is read back as main.js does at startup, the session is still
+       stored, and there is no signal */
+    C.user = null; C.ready = false; C.pending = false; C.status = 'loading';
+    g.loadPersisted();
+    C.ready = C.mode;
+    srv.offline = true;
+    srv.authCb('INITIAL_SESSION', { user: { id: 'user-1', email: 'reload@example.org' } });
+    await sleep(150);
+    ok('a signed-in phone reloaded with no signal opens its saved copy, not a loading screen',
+      C.status === 'offline' && g.gateState() === 'hidden' && !gateShown() && g.attendees.length === copy
+      && g.attendees.some(a => a.name === 'Saved On Phone'),
+      C.status + ' / ' + g.gateState() + ' / ' + g.attendees.length + ' of ' + copy);
+    srv.offline = false;
+    device();
+    C.since = JSON.parse(keepCursor.since); C.lastFull = keepCursor.lastFull; C.seen = keepCursor.seen;
+    sandbox.NEWSTART_NO_CLOUD = true; g.renderGate();
+  }
+  /* the message from the last sign-in attempt clears once the form is edited, so a stale one never sits above a new try */
+  {
+    C.demo = false; sandbox.NEWSTART_NO_CLOUD = false;
+    C.formErr = 'The two passwords do not match.'; $el('gateErr').textContent = 'The two passwords do not match.';
+    g.gateTouched();
+    ok('a sign-in message from the last attempt clears once the form is edited',
+      C.formErr === '' && $el('gateErr').textContent === '', C.formErr + ' / ' + $el('gateErr').textContent);
+    C.formErr = 'Use at least 8 characters.'; $el('cloudErr').textContent = 'Use at least 8 characters.';
+    g.gateTouched();
+    ok('…and the same in the sign-in sheet behind the logo', C.formErr === '' && $el('cloudErr').textContent === '');
+    sandbox.NEWSTART_NO_CLOUD = true; g.renderGate();
+  }
+  /* the boot line the block above copies: a device that has been signed in opens into its saved copy at startup */
+  ok('the app opens a device that has been signed in straight into its saved copy (main.js sets ready from the saved copy)',
+    /cloud\.ready=cloud\.mode/.test(srcText), 'main.js');
 
   /* ---- 17c. accounts: create, confirm e-mail, reset password -------------- */
   console.log('\n17c. Accounts (sign up, verify email, reset password)');
@@ -4816,7 +4866,7 @@ function makeServer() {
   /* the live path: the queue code as it runs signed in, against a fake shared table that behaves like the real one
      (the unique active line, conditional status changes, call-next taking the earliest arrival) */
   {
-    const C2 = g.cloud, keep = { client: C2.client, user: C2.user, mode: C2.mode, status: C2.status };
+    const C2 = g.cloud, keep = { client: C2.client, user: C2.user, mode: C2.mode, status: C2.status, churchId: C2.churchId };
     const qdb = []; let seq = 0;
     const touch = (r, to) => { const t = new Date(Date.now() + (seq++)).toISOString(); r.updated_at = t;
       if (to === 'serving') { r.called_at = t; r.finished_at = null; } if (to === 'waiting') { r.called_at = null; r.finished_at = null; }
@@ -4842,6 +4892,7 @@ function makeServer() {
         return { data: qdb.map(r => ({ ...r })), error: null };
       } }; return b; };
     const calls = [];
+    const qHandlers = [];
     C2.client = {
       from: t => builder(t),
       async rpc(name, args) {
@@ -4854,13 +4905,26 @@ function makeServer() {
         }
         return { data: null, error: null };
       },
-      channel() { const ch = { on() { return ch; }, subscribe() { return ch; } }; return ch; }, removeChannel() {},
+      channel() { const ch = { on(_t, f, cb) { qHandlers.push({ event: f.event, table: f.table, cb }); return ch; }, subscribe() { return ch; } }; return ch; }, removeChannel() {},
     };
     C2.user = { id: 'u-q', email: 'q@ex.org' }; C2.mode = true; C2.status = 'online';
     g.queue.length = 0; g.qs.ready = false; g.qs.ch = null;
+    C2.churchId = 'church-live-test';   /* a real church id, as the app has once signed in: the delete check depends on it */
     await g.queueSync(true);
     ok('queue (live): signed in, the queue loads from the shared table and is live', g.qMode() === 'live' && g.qCan() && g.qs.ready, g.qMode() + ' ' + g.qs.err);
     await g.queueJoin('EXPO-042', 'bp'); await g.queueJoin('EXPO-088', 'bp');
+    {
+      /* a row another desk removes: the server sends a delete that carries only the id; this desk must drop that row at once */
+      const before = g.queue.length;
+      const gone = g.qList('bp', 'waiting').find(e => e.attendeeId === 'EXPO-042');
+      const del = qHandlers.find(h => h.event === 'DELETE' && h.table === 'queue_entries');
+      if (del && gone) del.cb({ eventType: 'DELETE', old: { id: gone.id } });
+      ok('queue (live): a line row deleted on another desk leaves this desk at once, matched by its id',
+        !!del && !!gone && !g.queue.some(e => e.id === gone.id) && g.queue.length === before - 1, (del ? 'handler found' : 'no handler') + ' / ' + g.queue.length + ' of ' + before);
+      if (del) del.cb({ eventType: 'DELETE', old: { id: 'not-a-row' } });
+      ok('…and a delete for a row this desk does not hold changes nothing', g.queue.length === before - 1);
+      await g.queueSync(true);                       /* reload from the server: the row is still there on the server */
+    }
     ok('queue (live): joining writes to the shared table', qdb.length === 2 && g.qList('bp', 'waiting').length === 2);
     qdb.push({ id: 'q-other', attendee_id: 'EXPO-117', station: 'vitals', status: 'waiting', joined_at: new Date().toISOString(), called_at: null, finished_at: null, updated_at: new Date().toISOString() });
     await g.queueJoin('EXPO-117', 'vitals'); await sleep(20);
