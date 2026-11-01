@@ -65,7 +65,7 @@ export function migrateAttendee(a){
   for(const k of ['churchPlan','followUp'])if(typeof it[k]==='string'&&/^[A-Za-z0-9-]{1,64}$/.test(it[k]))keep[k]=it[k];
   if(keep.followUp&&typeof it.followUpName==='string')keep.followUpName=it.followUpName.slice(0,80);
   /* the POPIA consent record: the date it was given, and the guardian who gave it for a child */
-  for(const k of ['consentOn','consentV'])if(typeof it[k]==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(it[k]))keep[k]=it[k];
+  for(const k of ['consentOn','consentV','submittedOn'])if(typeof it[k]==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(it[k]))keep[k]=it[k];   /* submittedOn: the visit's results were confirmed on the Check page */
   if(keep.guardian&&typeof it.guardianName==='string')keep.guardianName=it.guardianName.slice(0,80);
   a=Object.assign({},a,{interests:keep});
  }

@@ -28,6 +28,7 @@ let server = null;            /* the last /version.json we read */
 let waiting = null;           /* a worker installed and waiting to take over this page */
 let reloading = false;        /* set only by the Update button: a stray controllerchange must not reload us */
 let snoozed = '';
+let lastLook = 0;             /* when we last asked /version.json; a return to the front asks at most every 15 seconds */
 
 const ownVersion = () => {
   const m = document.querySelector('meta[name="app-version"]');
@@ -58,8 +59,9 @@ export function updateInit() {
   checkNow();
   /* Deliberately no interval: the app keeps exactly two timers (cloud sync and the queue tick) because they
      are the expensive thing on a weak phone. An update is only worth mentioning when someone is looking, so
-     this runs on open, when the app comes back to the foreground, and when the network returns. */
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkNow(); });
+     this runs on open, when the app comes back to the foreground (at most every 15 seconds), and when the network
+     returns. */
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) lookAgain(); });
   addEventListener('online', () => checkNow());
 }
 
@@ -83,8 +85,14 @@ function watchWorker() {
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (reloading) location.reload(); });
 }
 
+/* a return to the front asks at most once every 15 seconds: a page that keeps flipping to the front asks once */
+function lookAgain() {
+  if (Date.now() - lastLook >= 15000) checkNow();
+}
+
 async function checkNow() {
   if (!navigator.onLine) return;
+  lastLook = Date.now();
   let data = null;
   try {
     const res = await fetch(versionUrl(IS_APP, Date.now()), { cache: 'no-store' });

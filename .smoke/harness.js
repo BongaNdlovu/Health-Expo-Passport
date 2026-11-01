@@ -42,7 +42,7 @@ const EXPORTS = [
   'gateState', 'renderGate', 'gateTouched', 'gateDemo', 'togglePass',
   'gateView', 'cloudSignUp', 'cloudResend', 'cloudForgot', 'cloudNewPassword', 'passwordProblem', 'validEmail',
   'waNumber', 'waMessage', 'sendWhatsApp', 'openEmail', 'sendEmail', 'mailtoHref', 'toggleInterest', 'onPrayer', 'reservePouch', 'followUpCard', 'INT',
-  'queue', 'qs', 'queueJoin', 'queueCallNext', 'queueServe', 'queueDone', 'queueBack', 'queueRemove', 'openBigScreen', 'closeBigScreen', 'qStats', 'qList', 'qMode', 'qCan', 'queueSync', 'viewQueue',
+  'queue', 'qs', 'queueJoin', 'queueCallNext', 'queueServe', 'queueDone', 'queueDoneNext', 'queueFinishVisit', 'queueLineText', 'queueStripHTML', 'queueStripRefresh', 'queueStart', 'queueFinishHere', 'QUEUE_OF_READING', 'QUEUE_CHECKS', 'qChecksText', 'qCheckState', 'qCheckLine', 'queueConfirmGaps', 'queueCancelHere', 'queueNextInLine', 'queueClearHistory', 'qOverCount', 'queueBack', 'queueRemove', 'openBigScreen', 'closeBigScreen', 'qStats', 'qList', 'qMode', 'qCan', 'queueSync', 'viewQueue',
   'cheapDay', 'cheapLine', 'foodPriceOf', 'foodKeyOf', 'FOOD_PRICES', 'money', 'closeWhatsApp',
   'planNeeds', 'bpStage', 'PROTOCOLS', 'BOOK_REF', 'autoProtocol', 'costOf',
   'BOOK2_REF', 'BOOK3_REF', 'BOOK4_REF', 'refLabel', 'planBooks', 'planCredit', 'HELP_LINE',
@@ -99,6 +99,7 @@ function makeEl(id) {
 const els = new Map();
 const $el = id => { if (!els.has(id)) els.set(id, makeEl(id)); return els.get(id); };
 
+const docHandlers = {};   /* the listeners the app adds to document, so a test can fire them */
 const document = {
   documentElement: makeEl('html'),
   body: makeEl('body'),
@@ -108,7 +109,7 @@ const document = {
   querySelector(sel) { return $el(String(sel).replace(/^#/, '')); },
   querySelectorAll() { return []; },
   createElement: () => makeEl('created'),
-  addEventListener() {}, removeEventListener() {},
+  addEventListener(type, fn) { (docHandlers[type] = docHandlers[type] || []).push(fn); }, removeEventListener() {},
   startViewTransition: null,
 };
 
@@ -909,8 +910,7 @@ function makeServer() {
     maybeSingle() { this.one = true; return this; }
     then(res, rej) { return this.run().then(res, rej); }
     async run() {
-      srv.calls.push(this.op + ':' + this.t + (this.cols ? ':' + this.cols : '') + (this.row ? ':' + this.row.id : '') + (this.rng ? ':range' + this.rng[0] : '') + (this.gte_.length ? ':since' : '') + (this.in_.length ? ':in' + this.in_[0][1].length : ''));
-      if (srv.offline) return { data: null, error: { message: 'TypeError: Failed to fetch' } };
+      srv.calls.push(this.op + ':' + this.t + (this.cols ? ':' + this.cols : '') + (this.row ? ':' + this.row.id : '') + (this.rng ? ':range' + this.rng[0] : '') + (this.gte_.length ? ':since' : '') + (this.in_.length ? ':in' + this.in_[0][1].length : ''));      if (srv.offline) return { data: null, error: { message: 'TypeError: Failed to fetch' } };
       const tbl = srv.tables[this.t];
       if (!tbl) return { data: null, error: { code: 'PGRST205', message: 'Could not find the table in the schema cache' } };
       if (this.op === 'select') {
@@ -1677,11 +1677,40 @@ function makeServer() {
   ok('live: a pending local edit is not overwritten', g.attendees.find(a => a.id === 'EXPO-310').s.sys === 150);
   g.persistNow(); await sleep(1500);
   ok('…and it is uploaded afterwards', srv.tables.attendees.get('EXPO-310').s.sys === 150);
-  srv.emit('attendees', { eventType: 'DELETE', old: { id: 'EXPO-320' } });
+  srv.tables.attendees.delete('EXPO-320'); srv.emit('attendees', { eventType: 'DELETE', old: { id: 'EXPO-320' } });
+  await sleep(60);
   ok('live: delete on another desk removes the visitor', !g.attendees.some(a => a.id === 'EXPO-320'));
   const echoBefore = g.attendees.find(a => a.id === 'EXPO-310');
   srv.emit('attendees', { eventType: 'UPDATE', new: srv.tables.attendees.get('EXPO-310') });
   ok('live: echo of our own save changes nothing', g.attendees.find(a => a.id === 'EXPO-310') === echoBefore);
+  /* a delete names its church only when the row's key includes it: with a church set, one that names none is checked on
+     the server, one that names this church goes at once, and one that names another church is ignored */
+  {
+    const wasChurch = C.churchId;
+    C.churchId = 'church-live-test';
+    const visitor = id => ({ id, name: 'Church ' + id, age: 40, sex: 'Male', phone: '', height_cm: 165, s: {}, interests: {}, prayer: '', done: false, created_at: 'x', church_id: 'church-live-test' });
+    const hold = id => { const v = visitor(id); srv.tables.attendees.set(id, v); srv.emit('attendees', { eventType: 'INSERT', new: v }); };
+    hold('EXPO-321'); await sleep(60);
+    ok('a visitor of this church appears on this desk', g.attendees.some(a => a.id === 'EXPO-321'));
+    srv.tables.attendees.delete('EXPO-321'); srv.emit('attendees', { eventType: 'DELETE', old: { id: 'EXPO-321' } }); await sleep(60);
+    ok('a delete that names no church removes the visitor once the server confirms it is gone', !g.attendees.some(a => a.id === 'EXPO-321'));
+    hold('EXPO-322'); await sleep(60);
+    srv.emit('attendees', { eventType: 'DELETE', old: { id: 'EXPO-322' } }); await sleep(60);
+    ok('…but keeps the visitor while the server still has a row with that badge', g.attendees.some(a => a.id === 'EXPO-322'));
+    srv.tables.attendees.delete('EXPO-322');
+    srv.emit('attendees', { eventType: 'DELETE', old: { id: 'EXPO-322', church_id: 'church-live-test' } });
+    ok('a delete that names this church removes the visitor at once', !g.attendees.some(a => a.id === 'EXPO-322'));
+    hold('EXPO-323'); await sleep(60);
+    srv.tables.attendees.delete('EXPO-323');
+    srv.emit('attendees', { eventType: 'DELETE', old: { id: 'EXPO-323', church_id: 'some-other-church' } }); await sleep(60);
+    ok('a delete that names another church is ignored', g.attendees.some(a => a.id === 'EXPO-323'));
+    const asked = srv.calls.filter(c => c === 'select:attendees:id').length;
+    srv.emit('attendees', { eventType: 'DELETE', old: { id: 'EXPO-399' } }); await sleep(60);
+    ok('a delete for a visitor this desk does not hold asks the server for nothing', srv.calls.filter(c => c === 'select:attendees:id').length === asked);
+    srv.tables.attendees.delete('EXPO-323');
+    srv.emit('attendees', { eventType: 'DELETE', old: { id: 'EXPO-323', church_id: 'church-live-test' } });
+    C.churchId = wasChurch;
+  }
 
   /* second device pulling an existing database */
   device();
@@ -2208,6 +2237,8 @@ function makeServer() {
   ok('blank name is refused before any request', signUps() === 0 && /your name/i.test(C.formErr), C.formErr);
   signupForm({ gateEmail: 'not-an-email' }); await g.cloudSignUp(onGate);
   ok('bad email is refused', signUps() === 0 && /does not look right/.test(C.formErr));
+  signupForm({ gateEmail: '' }); await g.cloudSignUp(onGate);
+  ok('an empty email asks for one, and is not called "does not look right"', signUps() === 0 && /enter your email/i.test(C.formErr) && !/does not look right/.test(C.formErr), C.formErr);
   signupForm({ gatePass: 'short1', gatePass2: 'short1' }); await g.cloudSignUp(onGate);
   ok('weak password is refused', signUps() === 0 && /8 characters/.test(C.formErr));
   signupForm({ gatePass2: 'Goodpass2' }); await g.cloudSignUp(onGate);
@@ -2267,6 +2298,8 @@ function makeServer() {
   ok('forgot screen asks for an email', g.gateState() === 'forgot' && gateHTML().includes('gateEmail') && !gateHTML().includes('gatePass'));
   fill({ gateEmail: 'nope' }); await g.cloudForgot(onGate);
   ok('forgot: bad email refused', !srv.calls.some(c => c.startsWith('reset')) && /does not look right/.test(C.formErr));
+  fill({ gateEmail: '' }); await g.cloudForgot(onGate);
+  ok('forgot: an empty email asks for one, and is not called "does not look right"', !srv.calls.some(c => c.startsWith('reset')) && /enter the email/i.test(C.formErr) && !/does not look right/.test(C.formErr), C.formErr);
   srv.offline = true; fill({ gateEmail: 'new@example.org' }); await g.cloudForgot(onGate);
   ok('forgot: offline says so and stays on the form', g.gateState() === 'forgot' && /No connection/.test(C.formErr));
   srv.offline = false; await g.cloudForgot(onGate);
@@ -2327,7 +2360,9 @@ function makeServer() {
   const signInMs = Date.now() - t0;
   ok('sign-in pulls ALL 3000 visitors past the 1000-row cap', g.attendees.length === N, g.attendees.length);
   ok('…and all 900 volunteers', g.volunteers.length === VN, g.volunteers.length);
-  const pageCalls = srv.calls.filter(c => /^select:attendees:range/.test(c));
+  /* the full pull's pages only: a second sync that starts right after the sign-in sets the cursor and adds one
+     changed-since page (range0:since), which is not part of the full pull and made this check intermittent */
+  const pageCalls = srv.calls.filter(c => /^select:attendees:range/.test(c) && !/:since$/.test(c));
   ok('visitors were read in pages of 500 (' + pageCalls.length + ' requests)', pageCalls.length === 7, pageCalls.join());
   ok('first full pull finished in a sensible time (' + signInMs + ' ms)', signInMs < 4000);
   ok('nothing pending, nothing written back', g.cloudPending() === 0 && !srv.calls.some(c => /^(insert|upsert)/.test(c)));
@@ -2850,10 +2885,11 @@ function makeServer() {
     /* live changes: badge numbers repeat across churches, and delete events are not filtered by the database */
     const live = (eventType, row) => g.onRemoteChange('att', eventType === 'DELETE' ? { eventType, old: row } : { eventType, new: row });
     live('INSERT', { id: 'EXPO-777', name: 'Shared Badge', church_id: 'ch-a', s: {}, interests: {} });
-    live('DELETE', { id: 'EXPO-777', church_id: 'ch-b' }); live('DELETE', { id: 'EXPO-777' });
-    ok('a live delete from another church (or one that names no church) never removes this church\'s visitor', g.attendees.some(a => a.id === 'EXPO-777'));
+    srv.tables.attendees.set('EXPO-777', { id: 'EXPO-777', church_id: 'ch-a', name: 'Shared Badge', s: {}, interests: {} });
+    live('DELETE', { id: 'EXPO-777', church_id: 'ch-b' }); live('DELETE', { id: 'EXPO-777' }); await sleep(60);
+    ok('a live delete from another church, or one that names no church while the server still has the row, never removes this church\'s visitor', g.attendees.some(a => a.id === 'EXPO-777'));
     live('INSERT', { id: 'EXPO-778', name: 'Other Church Visitor', church_id: 'ch-b', s: {}, interests: {} });
-    live('DELETE', { id: 'EXPO-777', church_id: 'ch-a' });
+    live('DELETE', { id: 'EXPO-777', church_id: 'ch-a' }); srv.tables.attendees.delete('EXPO-777');
     ok('…a live insert from another church is ignored, and this church\'s own delete still applies', !g.attendees.some(a => a.id === 'EXPO-778') && !g.attendees.some(a => a.id === 'EXPO-777'));
     g.openAcct('church'); await sleep(30);
     ok('the Church screen lists the members, with Approve for someone waiting', rc.includes('members:ch-a') && sheet().includes('Pending Person') && sheet().includes('Staff Person')
@@ -3900,6 +3936,47 @@ function makeServer() {
       }
     }
 
+    /* a return to the front syncs at most once every 15 s (main.js) */
+    {
+      const back = docHandlers.visibilitychange.find(f => /hiddenT/.test(f.toString()));
+      const wasHidden = document.hidden, realNow = Date.now;
+      let offset = 0;
+      Date.now = () => realNow() + offset;
+      try {
+        document.hidden = false;
+        const n0 = srv.calls.length;
+        back(); await sleep(600);
+        const n1 = srv.calls.length;
+        back(); back(); back(); await sleep(600);
+        ok('a page that keeps coming to the front syncs once, not on every return', n1 > n0 && srv.calls.length === n1, n0 + ' → ' + n1 + ' → ' + srv.calls.length);
+        offset += 16000;
+        back(); await sleep(600);
+        ok('…and syncs again once 15 seconds have passed', srv.calls.length > n1, n1 + ' → ' + srv.calls.length);
+      } finally { Date.now = realNow; document.hidden = wasHidden; }
+    }
+    /* a return to the front asks the update server at most once every 15 s (update.js) */
+    {
+      const realFetch = sandbox.fetch, realNow = Date.now, wasHidden = document.hidden;
+      const asks = [];
+      let offset = 0;
+      sandbox.fetch = async u => { asks.push(String(u)); return { ok: false }; };
+      $el('meta[name="app-version"]').setAttribute('content', '1.7.0');
+      Date.now = () => realNow() + offset;
+      try {
+        g.updateInit();
+        const look = docHandlers.visibilitychange.find(f => /lookAgain/.test(f.toString())) || (() => {});
+        document.hidden = false;
+        const opened = asks.length;
+        look(); look(); look();
+        ok('a page that keeps coming to the front asks the update server once, not on every return', opened === 1 && asks.length === 1, opened + ' → ' + asks.length);
+        offset += 16000;
+        look();
+        ok('…and asks again once 15 seconds have passed', asks.length === 2, asks.length);
+      } finally {
+        Date.now = realNow; document.hidden = wasHidden; sandbox.fetch = realFetch;
+        $el('meta[name="app-version"]').removeAttribute('content');
+      }
+    }
     /* the live connection reports its own state */
     srv.rtState = 'CHANNEL_ERROR'; g.stopRealtime(); g.startRealtime(); await flush();
     ok('a dropped live connection shows "Reconnecting…" under Live updates', H.live && H.live.st === 'warn' && /Reconnecting/.test(H.live.msg), JSON.stringify(H.live));
@@ -4186,6 +4263,26 @@ function makeServer() {
     ok('attack: oversized input (100,000 characters) is refused', await refused(U.adminA, `select public.update_my_details($1)`, ['x'.repeat(100000)]) && await refused(U.adminA, `select public.update_church($1, $2)`, [CA, 'y'.repeat(100000)]));
     await as(U.staffA, `delete from public.attendees where id='EXPO-001'`);
     ok('attack: staff (not admin) cannot delete visitors', (await sys(`select count(*)::int n from public.attendees where id='EXPO-001'`))[0].n === 1);
+    {
+      /* the queue: staff run the lines, only a church admin deletes entries for good */
+      const qn = async c => (await sys(`select count(*)::int n from public.queue_entries where church_id = $1 and attendee_id in ('EXPO-901', 'EXPO-902', 'EXPO-903')`, [c]))[0].n;
+      const addQ = (uid, id, st) => as(uid, `insert into public.queue_entries (attendee_id, station) values ($1, $2) returning *`, [id, st]);
+      const q1 = await addQ(U.staffA, 'EXPO-901', 'bp'), q2 = await addQ(U.staffA, 'EXPO-902', 'sugar'), q3 = await addQ(U.adminB, 'EXPO-903', 'bp');
+      const upd = await as(U.staffA, `update public.queue_entries set status = 'done' where id = $1 returning *`, [q1.rows[0].id]);
+      const rem = await as(U.staffA, `update public.queue_entries set status = 'left' where id = $1 returning *`, [q2.rows[0].id]);
+      ok('queue (db): staff still add, finish and remove people from the lines', !q1.error && !q2.error && !upd.error && upd.rows.length === 1 && !rem.error && rem.rows.length === 1,
+        [q1, q2, upd, rem].map(x => (x.error || {}).message).join('|'));
+      const sd = await as(U.staffA, `delete from public.queue_entries where status in ('done', 'left') returning id`);
+      ok('queue (db): staff who are not admins cannot delete queue entries (nothing is deleted)', await qn(CA) === 2 && (sd.error || sd.rows.length === 0), JSON.stringify(sd.rows));
+      const md = await as(U.memA, `delete from public.queue_entries returning id`);
+      ok('queue (db): a plain member cannot delete queue entries either', await qn(CA) === 2 && (md.error || md.rows.length === 0));
+      const od = await as(U.adminB, `delete from public.queue_entries where status in ('done', 'left') returning id`);
+      ok('queue (db): another church admin deletes nothing of this church queue', await qn(CA) === 2 && !od.error && od.rows.every(x => x.id !== q1.rows[0].id && x.id !== q2.rows[0].id), JSON.stringify(od.rows));
+      const ad = await as(U.adminA, `delete from public.queue_entries where status in ('done', 'left') returning id`);
+      ok('queue (db): a church admin deletes the finished and removed entries of their own church', !ad.error && ad.rows.length === 2 && await qn(CA) === 0, ad.error ? ad.error.message : JSON.stringify(ad.rows));
+      ok('queue (db): …and the other church entry is untouched', (await sys(`select count(*)::int n from public.queue_entries where attendee_id = 'EXPO-903'`))[0].n === 1);
+      await sys(`delete from public.queue_entries where attendee_id in ('EXPO-901', 'EXPO-902', 'EXPO-903')`);
+    }
     let sealed = true;
     for (const t of ['platform_admins', 'churches', 'memberships', 'audit_log', 'staff']) {
       const before = (await sys(`select count(*)::int n from public.${t}`))[0].n;
@@ -4745,6 +4842,8 @@ function makeServer() {
   sandbox.document.createElement = t => { const e = realCreate(t); if (t === 'a') link = e; return e; };
   $el('emTo').value = 'not-an-email'; link = null; g.sendEmail();
   ok('a malformed email address is refused and nothing opens', !link);
+  $el('emTo').value = ''; link = null; g.sendEmail();
+  ok('an empty address asks for one, and nothing opens', !link && /Type the email address/.test($el('toastMsg').textContent) && !/does not look right/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
   $el('emTo').value = 'david+plan@example.org'; $el('emSave').checked = true; g.sendEmail();
   ok('a good address opens the email app with the plan ready',
     link && link.href.startsWith('mailto:david%2Bplan%40example.org?subject=') && decodeURIComponent(link.href.split('&body=')[1]) === g.waMessage(mailDave), link && link.href.slice(0, 60));
@@ -4790,7 +4889,7 @@ function makeServer() {
   ok('queue: the line is first-in-first-out', g.qList('bp', 'waiting')[0].attendeeId === 'EXPO-042' && g.qList('bp', 'waiting')[1].attendeeId === 'EXPO-088');
   ok('queue: the nav badge counts the waiting line', />2</.test($el('navItems').innerHTML));
   const stats = g.qStats('bp');
-  ok('queue: stats estimate a wait and flag a line nobody is serving', stats.wait.length === 2 && stats.eta > 0 && (stats.tone === 'ok' || stats.tone === 'watch'));
+  ok('queue: stats flag a line nobody is serving, and promise no time (nothing has finished yet)', stats.wait.length === 2 && stats.eta === null && stats.real === false && (stats.tone === 'ok' || stats.tone === 'watch'));
   await g.queueCallNext('bp');
   ok('queue: call-next serves the first arrival', g.qList('bp', 'serving').length === 1 && g.qList('bp', 'serving')[0].attendeeId === 'EXPO-042' && g.qList('bp', 'waiting')[0].attendeeId === 'EXPO-088');
   await g.queueCallNext('bp');
@@ -4832,24 +4931,41 @@ function makeServer() {
     ok('…but leaves the page alone when the panel is already on screen', scrolled === null && g.state.qStation === 'vitals');
     panel.getBoundingClientRect = keepRect; panel.scrollIntoView = keepScroll;
   }
-  ok('queue: the route is Vitals → Blood Pressure → Sugar → Counselling', g.QUEUE_FLOW.join() === 'vitals,bp,sugar,plan');
+  ok('queue: the route is Vitals → Blood Pressure → Sugar & Chol. → Fruit & Veg → Exercise → Water → Sleep → Counselling', g.QUEUE_FLOW.join() === 'vitals,bp,sugar,veg,walk,water,sleep,plan');
   await g.queueCallNext('vitals');
   await g.queueDone(g.qList('vitals', 'serving')[0].id);
   ok('queue: Done at a station puts the visitor straight into the next line', g.qList('bp', 'waiting').some(e => e.attendeeId === 'EXPO-117') && g.qList('vitals', 'waiting').length === 0,
     JSON.stringify(g.queue.map(e => e.station + ':' + e.status)));
   ok('…and the toast says where they went', /now in the Blood Pressure line/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
-  for (const st of ['bp', 'sugar', 'plan']) { await g.queueCallNext(st); const e = g.qList(st, 'serving').find(x => x.attendeeId === 'EXPO-117'); if (e) await g.queueDone(e.id); }
+  for (const st of ['bp', 'sugar', 'veg', 'walk', 'water', 'sleep', 'plan']) { await g.queueCallNext(st); const e = g.qList(st, 'serving').find(x => x.attendeeId === 'EXPO-117'); if (e) await g.queueDone(e.id); }
   ok('queue: after the last station of the route nobody is put in another line', !g.queue.some(e => e.attendeeId === 'EXPO-117' && (e.status === 'waiting' || e.status === 'serving'))
-    && ['vitals', 'bp', 'sugar', 'plan'].every(st => g.queue.some(e => e.attendeeId === 'EXPO-117' && e.station === st && e.status === 'done')));
+    && ['vitals', 'bp', 'sugar', 'veg', 'walk', 'water', 'sleep', 'plan'].every(st => g.queue.some(e => e.attendeeId === 'EXPO-117' && e.station === st && e.status === 'done')));
   ok('queue: a station already finished is skipped, and the optional stops are not on the route', g.nextFlowStation('EXPO-117', 'vitals') === '' && g.nextFlowStation('EXPO-117', 'kitchen') === '');
-  /* the estimate: one person waiting, nobody called → about one visit; one desk mid-visit adds what is left of it */
+  /* no invented times: there is an average, and an estimate, only once 3 visits have really finished */
   g.queue.length = 0;
   await g.queueJoin('EXPO-042', 'sugar');
-  const solo = g.qStats('sugar').eta;
+  const none = g.qStats('sugar');
+  ok('queue: with no finished visits there is no average and no estimate', none.real === false && none.eta === null && none.avg === 0);
+  g.state.tab = 'queue'; g.state.qStation = 'sugar'; g.render();
+  ok('queue: the card says how long the longest waiter has waited and promises no time; the panel says there is no average yet',
+    /Longest wait <b>/.test($main.innerHTML) && !/About <b>/.test($main.innerHTML) && /No average yet: it shows once 3 visits have finished here/.test($main.innerHTML) && !/Estimating/.test($main.innerHTML));
+  g.openBigScreen();
+  ok('queue: the big screen says how many wait, with no time', /1 waiting<\/div>/.test($el('tvGrid').innerHTML) && !/about \d+ min/.test($el('tvGrid').innerHTML), $el('tvGrid').innerHTML.match(/q-tv-meta">[^<]*/g).join('|'));
+  g.closeBigScreen();
+  const tNow = Date.now();
+  const took6 = i => ({ id: 'T' + i, attendeeId: 'EXPO-9' + i + '0', station: 'sugar', status: 'done', joinedAt: tNow - 30 * 60000, calledAt: tNow - 12 * 60000, finishedAt: tNow - 6 * 60000 });
+  g.queue.push(took6(0), took6(1));
+  ok('queue: two finished visits are still too few for an estimate', g.qStats('sugar').real === false && g.qStats('sugar').eta === null);
+  g.queue.push(took6(2));
+  const real3 = g.qStats('sugar');
+  ok('queue: three finished visits give a real average (6 minutes here), and one person waiting with nobody called is one visit',
+    real3.real === true && Math.round(real3.avg / 60000) === 6 && Math.round(real3.eta / 60000) === 6, real3.avg + ' / ' + real3.eta);
   await g.queueJoin('EXPO-088', 'sugar'); await g.queueCallNext('sugar');
   const busy = g.qStats('sugar');
-  ok('queue: the wait estimate is one visit for a lone waiter, and counts what is left of a visit in progress',
-    Math.round(solo / 60000) === 6 && busy.wait.length === 1 && busy.eta > 6 * 60000 && busy.eta <= 12 * 60000 + 1000, solo + ' / ' + busy.eta);
+  ok('queue: …and the estimate counts what is left of a visit in progress', busy.wait.length === 1 && busy.eta > 6 * 60000 && busy.eta <= 12 * 60000 + 1000, busy.eta);
+  g.render();
+  ok('queue: with a real average the card gives the estimate and the panel the average', /About <b>\d+ min<\/b>/.test($main.innerHTML) && /Average 6 min per person \(last 3 finished\)/.test($main.innerHTML));
+  g.queue.length = 0;
   /* registering a visitor puts them in the first line */
   g.queue.length = 0;
   await g.queueFlowStart('EXPO-088', 'Sipho is EXPO-088 ✓ Start the checks');
@@ -4863,21 +4979,425 @@ function makeServer() {
   ok('queue: a tap while another change is still saving says so instead of vanishing', g.queue.length === qBefore && /still saving/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
   g.qs.busy = false;
 
+  /* the desk's turn in one tap, the rare buttons kept small, and clearing the history */
+  g.queue.length = 0;
+  await g.queueJoin('EXPO-042', 'vitals'); await g.queueJoin('EXPO-088', 'vitals'); await g.queueJoin('EXPO-117', 'vitals');
+  await g.queueCallNext('vitals');
+  g.state.tab = 'queue'; g.state.qStation = 'vitals'; g.render();
+  ok('queue: the person with you has one big "Done · call next" button, with Put back and Remove small underneath',
+    /With you now · 1/.test($main.innerHTML) && /Next up · 2/.test($main.innerHTML) && $main.innerHTML.includes('data-action="queueDoneNext"') && $main.innerHTML.includes('Done · call next →')
+    && $main.innerHTML.includes('↩ Put back') && $main.innerHTML.includes('✕ Remove') && !/data-action="queueDone"/.test($main.innerHTML));
+  const turn1 = g.qList('vitals', 'serving')[0];
+  await g.queueDoneNext(turn1.id);
+  ok('queue: Done · call next finishes them, puts them in the next line and calls the one who waited longest',
+    g.queue.find(e => e.id === turn1.id).status === 'done' && g.qList('bp', 'waiting').some(e => e.attendeeId === 'EXPO-042')
+    && g.qList('vitals', 'serving').length === 1 && g.qList('vitals', 'serving')[0].attendeeId === 'EXPO-088' && g.qList('vitals', 'waiting').length === 1);
+  ok('…and one message says where they go and who is next', / finished ✓ · now in the Blood Pressure line · Next: .* · EXPO-088$/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+  await g.queueDoneNext(g.qList('vitals', 'waiting')[0].id);
+  ok('queue: Done · call next on someone who is only waiting changes nothing', g.qList('vitals', 'waiting').length === 1 && g.qList('vitals', 'serving').length === 1);
+  await g.queueDoneNext(g.qList('vitals', 'serving')[0].id);
+  await g.queueDoneNext(g.qList('vitals', 'serving')[0].id);
+  ok('queue: with nobody left waiting the message says so', g.qList('vitals', 'serving').length === 0 && /nobody else is waiting/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+  await g.queueJoin('EXPO-200', 'vitals'); await g.queueCallNext('vitals'); g.render();
+  ok('queue: when nobody else is waiting the big button is a plain "Done ✓"', /data-action="queueDone"/.test($main.innerHTML) && $main.innerHTML.includes('Done ✓') && !$main.innerHTML.includes('Done · call next'));
+  g.queue.length = 0; g.render();
+  ok('queue: with nobody anywhere the station shows a disabled "Call next →" and no Clear button',
+    /class="btn btn-primary q-big" data-action="queueCallNext" data-args="vitals" disabled/.test($main.innerHTML) && !$main.innerHTML.includes('Clear finished'));
+  await g.queueJoin('EXPO-042', 'bp'); await g.queueCallNext('bp'); await g.queueDone(g.qList('bp', 'serving')[0].id);
+  await g.queueJoin('EXPO-088', 'bp'); await g.queueCallNext('bp'); await g.queueRemove(g.qList('bp', 'serving')[0].id); await g.queueRemove(g.qList('bp', 'serving')[0].id);
+  await sleep(5);                                                    /* queueRemove does not return its save: let it settle */
+  await g.queueJoin('EXPO-117', 'bp');
+  g.state.qStation = 'bp'; g.render();
+  ok('queue: finished and removed entries show a Clear button with their count', g.qOverCount() === 2 && $main.innerHTML.includes('Clear finished &amp; removed · 2'), String(g.qOverCount()));
+  g.setAutoAnswer(false); await g.queueClearHistory(); g.setAutoAnswer(true);
+  ok('queue: answering no to the Clear question changes nothing', g.qOverCount() === 2);
+  await g.queueClearHistory();
+  ok('queue: answering yes clears them and leaves the person still waiting', g.qOverCount() === 0 && g.queue.length === 2 && g.queue.every(e => e.status === 'waiting') && /2 finished entries cleared/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+  g.queue.length = 0;
+
+  /* the passport and the queue work together: Finish visit leaves the lines, readings finish a station, Open passport, the place in line */
+  {
+    const tap = (action, args) => { const e = { dataset: { action, args } }; e.closest = () => e; e.hasAttribute = () => false; g.dispatch(e, { type: 'click', target: {} }); };
+    const lineOf = () => JSON.stringify(g.queue.map(e => e.attendeeId + '@' + e.station + ':' + e.status));
+    g.resetDemo(); g.queue.length = 0; g.cloud.user = null; g.qs.busy = false;
+    const A42 = g.attendees.find(a => a.id === 'EXPO-042'), A88 = g.attendees.find(a => a.id === 'EXPO-088');
+    /* A. Finish visit leaves every line */
+    await g.queueJoin('EXPO-042', 'vitals'); await g.queueJoin('EXPO-042', 'kitchen'); await g.queueJoin('EXPO-088', 'bp'); await g.queueCallNext('bp');
+    g.state.activeId = 'EXPO-042'; tap('finishVisit'); await sleep(60);
+    ok('passport link: Finish visit takes the visitor out of every line they are in, and nobody else',
+      g.queue.filter(e => e.attendeeId === 'EXPO-042').every(e => e.status === 'left') && g.queue.find(e => e.attendeeId === 'EXPO-088').status === 'serving' && A42.done === true, lineOf());
+    ok('…and the message says which lines', /visit is complete ✓ · taken out of the Vitals & BMI and Kitchen Pharmacy lines/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+    $el('toastMsg').textContent = ''; tap('finishVisit'); await sleep(40);
+    ok('passport link: finishing a visit that is in no line adds nothing to the message', !/taken out/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+    /* E. where the visitor stands */
+    g.queue.length = 0;
+    await g.queueJoin('EXPO-117', 'bp'); await g.queueJoin('EXPO-042', 'bp'); await g.queueJoin('EXPO-042', 'sugar');
+    ok('passport link: the place in line reads "In line at … · 2 of 2" for each line the visitor is in',
+      g.queueLineText('EXPO-042') === 'In line at Blood Pressure · 2 of 2 · In line at Sugar & Chol. · 1 of 1', g.queueLineText('EXPO-042'));
+    await g.queueCallNext('bp');
+    ok('…and "Being served at …" once called', g.queueLineText('EXPO-117') === 'Being served at Blood Pressure' && g.queueLineText('EXPO-999') === '');
+    g.state.activeId = 'EXPO-042'; g.state.tab = 'screen'; g.render();
+    ok('passport link: the passport header carries the place in line', /id="jrLine" class="jr-line">In line at Blood Pressure · 1 of 1/.test($main.innerHTML), ($main.innerHTML.match(/id="jrLine"[^>]*>[^<]*/) || [''])[0]);
+    g.queue.length = 0; g.render();
+    ok('…and an empty, hidden one when they are in no line', /id="jrLine" class="jr-line" hidden>/.test($main.innerHTML));
+    await g.queueJoin('EXPO-042', 'sugar'); await sleep(30);
+    ok('…which updates by itself when the line changes, without redrawing the screen', $el('jrLine') && /In line at Sugar & Chol\. · 1 of 1/.test($el('jrLine').textContent), $el('jrLine') && $el('jrLine').textContent);
+    /* D. Open passport */
+    g.queue.length = 0;
+    await g.queueJoin('EXPO-042', 'bp'); await g.queueJoin('EXPO-088', 'bp'); await g.queueCallNext('bp');
+    g.state.tab = 'queue'; g.state.qStation = 'bp'; g.render();
+    ok('queue link: the person with you has an Open passport button, and people still waiting do not',
+      /data-action="switchTo" data-args="EXPO-042">Open passport/.test($main.innerHTML) && !/data-args="EXPO-088">Open passport/.test($main.innerHTML));
+    g.queue.length = 0; await g.queueJoin('EXPO-900', 'bp'); await g.queueCallNext('bp'); g.render();
+    ok('…and none for a badge this device does not hold', !/Open passport/.test($main.innerHTML));
+    g.queue.length = 0; await g.queueJoin('EXPO-042', 'bp'); await g.queueCallNext('bp'); g.render();
+    tap('switchTo', 'EXPO-042');
+    ok('…Open passport opens that visitor\'s passport', g.state.activeId === 'EXPO-042' && g.state.tab !== 'queue', g.state.tab);
+    /* B. Start and Finish in the passport's footer */
+    const strip = (id, scope) => g.queueStripHTML(g.attendees.find(a => a.id === id), scope);
+    const clearReadings = a => { Object.assign(a.s, { sys: null, dia: null, sugar: null, chol: null, weight: null, veg: null, walk: null, water: null, sleep: null }); a.heightCm = null; };
+    const askBody = async (id, st) => {            /* what the Finish question says, answered "keep going" */
+      g.setAutoAnswer(null); const pr = g.queueFinishHere(id, st); await sleep(20);
+      const out = { title: $el('cfTitle').textContent, body: $el('cfBody').textContent }; g.answerConfirm(false); await pr; g.setAutoAnswer(true); return out;
+    };
+    g.queue.length = 0; clearReadings(A42); g.setAutoAnswer(true);
+    ok('start/finish: every one of the 8 checks has a line: weight (and waist) to Vitals, blood sugar and cholesterol together on Sugar & Chol., and one line each for the four lifestyle checks',
+      g.QUEUE_OF_READING.bp === 'bp' && g.QUEUE_OF_READING.weight === 'vitals' && g.QUEUE_OF_READING.waist === 'vitals' && g.QUEUE_OF_READING.sugar === 'sugar' && g.QUEUE_OF_READING.chol === 'sugar'
+      && g.QUEUE_OF_READING.veg === 'veg' && g.QUEUE_OF_READING.walk === 'walk' && g.QUEUE_OF_READING.water === 'water' && g.QUEUE_OF_READING.sleep === 'sleep'
+      && ['bp', 'sugar', 'chol', 'weight', 'veg', 'walk', 'water', 'sleep'].every(k => !!g.QUEUE_OF_READING[k]));
+    ok('start/finish: only the paper-record extras (body fat, body water, lung function, fitness) have no line', ['fat', 'tbw', 'pef', 'pulseRest'].every(k => g.QUEUE_OF_READING[k] === undefined));
+    ok('start/finish: a station with no queue line gets no strip, and neither does a visitor in no line for a volunteer doing every check', strip('EXPO-042', null) === '' && strip('EXPO-042', '') === '');
+    ok('start/finish: someone not in the line is offered "Start at Blood Pressure"',
+      /Not in the Blood Pressure line/.test(strip('EXPO-042', 'bp')) && /data-action="queueStart" data-args="EXPO-042\|bp">Start at Blood Pressure/.test(strip('EXPO-042', 'bp')));
+    await g.queueStart('EXPO-042', 'bp');
+    ok('start/finish: Start adds a walk-up to the line and puts them with the volunteer at once',
+      g.qList('bp', 'serving').length === 1 && g.qList('bp', 'serving')[0].attendeeId === 'EXPO-042' && /David: Blood Pressure started/.test($el('toastMsg').textContent), $el('toastMsg').textContent + lineOf());
+    let st1 = strip('EXPO-042', 'bp');
+    ok('start/finish: then it offers Finish, not lit up while the readings are missing', /<b>Being served at Blood Pressure<\/b>/.test(st1) && !/is-ready/.test(st1) && /data-action="queueFinishHere" data-args="EXPO-042\|bp">Done at Blood Pressure ✓/.test(st1), st1);
+    A42.s.sys = 150; st1 = strip('EXPO-042', 'bp');
+    ok('start/finish: half the readings do not light it up', !/is-ready/.test(st1));
+    A42.s.dia = 95; st1 = strip('EXPO-042', 'bp');
+    ok('start/finish: both blood pressure numbers light Finish up, and finish nothing', /is-ready/.test(st1) && /readings in ✓/.test(st1) && g.qList('bp', 'serving').length === 1);
+    await sleep(3300);
+    ok('start/finish: …even after a while (nothing finishes by itself)', g.qList('bp', 'serving').length === 1 && g.qList('sugar', 'waiting').length === 0);
+    await g.queueFinishHere('EXPO-042', 'bp');
+    ok('start/finish: Finish with the readings in finishes at once and moves the visitor to Sugar & Chol., with one message',
+      g.queue.find(e => e.station === 'bp').status === 'done' && g.qList('sugar', 'waiting').some(e => e.attendeeId === 'EXPO-042') && /David: Blood Pressure done ✓ · now in the Sugar & Chol\. line/.test($el('toastMsg').textContent), $el('toastMsg').textContent + lineOf());
+    ok('start/finish: …and offers Undo', !$el('toastUndo').classList.contains('hidden'));
+    ok('start/finish: …the strip now says they finished at Blood Pressure, with a Start again', /Done at Blood Pressure ✓/.test(strip('EXPO-042', 'bp')) && /Start again/.test(strip('EXPO-042', 'bp')));
+    $el('toastUndo').onclick(); await sleep(50);
+    ok('start/finish: Undo puts them back with the volunteer and leaves the Sugar & Chol. line they were put in',
+      g.queue.find(e => e.station === 'bp').status === 'serving' && g.queue.find(e => e.station === 'sugar').status === 'left' && /back with you at Blood Pressure/.test($el('toastMsg').textContent), $el('toastMsg').textContent + lineOf());
+    await g.queueFinishHere('EXPO-042', 'bp');
+    g.qList('sugar', 'waiting')[0].status = 'serving';              /* another desk calls them in the next line (arrives by the live feed, so no message here) */
+    $el('toastUndo').onclick(); await sleep(50);
+    ok('start/finish: Undo after the next line has already called them keeps them in that line (it only leaves a line nobody has called)',
+      g.queue.find(e => e.station === 'bp').status === 'serving' && g.qList('sugar', 'serving').some(e => e.attendeeId === 'EXPO-042'), lineOf());
+    /* the question, when readings are missing */
+    g.queue.length = 0; clearReadings(A42);
+    await g.queueStart('EXPO-042', 'bp');
+    const q1 = await askBody('EXPO-042', 'bp');
+    ok('start/finish: Finish with the blood pressure missing asks first, and "Keep going" leaves them with the volunteer',
+      q1.title === 'Done at Blood Pressure?' && q1.body === 'the top blood pressure number and the bottom blood pressure number are not recorded yet. Mark David done here anyway?' && g.qList('bp', 'serving').length === 1, JSON.stringify(q1));
+    A42.s.sys = 130; const q2 = await askBody('EXPO-042', 'bp');
+    ok('…and names only what is missing', q2.body === 'the bottom blood pressure number is not recorded yet. Mark David done here anyway?', q2.body);
+    await g.queueFinishHere('EXPO-042', 'bp');
+    ok('start/finish: answering "Done anyway" finishes them', g.queue.find(e => e.station === 'bp').status === 'done' && g.qList('sugar', 'waiting').some(e => e.attendeeId === 'EXPO-042'), lineOf());
+    await g.queueStart('EXPO-042', 'sugar'); A42.s.sugar = 6.2;
+    const q3 = await askBody('EXPO-042', 'sugar');
+    ok('start/finish: Sugar & Chol. asks about the cholesterol only when that is the missing one', q3.body === 'cholesterol is not recorded yet. Mark David done here anyway?', q3.body);
+    A42.s.chol = 5.1; await g.queueFinishHere('EXPO-042', 'sugar');
+    ok('start/finish: with both in, Finish needs no question and moves them to Fruit & Veg', g.queue.find(e => e.station === 'sugar').status === 'done' && g.qList('veg', 'waiting').some(e => e.attendeeId === 'EXPO-042'), lineOf());
+    await g.queueStart('EXPO-042', 'plan'); await g.queueFinishHere('EXPO-042', 'plan');
+    ok('start/finish: Counselling has no readings, so Finish needs no question', g.queue.find(e => e.station === 'plan').status === 'done');
+    clearReadings(A42); g.queue.length = 0;
+    await g.queueStart('EXPO-042', 'vitals'); A42.s.weight = 70;
+    const q4 = await askBody('EXPO-042', 'vitals');
+    ok('start/finish: Vitals & BMI asks about the height when only the weight is in', q4.body === 'height is not recorded yet. Mark David done here anyway?', q4.body);
+    /* the four lifestyle lines: one each, with their own Start, Finish, question and next stop */
+    g.queue.length = 0; clearReadings(A42); g.setAutoAnswer(true);
+    const life = [['veg', 'Fruit & Veg', 'fruit and veg', 'walk', 6], ['walk', 'Exercise', 'exercise', 'water', 30], ['water', 'Water', 'water', 'sleep', 6], ['sleep', 'Sleep', 'sleep', 'plan', 7.5]];
+    for (const [k, label, missing, next, val] of life) {
+      await g.queueStart('EXPO-042', k);
+      const st = strip('EXPO-042', k), qq = await askBody('EXPO-042', k);
+      ok(`lifestyle: ${label} has its own line, Start and Finish, and asks about ${missing} when it is empty`,
+        /Being served at/.test(st) && st.includes(label.replace('&', '&amp;')) && !/is-ready/.test(st) && qq.title === `Done at ${label}?` && qq.body === `${missing} is not recorded yet. Mark David done here anyway?` && g.qList(k, 'serving').length === 1, JSON.stringify(qq));
+      A42.s[k] = val;
+      ok(`lifestyle: ${label} lights up once its reading is in`, /is-ready/.test(strip('EXPO-042', k)) && /readings in ✓/.test(strip('EXPO-042', k)));
+      await g.queueFinishHere('EXPO-042', k);
+      ok(`lifestyle: Done at ${label} moves the visitor to ${next === 'plan' ? 'Counselling' : life.find(x => x[0] === next)[1]}`,
+        g.queue.find(e => e.station === k).status === 'done' && g.qList(next, 'waiting').some(e => e.attendeeId === 'EXPO-042'), lineOf());
+    }
+    /* the board and the big screen carry all ten lines */
+    g.queue.length = 0; g.state.tab = 'queue'; g.state.qStation = 'veg'; g.render();
+    ok('lifestyle: the queue board shows ten cards', (($main.innerHTML.match(/class="q-card /g)) || []).length === 10, String((($main.innerHTML.match(/class="q-card /g)) || []).length));
+    ok('lifestyle: the panel opens on Fruit & Veg', /id="qDetail"[\s\S]*?Station<\/div><div class="display text-base font-extrabold">Fruit &amp; Veg/.test($main.innerHTML));
+    g.openBigScreen();
+    ok('lifestyle: the big screen shows ten tiles', (($el('tvGrid').innerHTML.match(/class="q-tv-tile /g)) || []).length === 10, String((($el('tvGrid').innerHTML.match(/class="q-tv-tile /g)) || []).length));
+    g.closeBigScreen();
+    /* the checks are labelled on every card, in the panel and on the big screen, from one table that follows the passport's names */
+    const dataText = fs.readFileSync(path.join(__dirname, '..', 'src', 'data.js'), 'utf8');
+    const passportLabel = {}; for (const m of dataText.matchAll(/\{k:'(\w+)',\s*label:'([^']+)'/g)) if (!passportLabel[m[1]]) passportLabel[m[1]] = m[2];   /* the first entry wins: STATION_DEFS and EXTRA_DEFS come before the booths */
+    passportLabel.bp = 'Blood pressure';
+    ok('labels: every reading that has a line is named under that line, exactly as the passport names it',
+      Object.entries(g.QUEUE_OF_READING).every(([k, st]) => !!passportLabel[k] && (g.QUEUE_CHECKS[st] || []).map(x => x.toLowerCase()).includes(passportLabel[k].toLowerCase())),
+      JSON.stringify(Object.entries(g.QUEUE_OF_READING).filter(([k, st]) => !(g.QUEUE_CHECKS[st] || []).map(x => x.toLowerCase()).includes(String(passportLabel[k]).toLowerCase()))));
+    ok('labels: Vitals & BMI also names the height, which its BMI needs, and the 8 health-age checks all appear', g.QUEUE_CHECKS.vitals.includes('Height')
+      && ['Weight', 'Blood pressure', 'Blood sugar', 'Cholesterol', 'Fruit & Veg', 'Exercise', 'Water', 'Sleep'].every(c => Object.values(g.QUEUE_CHECKS).some(l => l.includes(c))));
+    ok('labels: the text for a line is its checks joined with a dot, and a line with none says so',
+      g.qChecksText('vitals') === 'Weight · Height · Waist' && g.qChecksText('sugar') === 'Blood sugar · Cholesterol' && g.qChecksText('kitchen') === 'No checks · optional stop'
+      && g.qChecksText('prayer') === 'No checks · optional stop' && g.qChecksText('plan') === 'No checks · the 90-day plan');
+    g.state.tab = 'queue'; g.state.qStation = 'sugar'; g.render();
+    const cardChecks = ($main.innerHTML.match(/class="q-card-line q-card-checks">[^<]*/g) || []).map(x => x.replace(/^[^>]*>/, ''));
+    ok('labels: each of the ten cards carries its checks under its name', cardChecks.length === 10 && cardChecks.join('|') === ['Weight · Height · Waist', 'Top and bottom number', 'Blood sugar · Cholesterol', 'Servings a day', 'Minutes of brisk exercise a day', 'Glasses a day', 'Hours a night', 'No checks · optional stop', 'No checks · the 90-day plan', 'No checks · optional stop'].join('|'), cardChecks.join('|'));
+    ok('labels: the panel says "Checks: …" for a line with checks', /<p class="q-note q-checks">Checks: Blood sugar · Cholesterol<\/p>/.test($main.innerHTML));
+    g.state.qStation = 'veg'; g.render();
+    ok('labels: …"Check: Servings a day" for a line named after its one check, instead of repeating Fruit & Veg', /<p class="q-note q-checks">Check: Servings a day<\/p>/.test($main.innerHTML));
+    ok('labels: the names stay what the passport calls them underneath (QUEUE_CHECKS), only the card words change', g.QUEUE_CHECKS.veg[0] === 'Fruit & Veg' && g.qChecksText('veg') === 'Servings a day' && g.qChecksText('walk') === 'Minutes of brisk exercise a day');
+    g.state.qStation = 'kitchen'; g.render();
+    ok('labels: …and just "No checks · optional stop" for one without', /<p class="q-note q-checks">No checks · optional stop<\/p>/.test($main.innerHTML));
+    g.openBigScreen();
+    const tvChecks = ($el('tvGrid').innerHTML.match(/class="q-tv-checks">[^<]*/g) || []).map(x => x.replace(/^[^>]*>/, ''));
+    ok('labels: the big screen carries them on all ten tiles', tvChecks.length === 10 && tvChecks[0] === 'Weight · Height · Waist' && tvChecks[2] === 'Blood sugar · Cholesterol', tvChecks.join('|'));
+    g.closeBigScreen();
+    tap('openQueuePick', 'water');
+    ok('lifestyle: adding a visitor to Water says "Add to Water"', /Add to Water/.test($el('queueHead').innerHTML), $el('queueHead').innerHTML);
+    tap('closeQueuePick');
+    g.state.tab = 'home';
+    /* the states of checks not filled in, and the cancel for abrupt stops */
+    const clearSkips = a => { for (const k of Object.keys(a.interests || {})) if (/^skip/.test(k)) delete a.interests[k]; delete a.interests.submittedOn; };
+    g.queue.length = 0; clearReadings(A42); clearSkips(A42); g.setAutoAnswer(true);
+    const cs = (st) => g.qCheckState(A42, st).state;
+    ok('states: a line with no checks is "na", and an empty or half-filled one is "empty" or "partial"', cs('kitchen') === 'na' && cs('prayer') === 'na' && cs('plan') === 'na' && cs('bp') === 'empty' && cs('sugar') === 'empty');
+    A42.s.sys = 130;
+    ok('states: one of two checks in is "partial"', cs('bp') === 'partial' && g.qCheckLine(A42, 'bp') === 'not filled in: bottom number');
+    A42.s.dia = 85;
+    ok('states: all checks in is "filled", and says so', cs('bp') === 'filled' && g.qCheckLine(A42, 'bp') === 'readings in ✓');
+    A42.s.dia = null; A42.interests.skipbp = true;
+    ok('states: not filled in but confirmed is "skipped", and says so', cs('bp') === 'skipped' && g.qCheckLine(A42, 'bp') === 'not filled in · confirmed');
+    A42.s.dia = 85;
+    ok('states: a skipped check that is later filled in is simply "filled"', cs('bp') === 'filled');
+    clearReadings(A42); clearSkips(A42);
+    ok('states: the names of what is missing are short and in the passport\'s words', g.qCheckLine(A42, 'vitals') === 'not filled in: weight, height' && g.qCheckLine(A42, 'sugar') === 'not filled in: blood sugar, cholesterol'
+      && g.qCheckLine(A42, 'veg') === 'not filled in: fruit and veg' && g.qCheckLine(A42, 'bp') === 'not filled in: top number, bottom number');
+    /* on the Start / Finish row, as in the footer of the Check page */
+    let sr = strip('EXPO-042', 'sugar');
+    ok('states: the Start row says what is not filled in, in the colour for it', /jr-q-chk jr-q-chk-empty">not filled in: blood sugar, cholesterol</.test(sr) && /Not in the Sugar &amp; Chol\. line/.test(sr), sr);
+    await g.queueStart('EXPO-042', 'sugar');
+    sr = strip('EXPO-042', 'sugar');
+    ok('states: while being served it still says so, and offers Cancel next to Finish', /<b>Being served at Sugar &amp; Chol\.<\/b><span class="jr-q-chk jr-q-chk-empty">/.test(sr) && /data-action="queueCancelHere" data-args="EXPO-042\|sugar">Cancel</.test(sr), sr);
+    A42.s.sugar = 6.4; sr = strip('EXPO-042', 'sugar');
+    ok('states: half filled in is "partial" in the same row', /jr-q-chk jr-q-chk-partial">not filled in: cholesterol</.test(sr));
+    /* Done anyway: confirmed on the Check page, recorded on the passport */
+    await g.queueFinishHere('EXPO-042', 'sugar');
+    ok('states: Done anyway records the skipped check on the passport, and the row says "not filled in · confirmed"',
+      A42.interests.skipsugar === true && g.queue.find(e => e.station === 'sugar').status === 'done' && /Done at Sugar &amp; Chol\. ✓<\/b><span class="jr-q-chk jr-q-chk-skipped">not filled in · confirmed</.test(strip('EXPO-042', 'sugar')), strip('EXPO-042', 'sugar'));
+    ok('states: the mark is a plain lowercase true, so it survives loading and syncing', g.migrateAttendee(JSON.parse(JSON.stringify(A42))).interests.skipsugar === true && g.attToRow(A42).interests.skipsugar === true);
+    $el('toastUndo').onclick(); await sleep(50);
+    ok('states: Undo takes the mark back too, and they are back with the volunteer with the checks "not filled in"',
+      A42.interests.skipsugar === undefined && g.queue.find(e => e.station === 'sugar').status === 'serving' && cs('sugar') === 'partial', JSON.stringify(A42.interests));
+    A42.s.chol = 5.2; await g.queueFinishHere('EXPO-042', 'sugar');
+    ok('states: finishing with every check in leaves no mark', A42.interests.skipsugar === undefined && cs('sugar') === 'filled');
+    /* confirming the results on the Check page confirms every gap */
+    g.queue.length = 0; clearReadings(A42); clearSkips(A42);
+    A42.s.sys = 120; A42.s.dia = 80; A42.s.sugar = 5.5; g.state.activeId = 'EXPO-042';
+    g.setAutoAnswer(false); await g.confirmResults(); g.setAutoAnswer(true);
+    ok('states: answering "Edit" to the results question marks nothing', !Object.keys(A42.interests).some(k => /^skip/.test(k)) && !A42.interests.submittedOn);
+    await g.confirmResults();
+    ok('states: "Yes, that is right" marks every check still not filled in as skipped, and only those',
+      A42.interests.skipvitals === true && A42.interests.skipsugar === true && A42.interests.skipveg === true && A42.interests.skipwalk === true && A42.interests.skipwater === true && A42.interests.skipsleep === true
+      && A42.interests.skipbp === undefined && !!A42.interests.submittedOn, JSON.stringify(A42.interests));
+    ok('states: …so the queue reads them as confirmed, and the half-filled Sugar & Chol. as "not filled in · confirmed"', cs('vitals') === 'skipped' && cs('sugar') === 'skipped' && cs('bp') === 'filled' && g.qCheckLine(A42, 'sugar') === 'not filled in · confirmed');
+    ok('states: queueConfirmGaps counts the lines it marks (none left to mark the second time)', g.queueConfirmGaps(A42) === 0);
+    /* in the queue panel */
+    g.queue.length = 0; clearReadings(A42); clearSkips(A42);
+    await g.queueJoin('EXPO-042', 'sugar'); await g.queueJoin('EXPO-088', 'sugar'); await g.queueStart('EXPO-042', 'sugar');
+    A88.s.sugar = 5.0; A88.s.chol = 4.9;
+    g.state.tab = 'queue'; g.state.qStation = 'sugar'; g.render();
+    ok('states: the queue panel names what the person with you is missing, and says "readings in ✓" for someone waiting who is complete',
+      /class="q-chk q-chk-empty">not filled in: blood sugar, cholesterol</.test($main.innerHTML) && /class="q-chk q-chk-filled">readings in ✓</.test($main.innerHTML), '');
+    A88.s.sugar = null; A88.s.chol = null; g.render();
+    ok('states: someone waiting with nothing filled in shows nothing extra (that is normal)', ($main.innerHTML.match(/q-chk-empty/g) || []).length === 1);
+    A42.s.sugar = 5.4; await g.queueFinishHere('EXPO-042', 'sugar');
+    g.render();
+    ok('states: the panel note counts the finished ones with checks not filled in, and how many were confirmed', /1 finished today\. 1 of them with checks not filled in \(1 confirmed\)\./.test($main.innerHTML), ($main.innerHTML.match(/finished today[^<]*/) || [''])[0]);
+    clearReadings(A42); clearSkips(A42); clearReadings(A88); clearSkips(A88);
+
+    /* the cancel for abrupt stops */
+    g.queue.length = 0; g.setAutoAnswer(true); A42.done = false;     /* an earlier test finished David's visit */
+    await g.queueJoin('EXPO-117', 'bp'); await g.queueStart('EXPO-042', 'bp'); await g.queueJoin('EXPO-042', 'kitchen');
+    sr = strip('EXPO-042', 'bp');
+    ok('cancel: only a person being served has a Cancel button on the row, not one waiting', /queueCancelHere/.test(sr) && !/queueCancelHere/.test(strip('EXPO-042', 'kitchen')));
+    g.setAutoAnswer(false); await g.queueCancelHere('EXPO-042', 'bp'); g.setAutoAnswer(true);
+    ok('cancel: "Keep going" changes nothing', g.queue.find(e => e.attendeeId === 'EXPO-042' && e.station === 'bp').status === 'serving');
+    await g.queueCancelHere('EXPO-042', 'bp');
+    ok('cancel: "Put back in line" returns them to the line in the same place and leaves their other lines alone',
+      g.queue.find(e => e.attendeeId === 'EXPO-042' && e.station === 'bp').status === 'waiting' && g.qList('bp', 'waiting').map(e => e.attendeeId).join() === 'EXPO-117,EXPO-042' && g.queue.find(e => e.attendeeId === 'EXPO-042' && e.station === 'kitchen').status === 'waiting'
+      && /back in line \(same place\)/.test($el('toastMsg').textContent), $el('toastMsg').textContent + lineOf());
+    await g.queueStart('EXPO-042', 'bp');
+    g.setAutoAnswer(null); let pr = g.queueCancelHere('EXPO-042', 'bp'); await sleep(20);
+    const sheet = { title: $el('cfTitle').textContent, body: $el('cfBody').textContent, alt: $el('cfAlt') && $el('cfAlt').textContent, altShown: $el('cfAlt') && !$el('cfAlt').classList.contains('hidden'), go: $el('cfGo').textContent, no: $el('cfNo').textContent };
+    g.answerConfirm('alt'); await pr; g.setAutoAnswer(true); await sleep(40);
+    ok('cancel: the question has three clear choices', sheet.title === 'Stop at Blood Pressure?' && /David has stopped part-way/.test(sheet.body) && sheet.alt === 'They left' && sheet.altShown && sheet.go === 'Put back in line' && sheet.no === 'Keep going', JSON.stringify(sheet));
+    ok('cancel: "They left" takes them out of every line they are in, and does not mark the visit complete',
+      g.queue.filter(e => e.attendeeId === 'EXPO-042').every(e => e.status === 'left') && g.queue.find(e => e.attendeeId === 'EXPO-117').status === 'waiting' && !!A42 && A42.done !== true
+      && /David left · taken out of the Blood Pressure and Kitchen Pharmacy lines/.test($el('toastMsg').textContent), $el('toastMsg').textContent + lineOf());
+    $el('toastUndo').onclick(); await sleep(50);
+    ok('cancel: …and Undo puts them back where they were (being served at one, waiting at the other)',
+      g.queue.find(e => e.attendeeId === 'EXPO-042' && e.station === 'bp').status === 'serving' && g.queue.find(e => e.attendeeId === 'EXPO-042' && e.station === 'kitchen').status === 'waiting', lineOf());
+    g.setAutoAnswer(null); pr = g.queueFinishHere('EXPO-042', 'bp'); await sleep(20);
+    const hiddenAgain = $el('cfAlt') ? $el('cfAlt').classList.contains('hidden') : true; g.answerConfirm(false); await pr; g.setAutoAnswer(true);
+    ok('cancel: the third button is only on the questions that offer it (the Finish question has none)', hiddenAgain);
+    /* Undo for Start */
+    g.queue.length = 0;
+    await g.queueStart('EXPO-088', 'water');
+    ok('cancel: Start for a walk-up offers Undo', !$el('toastUndo').classList.contains('hidden') && g.qList('water', 'serving').length === 1);
+    $el('toastUndo').onclick(); await sleep(50);
+    ok('cancel: …which takes the walk-up out of the line again (they were not in it before)', g.queue.find(e => e.station === 'water').status === 'left' && g.qList('water', 'serving').length === 0, lineOf());
+    await g.queueJoin('EXPO-088', 'sleep'); await g.queueStart('EXPO-088', 'sleep');
+    $el('toastUndo').onclick(); await sleep(50);
+    ok('cancel: …and for someone who was waiting, Undo puts them back in the same place', g.queue.find(e => e.station === 'sleep').status === 'waiting' && /back in line \(same place\)/.test($el('toastMsg').textContent), lineOf());
+    g.queue.length = 0;
+    /* the visitor's results marker survives loading and syncing */
+    ok('marker: the "results confirmed" date is kept when a visitor is loaded, and a made-up value is not',
+      g.migrateAttendee({ id: 'EXPO-042', name: 'D', s: {}, interests: { submittedOn: '2026-11-02', skipbp: true } }).interests.submittedOn === '2026-11-02'
+      && g.migrateAttendee({ id: 'EXPO-042', name: 'D', s: {}, interests: { submittedOn: 'yesterday' } }).interests.submittedOn === undefined
+      && g.migrateAttendee({ id: 'EXPO-042', name: 'D', s: {}, interests: { submittedOn: '2026-11-02' } }).interests.skipbp === undefined);
+    A42.interests.submittedOn = '2026-11-02'; A42.interests.skipwater = true;
+    const back = g.rowToAtt(g.attToRow(A42));
+    ok('marker: …and it survives going to the database and coming back, with the skipped marks', back.interests.submittedOn === '2026-11-02' && back.interests.skipwater === true);
+    delete A42.interests.submittedOn; delete A42.interests.skipwater;
+    /* one name for each line, on the card, the panel and the Add list */
+    g.state.tab = 'queue'; g.state.qStation = 'sugar'; g.render();
+    ok('labels: the panel uses the card\'s name (Sugar & Chol.), not a second one', /Station<\/div><div class="display text-base font-extrabold">Sugar &amp; Chol\./.test($main.innerHTML) && !/Blood Sugar &amp; Chol\./.test($main.innerHTML));
+    g.state.qStation = 'plan'; g.render();
+    ok('labels: …and Counselling, not "Health Counselling"', /Station<\/div><div class="display text-base font-extrabold">Counselling/.test($main.innerHTML));
+    tap('openQueuePick', 'prayer');
+    ok('labels: …and the Add list says "Add to Prayer"', /Add to Prayer</.test($el('queueHead').innerHTML), $el('queueHead').innerHTML);
+    tap('closeQueuePick');
+    /* Remove visitor on the Visitors today rows */
+    g.state.tab = 'home'; g.render();
+    const rows = (g.attendees || []).length;
+    ok('home: every Visitors today row has its own Remove (the bin), beside the row and not inside it',
+      ($main.innerHTML.match(/data-action="visitor-remove"/g) || []).length === rows && ($main.innerHTML.match(/class="hx-rowwrap"/g) || []).length === rows && !/<button[^>]*hx-row[^>]*>(?:(?!<\/button>)[\s\S])*<button/.test($main.innerHTML), rows + ' rows');
+    ok('home: the Remove carries the visitor\'s name for screen readers', /aria-label="Remove David Mokoena"/.test($main.innerHTML));
+    { const keep = { user: g.cloud.user, acct: g.cloud.acct };
+      g.cloud.user = { id: 'u-h' }; g.cloud.acct = { membership: { role: 'staff', status: 'approved' } }; g.render();
+      ok('home: a signed-in volunteer who is neither an admin nor a team leader does not see Remove', !/visitor-remove/.test($main.innerHTML));
+      g.cloud.acct = { membership: { role: 'admin', status: 'approved' } }; g.render();
+      ok('home: a church admin sees it on every row', ($main.innerHTML.match(/visitor-remove/g) || []).length === rows);
+      g.cloud.user = keep.user; g.cloud.acct = keep.acct; g.render(); }
+    const before = g.attendees.length, copy117 = JSON.parse(JSON.stringify(g.attendees.find(a => a.id === 'EXPO-117')));
+    tap('visitor-remove', 'EXPO-117'); await sleep(60);
+    ok('home: tapping the bin asks first, and yes removes that visitor (here from the practice data)', g.attendees.length === before - 1 && !g.attendees.some(a => a.id === 'EXPO-117'), String(g.attendees.length));
+    g.attendees.push(copy117); g.setAutoAnswer(true);                 /* put the practice visitor back, in place */
+    /* Next in line, in a station volunteer's footer */
+    g.queue.length = 0; clearReadings(A42);
+    g.state.myStation = 'bp'; g.state.tab = 'screen'; g.state.activeId = 'EXPO-042'; g.render();
+    ok('footer: a Blood Pressure volunteer\'s button reads "Next in line", for their line', /data-action="queueNextInLine" data-args="bp">Next in line</.test($main.innerHTML) && !/>Next visitor</.test($main.innerHTML));
+    g.state.myStation = 'fat'; g.render();
+    ok('footer: a station with no line still reads "Next visitor" and registers', /data-action="registerNew">Next visitor</.test($main.innerHTML) && !/queueNextInLine/.test($main.innerHTML));
+    await g.queueJoin('EXPO-117', 'bp'); await g.queueJoin('EXPO-088', 'bp');
+    await g.queueNextInLine('bp');
+    ok('footer: Next in line calls whoever has waited longest and opens their passport', g.qList('bp', 'serving').length === 1 && g.qList('bp', 'serving')[0].attendeeId === 'EXPO-117' && g.state.activeId === 'EXPO-117', g.state.activeId);
+    g.queue.length = 0; g.state.regOpen = false;
+    await g.queueNextInLine('bp');
+    ok('footer: with nobody waiting it says so and opens the registration form', /Nobody is waiting at Blood Pressure/.test($el('toastMsg').textContent) && g.state.regOpen === true, $el('toastMsg').textContent + ' ' + g.state.regOpen);
+    g.state.myStation = undefined; g.state.regOpen = false; g.state.tab = 'home';
+
+    /* the whole flow, one visit, volunteer by volunteer: nothing is left hanging, and no step needs a guess */
+    g.queue.length = 0; g.setAutoAnswer(true); A42.done = false; clearReadings(A42); clearSkips(A42);
+    const FA = g.attendees.find(a => a.id === 'EXPO-042');
+    await g.queueFlowStart('EXPO-042', 'David is EXPO-042 ✓ Start the checks');
+    const steps = [
+      ['vitals', 'weight', a => { g.onStationCommit('EXPO-042', 'weight', { value: '82' }, 30, 250, 0.5); a.heightCm = 178; }],
+      ['bp', 'bp', () => { g.onStationCommit('EXPO-042', 'sys', { value: '124' }, 60, 260, 1); g.onStationCommit('EXPO-042', 'dia', { value: '82' }, 30, 160, 1); }],
+      ['sugar', 'sugar', () => { g.onStationCommit('EXPO-042', 'sugar', { value: '5.6' }, 1, 30, 0.1); g.onStationCommit('EXPO-042', 'chol', { value: '4.8' }, 1, 15, 0.1); }],
+      ['veg', 'veg', () => g.onStationCommit('EXPO-042', 'veg', { value: '4' }, 0, 12, 1)],
+      ['walk', 'walk', () => g.onStationCommit('EXPO-042', 'walk', { value: '30' }, 0, 120, 5)],
+      ['water', 'water', () => g.onStationCommit('EXPO-042', 'water', { value: '6' }, 0, 15, 1)],
+      ['sleep', 'sleep', () => g.onStationCommit('EXPO-042', 'sleep', { value: '7' }, 0, 14, 0.5)],
+    ];
+    const openOf = () => g.queue.filter(e => e.attendeeId === 'EXPO-042' && (e.status === 'waiting' || e.status === 'serving')).map(e => e.station + ':' + e.status).join();
+    ok('flow: registering puts the visitor in the Vitals line, and only there', openOf() === 'vitals:waiting', openOf());
+    let flowOk = true, flowWhy = '';
+    for (const [line, key, fill] of steps) {
+      g.state.myStation = key; g.state.tab = 'screen'; g.state.activeId = 'EXPO-042'; g.render();
+      const waiting = /id="jrQ"[^]*?In line at[^]*?>Start at [^]*?not filled in|id="jrQ"[^]*?In line at[^]*?not filled in[^]*?>Start at /.test($main.innerHTML);
+      tap('queueStart', 'EXPO-042|' + line); await sleep(30);
+      const serving = /Being served at/.test($el('jrQ').innerHTML) && />Cancel</.test($el('jrQ').innerHTML) && !/is-ready/.test($el('jrQ').innerHTML);
+      fill(FA); g.queueStripRefresh(); await sleep(10);
+      const ready = /is-ready/.test($el('jrQ').innerHTML) && /readings in ✓/.test($el('jrQ').innerHTML);
+      tap('queueFinishHere', 'EXPO-042|' + line); await sleep(40);
+      const done = g.queue.find(e => e.attendeeId === 'EXPO-042' && e.station === line).status === 'done' && /Done at /.test($el('jrQ').innerHTML) && /readings in ✓/.test($el('jrQ').innerHTML);
+      const next = g.nextFlowStation('EXPO-042', line);
+      const oneOpen = openOf() === (next ? next + ':waiting' : '');
+      if (!(waiting && serving && ready && done && oneOpen)) { flowOk = false; flowWhy += `${line}: waiting=${waiting} serving=${serving} ready=${ready} done=${done} open=${openOf()}; `; }
+    }
+    ok('flow: at each of the seven checks the row goes In line → Being served → readings in ✓ → Done, with no question, and exactly one line open at a time', flowOk, flowWhy);
+    ok('flow: after the seven checks the visitor is waiting for Counselling, which has no checks and no row', openOf() === 'plan:waiting');
+    await g.queueCallNext('plan'); await g.queueDone(g.qList('plan', 'serving')[0].id);
+    ok('flow: Counselling is finished from the Queue screen and the route is over', openOf() === '' && g.nextFlowStation('EXPO-042', 'plan') === '');
+    g.state.myStation = undefined; g.state.activeId = 'EXPO-042';
+    await g.confirmResults();
+    ok('flow: confirming the results asks nothing more once everything is in, marks no check as skipped, and keeps its date', !Object.keys(FA.interests).some(k => /^skip/.test(k)) && !!FA.interests.submittedOn, JSON.stringify(FA.interests));
+    tap('finishVisit'); await sleep(40);
+    ok('flow: Finish visit completes the visit, leaves no line open, and the queue shows eight finished',
+      FA.done === true && openOf() === '' && g.queue.filter(e => e.attendeeId === 'EXPO-042' && e.status === 'done').length === 8, g.queue.map(e => e.station + ':' + e.status).join());
+    g.queue.length = 0; clearReadings(A42); clearSkips(A42); A42.done = false; g.state.myStation = undefined;
+    /* a visitor in the line but not called */
+    g.queue.length = 0; await g.queueJoin('EXPO-117', 'bp'); await g.queueJoin('EXPO-042', 'bp');
+    ok('start/finish: someone waiting is shown their place, with Start', /In line at Blood Pressure · 2 of 2/.test(strip('EXPO-042', 'bp')) && /Start at Blood Pressure/.test(strip('EXPO-042', 'bp')));
+    await g.queueStart('EXPO-042', 'bp');
+    ok('start/finish: Start for someone waiting takes them out of order if the volunteer says so (the one ahead keeps their place)', g.qList('bp', 'serving')[0].attendeeId === 'EXPO-042' && g.qList('bp', 'waiting')[0].attendeeId === 'EXPO-117');
+    await g.queueStart('EXPO-042', 'bp');
+    ok('start/finish: Start twice changes nothing', g.qList('bp', 'serving').length === 1 && g.queue.length === 2);
+    /* a volunteer doing every check sees every line the visitor is in */
+    g.queue.length = 0; await g.queueJoin('EXPO-042', 'bp'); await g.queueJoin('EXPO-042', 'kitchen'); await g.queueStart('EXPO-042', 'bp');
+    const all = strip('EXPO-042', '');
+    ok('start/finish: a volunteer doing every check sees a row for each line the visitor is in', /Being served at Blood Pressure/.test(all) && /In line at Kitchen Pharmacy · 1 of 1/.test(all) && !/Not in the/.test(all), all);
+    /* in the footer, on the Check screen only, and kept up to date */
+    g.queue.length = 0; clearReadings(A42); g.state.activeId = 'EXPO-042';
+    g.state.myStation = 'bp'; g.state.tab = 'screen'; g.render();
+    ok('start/finish: a volunteer who works Blood Pressure has the strip in the footer, above their two buttons', /class="jr-foot"><div id="jrQ" class="jr-q">[\s\S]*Start at Blood Pressure[\s\S]*<div class="jr-btns">/.test($main.innerHTML));
+    await g.queueStart('EXPO-042', 'bp'); await sleep(30);
+    ok('start/finish: …it changes by itself when the line moves, without redrawing the screen', $el('jrQ') && /Being served at Blood Pressure/.test($el('jrQ').innerHTML) && /Done at Blood Pressure/.test($el('jrQ').innerHTML), $el('jrQ') && $el('jrQ').innerHTML);
+    g.onStationCommit('EXPO-042', 'sys', { value: '128' }, 60, 260, 1); g.onStationCommit('EXPO-042', 'dia', { value: '84' }, 30, 160, 1);
+    ok('start/finish: …and lights up when a reading is typed, with the line still open', /is-ready/.test($el('jrQ').innerHTML) && g.qList('bp', 'serving').length === 1, $el('jrQ').innerHTML);
+    g.state.myStation = 'fat'; g.render();
+    ok('start/finish: a volunteer on a paper-record extra (body fat) has no strip', !/id="jrQ"/.test($main.innerHTML));
+    g.state.myStation = 'veg'; g.render();
+    ok('start/finish: a volunteer on Fruit & Veg has one', /id="jrQ"/.test($main.innerHTML) && /Start at Fruit &amp; Veg/.test($main.innerHTML));
+    g.state.myStation = ''; g.render();
+    ok('start/finish: a volunteer doing every check has the strip too, above the Back and Next buttons', /class="jr-foot"><div id="jrQ" class="jr-q">[\s\S]*Being served at Blood Pressure[\s\S]*<div class="jr-btns">/.test($main.innerHTML));
+    g.state.tab = 'results'; g.render();
+    ok('start/finish: the Results step has no strip', !/id="jrQ"/.test($main.innerHTML));
+    g.state.myStation = undefined; g.state.tab = 'home';
+    g.queue.length = 0; g.resetDemo(); g.state.tab = 'queue'; g.state.qStation = 'bp';
+  }
+
   /* the live path: the queue code as it runs signed in, against a fake shared table that behaves like the real one
      (the unique active line, conditional status changes, call-next taking the earliest arrival) */
   {
-    const C2 = g.cloud, keep = { client: C2.client, user: C2.user, mode: C2.mode, status: C2.status, churchId: C2.churchId };
-    const qdb = []; let seq = 0;
-    const touch = (r, to) => { const t = new Date(Date.now() + (seq++)).toISOString(); r.updated_at = t;
+    const C2 = g.cloud, keep = { client: C2.client, user: C2.user, mode: C2.mode, status: C2.status, churchId: C2.churchId, acct: C2.acct };
+    const qdb = []; let seq = 0, denyDelete = false, quietDelete = false;
+    const touch =(r, to) => { const t = new Date(Date.now() + (seq++)).toISOString(); r.updated_at = t;
       if (to === 'serving') { r.called_at = t; r.finished_at = null; } if (to === 'waiting') { r.called_at = null; r.finished_at = null; }
       if (to === 'done' || to === 'left') r.finished_at = t; r.status = to; };
     const builder = t => { const b = { op: 'select', f: [], inF: null,
-      insert(row) { b.op = 'insert'; b.row = row; return b; }, update(v) { b.op = 'update'; b.row = v; return b; },
+      insert(row) { b.op = 'insert'; b.row = row; return b; }, update(v) { b.op = 'update'; b.row = v; return b; }, delete() { b.op = 'delete'; return b; },
       select() { return b; }, single() { return b; }, eq(c, v) { b.f.push([c, v]); return b; }, in(c, vs) { b.inF = [c, vs]; return b; },
       gte() { return b; }, order() { return b; }, range() { return b; },
       then(res, rej) { return Promise.resolve(b.run()).then(res, rej); },
       run() {
         if (t !== 'queue_entries') return { data: [], error: null };
+        if (b.op === 'delete') {
+          if (denyDelete) return { data: null, error: { code: '42501', message: 'permission denied for table queue_entries' } };
+          if (quietDelete) return { data: [], error: null };        /* row level security: a delete the policy does not allow touches nothing and raises nothing */
+          if (!b.inF && !b.f.length) return { data: null, error: { message: 'DELETE requires a WHERE clause' } };
+          const gone = qdb.filter(r => b.f.every(([c, v]) => r[c] === v) && (!b.inF || b.inF[1].includes(r[b.inF[0]])));
+          gone.forEach(r => qdb.splice(qdb.indexOf(r), 1)); return { data: gone.map(r => ({ id: r.id })), error: null };
+        }
         if (b.op === 'insert') {
           if (qdb.some(r => r.attendee_id === b.row.attendee_id && r.station === b.row.station && (r.status === 'waiting' || r.status === 'serving')))
             return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } };
@@ -4908,6 +5428,7 @@ function makeServer() {
       channel() { const ch = { on(_t, f, cb) { qHandlers.push({ event: f.event, table: f.table, cb }); return ch; }, subscribe() { return ch; } }; return ch; }, removeChannel() {},
     };
     C2.user = { id: 'u-q', email: 'q@ex.org' }; C2.mode = true; C2.status = 'online';
+    C2.acct = { membership: { role: 'admin', status: 'approved' } };      /* a church admin: the only role that may clear the queue */
     g.queue.length = 0; g.qs.ready = false; g.qs.ch = null;
     C2.churchId = 'church-live-test';   /* a real church id, as the app has once signed in: the delete check depends on it */
     await g.queueSync(true);
@@ -4943,6 +5464,135 @@ function makeServer() {
     ok('queue (live): Done moves the visitor on to the next line in the shared table',
       qdb.some(r => r.attendee_id === 'EXPO-088' && r.station === 'sugar' && r.status === 'waiting') && qdb.find(r => r.id === sipho.id).status === 'done',
       JSON.stringify(qdb.map(r => r.attendee_id + '@' + r.station + ':' + r.status)));
+    {
+      /* Done · call next, signed in: the finish, the move to the next line and the call are three writes behind one tap */
+      await g.queueJoin('EXPO-042', 'sugar');                            /* EXPO-088 is already waiting at Sugar, first in */
+      await g.queueCallNext('sugar');
+      const first = g.qList('sugar', 'serving')[0];
+      await g.queueDoneNext(first.id);
+      const second = g.qList('sugar', 'serving')[0];
+      ok('queue (live): Done · call next finishes this person, moves them on, and calls the next one — in the shared table',
+        first.attendeeId === 'EXPO-088' && qdb.find(r => r.id === first.id).status === 'done' && qdb.some(r => r.attendee_id === 'EXPO-088' && r.station === 'veg' && r.status === 'waiting')
+        && !!second && second.attendeeId === 'EXPO-042' && qdb.find(r => r.id === second.id).status === 'serving',
+        JSON.stringify(qdb.map(r => r.attendee_id + '@' + r.station + ':' + r.status)));
+      ok('…and one message tells the desk where the visitor goes and who is next', /finished ✓ · now in the Fruit & Veg line · Next: .* · EXPO-042/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+      touch(qdb.find(r => r.id === second.id), 'done');                  /* another desk pressed Done first */
+      const callsBefore = calls.filter(c => c === 'queue_call_next').length;
+      await g.queueDoneNext(second.id); await sleep(20);
+      ok('queue (live): Done · call next after another desk already finished that person says so and calls nobody',
+        /Someone else just changed that one/.test($el('toastMsg').textContent) && calls.filter(c => c === 'queue_call_next').length === callsBefore, $el('toastMsg').textContent);
+    }
+    {
+      /* Clear finished: deletes the history on the server, older rows included, and leaves the live lines alone */
+      const isOver = r => r.status === 'done' || r.status === 'left';
+      g.state.tab = 'queue'; g.state.qStation = 'bp'; g.render();
+      const shown = g.qOverCount();
+      ok('queue (live): the queue screen counts the finished and removed entries on a Clear button',
+        shown > 0 && shown === qdb.filter(isOver).length && $main.innerHTML.includes(`Clear finished &amp; removed · ${shown}`), shown + ' vs ' + qdb.filter(isOver).length);
+      qdb.push({ id: 'q-old', attendee_id: 'EXPO-200', station: 'plan', status: 'left', joined_at: new Date(Date.now() - 3 * 864e5).toISOString(), called_at: null, finished_at: null, updated_at: new Date(Date.now() - 3 * 864e5).toISOString() });
+      const live = qdb.filter(r => !isOver(r)).map(r => r.id).sort().join();
+      g.setAutoAnswer(false); await g.queueClearHistory(); g.setAutoAnswer(true);
+      ok('queue (live): answering no to the Clear question changes nothing', qdb.filter(isOver).length === shown + 1 && g.qOverCount() === shown);
+      await g.queueClearHistory();
+      ok('queue (live): answering yes deletes every finished and removed entry on the server, older ones too, and keeps the lines',
+        !qdb.some(isOver) && qdb.map(r => r.id).sort().join() === live && g.qOverCount() === 0 && g.queue.length === live.split(',').length
+        && g.queue.every(e => e.status === 'waiting' || e.status === 'serving'), JSON.stringify(qdb.map(r => r.id + ':' + r.status)));
+      ok('…and the message counts what the server removed', new RegExp(`${shown + 1} finished entries cleared`).test($el('toastMsg').textContent), $el('toastMsg').textContent);
+      g.render();
+      ok('…and the Clear button is gone once there is nothing to clear', !$main.innerHTML.includes('Clear finished'));
+      await g.queueClearHistory();
+      ok('…pressing it again says there is nothing to clear', /Nothing to clear/.test($el('toastMsg').textContent));
+      touch(qdb.find(r => r.status === 'waiting'), 'done'); await g.queueSync(true);
+      denyDelete = true; await g.queueClearHistory(); denyDelete = false;
+      ok('queue (live): a sign-in the database refuses to delete for says so and removes nothing locally',
+        /not allowed to clear/.test($el('toastMsg').textContent) && g.qOverCount() === 1 && qdb.some(isOver), $el('toastMsg').textContent);
+      /* only a church admin: staff and members never see the button, and are told so if they get as far as the action */
+      for (const role of ['staff', 'member']) {
+        C2.acct = { membership: { role, status: 'approved' } }; g.render();
+        const before = qdb.length; await g.queueClearHistory();
+        ok(`queue (live): a ${role} does not see the Clear button, and the action itself refuses`,
+          !$main.innerHTML.includes('Clear finished') && /Only a church admin can clear the queue/.test($el('toastMsg').textContent) && qdb.length === before && g.qOverCount() === 1, $el('toastMsg').textContent);
+      }
+      C2.acct = { membership: { role: 'admin', status: 'pending' } }; g.render();
+      ok('queue (live): an admin whose approval is still pending is not an admin', !$main.innerHTML.includes('Clear finished'));
+      C2.acct = { membership: { role: 'admin', status: 'approved' } }; g.render();
+      ok('queue (live): an approved church admin sees the Clear button', $main.innerHTML.includes('Clear finished &amp; removed · 1'));
+      /* the database says no without an error (row level security): the screen must not claim it cleared anything */
+      quietDelete = true; await g.queueClearHistory(); quietDelete = false;
+      ok('queue (live): if the database quietly deletes nothing, the screen says only a church admin can, and shows the entry again',
+        /Nothing was cleared — only a church admin can clear the queue/.test($el('toastMsg').textContent) && g.qOverCount() === 1 && qdb.some(isOver), $el('toastMsg').textContent);
+    }
+    {
+      /* Finish visit while the queue cannot change: the passport finishes, the lines are left once the queue is back, in the right church only */
+      const tap = action => { const e = { dataset: { action } }; e.closest = () => e; e.hasAttribute = () => false; g.dispatch(e, { type: 'click', target: {} }); };
+      for (const r of qdb.splice(0)) void r;
+      await g.queueSync(true); localStorage.removeItem('newstart.queueLeave');
+      await g.queueJoin('EXPO-042', 'bp'); await g.queueJoin('EXPO-042', 'kitchen');
+      g.state.activeId = 'EXPO-042'; g.attendees.find(a => a.id === 'EXPO-042').done = false;
+      C2.status = 'online';
+      tap('finishVisit'); await sleep(120);
+      ok('passport link (live): Finish visit leaves every line in the shared table',
+        qdb.filter(r => r.attendee_id === 'EXPO-042').length === 2 && qdb.filter(r => r.attendee_id === 'EXPO-042').every(r => r.status === 'left')
+        && /taken out of the Blood Pressure and Kitchen Pharmacy lines/.test($el('toastMsg').textContent), $el('toastMsg').textContent + ' ' + JSON.stringify(qdb.map(r => r.station + ':' + r.status)));
+      await g.queueJoin('EXPO-042', 'bp'); await g.queueJoin('EXPO-088', 'bp');
+      C2.status = 'offline';
+      g.attendees.find(a => a.id === 'EXPO-042').done = false; g.state.activeId = 'EXPO-042';
+      tap('finishVisit'); await sleep(120);
+      const pending = () => JSON.parse(localStorage.getItem('newstart.queueLeave') || '{}');
+      ok('passport link (offline): the passport still finishes, the lines stay, and the message says so',
+        g.attendees.find(a => a.id === 'EXPO-042').done === true && qdb.find(r => r.attendee_id === 'EXPO-042' && r.status === 'waiting') && /no connection/.test($el('toastMsg').textContent)
+        && JSON.stringify(pending()) === JSON.stringify({ 'church-live-test': ['EXPO-042'] }), $el('toastMsg').textContent + ' ' + JSON.stringify(pending()));
+      C2.churchId = 'another-church'; C2.status = 'online';
+      await g.queueSync(true); await sleep(120);
+      ok('passport link (offline): another church signing in does not take this church\'s visitor out of lines',
+        qdb.some(r => r.attendee_id === 'EXPO-042' && r.status === 'waiting') && JSON.stringify(pending()) === JSON.stringify({ 'church-live-test': ['EXPO-042'] }));
+      C2.churchId = 'church-live-test';
+      await g.queueSync(true); await sleep(160);
+      ok('passport link (offline): back online in the same church, the pending lines are left and nobody else is touched',
+        qdb.filter(r => r.attendee_id === 'EXPO-042').every(r => r.status === 'left') && qdb.find(r => r.attendee_id === 'EXPO-088').status === 'waiting' && Object.keys(pending()).length === 0,
+        JSON.stringify(qdb.map(r => r.attendee_id + '@' + r.station + ':' + r.status)) + ' ' + JSON.stringify(pending()));
+      C2.churchId = 'church-live-test';
+      g.attendees.find(a => a.id === 'EXPO-088').done = false; g.state.activeId = 'EXPO-088'; C2.status = 'offline';
+      await g.queueFinishVisit('EXPO-117');
+      ok('passport link (offline): a visitor in no known line leaves a pending entry quietly, with no message', !/no connection/.test((await g.queueFinishVisit('EXPO-117')) || '') && pending()['church-live-test'].includes('EXPO-117'));
+      C2.status = 'online'; localStorage.removeItem('newstart.queueLeave');
+      /* Start and Finish, live: the same steps against the shared table */
+      const a88 = g.attendees.find(a => a.id === 'EXPO-088');
+      Object.assign(a88.s, { sys: 128, dia: 84 });
+      await g.queueStart('EXPO-088', 'bp');
+      ok('start/finish (live): Start puts the waiting visitor with the volunteer in the shared table', qdb.find(r => r.attendee_id === 'EXPO-088' && r.station === 'bp').status === 'serving',
+        JSON.stringify(qdb.map(r => r.attendee_id + '@' + r.station + ':' + r.status)));
+      await sleep(50);
+      ok('start/finish (live): the readings in light Finish up and finish nothing', /is-ready/.test(g.queueStripHTML(a88, 'bp')) && qdb.find(r => r.attendee_id === 'EXPO-088' && r.station === 'bp').status === 'serving');
+      await g.queueFinishHere('EXPO-088', 'bp'); await sleep(30);
+      ok('start/finish (live): Finish finishes the line in the shared table and moves them on',
+        qdb.find(r => r.attendee_id === 'EXPO-088' && r.station === 'bp').status === 'done' && qdb.some(r => r.attendee_id === 'EXPO-088' && r.station === 'sugar' && r.status === 'waiting'),
+        JSON.stringify(qdb.map(r => r.attendee_id + '@' + r.station + ':' + r.status)));
+      $el('toastUndo').onclick(); await sleep(80);
+      ok('start/finish (live): Undo in the shared table puts them back with the volunteer and leaves the line they were put in',
+        qdb.find(r => r.attendee_id === 'EXPO-088' && r.station === 'bp').status === 'serving' && qdb.find(r => r.attendee_id === 'EXPO-088' && r.station === 'sugar').status === 'left',
+        JSON.stringify(qdb.map(r => r.attendee_id + '@' + r.station + ':' + r.status)));
+      /* cancel, live: They left takes every line in the shared table, and Undo restores them */
+      await g.queueStart('EXPO-088', 'bp');
+      await g.queueJoin('EXPO-088', 'kitchen');
+      g.setAutoAnswer('alt'); await g.queueCancelHere('EXPO-088', 'bp'); g.setAutoAnswer(true); await sleep(40);
+      ok('cancel (live): They left takes the visitor out of every line in the shared table',
+        qdb.filter(r => r.attendee_id === 'EXPO-088' && (r.station === 'bp' || r.station === 'kitchen')).every(r => r.status === 'left'), JSON.stringify(qdb.map(r => r.attendee_id + '@' + r.station + ':' + r.status)));
+      $el('toastUndo').onclick(); await sleep(80);
+      ok('cancel (live): Undo restores them in the shared table',
+        qdb.find(r => r.attendee_id === 'EXPO-088' && r.station === 'bp' && r.status === 'serving') && qdb.find(r => r.attendee_id === 'EXPO-088' && r.station === 'kitchen' && r.status === 'waiting'), JSON.stringify(qdb.map(r => r.attendee_id + '@' + r.station + ':' + r.status)));
+      await g.queueCancelHere('EXPO-088', 'bp'); await sleep(40);
+      ok('cancel (live): Put back in line returns them to waiting in the shared table', qdb.find(r => r.attendee_id === 'EXPO-088' && r.station === 'bp' && r.status === 'waiting'), JSON.stringify(qdb.map(r => r.attendee_id + '@' + r.station + ':' + r.status)));
+      await g.queueStart('EXPO-088', 'bp');
+      C2.status = 'offline';
+      const before = JSON.stringify(qdb);
+      await g.queueFinishHere('EXPO-088', 'bp'); await g.queueStart('EXPO-088', 'sugar');
+      ok('start/finish (offline): the buttons are disabled, and pressing them changes nothing and says why',
+        /queueCancelHere" data-args="EXPO-088\|bp" disabled/.test(g.queueStripHTML(a88, 'bp')) && /queueFinishHere" data-args="EXPO-088\|bp" disabled/.test(g.queueStripHTML(a88, 'bp')) && JSON.stringify(qdb) === before && /No connection/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+      C2.status = 'online';
+      a88.s.sys = null; a88.s.dia = null;
+      g.state.tab = 'queue'; g.state.qStation = 'bp';       /* where the tests after this block expect to be */
+    }
     Object.assign(C2, keep); g.qs.ready = false; g.qs.ch = null; g.queue.length = 0;
   }
   await g.queueJoin('EXPO-117', 'vitals'); g.render();
@@ -5438,6 +6088,101 @@ function makeServer() {
   localStorage.setItem('newstart.passport.v2', JSON.stringify({ attendees: [], activeId: '' }));
   ok('an empty demo copy still re-seeds', g.loadPersisted() === false);
   C.mode = false; g.resetDemo();
+
+  /* ---- Help & tutorial (src/help.js) ---- */
+  {
+    const help = g.helpHTML();
+    ok('the help covers every page in the bottom bar', ['Home', 'Visitor', 'Queue', 'Care', 'Team', 'Profile'].every(t => g.HELP_PAGES.some(p => p.title === t)));
+    ok('the help explains each queue phase', ['Joined (waiting)', 'Called (being served)', 'Finished (done)', 'Put back (waiting again)', 'Left (removed)'].every(t => help.includes(t)));
+    ok('the help has a step-by-step section and a list of messages', help.includes('Step by step') && help.includes('Messages you may see'));
+    ok('every page lists its sections and their items', g.HELP_PAGES.every(p => p.sections.length > 0 && p.sections.every(s => s.items.length > 0)));
+    ok('the help text has no leftover placeholders or markup', !help.includes('undefined') && !/<\/?(script|iframe|img)/i.test(help));
+    g.openHelp();
+    ok('Help opens as a sheet over the app', !$el('helpModal').classList.contains('hidden') && $el('helpBody').innerHTML.includes('How the queue works'));
+    g.closeHelp();
+    ok('Help closes again', $el('helpModal').classList.contains('is-closing') || $el('helpModal').classList.contains('hidden'));
+    ok('Profile offers the Help button, and the registry knows it', srcText.includes('data-action="openHelp"') && /closeHelp/.test(srcText));
+    /* each number and rule in the help is tied to the code line that sets it, so the two cannot drift apart */
+    ok('help: the age range is the form\'s (12 to 105)', help.includes('from 12 to 105') && /Type their age \(12 to 105\)/.test(srcText));
+    ok('help: the height range is the form\'s (100 to 220 cm)', help.includes('From 100 to 220 cm') && /\(100.220\)/.test(srcText));
+    ok('help: the queue colour thresholds are the code\'s (10 and 20 minutes)', help.includes('10 minutes') && help.includes('20 minutes') && /QUEUE_WARN=10,QUEUE_ALERT=20/.test(srcText));
+    ok('help: the queue loads 18 hours, as the text says', help.includes('18 hours') && /QUEUE_WINDOW_H=18/.test(srcText));
+    ok('help: the Remove? confirmation lasts three seconds, as the code does', help.includes('three seconds') && /confT=setTimeout\(\(\)=>\{qs\.confirm='';if\(state\.tab==='queue'\)renderMain\(\);\},3000\)/.test(srcText));
+    ok('help: no times are invented: the code has no default minutes, and the help says so', !/QUEUE_DEFAULT_MIN/.test(srcText) && help.includes('The app invents no times') && !help.includes('a default of') && help.includes('No average yet'));
+    ok('help: the average uses the last 15 finished visits, as the code does', help.includes('last 15 finished visits') && /slice\(0,15\)/.test(srcText));
+    ok('help: Urgent is the red-flag rule, as the code does', help.includes('160/100 or more') && /filter\(redFlag\)/.test(srcText));
+    ok('help: the Seminar & co-op list is the code\'s three interests', JSON.stringify(g.HELP_PAGES).includes('Cooking school, Stress & peace or the R25 pouch') && /interests\.cook\|\|x\.interests\.stress\|\|x\.interests\.pouch/.test(srcText));
+    ok('help: the health age needs all 8 checks and a height, as the code does', help.includes('do not change it') && /needsHeight=doneCount\(a\)===8&&bmi\(a\)==null/.test(srcText));
+    ok('help: sign-out clears the device data, as the confirmation says', /clears the visitor and volunteer data/i.test(help) && /The visitor and volunteer data stored on this device will be cleared/.test(srcText));
+    ok('help: custom plans are for church admins only, as the code allows', help.includes('church admins only') && /canCustomPlan=\(\)=>!!\(cloud\.acct&&\(cloud\.acct\.platform_admin\|\|isAdminAcct\(\)\)\)/.test(srcText));
+    /* the topics added later: every number and wording is tied to the code or the schema that sets it */
+    const schemaText = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'schema.sql'), 'utf8');
+    const topics = JSON.stringify(g.HELP_TOPICS);
+    ok('help: the three topics (offline and sync, updates and installing, data kept and deleted) are in the sheet', g.HELP_TOPICS.length === 3
+      && ['Working offline and keeping in sync', 'Updates and installing the app', 'Your data: what is kept and what is deleted'].every(t => help.includes(t)) && g.HELP_TOPICS.every(p => p.sections.every(x => x.items.length > 0)));
+    ok('help: readings go after 7 days and a follow-up record after 2 years, as retention.js says', help.includes('7 days') && help.includes('2 years') && g.graceDays === 7 && g.retentionYears === 2
+      && /GRACE_DAYS=7/.test(srcText) && /RETENTION_YEARS=2/.test(srcText));
+    ok('help: queue entries go after 30 days and audit copies after 90, as the schema says', help.includes('older than 30 days') && /delete from public\.queue_entries where joined_at < now\(\) - interval '30 days'/.test(schemaText)
+      && help.includes('after 90 days') && /\(at < now\(\) - interval '90 days'/.test(schemaText));
+    ok('help: audit lines are kept 2 years and the clean-up runs at 03:00, as the schema says', topics.includes('kept for 2 years') && /delete from public\.audit_log where at < now\(\) - interval '2 years'/.test(schemaText)
+      && topics.includes('03:00') && /'0 3 \* \* \*'/.test(schemaText));
+    ok('help: the lists show the latest 25, as LIST_CAP says', help.includes('latest 25') && /LIST_CAP=25/.test(srcText) && /Latest \$\{rows\.length\} of \$\{attendees\.length\} — search to find anyone else/.test(srcText));
+    ok('help: the search wording is the screens\'', help.includes('Nobody matches that.') && /Nobody matches that\./.test(srcText) && /Nobody matches “/.test(srcText) && /Search \$\{attendees\.length\} visitors by name, badge or phone/.test(srcText));
+    ok('help: the sync timings are the code\'s (15 s on return, 20 s fallback, a minute, 10 minutes, 2 minutes out of sight)',
+      help.includes('at most once every 15 seconds') && /Date\.now\(\)-lastBack<15000/.test(srcText) && help.includes('every 20 seconds') && /fallback\?20000:60000/.test(srcText)
+      && help.includes('every 10 minutes') && /Date\.now\(\)-cloud\.lastFull>600000/.test(srcText) && help.includes('2 minutes') && /pauseRealtime\(\);\},120000\)/.test(srcText));
+    ok('help: a change is uploaded about a second later (250 ms save, 700 ms upload), as the code does', help.includes('about a second later') && /_pt=setTimeout\(persistNow,250\)/.test(srcText) && /cloud\.pushT=setTimeout\(cloudPush,700\)/.test(srcText));
+    ok('help: the status words are CLOUD_UI\'s', ['Up to date', 'Syncing…', 'Connecting…', 'Sync problem', 'Not signed in', 'Cloud sync could not load (no internet?)', 'Offline — changes are kept on this device'].every(t => help.includes(t))
+      && Object.values(g.CLOUD_UI).map(u => u[1]).join('|').includes('Offline — changes are kept on this device and upload when you reconnect.') && g.CLOUD_UI.online[1] === 'Up to date' && g.CLOUD_UI.error[1] === 'Sync problem');
+    ok('help: the update bar says what the help says', help.includes('A new version is ready') && help.includes('Tap Update — it takes a few seconds.') && help.includes('A new app version is ready') && help.includes('Tap Update to download and install it.')
+      && /'A new app version is ready' : 'A new version is ready'/.test(srcText) && /'Tap Update to download and install it\.' : 'Tap Update — it takes a few seconds\.'/.test(srcText));
+    ok('help: the install words are the code\'s', help.includes('Install the app on this phone') && help.includes('Installed on this phone ✓') && help.includes('Add to Home Screen') && /Install the app on this phone/.test(srcText) && /Installed on this phone ✓/.test(srcText) && /if\(IS_APP\)return ''/.test(srcText));
+    ok('help: Remove visitor is for admins and team leaders and asks first, as removeVisitorAsk does', help.includes('Remove NAME?') && /title:`Remove \$\{visitor\.name\|\|id\}\?`/.test(srcText) && /!cloud\.user\|\|mayPlace\(\)/.test(srcText)
+      && /not \(v_is_admin or v_lead\)/.test(schemaText) && /q\.station = v_booth and q\.status in \('waiting', 'serving'\)/.test(schemaText));
+    ok('help: the Remove visitor messages are the code\'s', ['Only your church’s admins and team leaders can remove a visitor', 'Removing a visitor needs a connection — try again when you are online.', 'The database did not remove them: only your church’s admins and team leaders can'].every(m => help.includes(m) && srcText.includes(m)));
+    ok('help: clearing the queue is for church admins, in the screen and in the database', help.includes('Only a church admin can clear the queue') && /qMayClear=\(\)=>qMode\(\)==='demo'\|\|isAdminAcct\(\)/.test(srcText)
+      && /create policy "church admins queue delete" on public\.queue_entries\s+for delete to authenticated using \(church_id = \(select public\.staff_church\(\)\) and \(select public\.is_admin\(\)\)\)/.test(schemaText));
+    /* confirming the results leaves the queue alone, as the help says; Finish visit takes the visitor out of their lines */
+    g.resetDemo(); g.queue.length = 0; g.cloud.user = null; g.qs.busy = false;
+    await g.queueJoin('EXPO-042', 'vitals'); await g.queueJoin('EXPO-088', 'bp'); await g.queueCallNext('bp');
+    const lines0 = JSON.stringify(g.queue.map(e => e.attendeeId + '@' + e.station + ':' + e.status));
+    const tap = action => { const e = { dataset: { action } }; e.closest = () => e; e.hasAttribute = () => false; g.dispatch(e, { type: 'click', target: {} }); };   /* the real button action */
+    g.state.activeId = 'EXPO-042'; await g.confirmResults();
+    ok('help: confirming the results leaves the queue exactly as it was (two people in lines to start with)',
+      lines0 === '["EXPO-042@vitals:waiting","EXPO-088@bp:serving"]' && lines0 === JSON.stringify(g.queue.map(e => e.attendeeId + '@' + e.station + ':' + e.status)), lines0);
+    tap('finishVisit'); await sleep(40);
+    g.state.activeId = 'EXPO-088'; tap('recycleBadge'); await sleep(40);
+    ok('help: Finish visit, and the WhatsApp preview\'s Finish visit, take the visitor out of every line they were in',
+      g.queue.every(e => e.status === 'left') && g.attendees.find(a => a.id === 'EXPO-042').done === true && g.attendees.find(a => a.id === 'EXPO-088').done === true,
+      JSON.stringify(g.queue.map(e => e.attendeeId + '@' + e.station + ':' + e.status)));
+    ok('help: the Finish visit and past-visit words are the code\'s', help.includes('Visit complete ✓ · Home') && /'Visit complete ✓ · Home':'Finish visit ✓'/.test(srcText) && help.includes('Register as a new visit') && /Register as a new visit/.test(srcText)
+      && help.includes('The bottom number should be lower than the top one') && /The bottom number should be lower than the top one/.test(srcText) && /Use \$\{disp\(fix\)\}/.test(srcText));
+    ok('help: registering is the one thing that puts a visitor in a line without a tap on the queue (queueFlowStart is called from registration only)',
+      (srcText.match(/queueFlowStart\(/g) || []).length === 2 && /queueFlowStart\(a\.id,said\)/.test(srcText));
+    g.queue.length = 0; g.resetDemo();
+    ok('help: Start and Finish are the passport footer\'s: Finish asks only when readings are missing, and offers a 6-second Undo, for exactly the readings the help names',
+      help.includes('Start at Blood Pressure') && help.includes('Done at Blood Pressure ✓') && help.includes('Done anyway') && help.includes('Undo') && help.includes('6 seconds')
+      && /label:'Done anyway',cancelLabel:'Keep going'/.test(srcText) && /\},6000\)/.test(srcText)
+      && /QUEUE_KEYS=\{vitals:\['weight','height'\],bp:\['sys','dia'\],sugar:\['sugar','chol'\],veg:\['veg'\],walk:\['walk'\],water:\['water'\],sleep:\['sleep'\]\}/.test(srcText)
+      && /QUEUE_OF_READING=\{bp:'bp',weight:'vitals',waist:'vitals',sugar:'sugar',chol:'sugar',veg:'veg',walk:'walk',water:'water',sleep:'sleep'\}/.test(srcText)
+      && help.includes('weight and height') && help.includes('top and bottom') && help.includes('blood sugar and cholesterol') && help.includes('servings of fruit and veg') && help.includes('minutes of exercise') && help.includes('glasses of water') && help.includes('hours of sleep'));
+    ok('help: the card words for a line named after its one check are the code\'s', ['Top and bottom number', 'Servings a day', 'Minutes of brisk exercise a day', 'Glasses a day', 'Hours a night'].every(t => JSON.stringify(g.HELP_PAGES).includes(t) && srcText.includes(t)));
+    ok('help: which checks belong to which line is the code\'s table',
+      Object.entries({ vitals: 'Vitals & BMI', bp: 'Blood Pressure', sugar: 'Sugar & Chol.', veg: 'Fruit & Veg', walk: 'Exercise', water: 'Water', sleep: 'Sleep' })
+        .every(([k, label]) => JSON.stringify(g.HELP_PAGES).includes(`${label}: ${g.QUEUE_CHECKS[k].join(' · ')}.`)) && /export const QUEUE_CHECKS=\{vitals:\['Weight','Height','Waist'\],bp:\['Blood pressure'\],sugar:\['Blood sugar','Cholesterol'\]/.test(srcText));
+    ok('help: the states of checks not filled in, and the cancel, are the code\'s words and rules',
+      ['readings in ✓', 'not filled in: top number, bottom number', 'not filled in · confirmed', 'Stop at Blood Pressure?', 'Put back in line', 'They left', 'Keep going'].every(t => JSON.stringify(g.HELP_PAGES).includes(t))
+      && /'not filled in · confirmed'/.test(srcText) && /interests\['skip'\+st\]/.test(srcText) && /label:'Put back in line',alt:'They left',cancelLabel:'Keep going'/.test(srcText)
+      && /top number/.test(srcText) && /queueConfirmGaps\(a\)/.test(srcText) && help.includes('Cancel, for an abrupt stop'));
+    ok('help: the route and the ten lines are the code\'s', JSON.stringify(g.HELP_PAGES).includes('Vitals → Blood Pressure → Sugar & Chol. → Fruit & Veg → Exercise → Water → Sleep → Counselling') && /QUEUE_FLOW=\['vitals','bp','sugar','veg','walk','water','sleep','plan'\]/.test(srcText)
+      && /QUEUE_STATIONS=\['vitals','bp','sugar','veg','walk','water','sleep','kitchen','plan','prayer'\]/.test(srcText) && help.includes('Ten lines'));
+    ok('help: the Finish visit and place-in-line messages are the code\'s',
+      ['the lines could not be updated (no connection), they will be when you are back online', 'the lines could not be updated yet, it will be tried again', 'Being served at', 'In line at'].every(m => srcText.includes(m))
+      && help.includes('the lines could not be updated (no connection), they will be when you are back online') && help.includes('Being served at Blood Pressure') && help.includes('In line at Blood Pressure')
+      && /taken out of the \$\{qLabels\(gone\)\}/.test(srcText));
+    ok('help: pending lines are kept per church (badge numbers repeat across churches)', /const c=cloud\.churchId;if\(!c\)return false;/.test(srcText) && /leaveRead\(\)\[cloud\.churchId\]/.test(srcText) && help.includes('in the same church'));
+    ok('help: the nearly-full message is the code\'s (about 10,000 visitors)', help.includes('Saved copy is nearly full') && /Saved copy is nearly full — sync now and remove old visitors/.test(srcText) && /One device holds about 10,000/.test(srcText));
+  }
 
   console.log('\n' + '='.repeat(52));
   console.log(failures ? `${failures} of ${checks} checks FAILED` : `all ${checks} checks passed`);

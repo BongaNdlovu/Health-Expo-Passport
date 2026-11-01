@@ -157,7 +157,8 @@ export function acctGateHTML(st){
  return `${title('My account')}
   ${acctNote(esc(m.full_name||a.email||'')+' · '+roleLabel(m)+' of <b class="text-[#33504f]">'+esc(c.name)+'</b>')}
   ${healthHTML()}${notifBoxHTML()}${expoMemberHTML()}${pledgeHTML()}${myTeamHTML()}${meFormHTML('gm')}<div class="pf">${profPasswordBox()}</div>
-  <button data-action="cloudSignOut" class="btn btn-glass mt-4 w-full py-2.5 text-xs text-[#5b7178]">Sign out</button>${leave}${admin}<div class="pf mt-3">${profDeleteHTML()}</div>`;
+  <button data-action="openHelp" class="btn btn-soft mt-4 w-full py-2.5 text-xs">Help &amp; tutorial</button>
+  <button data-action="cloudSignOut" class="btn btn-glass mt-3 w-full py-2.5 text-xs text-[#5b7178]">Sign out</button>${leave}${admin}<div class="pf mt-3">${profDeleteHTML()}</div>`;
 }
 function churchPickHTML(){
  const link=(fn,t)=>`<div class="mt-3 text-center"><button type="button" data-action="${fn}" class="text-[11px] font-extrabold text-brand-700">${t}</button></div>`;
@@ -796,7 +797,7 @@ export async function profPassword(e){
  profMsg('pwErr','');toast('Password updated');
 }
 function profAccountBox(){
- return acctBox('Account',`<button data-action="cloudSignOut" class="btn btn-glass mt-2 w-full py-2.5 text-xs text-[#5b7178]">Sign out</button>${profDeleteHTML()}`);
+ return acctBox('Account',`<button data-action="openHelp" class="btn btn-soft mt-2 w-full py-2.5 text-xs">Help &amp; tutorial</button><button data-action="cloudSignOut" class="btn btn-glass mt-2 w-full py-2.5 text-xs text-[#5b7178]">Sign out</button>${profDeleteHTML()}`);
 }
 /* Deleting is two steps: open the panel, then type DELETE. The database refuses only the only platform admin. */
 function profDeleteHTML(){
@@ -1828,13 +1829,17 @@ export function pauseRealtime(){
 }
 export function onRemoteChange(kind,p){
  const k=KINDS[kind],sy=cloud.synced[kind];
- /* With churches a badge number repeats across churches, and Supabase applies no row-level security to delete events
-    (Realtime docs, "Postgres Changes"). So a live delete counts only when it names this device's church; one that does
-    not is left to the next full pull, which notices deletions anyway. Inserts and updates are checked the same way. */
- if(cloud.churchId&&(p.eventType==='DELETE'?!(p.old&&p.old.church_id===cloud.churchId):!!(p.new&&p.new.church_id&&p.new.church_id!==cloud.churchId)))return;
+ /* With churches a badge number repeats across churches, so an insert or update is checked against this device's church.
+    A delete names only the row's key: it names the church too when the key includes it. When it does not, the row goes
+    only if the server, which reads this church alone, no longer has it. Supabase applies no row-level security to delete
+    events (Realtime docs, "Postgres Changes"), so this is the only check a delete gets. */
+ if(p.eventType!=='DELETE'&&cloud.churchId&&p.new&&p.new.church_id&&p.new.church_id!==cloud.churchId)return;
  if(p.eventType==='DELETE'){
-  const id=p.old&&p.old.id,i=k.list.findIndex(o=>o.id===id);
-  if(i>=0&&sigOf(k.toRow(k.list[i]))===sy[id]){k.list.splice(i,1);delete sy[id];}
+  const id=p.old&&p.old.id;
+  if(!id||!k.list.some(o=>o.id===id))return;
+  if(!p.old.church_id){confirmGone(kind,id);return;}
+  if(cloud.churchId&&p.old.church_id!==cloud.churchId)return;
+  dropRow(kind,id);
  }else if(p.new&&p.new.id){
   const obj=k.fromRow(p.new),s=sigOf(k.toRow(obj)),id=obj.id,i=k.list.findIndex(o=>o.id===id);
   if(i>=0){
@@ -1846,6 +1851,19 @@ export function onRemoteChange(kind,p){
   sy[id]=s;
  }else return;
  afterMerge(kind);saveSyncedSoon();persist();cloudRefresh();
+}
+/* drops a row a delete named, unless this device holds an edit of its own that has not been uploaded yet */
+function dropRow(kind,id){
+ const k=KINDS[kind],sy=cloud.synced[kind],i=k.list.findIndex(o=>o.id===id);
+ if(i>=0&&sigOf(k.toRow(k.list[i]))===sy[id]){k.list.splice(i,1);delete sy[id];}
+}
+/* a delete that named no church: read the row back from the server (which reads this church alone) and drop it only
+   if the server no longer has it. A failed read keeps the row; the next full pull settles it. */
+async function confirmGone(kind,id){
+ let res;
+ try{res=await cloud.client.from(KINDS[kind].table).select('id').eq('id',id);}catch(e){return;}
+ if(!res||res.error||(res.data&&res.data.length))return;
+ dropRow(kind,id);afterMerge(kind);saveSyncedSoon();persist();cloudRefresh();
 }
 /* redraw only when that cannot wipe something being typed */
 export function cloudRefresh(){

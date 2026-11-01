@@ -430,6 +430,7 @@ export async function cloudSignUp(e){
  const name=($('#gateName').value||'').trim().replace(/\s+/g,' '),em=($('#gateEmail').value||'').trim(),pw=$('#gatePass').value,pw2=$('#gatePass2').value;
  cloud.viewEmail=em;
  if(!name){gateFail('Enter your name so the administrator knows who you are.');return;}
+ if(!em){gateFail('Enter your email address.');return;}
  if(!validEmail(em)){gateFail('That email address does not look right.');return;}
  const bad=passwordProblem(pw);
  if(bad){gateFail(bad);return;}
@@ -470,6 +471,7 @@ export async function cloudForgot(e){
  if(!cloud.client)return;
  const em=($('#gateEmail').value||'').trim();
  cloud.viewEmail=em;
+ if(!em){gateFail('Enter the email address for your account.');return;}
  if(!validEmail(em)){gateFail('That email address does not look right.');return;}
  gateBusy('gate','Sending…');
  let res;

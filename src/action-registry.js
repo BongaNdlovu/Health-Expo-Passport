@@ -9,9 +9,10 @@ import { copyInvite, shareInvite } from './churchPlans.js';
 import { closeCloud, cloudForgot, cloudNewPassword, cloudResend, cloudSignUp, gateDemo, gateView, healthTest, installApp, openCloud, renderCloudBody, renderGate, togglePass } from './cloud.js';
 import { approveStaff } from './cloud.js';
 import { state } from './data.js';
-import { queueBack, queueCallNext, queueDone, queueRemove, queueServe } from './queue.js';
+import { queueBack, queueCallNext, queueClearHistory, queueDone, queueCancelHere, queueDoneNext, queueFinishHere, queueNextInLine, queueRemove, queueServe, queueStart } from './queue.js';
 import { closeBigScreen, closeQueuePick, openBigScreen, openQueuePick, qFilterPick, qPickAdd, qSelect, queueSync } from './queue.js';
 import { closeFood, exportCSV, openFood, showAllCare } from './results.js';
+import { closeHelp, openHelp } from './help.js';
 import { onSim, setFoodPlan, toggleFood } from './results.js';
 import { isServe, render, toggleTheme } from './shell.js';
 import { cloud } from './state.js';
@@ -32,14 +33,15 @@ export const ACTION_MAP = {
   cancelReg, closeAcct, closeBigScreen, closeCloud, closeFood, closeQueuePick, closeSwitcher,
   closeVolModal, closeVolReg, closeWhatsApp, cloudInit, cloudResend, cloudSignOut, copyInvite,
   editReadings, exportCSV, exportVolCSV, finishVisit, gateBack, gateDemo, goVisit, healthTest, installApp, leaveChurch,
-  logExpoEntry, metricBack, openBigScreen, openCloud, openEmail, openFood, openSwitcher, openVolModal,
+  logExpoEntry, metricBack, queueClearHistory, openBigScreen, openCloud, openEmail, openFood, openSwitcher, openVolModal,
   openVolReg, openVolSwitcher, openWhatsApp, profDeleteAsk, profDeleteGo, recycleBadge, registerNew, resetDemo,
   saveExpoEntry, saveVolunteer, sendEmail, sendWhatsApp, shareInvite, startNewVolunteer, stepDown,
-  switchToVol, toggleReg, closeSettings, deregisterMyPledge, openSettings, resetDemoAsk, updateLater, updateNow,
+  switchToVol, toggleReg, closeHelp, openHelp, closeSettings, deregisterMyPledge, openSettings, resetDemoAsk, updateLater, updateNow,
 
   /* -- the confirmation sheet (src/feedback.js): these answer a question, they do not perform an action -- */
   confirmYes: () => answer(true),
   confirmNo: () => answer(false),
+  confirmAlt: () => answer('alt'),
 
   /* -- single argument, on the element as data-args -- */
   cancelInvites: el => cancelInvites(el.dataset.args),
@@ -60,6 +62,11 @@ export const ACTION_MAP = {
   queueBack: el => queueBack(el.dataset.args),
   queueCallNext: el => queueCallNext(el.dataset.args),
   queueDone: el => queueDone(el.dataset.args),
+  queueDoneNext: el => queueDoneNext(el.dataset.args),
+  queueCancelHere: el => queueCancelHere(...el.dataset.args.split('|')),
+  queueFinishHere: el => queueFinishHere(...el.dataset.args.split('|')),
+  queueNextInLine: el => queueNextInLine(el.dataset.args),
+  queueStart: el => queueStart(...el.dataset.args.split('|')),
   queueRemove: el => queueRemove(el.dataset.args),
   queueServe: el => queueServe(el.dataset.args),
   recordConsent: el => recordConsent(el.dataset.args),

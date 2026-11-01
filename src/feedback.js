@@ -18,16 +18,16 @@ export const warn = m => toast('⚠ ' + m);
 export const say = m => toast(m);
 
 const SHEET = '#confirmSheet';
-/** @type {((yes:boolean)=>void)|null} */
-let settle = null;                       /* the resolver for the open question, null when none is open */
+/** @type {((yes:boolean|'alt')=>void)|null} */
+let settle = null;                      /* the resolver for the open question, null when none is open */
 let timer = 0;
 
 /* The smoke harness has no hands. It sets this to true or false and every question then answers itself, the
    same way the harness's sandbox already answers window.confirm. Left null in the app, where the sheet is the
    only way to answer. */
-/** @type {boolean|null} */
+/** @type {boolean|'alt'|null} */
 let autoAnswer = null;
-/** @param {boolean|null} v */
+/** @param {boolean|'alt'|null} v   'alt' picks the third choice of a question that has one */
 export function setAutoAnswer(v) { autoAnswer = v; }
 
 function hide() {
@@ -39,20 +39,21 @@ function hide() {
   overlayClosed(SHEET);
 }
 
-/** Answer the open question. The Back key, Cancel, the confirm button and a second question all land here. */
+/** Answer the open question. The Back key, Cancel, the confirm button and a second question all land here.
+ *  @param {boolean|'alt'} yes */
 export function answer(yes) {
   if (!settle) return;
   const put = settle;
   settle = null;
   hide();
-  put(!!yes);
+  put(yes === 'alt' ? 'alt' : !!yes);
 }
 
 /**
  * Ask before something that cannot be undone from the screen. Resolves false if the sheet is not in the page,
  * so a caller can never hang on a missing element.
- * @param {{title?:string, body?:string, label?:string, cancelLabel?:string, danger?:boolean}} [o]
- * @returns {Promise<boolean>}
+ * @param {{title?:string, body?:string, label?:string, cancelLabel?:string, danger?:boolean, alt?:string}} [o]   alt: a third choice, answered 'alt'
+ * @returns {Promise<boolean|'alt'>}
  */
 export function confirmAsk(o) {
   o = o || {};
@@ -64,6 +65,8 @@ export function confirmAsk(o) {
   body.textContent = o.body || '';
   go.textContent = o.label || 'Confirm';
   if (no) no.textContent = o.cancelLabel || 'Cancel';
+  const alt = $('#cfAlt');
+  if (alt) { alt.textContent = o.alt || ''; alt.classList.toggle('hidden', !o.alt); }
   go.className = o.danger
     ? 'btn btn-danger flex-1 py-2.5 text-xs'
     : 'btn btn-primary flex-1 py-2.5 text-xs';

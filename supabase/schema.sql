@@ -680,9 +680,20 @@ begin
 end $$;
 drop policy if exists "staff full access" on public.queue_entries;
 drop policy if exists "church staff queue" on public.queue_entries;
-create policy "church staff queue" on public.queue_entries
-  for all to authenticated
-  using (church_id = (select public.staff_church())) with check (church_id = (select public.staff_church()));
+drop policy if exists "church staff queue read" on public.queue_entries;
+drop policy if exists "church staff queue add" on public.queue_entries;
+drop policy if exists "church staff queue edit" on public.queue_entries;
+drop policy if exists "church admins queue delete" on public.queue_entries;
+-- Any approved staff runs the lines (join, call, done, put back, remove from the line); only a church admin may delete
+-- entries for good, as for visitors and volunteers: the app's "Clear finished & removed" is that delete.
+create policy "church staff queue read" on public.queue_entries
+  for select to authenticated using (church_id = (select public.staff_church()));
+create policy "church staff queue add" on public.queue_entries
+  for insert to authenticated with check (church_id = (select public.staff_church()));
+create policy "church staff queue edit" on public.queue_entries
+  for update to authenticated using (church_id = (select public.staff_church())) with check (church_id = (select public.staff_church()));
+create policy "church admins queue delete" on public.queue_entries
+  for delete to authenticated using (church_id = (select public.staff_church()) and (select public.is_admin()));
 
 -- "Call next" only ever takes someone from the caller's own church
 create or replace function public.queue_call_next(p_station text)

@@ -626,10 +626,18 @@
   .q-card-n small{margin-left:.3rem;font-family:Inter,system-ui,sans-serif;font-size:10px;font-weight:700;color:#4f6870}
   .q-card-line{margin-top:.35rem;font-size:10px;font-weight:600;color:#5c747a;line-height:1.35}
   .q-card-line b{color:#123033}
+  .q-card-checks{margin-top:.2rem;font-weight:700;color:#2f6f66}
+  .q-checks{margin-top:.2rem;font-weight:700}
+  .q-tv-checks{margin-top:.5vmin;font-size:clamp(10px,1.8vmin,24px);font-weight:700;opacity:.7;line-height:1.25}
   .q-head{display:flex;align-items:flex-start;justify-content:space-between;gap:.75rem}
-  .q-actions{display:grid;grid-template-columns:1.4fr 1fr;gap:.5rem;margin-top:.8rem}
-  .q-actions .btn{padding:.8rem .5rem;font-size:12px}
-  .q-actions .btn[disabled],.q-mini[disabled]{opacity:.45;pointer-events:none}
+  .q-big,.q-clear{width:100%}
+  .q-big{padding:.95rem .6rem;font-size:14px}
+  .q-clear{margin-top:.7rem;padding:.6rem .5rem;font-size:11px}
+  .q-big[disabled],.q-clear[disabled],.q-mini[disabled]{opacity:.45;pointer-events:none}
+  .q-row.q-now{flex-direction:column;align-items:stretch;gap:.55rem;padding:.7rem}
+  .q-now-who{display:flex;align-items:center;gap:.6rem}
+  .q-sub{display:flex;justify-content:flex-end;gap:.4rem}
+  .q-sub .q-mini{height:32px;font-size:10.5px}
   .q-label{margin:1rem .15rem .45rem;font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#5c747a}
   .q-row{display:flex;align-items:center;gap:.6rem;border-radius:18px;padding:.55rem .6rem;background:rgba(255,255,255,.62);border:1px solid rgba(255,255,255,.9)}
   .q-row+.q-row{margin-top:.4rem}
@@ -668,8 +676,10 @@
   .q-tv-clock{font-family:'Plus Jakarta Sans',Inter,sans-serif;font-weight:800;font-size:clamp(18px,3.6vmin,48px);font-variant-numeric:tabular-nums}
   .q-tv-x{width:max(36px,4.4vmin);height:max(36px,4.4vmin);border-radius:50%;border:0;cursor:pointer;background:rgba(255,255,255,.12);color:#eaf6f3;font-size:clamp(14px,2vmin,26px);font-weight:800;opacity:.55}
   .q-tv-x:hover{opacity:1}
-  .q-tv-grid{flex:1;min-height:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:1.8vmin}
-  @media (orientation:portrait){.q-tv-grid{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(3,minmax(0,1fr))}}
+  .q-tv-grid{flex:1;min-height:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:1.4vmin}
+  /* portrait (a phone, or a TV turned on its side): ten tiles do not fit one screen, so they take the height they need and the board scrolls */
+  @media (orientation:portrait){.q-tv-grid{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:none;grid-auto-rows:max-content;align-content:start;overflow-y:auto}
+    .q-tv-tile{min-height:max-content;overflow:visible}}
   .q-tv-tile{display:flex;flex-direction:column;min-height:0;overflow:hidden;border-radius:2.4vmin;padding:2vmin 2.2vmin;
              background:rgba(255,255,255,.065);border:.35vmin solid var(--qc,#4cc38a)}
   .q-tv-ok{--qc:#4cc38a}.q-tv-watch{--qc:#f0b84a}.q-tv-flag{--qc:#f0766a}
@@ -707,6 +717,8 @@
   .jr-name>span{display:block;font-size:10.5px;font-weight:600;color:var(--hx-ink-2)}
   .jr-name em{font-style:normal;font-weight:800;color:var(--hx-rose)}
   .jr-change{flex:none;border-radius:9999px;padding:.3rem .7rem;font-size:10.5px;font-weight:800;color:var(--hx-mint-deep);background:var(--hx-mint-soft)}
+  .jr-line{display:inline-block;margin:-.2rem .2rem .55rem;border-radius:9999px;padding:.25rem .7rem;font-size:10.5px;font-weight:800;color:var(--hx-mint-deep);background:var(--hx-mint-soft)}
+  .jr-line[hidden]{display:none}
   .jr-tools{display:flex;justify-content:flex-end;margin:-.35rem 0 .15rem}
   .jr-remove{min-height:36px;padding:0 .4rem;border:0;background:none;cursor:pointer;font:inherit;font-size:11px;font-weight:800;color:var(--hx-rose)}
   .jr-steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;list-style:none;margin:0;padding:0}
@@ -732,6 +744,24 @@
   .jr-note{margin:.1rem .25rem .5rem;font-size:11px;font-weight:600;color:var(--hx-ink-2);text-align:center}
   .jr-btns{display:grid;grid-template-columns:1fr 1.6fr;gap:.5rem}
   .jr-btns .btn{padding:.85rem .5rem;font-size:12.5px}
+  .jr-q{display:flex;flex-direction:column;gap:.4rem;margin-bottom:.5rem}
+  .jr-q:empty{display:none}
+  .jr-q-row{display:flex;align-items:center;gap:.6rem;border-radius:16px;padding:.4rem .4rem .4rem .75rem;background:var(--hx-mint-soft)}
+  .jr-q-t{flex:1;min-width:0;font-size:11px;color:var(--hx-mint-deep)}
+  .jr-q-t b{display:block;font-weight:800}
+  .jr-q-chk{display:block;margin-top:.1rem;font-size:10.5px;font-weight:700}
+  .jr-q-chk-filled{color:var(--hx-mint-deep)}
+  .jr-q-chk-skipped{color:#8f5f14}
+  .jr-q-chk-empty,.jr-q-chk-partial{color:#b04a42}
+  .jr-q-act{display:flex;flex:none;flex-direction:column;align-items:stretch;gap:.15rem}
+  .jr-q-cancel{border:0;background:none;cursor:pointer;font:inherit;font-size:10.5px;font-weight:800;color:var(--hx-ink-2);padding:.15rem}
+  .jr-q-cancel[disabled]{opacity:.45;pointer-events:none}
+  .q-chk-filled{color:#1f6b62!important}
+  .q-chk-skipped{color:#8f5f14!important;font-weight:800!important}
+  .q-chk-empty,.q-chk-partial{color:#b04a42!important;font-weight:700!important}
+  .jr-q-go{flex:none;padding:.65rem .95rem;font-size:12px}
+  .jr-q-go.is-ready{box-shadow:0 0 0 3px rgba(58,165,151,.4)}
+  .jr-q-go[disabled]{opacity:.45;pointer-events:none}
   .snd-list{display:grid;gap:.55rem}
   .snd-item{display:flex;width:100%;align-items:center;gap:.8rem;border-radius:20px;padding:.9rem 1rem;text-align:left;cursor:pointer;
             border:1px solid #fff;background:linear-gradient(160deg,rgba(255,255,255,.9),rgba(255,255,255,.62));box-shadow:0 12px 26px -22px rgba(16,60,58,.5)}
@@ -1078,6 +1108,14 @@
   .hx-row{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:48px;
     padding:9px 11px;border-radius:14px;background:rgba(255,255,255,.65);border:1px solid rgba(20,24,21,.06);margin-bottom:6px}
   .hx-row:last-child{margin-bottom:0}
+  .hx-rowwrap{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+  .hx-rowwrap:last-child{margin-bottom:0}
+  .hx-rowwrap .hx-row{flex:1;min-width:0;width:auto;margin-bottom:0}
+  .hx-row-txt{min-width:0}
+  .hx-rowwrap .hx-row-name,.hx-rowwrap .hx-row-sub{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .hx-row-x{flex:none;display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border:0;border-radius:14px;cursor:pointer;
+    background:rgba(214,88,74,.1);color:#b04a42}
+  .hx-row-x:active{transform:scale(.94)}
   .hx-row-main{display:flex;align-items:center;gap:10px;min-width:0}
   .hx-row-dot{width:8px;height:8px;border-radius:50%;flex:none}
   .hx-row-name{display:block;font-size:13.5px;font-weight:700;color:#141715}
@@ -1305,6 +1343,16 @@
   /* the confirm button for a destructive step: bg-rose-600 is not in the compiled stylesheet, which left white text on nothing */
   .btn-danger{background:linear-gradient(135deg,#c43c30,#a52a20);color:#fff;border:0;box-shadow:0 10px 20px -12px rgba(165,42,32,.6)}
   html[data-theme=dark] .btn-danger{background:linear-gradient(135deg,#e5584b,#c43c30);color:#fff}
+  /* the Help & tutorial sheet (src/help.js) */
+  #helpBody .help-page{padding:14px 0 6px;border-top:1px solid rgba(18,48,51,.08)}
+  #helpBody .help-page:first-child{border-top:0}
+  #helpBody .help-what{margin-top:6px;font-size:12px;line-height:1.55;color:#4f6870}
+  #helpBody .help-list{display:grid;gap:6px;margin-top:4px}
+  #helpBody .help-list dt{font-size:12px;font-weight:800;color:#123033}
+  #helpBody .help-list dd{font-size:12px;line-height:1.5;color:#4f6870;margin:0 0 4px}
+  #helpBody .help-steps{margin:6px 0 0 18px;display:grid;gap:5px;font-size:12px;line-height:1.5;color:#4f6870;list-style:decimal}
+  html[data-theme=dark] #helpBody .help-what,html[data-theme=dark] #helpBody .help-list dd,html[data-theme=dark] #helpBody .help-steps{color:#b9cdd1}
+  html[data-theme=dark] #helpBody .help-list dt{color:#eaf4f2}
 </style>
 </head>
 <body>
@@ -1394,6 +1442,15 @@
     <div class="mx-auto mb-4 h-1.5 w-10 rounded-full bg-[#123033]/10"></div>
     <div id="placeBody" class="max-h-[52vh] overflow-y-auto no-scrollbar"></div>
     <button data-action="place-close" class="btn btn-glass mt-3 w-full py-2.5 text-xs">Done</button>
+  </div>
+</div>
+
+<!-- ===== Help & tutorial (src/help.js) ===== -->
+<div id="helpModal" role="dialog" aria-modal="true" aria-label="Help and tutorial" class="fixed inset-0 z-50 hidden items-end bg-[#0b1a1c]/40 backdrop-blur-md" data-action="closeHelp" data-backdrop="1">
+  <div class="glass sheet-up mx-auto flex max-h-[92vh] w-full max-w-md flex-col rounded-b-none rounded-t-[28px] p-5">
+    <div class="mx-auto mb-4 h-1.5 w-10 rounded-full bg-[#123033]/10"></div>
+    <button type="button" data-action="closeHelp" style="align-self:flex-start;margin-bottom:.25rem" class="tap-link text-[12px] font-extrabold text-brand-700">&larr; Back</button>
+    <div id="helpBody" class="flex-1 overflow-y-auto no-scrollbar"></div>
   </div>
 </div>
 
@@ -1552,6 +1609,7 @@
     <p id="cfBody" class="mt-2 text-[12px] leading-relaxed text-[#4f6870]"></p>
     <div class="mt-4 flex gap-2">
       <button id="cfNo" data-action="confirmNo" class="btn btn-glass flex-1 py-2.5 text-xs">Cancel</button>
+      <button id="cfAlt" data-action="confirmAlt" class="btn btn-glass flex-1 py-2.5 text-xs hidden"></button>
       <button id="cfGo" data-action="confirmYes" class="btn btn-primary flex-1 py-2.5 text-xs">Confirm</button>
     </div>
   </div>

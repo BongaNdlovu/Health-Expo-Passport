@@ -14,7 +14,7 @@ import { homeHealthHTML, installEvt, validEmail } from './cloud.js';
 import { hiredCountLabel, mayPlace, pendingLabel, todayStr } from './volunteer.js';
 import { bannerHTML, capsuleHTML, ctaHTML, ecgHTML, journeyRailHTML, rulerHTML, spectrumHTML, splitBtnHTML, tileHTML } from './ui.js';
 import { confirmAsk } from './feedback.js';
-import { queueFlowStart } from './queue.js';
+import { QUEUE_OF_READING, queueConfirmGaps, queueFinishVisit, queueFlowStart, queueLineText, queueStripHTML, queueStripRefresh } from './queue.js';
 /* The visitor journey: Check → Results entry, registration, the paper record and the survey. Split from the original single-file app; bundled back into one file by tools/build.js. */
 /* ================= THE VISITOR JOURNEY: Check → Results → Plan → Send home ================= */
 /* where a visitor's passport should open: the step they were on, else the first one not done */
@@ -32,6 +32,7 @@ export function journeyTop(){
    <span class="jr-name"><b>${esc(a.name)}</b><span>${esc(a.id)}${redFlag(a)?' · <em>⚠ emergency, attend quickly</em>':''}</span></span>
    <span class="jr-change">Change</span>
   </button>
+  <div id="jrLine" class="jr-line"${queueLineText(a.id)?'':' hidden'}>${esc(queueLineText(a.id))}</div>
   ${a.id&&(!cloud.user||mayPlace())?`<div class="jr-tools"><button class="jr-remove" data-action="visitor-remove" data-args="${esc(a.id)}">Remove visitor</button></div>`:''}
   <ol class="jr-steps">${JOURNEY.map((k,j)=>`<li><button class="jr-step ${j===i?'is-on':j<i?'is-past':''}" ${k==='results'&&state.tab==='screen'?'data-action="confirmResults"':`data-action="switchTab" data-args="${k}"`} ${j===i?'aria-current="step"':''}>
    <span class="jr-dot">${done(k)&&j!==i?'✓':j+1}</span><span class="jr-lbl">${JOURNEY_LABEL[k]}${k==='screen'?` <small id="jrCount">${d<8?d+'/8':''}</small>`:''}</span></button></li>`).join('')}</ol>
@@ -41,11 +42,14 @@ export function journeyBottom(){
  const a=A(),i=JOURNEY.indexOf(state.tab),prev=JOURNEY[i-1],next=JOURNEY[i+1],left=8-doneCount(a);
  /* the move from Check into Results asks the operator to confirm the readings (see confirmResults) */
  const nextBtn=k=>`<button class="btn btn-primary jr-next" ${k==='results'?'data-action="confirmResults"':`data-action="switchTab" data-args="${k}"`}>${k==='results'?'Next: Results':`Next: ${JOURNEY_LABEL[k]}`} →</button>`;
+ /* Start and Finish for the volunteer's station sit above the buttons, where the thumb already is */
+ const ms=myStation(),scope=ms?(QUEUE_OF_READING[ms]||null):'';
+ const strip=state.tab==='screen'&&scope!==null?`<div id="jrQ" class="jr-q">${queueStripHTML(a,scope)}</div>`:'';
  /* a station volunteer's next move is the next visitor, not this visitor's results */
- if(state.tab==='screen'&&myStation())return `<div class="jr-foot"><div class="jr-btns">
+ if(state.tab==='screen'&&ms)return `<div class="jr-foot">${strip}<div class="jr-btns">
   <button class="btn btn-glass jr-back" data-action="confirmResults">Results →</button>
-  <button class="btn btn-primary jr-next" data-action="registerNew">Next visitor</button></div></div>`;
- return `<div class="jr-foot">
+  ${scope?`<button class="btn btn-primary jr-next" data-action="queueNextInLine" data-args="${scope}">Next in line</button>`:`<button class="btn btn-primary jr-next" data-action="registerNew">Next visitor</button>`}</div></div>`;
+ return `<div class="jr-foot">${strip}
   ${state.tab==='screen'?`<p id="jrNote" class="jr-note" ${left>0?'':'hidden'}>${left} of 8 checks still empty. You can carry on and come back.</p>`:''}
   <div class="jr-btns">
    ${prev?`<button class="btn btn-glass jr-back" data-action="switchTab" data-args="${prev}">← ${JOURNEY_LABEL[prev]}</button>`:'<span></span>'}
@@ -81,6 +85,7 @@ export async function confirmResults(){
  if(!yes)return;                       /* Edit: stay on Check, every value untouched */
  a.interests=a.interests||{};
  a.interests.submittedOn=todayStr();
+ queueConfirmGaps(a);                  /* the checks confirmed as not filled in are skipped in the queue too */
  persist();
  switchTab('results');
 }
@@ -124,6 +129,8 @@ export function finishVisit(){
  const a=attendees.find(x=>x.id===state.activeId);if(!a)return;
  const first=!a.done;a.done=true;persist();switchTab('home');
  if(first)toast(`${firstName(a.name)}’s visit is complete ✓ Ready for the next visitor`);
+ /* going home: out of every line they are still in (the passport is saved first, whatever the queue says) */
+ queueFinishVisit(a.id).then(more=>{if(more)toast(`${firstName(a.name)}’s visit is complete ✓${more}`);});
 }
 export function viewNoVisitor(){
  return `<section class="stagger space-y-3.5"><div class="glass p-5 text-center">
@@ -246,7 +253,7 @@ export function viewHome(){
 
   <div class="hx-ivory">
    <div class="hx-ivory-head">
-    <div><h3>Visitors today</h3><p class="hx-ivory-sub">Tap a visitor row to inspect live vitals</p></div>
+    <div><h3>Visitors today</h3><p class="hx-ivory-sub">Tap a visitor to open their passport${(!cloud.user||mayPlace())&&attendees.length?' · the bin removes them':''}</p></div>
     <div style="display:flex;gap:6px;flex:none">
      <button data-action="toggleReg" class="hx-round hx-round-ivory" aria-label="Register a new visitor" aria-expanded="${!!state.regOpen}">${I.plus}</button>
      <button data-action="openSwitcher" class="hx-round hx-round-ivory" aria-label="Find or switch visitor">${I.chevD}</button>
@@ -294,10 +301,13 @@ function visitorRowHTML(x){
  const dot=redFlag(x)?'#dc3522':(cbp[0]==='watch'||csg[0]==='watch')?'#d97706':'#22c55e';
  const line=`BP ${x.s.sys??'—'}/${x.s.dia??'—'} · ${cbp[1]}`;
  const n=JOURNEY.indexOf(defaultStep(x))+1;
- return `<button data-action="switchTo" data-args="${x.id}" class="hx-row${act?' is-on':''}" style="font:inherit;text-align:left">
+ /* Remove sits beside the row, not inside it (a button in a button is not valid): church admins and team leaders when signed in,
+    anyone in practice mode; it asks first (removeVisitorAsk) */
+ const rm=(!cloud.user||mayPlace())?`<button class="hx-row-x" data-action="visitor-remove" data-args="${esc(x.id)}" aria-label="Remove ${esc(x.name)}" title="Remove visitor"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l.9 12.5h9.2L17.5 7M10 11v5M14 11v5"/></svg></button>`:'';
+ return `<div class="hx-rowwrap"><button data-action="switchTo" data-args="${x.id}" class="hx-row${act?' is-on':''}" style="font:inherit;text-align:left">
   <span class="hx-row-main"><span class="hx-row-dot" style="background:${dot}"></span>
-   <span><strong class="hx-row-name">${esc(x.name)}${x.done?' ✓':''}</strong><span class="hx-row-sub">${esc(x.id)} · ${esc(line)} · ${d}/8 checks</span></span></span>
-  <span class="hx-row-badge">${n} / 4</span></button>`;
+   <span class="hx-row-txt"><strong class="hx-row-name">${esc(x.name)}${x.done?' ✓':''}</strong><span class="hx-row-sub">${esc(x.id)} · ${esc(line)} · ${d}/8 checks</span></span></span>
+  <span class="hx-row-badge">${n} / 4</span></button>${rm}</div>`;
 }
 function visitorListHTML(query){
  const rows=visitorsToShow(query),q=String(query||'').trim();
@@ -733,6 +743,7 @@ function crossCheck(a){
 }
 function updateScreenMeta(){
  const a=A(); if(!a)return;
+ queueStripRefresh();
  const setChip=(idc,c)=>{const el=document.getElementById(idc);if(el){if(el.textContent!==c[1])jelly(el);el.textContent=c[1];el.className=chipClass(c[0]);}};
  setChip('chip-bp',cat('bp',{sys:a.s.sys,dia:a.s.dia}));
  STATION_DEFS.concat(EXTRA_DEFS).forEach(x=>{setChip('chip-'+x.k,chipOf(a,x.k));

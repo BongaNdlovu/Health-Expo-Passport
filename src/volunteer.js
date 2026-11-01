@@ -13,6 +13,7 @@ import { overlayClosed, overlayOpened } from './overlay.js';
 import { canManageExpos, cloudSync } from './account.js';
 import { downloadCSV, foodKeyOf, planFor, shortFood } from './results.js';
 import { GRACE_DAYS, withoutOldReadings } from './retention.js';
+import { queueFinishVisit } from './queue.js';
 /* Volunteers: pledge, register, booth picker, serve, modals, WhatsApp/email share and the print card. Split from the original single-file app; bundled back into one file by tools/build.js. */
 /* =====================================================================
    VOLUNTEER / SERVE  —  pledge → register → booth → serve → record
@@ -1175,7 +1176,7 @@ export function sendEmail(){
  const input=$('#emTo'),to=String(input&&input.value||'').trim();
  if(!validEmail(to)){
   if(input){try{input.focus();}catch(e){}}
-  toast('That email address does not look right — check it, or leave email out');return;
+  toast(to?'That email address does not look right — check it, or leave email out':'Type the email address to send the plan to');return;
  }
  const save=$('#emSave');
  const saving=!!(save&&save.checked);
@@ -1200,6 +1201,7 @@ export function recycleBadge(){
  const a=attendees.find(x=>x.id===state.activeId);if(!a){closeWhatsApp();return;}
  a.done=true;closeWhatsApp();render();switchTab('home');
  toast(`${a.id} finished ✓ Ready for the next visitor`);
+ queueFinishVisit(a.id).then(more=>{if(more)toast(`${a.id} finished ✓${more}`);});
 }
 
 /* ================= A6 PRINT CARD ================= */

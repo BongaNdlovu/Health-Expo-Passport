@@ -1,0 +1,440 @@
+// @ts-check
+import { $, esc } from './helpers.js';
+import { hideModal, showModal } from './volunteer.js';
+
+/* The Help & tutorial sheet, opened from Profile. It is written from the app itself: each page, the sections on it, and
+   what each control does. It is plain text, so it changes only when the app changes; update it with the app. Every
+   claim was checked against the code (see the Help checks in .smoke/harness.js). */
+
+/* [label, what it does] pairs inside a section */
+/** @type {{title:string, tab:string, what:string, sections:{name:string, items:[string,string][]}[]}[]} */
+export const HELP_PAGES = [
+ { title: 'Home', tab: 'home',
+   what: 'The start screen. It shows who is being screened right now, today’s visitors and how far the expo has got.',
+   sections: [
+    { name: 'Now serving', items: [
+      ['Visitor card', 'The visitor whose checks are open: badge, name, age and sex, with the four steps Check, Results, Plan and Send.'],
+      ['Continue: Check', 'Opens that visitor’s check screen, where the readings are taken.'],
+      ['Blood pressure, Blood sugar, Body BMI', 'The three headline readings. A dash means not measured yet.'] ] },
+    { name: 'Visitors today', items: [
+      ['Visitor rows', 'Everyone registered today, with how many of the 8 checks are done and which step they are on. Tap a row to open their passport; the line under the heading says “the bin removes them” where you may remove visitors.'],
+      ['Remove (the bin at the right of a row)', 'Deletes that visitor, after asking “Remove NAME?”. Signed in, only church admins and team leaders see it; in practice mode anyone does. It is the same as Remove visitor on the passport: it deletes their passport and readings for every desk and takes them out of every queue line, and it cannot be undone from the app.'] ] },
+    { name: 'Screening Spectrum', items: [
+      ['Emergency — attend quickly', 'A red reading, such as blood pressure 160/100 or more, blood sugar 15 or more, or blood sugar under 3.'],
+      ['Watch — elevated', 'Something is raised, but no reading is in the red range.'],
+      ['Optimal — healthy', 'Blood pressure, blood sugar and BMI are all normal.'],
+      ['Count line', 'How many visitors are screened (their blood pressure, blood sugar and BMI are in), and how many are still in checks.'] ] },
+    { name: 'Expo and volunteers', items: [
+      ['Expo banner', 'The expo’s name, and how many helpers are confirmed out of the number needed.'],
+      ['Pledge & Booth Registration', 'Tapping the banner opens the volunteer sheet, to pledge to help, pick a booth or add a new volunteer. The note counts pledged helpers still waiting for registration.'] ] },
+    { name: 'Status, sync and theme', items: [
+      ['Status line', 'Whether this device’s data is saved to the shared database, for example “Up to date with the shared database”.'],
+      ['Sync', 'Opens the sync panel, where Sync now sends and fetches changes.'],
+      ['Sign out', 'Clears the visitor and volunteer data on this device, after asking you to confirm. Changes not yet uploaded are lost, and you are warned first. Data already on the server is kept.'],
+      ['Light / dark button', 'Switches between light and dark mode.'],
+      ['Reset demo', 'Practice mode only (not signed in): starts the practice data again.'] ] } ] },
+
+ { title: 'Visitor', tab: 'visit',
+   what: 'Where visitors are registered and taken through the four steps: Check, Results, Plan and Send home.',
+   sections: [
+    { name: 'Register a new visitor', items: [
+      ['Full name', 'Required.'],
+      ['Age', 'Required, from 12 to 105. For someone under 18, a box for the parent or guardian’s name and their consent appears, and both are required.'],
+      ['Sex', 'Male or Female, one tap. Required.'],
+      ['WhatsApp (optional)', 'If given, it must look like a South African number. Used to send the plan on WhatsApp.'],
+      ['Height (cm, optional)', 'From 100 to 220 cm if given. Needed for the BMI and the health age.'],
+      ['Email (optional)', 'If given, it must look like an email address. Used to send the plan by email.'],
+      ['Visitor number', 'Given automatically. It is the badge number on their lanyard.'],
+      ['Duplicate check', 'If the name, the last nine phone digits or the email match someone already registered, registration stops. You can open their existing record, or register a new passport anyway.'],
+      ['Register & start the checks', 'Saves the visitor. When the live queue is on, they join the Vitals & BMI line straight away.'] ] },
+    { name: 'Consent (POPIA)', items: [
+      ['Yes, they consent', 'Required. Without it no check can be recorded. The date is kept with the record.'],
+      ['May we contact you afterwards?', 'Optional, and separate from the screening consent. Answer it with the visitor.'] ] },
+    { name: 'Visitor header', items: [
+      ['Change', 'Opens the switcher to pick a different visitor.'],
+      ['Where they stand in the queue', 'A small note under the name, for example “In line at Blood Pressure · 2 of 5” or “Being served at Blood Pressure”. It lists every line they are in, and it is empty when they are in no line or the queue cannot be read (no connection). It updates by itself as the lines move.'],
+      ['Remove visitor', 'Under the visitor’s name bar, on every step. It asks “Remove NAME?” first. Remove deletes their passport and readings for every desk in your church and takes them out of every queue line. It cannot be undone from the app. Signed in, only church admins and team leaders see it; a leader can remove only a visitor who is waiting or being served at their own station. It needs a connection when the visitor is already on the shared database. In practice mode, anyone can remove, and it only affects this device.'] ] },
+    { name: 'Finding a visitor', items: [
+      ['Where the lists are', 'Change (at the top of the visitor screens) opens a list of visitors, and Home has Visitors today. Tap a name to open that visitor where they left off.'],
+      ['The latest 25', 'With more than 25 visitors, each list shows only the latest 25 (and the visitor who is open), with a search box above it. On Home a note says, for example, “Latest 25 of 140 — search to find anyone else.”'],
+      ['Search', 'By name, badge number or phone. In the Change list, no match says “Nobody matches that.” On Home it says “Nobody matches …” and a Clear search button brings the list back.'] ] },
+    { name: 'Journey bar', items: [
+      ['Check, Results, Plan, Send home', 'The four steps. Tap a step, or Next, to move on. “←” goes back one step. Moving from Check to Results asks you to confirm the readings, once per visit: the answer is kept, also after the app reloads or syncs.'],
+      ['Finish visit ✓', 'The button on the last step. It marks the visit complete and returns to Home, saying the visitor’s visit is complete and you are ready for the next. Afterwards it reads “Visit complete ✓ · Home”. It also takes the visitor out of every queue line they are still in, and the message says which, for example “taken out of the Blood Pressure line”. The visit is saved first: with no connection it still finishes, the message says the lines could not be updated, and they are left as soon as the queue can change again.'],
+      ['The passport and the queue work together', 'Registering puts the visitor in the Vitals & BMI line. Finish visit ✓ takes them out of every line. On the Check screen, the footer has Start and Done for your station (see Queue). Confirming the results and Send home do not change the queue.'] ] },
+    { name: 'A returning visitor', items: [
+      ['Past visit', 'A visitor opened by an old number whose visit was more than 7 days ago has had their readings deleted, so the passport takes no new checks. “Register as a new visit” starts a new passport on a new badge, with their details filled in and consent asked again.'] ] },
+    { name: 'Check: station screening', items: [
+      ['Your station', 'The station this desk takes, saved on this device. A station volunteer’s footer offers Results and Next in line, and above them the Start and Done row for the queue line of that station (see Queue). Weight and Waist belong to the Vitals & BMI line, Blood pressure to Blood Pressure, Blood sugar and Cholesterol together to Sugar & Chol., and Fruit & Veg, Exercise, Water and Sleep each to a line of their own. Only the paper-record extras (Body fat, Body water, Lung function and Fitness) have no line, so no row, and their footer button reads Next visitor and opens the registration form.'],
+      ['Next in line', 'In a station volunteer’s footer. It calls whoever has waited longest at your line and opens their passport; being called is being started. With nobody waiting, or with no connection, it opens the registration form instead, so a desk can always add a visitor.'],
+      ['Blood pressure', 'Top and bottom numbers, and whether they take BP medication.'],
+      ['Blood sugar, Cholesterol', 'Values in mmol/L.'],
+      ['Weight', 'Kilograms. With the height, the BMI is worked out.'],
+      ['Fruit & Veg, Exercise, Water, Sleep', 'Servings a day, minutes of brisk exercise a day, glasses of water a day, hours of sleep a night.'],
+      ['− and +, or type', 'Change a value. A chip turns amber or red when a value needs attention.'],
+      ['Warnings under a field', 'A red note says when a value looks wrong or impossible, for example “The bottom number should be lower than the top one. Check both readings.” Where the app can suggest a value, the note has a “Use …” button that applies it.'] ] },
+    { name: 'Check: Personal Health Record', items: [
+      ['Medical history', 'Major operations and chronic illnesses. A list appears when chronic illness is Yes.'],
+      ['Waist, Body fat (BIA), Body water (TBW), Lung function (PEF)', 'The rest of the paper record. Not part of the 8 checks.'],
+      ['Fitness', 'Pulse at rest, after exercise, and after 3 minutes of recovery.'] ] },
+    { name: 'Check: health age survey', items: [
+      ['Exercise, breakfast, snacking, smoking, alcohol', 'Five questions. The answers are saved with the record. They do not change the health age.'] ] },
+    { name: 'Check: follow-up', items: [
+      ['Follow-up call', 'Ticked, it puts them on the 48-hour follow-up calls list in Care.'],
+      ['Cooking school, Stress & peace, R25 pouch', 'Ticked, they put the visitor on the Seminar & co-op interests list in Care.'],
+      ['May the church contact them after the expo?', 'Yes or No.'],
+      ['Seminars they agreed to', 'Shown from the notice they agreed to.'],
+      ['How did they hear about the expo?', 'Social media, Newspaper, Flyer, Word of mouth, Other.'],
+      ['Prayer request (optional)', 'Saved with the record and noted under Follow-up for the team. It is in the CSV export as Prayer note.'] ] },
+    { name: 'Results (step 2)', items: [
+      ['Health age', 'The age their readings point to, next to their actual age. It shows only when all 8 checks and a height are in; until then it says what is missing.'],
+      ['90-day goal', 'The age they could reach in 90 days with the plan, and the years that would be won. Shown after all 8 checks.'],
+      ['What to work on', 'The readings that most need attention.'],
+      ['What adds the most years', 'The readings that add the most years to the health age.'],
+      ['Show the 90-day win (counselling tool)', 'Sliders for the three commitments, to show how the numbers would respond.'] ] },
+    { name: 'Plan (step 3)', items: [
+      ['Plan · 90 days', 'A 90-day plan built from the readings. “When these feel easy, add” suggests the next steps.'],
+      ['Food plan', 'Opens from the plan: the food behind it.'],
+      ['Custom plan (church admins only)', 'Write a plan for this visitor, or start from the plan they were shown. You can also import a plan file (JSON) and download a blank template. Remove custom plan returns them to the generated plan.'] ] },
+    { name: 'Send home (step 4)', items: [
+      ['Send the plan on WhatsApp', 'Shows a preview, then sends it to their number. If no number is saved, you pick their contact.'],
+      ['Email the plan', 'Shows a preview, then opens your email app with it. If no email is saved, you type one first. The email is sent from that app, not from here.'],
+      ['Print the take-home card', 'An A6 card with their numbers and three actions.'],
+      ['Finish visit', 'In the WhatsApp preview, Finish visit marks the visit complete, takes the visitor out of their queue lines and returns to Home, without sending.'],
+      ['Reserve the R25 co-op starter pouch', 'Always listed. Reserves bulk staples for 21 days, ready at the exit table. Once reserved, the button reads “Co-op starter pouch reserved”.'],
+      ['Follow-up for the team', 'A summary of what they asked for, a Change link back to Check, and the follow-up tick boxes.'] ] } ] },
+
+ { title: 'Queue', tab: 'queue',
+   what: 'The live line at each station. Every desk sees the same line, updated as people are called, finished or removed.',
+   sections: [
+    { name: 'Status line', items: [
+      ['Live — every desk sees this same line', 'Connected. Changes appear on every desk as they happen.'],
+      ['Reconnecting…', 'The connection dropped. Numbers may be a few seconds behind.'],
+      ['Offline — the line is paused', 'No connection. Queue changes are refused until you reconnect.'],
+      ['Practice mode', 'Signed out. The queue runs on this device only, and nothing is saved.'] ] },
+    { name: 'Totals', items: [
+      ['Waiting, Being served', 'Counts across all stations.'],
+      ['Finished', 'Visits finished in the last 18 hours, the period the queue loads.'],
+      ['Longest wait', 'The longest anyone has waited, across all stations.'],
+      ['Clear finished & removed · N', 'Church admins only. Appears when there are finished or removed entries. It asks first, then deletes them for every desk, including older ones this screen no longer loads. People still waiting or being served stay, but the Finished count and the average time per person start again from estimates.'] ] },
+    { name: 'The queue and the passport', items: [
+      ['Registering', 'A newly registered visitor joins the Vitals & BMI line straight away, when the queue can take changes.'],
+      ['The Start and Done row', 'On the Check screen, in the footer above the buttons. A volunteer who works one station sees one row for that station; a volunteer doing every check sees a row for each line the visitor is in. It is not shown on the other steps, or for the paper-record extras, which have no line.'],
+      ['Start at Blood Pressure', 'The visitor is now with you. If they are waiting in that line they are called now, even ahead of others; if they are not in the line yet (a walk-up) they are added and started. The row then reads “Being served at Blood Pressure”.'],
+      ['Done at Blood Pressure ✓', 'Marks that line done and puts the visitor in their next line, with one message. It does not call anyone. When all of the station’s readings are in, the button lights up and the row says “readings in ✓”; nothing finishes by itself. The readings are: Vitals & BMI, weight and height (so the BMI can be worked out); Blood Pressure, the top and bottom numbers; Sugar & Chol., blood sugar and cholesterol; Fruit & Veg, the servings of fruit and veg; Exercise, the minutes of exercise; Water, the glasses of water; Sleep, the hours of sleep.'],
+      ['The question and Undo', 'If readings for that station are missing, Done asks “Done at Blood Pressure?” and names what is missing; Done anyway goes on, Keep going stays. When nothing is missing it just finishes. Either way a message with Undo stays for 6 seconds: Undo puts the visitor back with you, takes back the “confirmed” mark if Done anyway made one, and leaves the line they were put in, unless someone has already called them there.'],
+      ['Checks not filled in', 'On the Start and Done row, and for the person with you in the queue panel, each line says what state its checks are in: “readings in ✓”; “not filled in: top number, bottom number” (nothing in, or only some); or “not filled in · confirmed”. Confirmed means a volunteer accepted the gap on the Check page: by choosing Done anyway at that line, or by confirming the results (Next: Results, Yes, that is right), which confirms every check still empty as skipped. The mark is kept on the passport, so every desk sees the same state, and filling the check in later turns it back into “readings in ✓”. Answering Edit to the results question marks nothing.'],
+      ['In the queue panel', 'Someone waiting shows nothing about empty checks, because that is normal; a waiting person whose checks are all in shows “readings in ✓”. The note at the bottom counts how many finished here with checks not filled in, and how many of those were confirmed.'],
+      ['Cancel, for an abrupt stop', 'On the row of the person being served. It asks “Stop at Blood Pressure?” with three choices. Put back in line: they will be back, same place, readings kept. They left: out of every line they are in; the visit is not marked complete, and Undo stays for 6 seconds. Keep going: nothing changes. On the Queue screen, ↩ Put back and ✕ Remove do the same for one line.'],
+      ['Undo for Start', 'Starting someone also offers Undo for 6 seconds: back in line (same place), or out of the line again if they were a walk-up.'],
+      ['Done earlier', 'After a finish the row says “Done at Blood Pressure ✓”, with Start again.'],
+      ['No connection', 'The buttons, including Cancel, are greyed out. Starting, finishing and cancelling need the connection so that every desk sees the same line.'],
+      ['Finish visit', 'Takes the visitor out of every line they are in. With no connection the visit still finishes, and the lines are left as soon as the queue can change again, in the same church.'],
+      ['Open passport', 'On the person with you: opens their passport. The passport’s header shows their place in line.'],
+      ['Results and Send home', 'Confirming the results and sending the plan do not change the queue.'],
+      ['Remove visitor', 'Takes them out of every line, and deletes the visitor.'],
+      ['Still needs a tap', 'Calling the next person, finishing Counselling, Kitchen Pharmacy or Prayer from the Queue screen, and ↩ Put back.'] ] },
+    { name: 'Station cards', items: [
+      ['Ten lines', 'Vitals & BMI, Blood Pressure, Sugar & Chol., Fruit & Veg, Exercise, Water, Sleep, Kitchen Pharmacy, Counselling and Prayer. Each of the 8 health-age checks has its own line (Sugar & Chol. covers blood sugar and cholesterol together); Kitchen Pharmacy, Counselling and Prayer are the others.'],
+      ['The route', 'Vitals → Blood Pressure → Sugar & Chol. → Fruit & Veg → Exercise → Water → Sleep → Counselling. Done at a line puts the visitor in the next one they have not finished. Kitchen Pharmacy and Prayer are not on it: add people to them by hand.'],
+      ['Card contents', 'The checks done at that line, how many are waiting, who is being served (by badge number), whether anyone has been called yet, and how long the longest waiter has waited. Once 3 visits have finished there, it also gives the estimated wait. Tap a card to open its panel.'],
+      ['Which checks belong to which line', 'Vitals & BMI: Weight · Height · Waist. Blood Pressure: Blood pressure. Sugar & Chol.: Blood sugar · Cholesterol. Fruit & Veg: Fruit & Veg. Exercise: Exercise. Water: Water. Sleep: Sleep. Kitchen Pharmacy and Prayer have no checks and are optional stops; Counselling has none and is the 90-day plan. The same is written under the line’s name on each card, as “Checks: …” in the panel, and on each tile of the big screen. A line named after its one check says what is recorded instead of repeating its name: Top and bottom number, Servings a day, Minutes of brisk exercise a day, Glasses a day, Hours a night. The Check screen’s “Your station” chips follow the same grouping.'],
+      ['Colour', 'A card turns amber when someone has waited 10 minutes or more, or people wait and nobody is being served. It turns red at 20 minutes.'] ] },
+    { name: 'Station panel', items: [
+      ['With you now', 'The people you are helping. Open passport opens that visitor’s passport. The big button under each one is your whole turn: Done · call next → finishes them, sends them to their next station and calls the person who has waited longest here. When nobody else is waiting it reads Done ✓. Underneath, ↩ Put back returns them to the line and ✕ Remove, then Remove?, takes them out.'],
+      ['Call next →', 'Shown when nobody is with you. Calls the person who has waited longest at this station.'],
+      ['+ Add visitor', 'Adds someone from the visitor list to this station.'],
+      ['Next up', 'The line in order. Call serves that person now (for a second desk); ✕ removes them.'],
+      ['Average time', 'Shown once 3 visits have finished at that line, never before: the average minutes per person, from the last 15 finished. Until then the note says “No average yet” and the app promises no time, because it does not guess.'] ] },
+    { name: 'Big screen', items: [
+      ['Big screen', 'A full-screen board for a TV. For each station: up to two people being served and the next four waiting, by badge number. ✕ or Escape closes it.'] ] } ] },
+
+ { title: 'Care', tab: 'care',
+   what: 'Ministry follow-up: the lists the team works from after the screenings.',
+   sections: [
+    { name: 'Lists', items: [
+      ['Urgent', 'Visitors in the danger range: blood pressure 160/100 or more, blood sugar 15 or more, or blood sugar under 3.'],
+      ['48-hour follow-up calls', 'Visitors who asked for a follow-up call.'],
+      ['Seminar & co-op interests', 'Visitors who asked for Cooking school, Stress & peace or the R25 pouch.'],
+      ['Sorted automatically', 'The lists fill in as visitors are registered and checked. Nothing is written on paper cards.'] ] },
+    { name: 'Export CSV', items: [
+      ['Export CSV', 'Downloads a spreadsheet file of every visitor: names, phone, email, readings, health age, flags, follow-up choices, consent and guardian details. It holds personal details, so keep the file private.'] ] } ] },
+
+ { title: 'Team', tab: 'serve',
+   what: 'Volunteers: who has pledged, who is standing where, booth coverage, and each helper’s expo history.',
+   sections: [
+    { name: 'Tabs', items: [
+      ['Pledge', 'The upcoming expo, whether pledges or registration are open, and the form to pledge to help.'],
+      ['Muster', 'Who is standing where: the team totals and the booth coverage.'],
+      ['Booth', 'A helper’s booth assignment, and the booths they asked for.'],
+      ['Record', 'A helper’s expo history, with Log an expo.'] ] },
+    { name: 'Switch', items: [
+      ['Switch', 'Chooses whose view this device shows, and switches between Visitors and Volunteers.'] ] },
+    { name: 'Team for this expo', items: [
+      ['Confirmed of needed', 'Helpers confirmed out of the number needed.'],
+      ['Pledged, Registered, Booths short', 'How many have pledged, how many are registered, and how many booths still need people.'],
+      ['Export volunteer roster CSV', 'Downloads a spreadsheet file of the roster: ID, name, phone, email, status, team leader, badge, expos served, hours, booth, shift, availability, skills, shirt size, emergency contact, notes and expo history.'] ] },
+    { name: 'Booth coverage', items: [
+      ['Each booth', 'How many helpers it needs, who leads it, and who is in it. “No leader yet” means nobody leads it.'] ] },
+    { name: 'Pledged — registration pending', items: [
+      ['Tap a name', 'Registers that pledged helper.'] ] },
+    { name: 'Add a volunteer', items: [
+      ['Started from', 'The Pledge & Booth Registration banner on Home, which opens the volunteer sheet.'],
+      ['Details', 'Name, phone, email, shirt size, emergency contact and notes.'],
+      ['Booths', 'The first and backup booth they would like.'],
+      ['Availability and skills', 'Where the form asks for them.'] ] },
+    { name: 'Record: Log an expo', items: [
+      ['Log an expo', 'Adds a past expo for a helper: name, date, booth worked and hours. Remove deletes an entry.'] ] },
+    { name: 'Placement board (admins and station leaders)', items: [
+      ['Opening it', 'With placement mode on, tap a volunteer in the Team list to open the placement board.'],
+      ['Move, Swap, Release', 'Move a helper to another booth, swap two helpers, or release a helper from a booth.'],
+      ['Lead', 'Makes you the leader of a booth.'] ] },
+    { name: 'A team leader’s team', items: [
+      ['Add, release, shift', 'A leader can add a helper to their team, release one, and set their shift.'] ] } ] },
+
+ { title: 'Profile', tab: 'me',
+   what: 'Your account, your details, the expos you are committed to, the sync status and the settings.',
+   sections: [
+    { name: 'Account', items: [
+      ['Name, email and roles', 'Your roles (for example Health Department Leader) and your church.'],
+      ['My church', 'For church admins: members, invitations, expos, church plans and follow-up people.'],
+      ['All churches', 'For platform admins only: every church.'] ] },
+    { name: 'Sync', items: [
+      ['Status', 'For example “Up to date · synced just now”.'],
+      ['Visitors, Volunteers, To upload', 'Counts held on this device. To upload is what is still waiting to be sent.'],
+      ['Sync now', 'Sends what is waiting and fetches the latest changes.'],
+      ['Details', 'Opens the full sync status.'] ] },
+    { name: 'My details', items: [
+      ['Full name, phone, area, date of birth', 'Only you and your church’s admins see these. Save my details keeps them.'] ] },
+    { name: 'My screening results', items: [
+      ['Results', 'Appear once a church admin links your expo badge to this account.'] ] },
+    { name: 'My pledge', items: [
+      ['Edit my pledge', 'Changes what you pledged.'],
+      ['Unpledge, Deregister', 'Unpledge before registration; Deregister after it.'],
+      ['Settings', 'Opens Health expos: the expos you have committed to, or a note that you have none yet.'] ] },
+    { name: 'Password', items: [
+      ['Change password', 'At least 8 characters, with a letter and a number.'] ] },
+    { name: 'Account', items: [
+      ['Help & tutorial', 'Opens this guide.'],
+      ['Sign out', 'Asks you to confirm, then clears the visitor and volunteer data on this device. Changes not yet uploaded are lost, and you are warned first.'],
+      ['Delete my account', 'Deletes your login and your details (name, phone, area, pledge and the position you asked for). Visitor and volunteer records stay with your church. Type DELETE to confirm.'] ] },
+    { name: 'Notifications (the bell)', items: [
+      ['Bell', 'In the header. Shows new notifications for your account, such as a change to the roster. Open it to read them, and mark them read.'] ] } ] },
+
+ { title: 'My church (church admins)', tab: 'me',
+   what: 'Reached from Profile → My church. The places where a church is run.',
+   sections: [
+    { name: 'Members', items: [
+      ['Approve', 'Lets someone who asked to join the church in.'],
+      ['Role', 'Sets a member’s role: Member, Volunteer, Team member, Team leader, Assistant Health Department Leader, or Health Department Leader (the admin).'],
+      ['Link', 'Ties a member to a volunteer record or a visitor badge.'],
+      ['Remove, Step down, Leave', 'Removes a member, steps you down as admin, or leaves the church.'] ] },
+    { name: 'Staff approval', items: [
+      ['Approve staff', 'Lets a staff account see the queue and the church’s data.'] ] },
+    { name: 'Invitations', items: [
+      ['Make an invite', 'Creates an invite link for a chosen role. Copy or share it. Cancel all invite links ends them.'] ] },
+    { name: 'Expos', items: [
+      ['New expo, Edit', 'Creates or changes an expo: its name, dates, times, venue, deadline, volunteers needed, stations and clinic.'],
+      ['Status', 'Sets the expo’s status.'],
+      ['Delete', 'Deletes an expo.'],
+      ['Manage', 'Opens the church screen for admins, or the admin screen for other members.'] ] },
+    { name: 'Church plans and follow-up people', items: [
+      ['Church plans', 'Write, edit or delete the church’s plans. Each visitor’s plan can be set to follow one of them.'],
+      ['Follow-up people', 'The members who receive the follow-up lists.'] ] },
+    { name: 'All churches (platform admins)', items: [
+      ['Search and status', 'Finds a church and changes its status.'] ] } ] }
+];
+
+/** @type {{title:string, steps:string[]}[]} */
+export const HELP_TUTORIALS = [
+ { title: 'Your first time', steps: [
+    'Sign in with your email. If you are new, sign up, then wait for a church admin to approve you.',
+    'Check the status line on Home. “Up to date” means your data is saved.',
+    'Ask an admin to set up the expo (Profile → My church → Expos) and invite your staff.' ] },
+ { title: 'Register a visitor and take their checks', steps: [
+    'Visitor → Register a new visitor. Fill in Full name, Age (12 to 105) and Sex.',
+    'Add WhatsApp, height and email if you have them. Height is needed for the BMI and the health age.',
+    'Tick “Yes, they consent”, then tap Register & start the checks.',
+    'On Check, enter the 8 checks with − and +, or by typing. Fill in the paper record and the survey where you can.',
+    'Tap Next: Results, then Plan, then Send home.',
+    'Tap Finish visit ✓. The visitor leaves any queue line they are still in.' ] },
+ { title: 'Run the queue at the expo', steps: [
+    'Open Queue and check the status line says Live.',
+    'Tap a station card, then Call next to bring the first person up. Or open a visitor’s passport and tap Start at your station.',
+    'When they finish, tap the big Done · call next → button. They move to the next station on their route and the next person in your line is called. On their passport (Open passport) the footer has Done at your station instead, which also moves them on without calling anyone.',
+    'If someone steps out, ↩ Put back returns them to the line. ✕ Remove and then Remove? takes them out.',
+    'A church admin can tap Clear finished & removed at the top of Queue, at the end of the day or after practice, to empty the history.',
+    'For Kitchen Pharmacy or Prayer, use + Add visitor.',
+    'Use Big screen on a TV to show the lines to the room.' ] },
+ { title: 'Remove a visitor', steps: [
+    'Visitor → open the visitor (Change, or tap them in Visitors today).',
+    'Tap Remove visitor under their name bar. Only church admins and team leaders see it.',
+    'Read the question, then tap Remove. Tap Cancel to keep them.',
+    'The visitor disappears from every desk and from every queue line.' ] },
+ { title: 'A visitor stops part-way', steps: [
+    'Open their passport (Open passport on the Queue screen) and find the Start and Done row for your station.',
+    'Tap Cancel. Choose Put back in line if they will come back, or They left if they have gone.',
+    'Put back keeps their place and readings. They left takes them out of every line; use Undo within 6 seconds if you tapped it by mistake.',
+    'If you only started them by mistake, tap Undo on the message that appears.' ] },
+ { title: 'Send a visitor’s plan home', steps: [
+    'Visitor → Send home.',
+    'Preview the WhatsApp or email message, then send it. Or print the take-home card.' ] },
+ { title: 'Register a volunteer and place them', steps: [
+    'Home → tap the Pledge & Booth Registration banner. Start a new volunteer and fill in the details, booth choices and availability.',
+    'In Team → Muster, tap a name under “Pledged — registration pending” to register them.',
+    'Use the placement board (admins and station leaders) to fill booths.' ] },
+ { title: 'After the expo', steps: [
+    'Care: review Urgent, 48-hour follow-up calls and Seminar & co-op interests.',
+    'Care → Export CSV for the records. Keep the file private.',
+    'Team → Record → Log an expo for any helper hours to add.' ] }
+];
+
+/** topics that cut across the pages; each has the same shape as a page */
+/** @type {{title:string, what:string, sections:{name:string, items:[string,string][]}[]}[]} */
+export const HELP_TOPICS = [
+ { title: 'Working offline and keeping in sync',
+   what: 'What the app does when the connection drops, and how the desks stay in step.',
+   sections: [
+    { name: 'Offline first', items: [
+      ['Visitors and volunteers', 'They are saved on this device first and uploaded when there is a connection. With none, you can keep registering and recording; the status line says “Offline — changes are kept on this device and upload when you reconnect.”'],
+      ['The queue is the exception', 'It needs a connection, so that every desk sees the same line. Without one, queue changes are refused. Registering a visitor still works; add them to the line by hand when you are back online.'],
+      ['To upload', 'On Profile → Sync, the number of changes still waiting to go up.'] ] },
+    { name: 'The status line', items: [
+      ['Up to date', 'Everything on this device is saved to the shared database. The dot is green.'],
+      ['Connecting… / Syncing…', 'Working on it. The dot is amber, and while uploading it says which row of how many.'],
+      ['Offline — changes are kept on this device…', 'No connection. The dot is amber.'],
+      ['Sync problem', 'The last sync failed. The dot is red; open the sync sheet (the cloud button in the header) for details, or tap Sync now.'],
+      ['Not signed in', 'Practice mode. The dot is grey.'],
+      ['Cloud sync could not load (no internet?)', 'The sync code could not be fetched. This device keeps working on its own.'] ] },
+    { name: 'How the desks stay in step', items: [
+      ['Straight after a change', 'When you are online, a saved change is uploaded about a second later.'],
+      ['Live updates', 'Changes made on other desks appear as they happen. After the app has been out of sight for 2 minutes, live updates pause; they reconnect when you come back, and the app fetches what changed meanwhile.'],
+      ['If live updates are not working', 'The app asks for changes every 20 seconds. When they are working, it still checks about once a minute while the app is open.'],
+      ['The full check', 'On sign-in, on Sync now, and every 10 minutes, the app also checks for visitors and volunteers that were removed on other desks.'],
+      ['Coming back to the app', 'Returning to the app starts a sync, at most once every 15 seconds.'] ] } ] },
+
+ { title: 'Updates and installing the app',
+   what: 'How a new version reaches the phone, and how to put the app on the home screen.',
+   sections: [
+    { name: 'A new version', items: [
+      ['The update bar', 'When a new version is ready, a bar appears at the top: “A new version is ready · Tap Update — it takes a few seconds.” Update reloads the app on the new version.'],
+      ['× (Not now)', 'Hides the bar until the next version. It does not ask again for the same one.'],
+      ['The Android app', 'It says “A new app version is ready · Tap Update to download and install it.” Update opens the download in the phone’s own browser, which hands the file to the phone’s installer.'],
+      ['Offline', 'With no connection the app looks for no update and stays quiet.'] ] },
+    { name: 'Install on a phone', items: [
+      ['Install the app on this phone', 'In a browser that allows it, this button is in the sync sheet (the cloud button in the header).'],
+      ['iPhone', 'Open the page in Safari, tap the Share button, then Add to Home Screen.'],
+      ['Already installed', 'The sync sheet says “Installed on this phone ✓”. The Android app has no install button.'] ] } ] },
+
+ { title: 'Your data: what is kept and what is deleted',
+   what: 'Visitors’ health information is kept no longer than it is needed (POPIA). These are all the ways data leaves the app.',
+   sections: [
+    { name: 'Deleted automatically', items: [
+      ['Readings and prayer requests', 'Cleared 7 days after the visit. The app does the same on the device, judged on the database’s clock, so a phone with a wrong date does not clear anything early.'],
+      ['Visitors who did not agree to follow-up', 'Deleted, with their readings, after 7 days.'],
+      ['Visitors who agreed to follow-up', 'Only the name and contact details stay, for up to 2 years after the last visit. Then the whole record goes.'],
+      ['Queue entries', 'They hold only a badge number and times. A church admin can clear finished and removed ones at any time; the daily clean-up deletes any that are older than 30 days.'],
+      ['The daily clean-up', 'Runs at 03:00 each day where the database’s scheduler (pg_cron) is switched on. Without it, a platform admin runs it by hand.'] ] },
+    { name: 'Deleted by a person', items: [
+      ['Remove visitor', 'Church admins, and team leaders for a visitor at their own station. See Visitor.'],
+      ['Clear finished & removed', 'Church admins, on the Queue page.'],
+      ['Sign out', 'Clears the visitor and volunteer data on this device. The shared database keeps it.'],
+      ['Delete my account', 'Deletes your login and your details. Visitor and volunteer records stay with your church.'] ] },
+    { name: 'Behind the scenes', items: [
+      ['A copy for mistakes', 'When a visitor is removed, the database keeps a copy in its audit log so that a mistake can be put right by whoever manages the database. The daily clean-up empties that copy after 90 days, or on its next run for a visit that is already past its 7 days.'],
+      ['The audit log', 'Lines saying who did what, with no health data, are kept for 2 years.'],
+      ['The visitor’s rights', 'The consent notice tells the visitor they may see, correct or ask for deletion of their information at any time, and gives the Information Regulator for complaints.'] ] } ] }
+];
+
+/** @type {[string, string][]} */
+export const HELP_MESSAGES = [
+ ['The live queue is not set up yet', 'An admin runs supabase/schema.sql again in the Supabase SQL editor.'],
+ ['This sign-in is not approved for the queue', 'Ask a church admin to approve your staff account.'],
+ ['No connection — the queue cannot change', 'Queue changes need a connection. Reconnect, then try again.'],
+ ['One moment — the last queue change is still saving', 'Wait a moment, then tap again.'],
+ ['Someone else just changed that one', 'Another desk changed the same person. The line has been refreshed; check it.'],
+ ['… is already in this line', 'That person is already waiting or being served at that station.'],
+ ['Nobody is waiting here', 'Call next found nobody waiting at that station.'],
+ ['… visit is complete ✓ · taken out of the … line', 'Finish visit also took the visitor out of the lines they were in.'],
+ ['… the lines could not be updated (no connection), they will be when you are back online', 'The visit finished on the passport, but the queue could not change. The app remembers it on this device and takes the visitor out of their lines when the queue is reachable again.'],
+ ['… the lines could not be updated yet, it will be tried again', 'Some lines did not change. The app tries again at the next sync.'],
+ ['…: Blood Pressure started', 'Start put the visitor with you at that station. Undo stays for 6 seconds.'],
+ ['Stop at Blood Pressure?', 'Cancel on the row of the person being served: Put back in line, They left, or Keep going.'],
+ ['… left · taken out of the … lines', 'They left took the visitor out of every line they were in. Undo stays for 6 seconds.'],
+ ['…: start cancelled', 'Undo took a walk-up out of the line they were added to when you started them.'],
+ ['…: Blood Pressure done ✓ · now in the … line', 'Done marked that station’s line done and put the visitor in the next one. Undo stays for 6 seconds.'],
+ ['Done at Blood Pressure?', 'Some of that station’s readings are missing, and the question names them. Done anyway goes on; Keep going stays.'],
+ ['… is back with you at Blood Pressure', 'Undo put the visitor back with you.'],
+ ['… finished ✓ · now in the … line · Next: …', 'Done · call next finished the person, put them in their next line (say where to go) and called the next one.'],
+ ['Only a church admin can clear the queue', 'Clearing deletes entries for good, so it is limited to church admins. Ask one to do it.'],
+ ['Nothing was cleared — only a church admin can clear the queue', 'The database refused the delete for this sign-in. Ask a church admin.'],
+ ['Only your church’s admins and team leaders can remove a visitor', 'Remove visitor is limited to those roles.'],
+ ['Removing a visitor needs a connection — try again when you are online.', 'The visitor is on the shared database, so it has to be removed there first. Reconnect and try again.'],
+ ['The database did not remove them: only your church’s admins and team leaders can', 'The database refused. A team leader can remove only a visitor waiting or being served at their own station.'],
+ ['Saved copy is nearly full — sync now and remove old visitors', 'This device holds about 10,000 visitors. Sync, then remove visitors you no longer need.'],
+ ['That email address does not look right', 'Check the address, for example name@example.com. Leave it empty where it is optional.'],
+ ['Could not reach the server yet — retrying', 'Wait. The app retries when the connection returns.']
+];
+
+/** @type {[string, string][]} */
+export const HELP_TERMS = [
+ ['Badge number (EXPO-123)', 'The visitor’s number, printed on their lanyard.'],
+ ['Station', 'One place in the expo, and its line in the queue: Vitals & BMI, Blood Pressure, Sugar & Chol., Fruit & Veg, Exercise, Water, Sleep, Kitchen Pharmacy, Counselling, Prayer.'],
+ ['Waiting, Being served, Finished, Left', 'The four queue states. See Queue.'],
+ ['Health age', 'The age the 8 checks and the height point to. It needs all 8 checks and a height. The survey and the paper record do not change it.'],
+ ['BMI', 'Body mass index: weight in kilograms divided by height in metres, squared.'],
+ ['Consent (POPIA)', 'The visitor’s permission to record and use their results.'],
+ ['Pledge', 'A volunteer’s commitment to help at an expo.'],
+ ['Booth', 'The team and station a volunteer works at.'],
+ ['Leader', 'The person in charge of a booth.'],
+ ['Church admin', 'A member who can approve people, change roles and manage expos. Only a church admin can write custom plans and clear the queue; admins and team leaders can remove a visitor.'],
+ ['Practice mode', 'Not signed in. Demo visitors, a queue on this device only, nothing shared and nothing saved to the database.'],
+ ['Sync', 'Sending this device’s changes to the shared database and fetching other desks’ changes. See “Working offline and keeping in sync”.'],
+ ['Team leader', 'A volunteer who leads a booth.']
+];
+
+/** the queue's phases, in the order a visit moves through them */
+export const HELP_QUEUE_PHASES = [
+ ['1. Joined (waiting)', 'Added to a station: automatically when they register (Vitals & BMI), or by hand with + Add visitor. The line keeps the order people joined.'],
+ ['2. Called (being served)', 'Call next takes the person who has waited longest at that station. Call on a waiting person serves them now, and so does Start on the passport.'],
+ ['3. Finished (done)', 'Done · call next → (or Done ✓ when nobody else is waiting) marks them finished at this station. If their route has another station left, they join it automatically. Done on the passport’s footer does the same.'],
+ ['4. Put back (waiting again)', '↩ Put back, or Cancel then Put back in line on the passport, returns them to their old place in the line, keeping their join time.'],
+ ['5. Left (removed)', '✕ Remove, then Remove? within three seconds, takes them out of the line; Cancel then They left on the passport takes them out of every line. Finish visit on the passport takes them out of every line they are in.'],
+ ['Clearing history', 'Finished and removed entries stay on record until a church admin uses Clear finished & removed to delete them (the database’s daily clean-up also removes entries older than 30 days, where it is switched on).'],
+ ['Optional stops', 'Kitchen Pharmacy and Prayer are not on the automatic route. Add people to them by hand.'],
+ ['The wait estimate', 'The app invents no times. Until 3 visits have finished at a line there is no estimate: cards show only how long the longest waiter has waited, and the big screen only how many wait. From then on the estimate is the average minutes per person (from the last 15 finished visits) times the people ahead, plus the time left on visits in progress, divided by the number of people being served there.']
+];
+
+/** the page as text */
+export function helpHTML() {
+ const list = (rows) => `<dl class="help-list">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
+ const pages = HELP_PAGES.map(p => `<section class="help-page" data-tab="${esc(p.tab)}">
+  <h3 class="display text-base font-extrabold">${esc(p.title)}</h3>
+  <p class="help-what">${esc(p.what)}</p>
+  ${p.sections.map(s => `<h4 class="microlabel mt-3">${esc(s.name)}</h4>${list(s.items)}`).join('')}
+ </section>`).join('');
+ const phases = `<section class="help-page"><h3 class="display text-base font-extrabold">How the queue works</h3>
+  <p class="help-what">Each visit moves through the queue in these phases.</p>${list(HELP_QUEUE_PHASES)}</section>`;
+ const topics = HELP_TOPICS.map(p => `<section class="help-page"><h3 class="display text-base font-extrabold">${esc(p.title)}</h3>
+  <p class="help-what">${esc(p.what)}</p>
+  ${p.sections.map(s => `<h4 class="microlabel mt-3">${esc(s.name)}</h4>${list(s.items)}`).join('')}
+ </section>`).join('');
+ const tutorials = `<section class="help-page"><h3 class="display text-base font-extrabold">Step by step</h3>
+  ${HELP_TUTORIALS.map(t => `<h4 class="microlabel mt-3">${esc(t.title)}</h4><ol class="help-steps">${t.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>`).join('')}</section>`;
+ const messages = `<section class="help-page"><h3 class="display text-base font-extrabold">Messages you may see</h3>${list(HELP_MESSAGES)}</section>`;
+ const terms = `<section class="help-page"><h3 class="display text-base font-extrabold">Words used in the app</h3>${list(HELP_TERMS)}</section>`;
+ return `<div class="help-intro"><div class="display text-base font-extrabold">Help &amp; tutorial</div>
+  <p class="help-what">Every page of the app, what each section is for, and what each control does. Pages run in the order of the bottom bar: Home, Visitor, Queue, Care, Team, Profile.</p></div>
+  ${pages}${phases}${topics}${tutorials}${messages}${terms}`;
+}
+
+export function openHelp() {
+  const body = $('#helpBody');
+  body.innerHTML = helpHTML();
+  body.scrollTop = 0;
+  showModal('#helpModal', closeHelp);
+}
+
+export function closeHelp() {
+  hideModal('#helpModal');
+}
