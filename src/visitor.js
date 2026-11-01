@@ -14,6 +14,7 @@ import { homeHealthHTML, installEvt, validEmail } from './cloud.js';
 import { hiredCountLabel, mayPlace, pendingLabel, todayStr } from './volunteer.js';
 import { bannerHTML, capsuleHTML, ctaHTML, ecgHTML, journeyRailHTML, rulerHTML, spectrumHTML, splitBtnHTML, tileHTML } from './ui.js';
 import { confirmAsk } from './feedback.js';
+import { queueFlowStart } from './queue.js';
 /* The visitor journey: Check → Results entry, registration, the paper record and the survey. Split from the original single-file app; bundled back into one file by tools/build.js. */
 /* ================= THE VISITOR JOURNEY: Check → Results → Plan → Send home ================= */
 /* where a visitor's passport should open: the step they were on, else the first one not done */
@@ -457,7 +458,9 @@ export function registerSubmit(e,force){
    <button type="button" class="st-fix" style="background:#6b8187" data-action="register-again">Register a new passport</button></span>`);
  const a=migrateAttendee({id,name,age,sex,phone:phone||'+27 —',email,heightCm:h,s:{},interests:cons.it,prayer:'',done:false});
  attendees.push(a);state.activeId=a.id;state.regOpen=false;state.newVisitOf=null;state.sugFor=null;state._goal=null;
- switchTab('screen');toast(`${firstName(a.name)} is ${a.id} ✓ Start the checks`);
+ const said=`${firstName(a.name)} is ${a.id} ✓ Start the checks`;
+ switchTab('screen');toast(said);
+ queueFlowStart(a.id,said);
 }
 export function resetDemo(){
  if(cloud.user||cloud.mode){toast('Reset is off while connected to the shared database');return;}

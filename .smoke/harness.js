@@ -42,7 +42,7 @@ const EXPORTS = [
   'gateState', 'renderGate', 'gateDemo', 'togglePass',
   'gateView', 'cloudSignUp', 'cloudResend', 'cloudForgot', 'cloudNewPassword', 'passwordProblem', 'validEmail',
   'waNumber', 'waMessage', 'sendWhatsApp', 'openEmail', 'sendEmail', 'mailtoHref', 'toggleInterest', 'onPrayer', 'reservePouch', 'followUpCard', 'INT',
-  'queue', 'qs', 'queueJoin', 'queueCallNext', 'queueServe', 'queueDone', 'queueBack', 'queueRemove', 'openBigScreen', 'closeBigScreen', 'qStats', 'qList', 'qMode', 'qCan', 'viewQueue',
+  'queue', 'qs', 'queueJoin', 'queueCallNext', 'queueServe', 'queueDone', 'queueBack', 'queueRemove', 'openBigScreen', 'closeBigScreen', 'qStats', 'qList', 'qMode', 'qCan', 'queueSync', 'viewQueue',
   'cheapDay', 'cheapLine', 'foodPriceOf', 'foodKeyOf', 'FOOD_PRICES', 'money', 'closeWhatsApp',
   'planNeeds', 'bpStage', 'PROTOCOLS', 'BOOK_REF', 'autoProtocol', 'costOf',
   'BOOK2_REF', 'BOOK3_REF', 'BOOK4_REF', 'refLabel', 'planBooks', 'planCredit', 'HELP_LINE',
@@ -52,7 +52,7 @@ const EXPORTS = [
   'manageChurch', 'saveChurch', 'inChurch', 'conflictOn', 'dropChurchData', 'adoptChurch', 'healthHTML',
   'planFor', 'PRICE_DATE', 'ACTIONS', 'FOOD_WHY', 'urgentOf', 'DISCLAIMER', 'PRECAUTIONS', 'openFood', 'closeFood', 'problemOf',
   'churchPlanList', 'chooseChurchPlan', 'editChurchPlan', 'saveChurchPlan', 'deleteChurchPlan', 'DEMO_CHURCH_PLANS',
-  'followupList', 'chooseFollowup', 'setFollowup', 'makeInvite', 'cancelInvites', 'pendingInvite', 'inviteOwner', 'setInviteOwner', 'nextBadge', 'INVITE_KEY',
+  'followupList', 'chooseFollowup', 'setFollowup', 'makeInvite', 'cancelInvites', 'pendingInvite', 'QUEUE_FLOW', 'nextFlowStation', 'qSelect', 'queueFlowStart', 'inviteOwner', 'setInviteOwner', 'nextBadge', 'INVITE_KEY',
   'health', 'noteHealth', 'healthReset', 'healthTest', 'statusPanelHTML', 'homeHealthHTML', 'acctHealthHTML', 'qStateBar',
   'SERVE_TABS', 'viewProfile', 'profGate', 'gateBack', 'profPassword', 'profDeleteAsk', 'profDeleteTyped', 'profDeleteGo',
   'profileChanged', 'passwordCheck', 'savePassword',
@@ -3262,6 +3262,37 @@ function makeServer() {
     r = await as(U.alice, `select count(*)::int n from public.queue_entries`);
     ok('each church sees only its own queue', !r.error && r.rows[0].n === 1, JSON.stringify(r.rows));
 
+    /* ---- the live queue the way desks of one church share it: the exact statements queue.js sends ---- */
+    {
+      const ins = (id, st) => as(U.alice, `insert into public.queue_entries (attendee_id, station) values ($1, $2) returning *`, [id, st]);
+      const move = (id, to, from) => as(U.alice, `update public.queue_entries set status = $2 where id = $1 and status = any($3::text[]) returning *`, [id, to, from]);
+      const callNext = st => as(U.alice, `select * from public.queue_call_next($1)`, [st]);
+      const a1 = await ins('EXPO-101', 'sugar'); await sleep(15);
+      const a2 = await ins('EXPO-102', 'sugar');
+      ok('queue (db): a desk adds visitors to a line, stamped with its own church', !a1.error && !a2.error && a1.rows[0].church_id === A && a1.rows[0].status === 'waiting',
+        (a1.error || a2.error || {}).message);
+      const dup = await ins('EXPO-101', 'sugar');
+      ok('queue (db): the same visitor cannot stand in the same line twice', !!dup.error && dup.error.code === '23505', dup.error ? dup.error.code : 'no error');
+      const c1 = await callNext('sugar'), c2 = await callNext('sugar'), c3 = await callNext('sugar');
+      ok('queue (db): two desks pressing Call next get the first and second arrivals, never the same person, and an empty line gives nobody',
+        c1.rows[0].attendee_id === 'EXPO-101' && c2.rows[0].attendee_id === 'EXPO-102' && c3.rows.length === 0 && !!c1.rows[0].called_at,
+        JSON.stringify([c1.rows, c2.rows, c3.rows].map(x => x.map(y => y.attendee_id))));
+      const back = await move(c1.rows[0].id, 'waiting', ['serving']);
+      ok('queue (db): putting someone back in line keeps their place and clears their call time',
+        back.rows.length === 1 && back.rows[0].called_at === null && +new Date(back.rows[0].joined_at) === +new Date(a1.rows[0].joined_at), JSON.stringify(back.rows));
+      const again = await callNext('sugar');
+      ok('queue (db): …so they are the next one called', again.rows.length === 1 && again.rows[0].attendee_id === 'EXPO-101');
+      const d1 = await move(again.rows[0].id, 'done', ['serving']), d2 = await move(again.rows[0].id, 'done', ['serving']);
+      ok('queue (db): Done stamps the finish time once; a second desk pressing Done on the same person changes nothing',
+        d1.rows.length === 1 && !!d1.rows[0].finished_at && d2.rows.length === 0 && !d2.error, JSON.stringify([d1.rows.length, d2.rows.length]));
+      const re = await ins('EXPO-101', 'sugar');
+      ok('queue (db): once finished, the same visitor can join that line again', !re.error, re.error && re.error.message);
+      const outsider = await as(U.carol, `select * from public.queue_call_next('sugar')`);
+      ok('queue (db): another church calling next at the same station takes nobody from this one',
+        !outsider.error && outsider.rows.length === 0 && (await sys(`select status from public.queue_entries where id = $1`, [re.rows[0].id]))[0].status === 'waiting');
+      await sys(`delete from public.queue_entries where church_id = $1 and attendee_id in ('EXPO-101', 'EXPO-102')`, [A]);
+    }
+
     /* ---- members ---- */
     r = await as(U.dave, `select public.join_church($1, 'Dave Dlamini', '082 000 0000')`, [A]);
     const daveM = await sys(`select role, status, full_name from public.memberships where user_id = $1`, [U.dave]);
@@ -4732,6 +4763,140 @@ function makeServer() {
     g.queue.find(e => e.id === wid).status === 'left' && g.qList('bp', 'waiting').length === 0);
   g.state.tab = 'queue'; g.state.qStation = 'bp'; g.render();
   ok('queue: the queue screen renders the station board', $main.innerHTML.includes('Who is waiting where') && $main.innerHTML.includes('Big screen') && $main.innerHTML.includes('Being served'));
+
+  /* the fixes from the queue review: wording, the panel in view, the automatic route, the estimate, busy taps */
+  g.queue.length = 0;
+  await g.queueJoin('EXPO-117', 'vitals'); g.state.qStation = 'vitals'; g.render();
+  ok('queue: a line nobody has called from yet says "Not called yet", not the misreadable "Nobody serving"',
+    /Not called yet/.test($main.innerHTML) && !/Nobody serving/.test($main.innerHTML));
+  ok('queue: the station panel carries the id a tap scrolls to', /id="qDetail"/.test($main.innerHTML));
+  {
+    const panel = $el('qDetail'), keepRect = panel.getBoundingClientRect, keepScroll = panel.scrollIntoView;
+    let scrolled = null;
+    panel.scrollIntoView = o => { scrolled = o; };
+    panel.getBoundingClientRect = () => ({ top: 1400 });                /* below the fold, as on a phone */
+    g.qSelect('bp');
+    ok('queue: tapping a station card brings its panel (who is waiting, by name) into view', !!scrolled && scrolled.block === 'start' && g.state.qStation === 'bp');
+    scrolled = null; panel.getBoundingClientRect = () => ({ top: 120 });  /* already on screen */
+    g.qSelect('vitals');
+    ok('…but leaves the page alone when the panel is already on screen', scrolled === null && g.state.qStation === 'vitals');
+    panel.getBoundingClientRect = keepRect; panel.scrollIntoView = keepScroll;
+  }
+  ok('queue: the route is Vitals → Blood Pressure → Sugar → Counselling', g.QUEUE_FLOW.join() === 'vitals,bp,sugar,plan');
+  await g.queueCallNext('vitals');
+  await g.queueDone(g.qList('vitals', 'serving')[0].id);
+  ok('queue: Done at a station puts the visitor straight into the next line', g.qList('bp', 'waiting').some(e => e.attendeeId === 'EXPO-117') && g.qList('vitals', 'waiting').length === 0,
+    JSON.stringify(g.queue.map(e => e.station + ':' + e.status)));
+  ok('…and the toast says where they went', /now in the Blood Pressure line/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+  for (const st of ['bp', 'sugar', 'plan']) { await g.queueCallNext(st); const e = g.qList(st, 'serving').find(x => x.attendeeId === 'EXPO-117'); if (e) await g.queueDone(e.id); }
+  ok('queue: after the last station of the route nobody is put in another line', !g.queue.some(e => e.attendeeId === 'EXPO-117' && (e.status === 'waiting' || e.status === 'serving'))
+    && ['vitals', 'bp', 'sugar', 'plan'].every(st => g.queue.some(e => e.attendeeId === 'EXPO-117' && e.station === st && e.status === 'done')));
+  ok('queue: a station already finished is skipped, and the optional stops are not on the route', g.nextFlowStation('EXPO-117', 'vitals') === '' && g.nextFlowStation('EXPO-117', 'kitchen') === '');
+  /* the estimate: one person waiting, nobody called → about one visit; one desk mid-visit adds what is left of it */
+  g.queue.length = 0;
+  await g.queueJoin('EXPO-042', 'sugar');
+  const solo = g.qStats('sugar').eta;
+  await g.queueJoin('EXPO-088', 'sugar'); await g.queueCallNext('sugar');
+  const busy = g.qStats('sugar');
+  ok('queue: the wait estimate is one visit for a lone waiter, and counts what is left of a visit in progress',
+    Math.round(solo / 60000) === 6 && busy.wait.length === 1 && busy.eta > 6 * 60000 && busy.eta <= 12 * 60000 + 1000, solo + ' / ' + busy.eta);
+  /* registering a visitor puts them in the first line */
+  g.queue.length = 0;
+  await g.queueFlowStart('EXPO-088', 'Sipho is EXPO-088 ✓ Start the checks');
+  ok('queue: a newly registered visitor goes straight into the Vitals line, and the toast says so',
+    g.qList('vitals', 'waiting').some(e => e.attendeeId === 'EXPO-088') && /in the Vitals & BMI line/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+  await g.queueFlowStart('EXPO-088', 'again');
+  ok('…and only once', g.queue.filter(e => e.attendeeId === 'EXPO-088').length === 1);
+  /* a tap while another change is saving */
+  g.qs.busy = true; const qBefore = g.queue.length;
+  await g.queueJoin('EXPO-042', 'kitchen');
+  ok('queue: a tap while another change is still saving says so instead of vanishing', g.queue.length === qBefore && /still saving/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+  g.qs.busy = false;
+
+  /* the live path: the queue code as it runs signed in, against a fake shared table that behaves like the real one
+     (the unique active line, conditional status changes, call-next taking the earliest arrival) */
+  {
+    const C2 = g.cloud, keep = { client: C2.client, user: C2.user, mode: C2.mode, status: C2.status };
+    const qdb = []; let seq = 0;
+    const touch = (r, to) => { const t = new Date(Date.now() + (seq++)).toISOString(); r.updated_at = t;
+      if (to === 'serving') { r.called_at = t; r.finished_at = null; } if (to === 'waiting') { r.called_at = null; r.finished_at = null; }
+      if (to === 'done' || to === 'left') r.finished_at = t; r.status = to; };
+    const builder = t => { const b = { op: 'select', f: [], inF: null,
+      insert(row) { b.op = 'insert'; b.row = row; return b; }, update(v) { b.op = 'update'; b.row = v; return b; },
+      select() { return b; }, single() { return b; }, eq(c, v) { b.f.push([c, v]); return b; }, in(c, vs) { b.inF = [c, vs]; return b; },
+      gte() { return b; }, order() { return b; }, range() { return b; },
+      then(res, rej) { return Promise.resolve(b.run()).then(res, rej); },
+      run() {
+        if (t !== 'queue_entries') return { data: [], error: null };
+        if (b.op === 'insert') {
+          if (qdb.some(r => r.attendee_id === b.row.attendee_id && r.station === b.row.station && (r.status === 'waiting' || r.status === 'serving')))
+            return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } };
+          const r = { id: 'q' + (qdb.length + 1), attendee_id: b.row.attendee_id, station: b.row.station, status: 'waiting',
+            joined_at: new Date(Date.now() + (seq++)).toISOString(), called_at: null, finished_at: null };
+          r.updated_at = r.joined_at; qdb.push(r); return { data: { ...r }, error: null };
+        }
+        if (b.op === 'update') {
+          const hit = qdb.filter(r => b.f.every(([c, v]) => r[c] === v) && (!b.inF || b.inF[1].includes(r[b.inF[0]])));
+          hit.forEach(r => touch(r, b.row.status)); return { data: hit.map(r => ({ ...r })), error: null };
+        }
+        return { data: qdb.map(r => ({ ...r })), error: null };
+      } }; return b; };
+    const calls = [];
+    C2.client = {
+      from: t => builder(t),
+      async rpc(name, args) {
+        calls.push(name);
+        if (name === 'queue_now') return { data: new Date().toISOString(), error: null };
+        if (name === 'queue_call_next') {
+          const r = qdb.filter(x => x.station === args.p_station && x.status === 'waiting').sort((a, b) => a.joined_at < b.joined_at ? -1 : 1)[0];
+          if (!r) return { data: [], error: null };
+          touch(r, 'serving'); return { data: [{ ...r }], error: null };
+        }
+        return { data: null, error: null };
+      },
+      channel() { const ch = { on() { return ch; }, subscribe() { return ch; } }; return ch; }, removeChannel() {},
+    };
+    C2.user = { id: 'u-q', email: 'q@ex.org' }; C2.mode = true; C2.status = 'online';
+    g.queue.length = 0; g.qs.ready = false; g.qs.ch = null;
+    await g.queueSync(true);
+    ok('queue (live): signed in, the queue loads from the shared table and is live', g.qMode() === 'live' && g.qCan() && g.qs.ready, g.qMode() + ' ' + g.qs.err);
+    await g.queueJoin('EXPO-042', 'bp'); await g.queueJoin('EXPO-088', 'bp');
+    ok('queue (live): joining writes to the shared table', qdb.length === 2 && g.qList('bp', 'waiting').length === 2);
+    qdb.push({ id: 'q-other', attendee_id: 'EXPO-117', station: 'vitals', status: 'waiting', joined_at: new Date().toISOString(), called_at: null, finished_at: null, updated_at: new Date().toISOString() });
+    await g.queueJoin('EXPO-117', 'vitals'); await sleep(20);
+    ok('queue (live): someone another desk already put in that line is refused, and this desk catches up',
+      /already in this line/.test($el('toastMsg').textContent) && qdb.filter(r => r.attendee_id === 'EXPO-117').length === 1 && g.queue.some(e => e.id === 'q-other'), $el('toastMsg').textContent);
+    await g.queueCallNext('bp');
+    ok('queue (live): Call next asks the database, which hands over the earliest arrival', calls.includes('queue_call_next') && g.qList('bp', 'serving')[0].attendeeId === 'EXPO-042');
+    const served = g.qList('bp', 'serving')[0];
+    touch(qdb.find(r => r.id === served.id), 'done');                   /* another desk pressed Done first */
+    await g.queueDone(served.id); await sleep(20);
+    ok('queue (live): pressing Done after another desk already did says so and does not finish them twice',
+      /Someone else just changed that one/.test($el('toastMsg').textContent) && qdb.filter(r => r.attendee_id === 'EXPO-042' && r.station === 'sugar').length === 0, $el('toastMsg').textContent);
+    await g.queueCallNext('bp');
+    const sipho = g.qList('bp', 'serving')[0];
+    await g.queueDone(sipho.id);
+    ok('queue (live): Done moves the visitor on to the next line in the shared table',
+      qdb.some(r => r.attendee_id === 'EXPO-088' && r.station === 'sugar' && r.status === 'waiting') && qdb.find(r => r.id === sipho.id).status === 'done',
+      JSON.stringify(qdb.map(r => r.attendee_id + '@' + r.station + ':' + r.status)));
+    Object.assign(C2, keep); g.qs.ready = false; g.qs.ch = null; g.queue.length = 0;
+  }
+  await g.queueJoin('EXPO-117', 'vitals'); g.render();
+  ok('queue: a line nobody has called from yet says "Not called yet", not the misreadable "Nobody serving"',
+    /Not called yet/.test($main.innerHTML) && !/Nobody serving/.test($main.innerHTML));
+  {
+    const panel = $el('qDetail'), keepRect = panel.getBoundingClientRect, keepScroll = panel.scrollIntoView;
+    let scrolled = null;
+    panel.scrollIntoView = o => { scrolled = o; };
+    panel.getBoundingClientRect = () => ({ top: 1400 });                /* below the fold, as on a phone */
+    g.qSelect('vitals');
+    ok('queue: tapping a station card brings its panel (who is waiting, by name) into view', !!scrolled && scrolled.block === 'start' && g.state.qStation === 'vitals');
+    scrolled = null; panel.getBoundingClientRect = () => ({ top: 120 });  /* already on screen */
+    g.qSelect('bp');
+    ok('…but leaves the page alone when the panel is already on screen', scrolled === null && g.state.qStation === 'bp');
+    panel.getBoundingClientRect = keepRect; panel.scrollIntoView = keepScroll;
+  }
+  ok('queue: the station panel carries the id the tap scrolls to', /id="qDetail"/.test($main.innerHTML));
 
   /* follow-up capture → Care lists */
   g.resetDemo();

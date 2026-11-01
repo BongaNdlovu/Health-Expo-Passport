@@ -17,6 +17,10 @@ import { visitorsToShow } from './visitor.js';
 const QUEUE_STATIONS=['vitals','bp','sugar','kitchen','plan','prayer'];
 const QUEUE_SHORT={vitals:'Vitals & BMI',bp:'Blood Pressure',sugar:'Sugar & Chol.',kitchen:'Kitchen Pharmacy',plan:'Counselling',prayer:'Prayer'};
 const QUEUE_DEFAULT_MIN={vitals:4,bp:5,sugar:6,kitchen:8,plan:10,prayer:10};   /* until 3 visits have really finished */
+/* The route a visitor walks without anyone typing them into each line: registering puts them in the first line, and
+   Done at one of these stations puts them in the next one they have not finished. Kitchen Pharmacy and Prayer are
+   optional stops, added by hand with + Add visitor. */
+export const QUEUE_FLOW=['vitals','bp','sugar','plan'];
 const QUEUE_WARN=10,QUEUE_ALERT=20;      /* minutes the longest-waiting person has stood in line: amber, then red */
 const QUEUE_WINDOW_H=18;                 /* only today's queue is loaded */
 export const queue=[];                          /* {id,attendeeId,station,status,joinedAt,calledAt,finishedAt}; times in ms */
@@ -46,8 +50,11 @@ export function qStats(st){
  const took=done.filter(e=>e.calledAt&&e.finishedAt>e.calledAt).sort((a,b)=>b.finishedAt-a.finishedAt).slice(0,15).map(e=>e.finishedAt-e.calledAt);
  const real=took.length>=3,avg=real?took.reduce((a,b)=>a+b,0)/took.length:(QUEUE_DEFAULT_MIN[st]||6)*60000;
  const longest=wait.length?Math.max(0,now-wait[0].joinedAt):0;
- /* people being served right now is the best guess for how many desks are open */
- const eta=wait.length?wait.length*avg/Math.max(1,serving.length):0;
+ /* How long someone joining now would wait to be called: the line ahead of them, plus what is left of the visits
+    in progress, shared between the desks open (people being served now is the best guess for that; with nobody
+    called yet, one desk is assumed). */
+ const desks=Math.max(1,serving.length),left=serving.reduce((t,e)=>t+Math.max(0,avg-(now-(e.calledAt||now))),0);
+ const eta=wait.length?(wait.length*avg+left)/desks:0;
  const mins=longest/60000;
  let tone=mins>=QUEUE_ALERT?'flag':mins>=QUEUE_WARN?'watch':'ok';
  if(wait.length&&!serving.length&&tone==='ok')tone='watch';                 /* people are waiting and nobody is serving */
@@ -62,7 +69,8 @@ function qGate(){
  toast(m==='offline'?'No connection — the queue needs one so every desk sees the same line':m==='error'?'The live queue is not working yet — see the message on this screen':'Connecting to the live queue… try again in a moment');
  return false;
 }
-async function qRun(fn){if(qs.busy)return;qs.busy=true;try{await fn();}finally{qs.busy=false;}}
+/* one queue change at a time per desk; a tap while one is still saving says so instead of vanishing */
+async function qRun(fn){if(qs.busy){toast('One moment — the last queue change is still saving');return;}qs.busy=true;try{await fn();}finally{qs.busy=false;}}
 function qFail(err){
  console.warn('queue:',err);
  const msg=String((err&&err.message)||err||'');
@@ -71,7 +79,7 @@ function qFail(err){
  else toast('Queue change failed: '+msg);
  queueSync();
 }
-export async function queueJoin(att,st){
+export async function queueJoin(att,st,say){
  if(!qGate())return false;
  if(qActive(att,st)){toast(`${qName(att)} is already in this line`);return false;}
  let ok=false;
@@ -84,7 +92,7 @@ export async function queueJoin(att,st){
    qApply(data);ok=true;
   }
   const n=qList(st,'waiting').length;
-  toast(`${firstName(qName(att))} added · ${n===1?'next up':n+' waiting'}`);
+  toast(say?say(n):`${firstName(qName(att))} added · ${n===1?'next up':n+' waiting'}`);
  });
  qAfter();return ok;
 }
@@ -126,7 +134,28 @@ async function qMove(id,to,from,msg){
  qAfter();
 }
 export const queueServe=id=>qMove(id,'serving',['waiting'],e=>`Next: ${qName(e.attendeeId)} · ${e.attendeeId}`);
-export const queueDone=id=>qMove(id,'done',['serving'],e=>`${firstName(qName(e.attendeeId))} finished ✓`);
+export async function queueDone(id){
+ await qMove(id,'done',['serving'],e=>`${firstName(qName(e.attendeeId))} finished ✓`);
+ const e=queue.find(x=>x.id===id);
+ if(e&&e.status==='done')await queueFlowNext(e.attendeeId,e.station);
+}
+/* the next station on QUEUE_FLOW after `from` that this visitor has not finished today ('' when there is none) */
+export function nextFlowStation(att,from){
+ const i=QUEUE_FLOW.indexOf(from);
+ if(i<0)return '';
+ return QUEUE_FLOW.slice(i+1).find(k=>!queue.some(e=>e.attendeeId===att&&e.station===k&&e.status==='done'))||'';
+}
+async function queueFlowNext(att,from){
+ const next=nextFlowStation(att,from);
+ if(!next||qActive(att,next))return;
+ await queueJoin(att,next,n=>`${firstName(qName(att))} finished ✓ · now in the ${QUEUE_SHORT[next]} line${n>1?` (${n} waiting)`:''}`);
+}
+/* a newly registered visitor goes straight into the first line — when the queue can take changes; offline the
+   registration still stands and they can be added by hand once the desk is back online */
+export async function queueFlowStart(att,said){
+ if(!qCan()||qActive(att))return;
+ await queueJoin(att,QUEUE_FLOW[0],n=>`${said} · in the ${QUEUE_SHORT[QUEUE_FLOW[0]]} line${n>1?` (${n} waiting)`:''}`);
+}
 export const queueBack=id=>qMove(id,'waiting',['serving'],e=>`${firstName(qName(e.attendeeId))} is back in line (same place)`);
 export function queueRemove(id){
  if(qs.confirm!==id){qs.confirm=id;clearTimeout(qs.confT);qs.confT=setTimeout(()=>{qs.confirm='';if(state.tab==='queue')renderMain();},3000);renderMain();return;}
@@ -142,7 +171,16 @@ export async function queueLeaveFor(attendeeId){
   await qMove(entry.id,'left',['waiting','serving'],null);   /* null: no toast per line; the caller says what happened */
  }
 }
-export function qSelect(k){state.qStation=k;qs.confirm='';renderMain();}
+/* Tapping a station card opens its panel — who is being served and who is waiting, by name — which sits under the
+   board, below the fold on a phone. So the tap also brings that panel into view, unless it is already on screen. */
+export function qSelect(k){
+ state.qStation=k;qs.confirm='';renderMain();
+ const d=$('#qDetail');
+ if(!d||typeof d.getBoundingClientRect!=='function'||typeof d.scrollIntoView!=='function')return;
+ const r=d.getBoundingClientRect(),vh=window.innerHeight||0;
+ if(r.top>=0&&r.top<vh*0.6)return;                                  /* the panel's heading is already in view */
+ d.scrollIntoView({block:'start'});    /* an instant jump: a smooth scroll was seen not to move at all in a browser */
+}
 
 /* ---------- loading and live updates ---------- */
 export async function queueSync(manual){
@@ -296,7 +334,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&tvOpen())
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&tvOpen())closeBigScreen();});
 function qCard(k,st,sel){
  const first=st.serving[0],more=st.serving.length-1;
- const serve=first?`Serving <b>${esc(first.attendeeId)}</b>${more>0?` +${more}`:''}`:(st.wait.length?'<b>Nobody serving</b>':'Free — nobody here');
+ const serve=first?`Serving <b>${esc(first.attendeeId)}</b>${more>0?` +${more}`:''}`:(st.wait.length?'<b>Not called yet</b>':'Free — nobody here');
  const eta=st.wait.length?`About <b>${Math.max(1,Math.round(st.eta/60000))} min</b> · longest ${qMin(st.longest)}`:'No wait';
  return `<button data-action="qSelect" data-args="${k}" class="q-card q-card-${st.tone} ${sel?'q-card-sel':''}" aria-pressed="${sel}">
   <span class="q-card-top"><span class="q-card-name">${esc(QUEUE_SHORT[k])}</span><span class="q-card-dot"></span></span>
@@ -319,7 +357,7 @@ function qDetail(k,st,can){
  const dis=can?'':' disabled',m=Math.max(1,Math.round(st.avg/60000));
  const note=st.real?`Average ${m} min per person (last ${st.samples} finished). ${st.done} finished today.`
   :`Estimating ${m} min per person until a few visits have finished here. ${st.done} finished today.`;
- return `<div class="glass p-4">
+ return `<div id="qDetail" class="glass p-4" style="scroll-margin-top:84px">
   <div class="q-head"><div><div class="microlabel">Station</div><div class="display text-base font-extrabold">${esc((BOOTH(k)||{}).label||k)}</div></div></div>
   <div class="q-actions">
    <button class="btn btn-primary" data-action="queueCallNext" data-args="${k}"${can&&st.wait.length?'':' disabled'}>Call next →</button>
