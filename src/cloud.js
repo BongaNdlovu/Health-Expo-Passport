@@ -558,6 +558,40 @@ const H_RANK={bad:3,warn:2,off:1,ok:0};
 export const health={};
 const hhmm=t=>new Date(t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
 export const isOfflineErr=m=>!navigator.onLine||/failed to fetch|networkerror|load failed|network request/i.test(String(m||''));
+/* ---------- every database request has a deadline ----------
+   supabase-js waits on fetch for as long as the socket stays open, so on a venue's failing wifi a screen could say
+   Loading… forever. createClient (account.js) is handed timedFetch: past netTimes.slow a small notice says the
+   connection is slow (nothing is blocked), past netTimes.hard the request is abandoned with a "Network request timed
+   out" error. That wording is deliberate: isNet/isOfflineErr already treat it as a connection problem, so every
+   caller's existing retry path (sync retries itself, account screens offer Try again) handles it unchanged.
+   Realtime runs on its own socket and is not affected. */
+export const netTimes={slow:4000,hard:20000};   /* ms; an object so the tests can shorten them */
+export const TIMEOUT_MSG='Network request timed out: the server took too long to answer';
+export const isTimeoutErr=m=>/timed out/i.test(String(m||''));
+let netSlow=0;
+export const netSlowCount=()=>netSlow;
+function slowNote(){
+ let el=document.getElementById('netSlow');
+ if(!netSlow){if(el)el.classList.remove('is-on');return;}
+ if(!el){
+  el=document.createElement('div');el.id='netSlow';el.className='net-slow';
+  el.setAttribute('role','status');el.setAttribute('aria-live','polite');
+  el.textContent='Slow connection — still working…';
+  document.body.appendChild(el);
+ }
+ el.classList.add('is-on');
+}
+export function timedFetch(input,init){
+ const ctl=new AbortController(),outer=init&&init.signal;
+ if(outer){if(outer.aborted)ctl.abort();else outer.addEventListener('abort',()=>ctl.abort(),{once:true});}
+ let slow=false,timedOut=false;
+ const slowT=setTimeout(()=>{slow=true;netSlow++;slowNote();},netTimes.slow);
+ const hardT=setTimeout(()=>{timedOut=true;ctl.abort();},netTimes.hard);
+ const done=()=>{clearTimeout(slowT);clearTimeout(hardT);if(slow){slow=false;netSlow--;slowNote();}};
+ return fetch(input,{...(init||{}),signal:ctl.signal}).then(
+  res=>{done();return res;},
+  err=>{done();throw timedOut?new TypeError(TIMEOUT_MSG):err;});
+}
 export const isMissingErr=e=>!!e&&(e.code==='PGRST205'||e.code==='PGRST202'||e.code==='42P01'||e.code==='42883'||/schema cache|could not find the (table|function)|does not exist/i.test(String(e.message||'')));
 /* "Could not find the table 'public.queue_entries' …" / "… function public.my_account …" / relation "x" -> the name */
 export const missingName=e=>{const m=/(?:public\.|relation\s+")([a-z_]+)/i.exec(String((e&&e.message)||''));return m?m[1]:'';};

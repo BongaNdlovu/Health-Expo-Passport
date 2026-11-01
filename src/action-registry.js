@@ -15,7 +15,7 @@ import { closeFood, exportCSV, openFood, showAllCare } from './results.js';
 import { onSim, setFoodPlan, toggleFood } from './results.js';
 import { isServe, render, toggleTheme } from './shell.js';
 import { cloud } from './state.js';
-import { filterVisitors, onPrayer, onStationCommit, onStationInput, onStep, registerSubmit, reservePouch, resetDemo, resetDemoAsk, switchTab, toggleInterest, toggleReg } from './visitor.js';
+import { clearVisitorSearch, filterVisitors, onPrayer, onStationCommit, onStationInput, onStep, registerSubmit, reservePouch, resetDemo, resetDemoAsk, switchTab, toggleInterest, toggleReg } from './visitor.js';
 import { applyReading, cancelReg, confirmResults, editReadings, finishVisit, goVisit, metricBack, newVisitFrom, onChronicList, onHeight, openMetric, pickSex, recordConsent, setAnswer, setMyStation, showGuardian, switchTo, toggleOptin, toggleTick } from './visitor.js';
 import { customPlanClear, customPlanEdit, customPlanFromCurrent, customPlanImport, customPlanSave, customPlanTemplate } from './customPlan.js';
 import { closeVolReg, closeWhatsApp, exportVolCSV, logExpoEntry, openEmail, openSwitcher, openVolModal, openVolReg, openVolSwitcher, openWhatsApp, pickSecondBooth, pickVolunteer, printCard, removeExpoEntry, saveExpoEntry, saveVolunteer, sendEmail, sendWhatsApp, setVol, setVolTab, startNewVolunteer, switchToVol, toggleDraftBooth, toggleDraftList, toggleShift } from './volunteer.js';
@@ -143,6 +143,7 @@ export const ACTION_MAP = {
   'expo-status': el => setExpoStatus(el.dataset.args, el.dataset.status),
   'expo-delete': el => deleteExpoAsk(el.dataset.args),
   'acct-retry': el => acctRetry(el.dataset.args),
+  'vq-clear': () => clearVisitorSearch(),
   'visitor-remove': el => removeVisitorAsk(el.dataset.args),
   'expo-manage': () => manageExpos(),
   'expo-pledge': el => pledgeToExpo(el.dataset.args),

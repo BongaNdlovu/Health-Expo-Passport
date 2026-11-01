@@ -2,7 +2,7 @@
 import { KINDS, acctHealthHTML, isNet, renderGate } from './cloud.js';
 import { $ } from './helpers.js';
 import { cloud, persist, persistNow, seedDemo } from './state.js';
-import { CLOUD_UI, SB_KEY, SB_LIB, SB_URL, SYNC_KEY, closeCloud, resetLedgerSig, cloudDirtyList, cloudPending, gateBusy, gateView, healthFromError, healthLive, healthReset, healthUpload, installBlock, isDirty, isMissingErr, isOfflineErr, isSeedRow, noteHealth, passwordCheck, pwField, renderCloudBody, rowToAtt, savePassword, saveSynced, saveSyncedSoon, setCloud, sigOf, syncChrome, syncStatusText, syncTilesHTML, syncedLabel, validEmail } from './cloud.js';
+import { CLOUD_UI, SB_KEY, SB_LIB, SB_URL, SYNC_KEY, closeCloud, resetLedgerSig, cloudDirtyList, cloudPending, gateBusy, gateView, healthFromError, healthLive, healthReset, healthUpload, installBlock, isDirty, isMissingErr, isOfflineErr, isSeedRow, noteHealth, passwordCheck, pwField, renderCloudBody, rowToAtt, savePassword, saveSynced, saveSyncedSoon, setCloud, sigOf, syncChrome, syncStatusText, syncTilesHTML, syncedLabel, timedFetch, isTimeoutErr, validEmail } from './cloud.js';
 import { CHURCH_PLANS_KEY, FOLLOWUP_MAX, churchPlansBox, clearInvite, followupsFor, inviteBox, inviteOwner, myFollowupsHTML, pendingInvite, setInviteOwner } from './churchPlans.js';
 import { GRACE_DAYS, clearReadings, clockKnown, followedUp, hasReadings, noteServerTime, readingsGone, visitIsOld } from './retention.js';
 import { render, toast } from './shell.js';
@@ -117,7 +117,7 @@ export async function acctRpc(fn,args,done){
  if(!cloud.client)return null;
  let r;
  try{r=await cloud.client.rpc(fn,args||{});}catch(e){r={error:e};}
- if(r.error){healthFromError('account',r.error,fn);toast(isNet(r.error.message)?'No connection — try again when you are online.':(r.error.message||'That did not work.'));return null;}
+ if(r.error){healthFromError('account',r.error,fn);toast(isTimeoutErr(r.error.message)?'The server is taking too long — try again in a moment.':isNet(r.error.message)?'No connection — try again when you are online.':(r.error.message||'That did not work.'));return null;}
  if(done)toast(done);
  return r;
 }
@@ -128,6 +128,9 @@ async function acctReload(){
 }
 export const retryNote=(t,what)=>acctNote(t)+`<button class="btn btn-glass mt-2 w-full py-2.5 text-xs" data-action="acct-retry" data-args="${what}">Try again</button>`;
 export const acctNote=t=>`<p class="mt-1.5 text-[11px] leading-relaxed text-[#5c747a]">${t}</p>`;
+/* a loading placeholder shaped like the rows it stands in for (a name line and a detail line each), so the box keeps
+   its height when they arrive; the words stay for screen readers. Motion stops under prefers-reduced-motion. */
+export const acctSkel=(rows=2,t='Loading…')=>`<div class="skel-box" role="status"><span class="skel-sr">${t}</span>${'<div class="skel-row"><span class="skel skel-a"></span><span class="skel skel-b"></span></div>'.repeat(rows)}</div>`;
 export const acctBox=(label,body)=>`<div class="mt-4 rounded-[18px] border border-[#123033]/[.07] bg-white/60 p-3.5"><div class="microlabel">${label}</div>${body}</div>`;
 
 /* --- the gate screens --- */
@@ -282,7 +285,7 @@ async function loadHealth(){
  if(cloud.healthBusy)return;
  cloud.healthBusy=true;
  const r=await acctRpc('my_health');
- cloud.healthBusy=false;
+ cloud.healthBusy=false;cloud.healthErr=r===null;
  cloud.health=r&&r.data&&typeof r.data==='object'?r.data:null;
  cloud.acctV++;renderGate();renderAcct();profileChanged();
 }
@@ -298,7 +301,8 @@ export function healthHTML(){
  const m=cloud.acct.membership;
  if(m.status!=='approved')return '';
  if(!m.attendee_id)return acctBox('My screening results',acctNote('Your results appear here once a church admin links your expo badge to this account. Show them this screen, or tell them your badge number.'));
- if(cloud.health===undefined){loadHealth();return acctBox('My screening results',acctNote('Loading…'));}
+ if(cloud.health===undefined){loadHealth();return acctBox('My screening results',acctSkel(3));}
+ if(cloud.healthErr)return acctBox('My screening results',retryNote('Could not load your results. Check your connection.','health'));
  if(!cloud.health)return acctBox('My screening results',acctNote('Your linked results could not be loaded. If this keeps happening, ask your church to check the badge link.'));
  const a=rowToAtt(cloud.health),s=a.s,b=bmi(a),has=v=>v!=null&&v!=='';
  /* an old record with no readings is not "not measured yet": the readings were deleted after the grace period */
@@ -337,7 +341,7 @@ function notifBoxHTML(){
 export function pledgeHTML(){
  const m=cloud.acct&&cloud.acct.membership;
  if(!m||m.status!=='approved')return '';
- if(cloud.pledge===undefined){loadPledge();return acctBox('My pledge',acctNote('Loading…'));}
+ if(cloud.pledge===undefined){loadPledge();return acctBox('My pledge',acctSkel(2));}
  if(cloud.pledgeErr)return acctBox('My pledge',acctNote('Pledging needs the latest supabase/schema.sql — ask the church to update the database first.'));
  if(!cloud.pledge)return acctBox('My pledge',acctNote('Pledge to help at the next expo and your name goes onto the team list straight away. Your church’s admin registers you and chooses your station. Your pledge details stay on the roster until you unpledge or your church’s admin removes them.')+myPledgeFormHTML());
  if(cloud.pledgeEdit)return acctBox('My pledge',myPledgeFormHTML());
@@ -452,7 +456,7 @@ function settingsBody(){
  const m=cloud.acct&&cloud.acct.membership;
  if(!m||m.status!=='approved')
   return acctBox('Health expos',acctNote('Once your church approves your membership, the expos you pledge to appear here.'));
- if(cloud.pledge===undefined){loadPledge();return acctBox('Health expos',acctNote('Loading your commitments…'));}
+ if(cloud.pledge===undefined){loadPledge();return acctBox('Health expos',acctSkel(2,'Loading your commitments…'));}
  if(cloud.pledgeErr)
   return acctBox('Health expos',acctNote('Commitments need the latest supabase/schema.sql — ask your church to update the database first.'));
  const p=cloud.pledge;
@@ -513,7 +517,8 @@ export async function linkVolunteer(uid,cur){
 export function myTeamHTML(){
  const p=cloud.pledge;
  if(!p||!p.lead||!p.booth)return '';
- if(cloud.myTeam===undefined){loadMyTeam();return acctBox('My team · '+esc(boothLabel(p.booth)),acctNote('Loading…'));}
+ if(cloud.myTeam===undefined){loadMyTeam();return acctBox('My team · '+esc(boothLabel(p.booth)),acctSkel(3));}
+ if(cloud.myTeamErr)return acctBox('My team · '+esc(boothLabel(p.booth)),retryNote('Could not load your team. Check your connection.','myTeam'));
  const L=cloud.myTeam||[],placed=L.filter(x=>x.booth),wait=L.filter(x=>!x.booth);
  const row=x=>`<div class="border-t border-[#123033]/[.07] py-2">
    <div class="flex items-center gap-2"><div class="min-w-0 flex-1">
@@ -534,7 +539,7 @@ async function loadMyTeam(){
  if(cloud.myTeamBusy)return;
  cloud.myTeamBusy=true;
  const r=await acctRpc('my_team');
- cloud.myTeamBusy=false;
+ cloud.myTeamBusy=false;cloud.myTeamErr=!(r&&Array.isArray(r.data));
  cloud.myTeam=r&&Array.isArray(r.data)?r.data:[];
  cloud.acctV++;renderGate();
  renderAcct();render();
@@ -852,7 +857,7 @@ export function churchAdminHTML(){
   <div class="mt-1 text-[13px] font-bold text-[#123033]">${esc(c.name)}</div>
   ${acctBox('Health Expos',expoAdminHTML(cid))}
   ${acctBox('Members'+(waiting?` · ${waiting} waiting`:'')+(F?` · ${F.length} of ${FOLLOWUP_MAX} follow-up people`:''),
-   !L?acctNote('Loading…'):cloud.members.err?retryNote('Could not load the members. Check your connection.','members'):!L.length?acctNote('Nobody has joined yet.'):L.map(u=>memberRow(u,F,admins,ranks,canPost)).join('')
+   !L?acctSkel(3):cloud.members.err?retryNote('Could not load the members. Check your connection.','members'):!L.length?acctNote('Nobody has joined yet.'):L.map(u=>memberRow(u,F,admins,ranks,canPost)).join('')
    +acctNote('Members see only their own details and results. Staff and church admins see this church’s visitors and volunteers, so only give those roles to people you know.')
    +acctNote('Admins manage this church only: nobody here can open another church’s data. The two admin posts are the Health Department Leader and their Assistant: the Leader (or the Expo admin) gives, swaps and takes them; the Assistant approves and removes members, pledges and team leaders.')
    +acctNote(`Follow-up people (up to ${FOLLOWUP_MAX}) are given visitors to contact after the expo, and see only those visitors.`))}
@@ -1036,6 +1041,11 @@ export function acctRetry(what){
  if(what==='members')cloud.members=null;
  else if(what==='pAdmins')cloud.pAdmins=null;
  else if(what==='expos'){cloud.expos=undefined;cloud.adminExpos=undefined;}
+ else if(what==='health'){cloud.health=undefined;cloud.healthErr=false;}
+ else if(what==='myTeam'){cloud.myTeam=undefined;cloud.myTeamErr=false;}
+ else if(what==='plat'){cloud.plat=null;cloud.platErr=false;cloud.audit=null;cloud.auditErr=false;}
+ else if(what==='audit'){cloud.audit=null;cloud.auditErr=false;}
+ else if(what==='myFollow'){cloud.myFollow=null;cloud.myFollowErr=false;}
  acctRedraw();
 }
 const reloadExpos=()=>{cloud.expos=undefined;cloud.adminExpos=undefined;acctRedraw();};
@@ -1098,7 +1108,7 @@ export function pickExpo(v){cloud.pledgeExpo=v;}
 export function expoAdminHTML(cid){
  if(cloud.expoEdit)return expoFormHTML();
  const E=cloud.adminExpos;
- if(!E||E.cid!==cid){loadAdminExpos(cid);return acctNote('Loading…');}
+ if(!E||E.cid!==cid){loadAdminExpos(cid);return acctSkel(2);}
  return `${E.err==='schema'?acctNote('Health Expos need the latest supabase/schema.sql — ask the administrator to run it again.')
    :E.err?retryNote('Could not load the Health Expos. Check your connection.','expos')
    :E.list.length?E.list.map(x=>expoCard(x,true)).join(''):acctNote('No expo yet. Add one: members see it once it is open, and pledge to it.')}
@@ -1197,19 +1207,20 @@ export async function deleteExpoAsk(id){
 export const nOf=(n,w)=>n+' '+w+(Number(n)===1?'':'s');
 export function platformHTML(){
  if(cloud.adminData)return adminDataHTML();
- if(cloud.plat===null){loadPlatform();return acctNote('Loading…');}
+ if(cloud.plat===null){loadPlatform();return acctSkel(3);}
+ if(cloud.platErr)return retryNote('Could not load the churches. Check your connection.','plat');
  const L=cloud.plat,n=s=>L.filter(c=>c.status===s).length,sum=k=>L.reduce((t,c)=>t+(Number(c[k])||0),0);
  const tile=(l,v)=>`<div class="tile"><span class="tile-l">${l}</span><span class="tile-v">${v}</span></div>`;
  if(cloud.audit===null)loadAudit();
  return `<div class="grid grid-cols-3 gap-2">${tile('Churches',L.length)}${tile('Waiting',n('pending'))}${tile('Members',sum('members'))}</div>
   ${acctBox('Churches',!L.length?acctNote('No church has registered yet.'):L.map(churchRow).join(''))}
   ${platformAdminsHTML()}
-  ${acctBox('Recent changes',!cloud.audit?acctNote('Loading…'):!cloud.audit.length?acctNote('Nothing changed yet.')
+  ${acctBox('Recent changes',!cloud.audit?acctSkel(3):cloud.auditErr?retryNote('Could not load the recent changes. Check your connection.','audit'):!cloud.audit.length?acctNote('Nothing changed yet.')
    :cloud.audit.map(x=>`<div class="leading-snug border-t border-[#123033]/[.07] py-1.5 text-[11px] text-[#33504f]">${esc(String(x.at||'').slice(0,16).replace('T',' '))} · ${esc(x.church||'—')} · ${esc(x.actor||'?')} · ${esc(String(x.op||'').toLowerCase())} ${x.tbl==='platform_admins'?'platform admin':x.tbl==='attendees'?'visitor':'volunteer'} ${esc(x.row_id||'')}</div>`).join(''))}`;
 }
 /* the platform admins: who they are, and add one by email. The first is made once in the SQL editor; removing one is not in the app yet. */
 function platformAdminsHTML(){
- if(cloud.pAdmins===null){loadPlatformAdmins();return acctBox('Platform admins',acctNote('Loading…'));}
+ if(cloud.pAdmins===null){loadPlatformAdmins();return acctBox('Platform admins',acctSkel(2));}
  const L=cloud.pAdmins,me=cloud.acct&&cloud.acct.user_id;
  if(cloud.pAdminsErr)return acctBox('Platform admins',retryNote('Could not load the platform admins. Check your connection.','pAdmins'));
  return acctBox('Platform admins',`${acctNote('Platform admins approve churches and can open every church. Add someone who already has an account in this app with a confirmed email.')}
@@ -1258,7 +1269,7 @@ export function adminDataHTML(){
  return `<button data-action="all-churches-back" class="tap-link">← All churches</button>
   <div class="mt-1 text-[13px] font-bold text-[#123033]">${esc(c.name||'Church')}</div>
   ${acctNote('Read-only. The medical readings stay in the Supabase dashboard, which only you can open.')}
-  ${!d?acctNote('Loading…'):d.error?acctNote('Could not load this church’s data. Check your connection and try again.')
+  ${!d?acctSkel(3):d.error?acctNote('Could not load this church’s data. Check your connection and try again.')
    :`${acctBox('Visitors'+(d.visitor_count?` · ${d.visitor_count}`:''),d.visitors.length?d.visitors.map(a=>`
    <div class="border-t border-[#123033]/[.07] py-2">
     <div class="flex items-center gap-2"><div class="min-w-0 flex-1"><div class="truncate text-[13px] font-bold text-[#123033]">${esc(a.name)}</div>
@@ -1286,7 +1297,7 @@ async function loadPlatform(){
  if(cloud.platBusy)return;
  cloud.platBusy=true;
  const r=await acctRpc('admin_churches');
- cloud.platBusy=false;
+ cloud.platBusy=false;cloud.platErr=!(r&&Array.isArray(r.data));
  cloud.plat=r&&Array.isArray(r.data)?r.data:[];
  renderAcct();
 }
@@ -1294,7 +1305,7 @@ async function loadAudit(){
  if(cloud.auditBusy)return;
  cloud.auditBusy=true;
  const r=await acctRpc('admin_audit',{p_limit:30});
- cloud.auditBusy=false;
+ cloud.auditBusy=false;cloud.auditErr=!(r&&Array.isArray(r.data));
  cloud.audit=r&&Array.isArray(r.data)?r.data:[];
  renderAcct();
 }
@@ -1330,7 +1341,8 @@ export async function cloudInit(){
   if(!window.supabase)await loadScript(SB_LIB);
   if(!window.supabase||!window.supabase.createClient)throw new Error('library missing');
  }catch(e){cloud.starting=false;noteHealth('auth','bad','The sign-in service did not load, usually because there is no internet. Connect, then reopen the app.',String((e&&e.message)||e));setCloud(cloud.mode?'offline':'unavailable');return;}
- cloud.client=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+ cloud.client=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true},
+  global:{fetch:timedFetch}});   /* a deadline on every request (cloud.js) */
  /* never await Supabase calls inside this callback — hand off to a timer */
  cloud.client.auth.onAuthStateChange((ev,session)=>setTimeout(()=>cloudAuthEvent(ev,session),0));
  try{document.addEventListener('visibilitychange',checkWhileWaiting);addEventListener('online',checkWhileWaiting);}catch(e){/* no page events here */};
@@ -1382,7 +1394,11 @@ export async function cloudSignIn(e){
   if(res.error.code==='email_not_confirmed'||/email not confirmed/i.test(msg)){
    cloud.viewEmail=em;cloud.view='verify';cloud.formErr='Your email is not confirmed yet. Open the link we emailed you, then sign in.';cloud.gateKey='';if(pre==='pf'){cloud.gateForce=true;profIdle('pfGo');}renderGate();return;
   }
-  fail(/invalid login/i.test(msg)?'Wrong email or password.':isNet(msg)?'No connection — try again when you are online.':(msg||'Sign-in failed.'));
+  /* Supabase allows 30 sign-ins per 5 minutes from one network (its default): a hall of desks on one wifi can hit it */
+  fail(/invalid login/i.test(msg)?'Wrong email or password.'
+   :res.error.status===429||/rate limit|too many requests/i.test(msg)?'Too many sign-ins from this network just now. Wait 5 minutes, then try again.'
+   :isTimeoutErr(msg)?'The server is taking too long — try again in a moment.'
+   :isNet(msg)?'No connection — try again when you are online.':(msg||'Sign-in failed.'));
   return;
  }
  cloud.formErr='';closeCloud();

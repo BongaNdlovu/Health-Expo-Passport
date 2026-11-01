@@ -16,7 +16,8 @@ It was built for **Seventh-day Adventist community health expos in South Africa*
 three facts about that setting:
 
 1. **The venue has no reliable internet.** Church halls and parking lots do not have wifi. The app must work with no
-   signal, all day, and reconcile later.
+   signal, all day, and reconcile later — **after each phone has opened the app once while online** (that first open
+   saves the shell and a signed-in session; a cold first open with no network cannot).
 2. **The people using it are volunteers, not clinicians.** Screens must be obvious under time pressure and the
    wording must not imply a diagnosis.
 3. **The data is health data about identifiable people.** Under POPIA it is special personal information. Consent,
@@ -233,7 +234,9 @@ REST/RPC endpoints, and *only* through the SQL functions defined in `schema.sql`
 traffic — health data and tokens go straight to the network. The page is served stale-while-revalidate since
 1 Nov 2026: the saved copy answers at once and the network copy refreshes it for the next open (updates ride
 the version.json banner, not HTML freshness — see `src/update.js`); own files are cache-first with a
-background refresh.
+background refresh. That is why the offline claim needs one online open first: until the worker has saved a
+copy, a cold offline load has nothing to serve (503). The Android APK bundles the shell, so it still opens
+offline on first launch, but a real desk still needs one online open to sign in and pull the church's data.
 
 A new build installs **but does not activate** until the page asks (see §5.5). This is deliberate: a worker that
 swaps itself under a running page leaves the open tab executing the old bundle.

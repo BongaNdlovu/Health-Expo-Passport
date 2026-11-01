@@ -5,7 +5,7 @@ import { cloud, persist } from './state.js';
 import { HELP_LINE, PROTOCOLS, precautionsHTML, state } from './data.js';
 import { A, autoProtocol, esc, firstName } from './helpers.js';
 import { renderMain, toast } from './shell.js';
-import { acctBox, acctNote, acctRpc, nOf, renderAcct } from './account.js';
+import { acctBox, acctNote, acctRpc, acctSkel, nOf, renderAcct, retryNote } from './account.js';
 import { planNeeds, problemOf, urgentOf } from './results.js';
 import { qSafe } from './queue.js';
 import { optedIn } from './visitor.js';
@@ -144,7 +144,7 @@ export function viewChurchPlan(a,cp){
 const CP_SLOTS=5;            /* things to do shown in the form; a plan may hold up to 8 */
 export function churchPlansBox(cid){
  const own=cid===myChurchId(),key=own?'plans':'adminPlans',S=cloud[key];
- if(!S||S.cid!==cid){if(!(own&&cloud.plansBusy===cid))loadChurchPlans(cid,key);return acctNote('Loading…');}
+ if(!S||S.cid!==cid){if(!(own&&cloud.plansBusy===cid))loadChurchPlans(cid,key);return acctSkel(2);}
  const ed=cloud.planEdit&&cloud.planEdit.cid===cid?cloud.planEdit:null;
  return (S.list.length?S.list.map(cp=>`<div class="border-t border-[#123033]/[.07] py-2.5"><div class="flex items-center gap-2">
    <div class="min-w-0 flex-1"><div class="truncate text-[13px] font-bold text-[#123033]">${esc(cp.title)}</div>
@@ -260,7 +260,8 @@ export function followupPicker(a){
 }
 /* My account, for a follow-up person: the visitors given to them */
 export function myFollowupsHTML(){
- if(!cloud.myFollow){if(!cloud.myFollowBusy)loadMyFollowups();return acctBox('People to follow up',acctNote('Loading…'));}
+ if(!cloud.myFollow){if(!cloud.myFollowBusy)loadMyFollowups();return acctBox('People to follow up',acctSkel(3));}
+ if(cloud.myFollowErr)return acctBox('People to follow up',retryNote('Could not load the people given to you. Check your connection.','myFollow'));
  const L=cloud.myFollow,tel=p=>String(p||'').replace(/[^+\d]/g,'');
  return acctBox(`People to follow up · ${L.length}`,L.length?L.map(p=>`<div class="border-t border-[#123033]/[.07] py-2">
    <div class="text-[13px] font-bold text-[#123033]">${esc(p.name)}</div>
@@ -270,7 +271,7 @@ export function myFollowupsHTML(){
 async function loadMyFollowups(){
  cloud.myFollowBusy=true;
  const r=await acctRpc('my_followups');
- cloud.myFollowBusy=false;cloud.myFollow=r&&Array.isArray(r.data)?r.data:[];
+ cloud.myFollowBusy=false;cloud.myFollowErr=!(r&&Array.isArray(r.data));cloud.myFollow=r&&Array.isArray(r.data)?r.data:[];
  renderAcct();
 }
 

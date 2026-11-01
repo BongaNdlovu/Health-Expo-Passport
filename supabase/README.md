@@ -69,7 +69,8 @@ Settings the repo cannot prove on its own; tick each one off (security pass 2026
 - [ ] **Leaked password protection is ON** (Authentication → Sign In / Providers → Email → Prevent use of leaked
       passwords). **Pro plan or above required** — this org is currently on Free, so the toggle stays unavailable until
       upgrade; Security Advisor will keep warning until then. Checks new passwords against known breaches.
-- [ ] **SMTP is connected** (step 4) — sign-up and reset emails survive real volume.
+- [x] **SMTP is connected** (step 4) — Gmail SMTP `healthexpopassport@gmail.com` via `smtp.gmail.com:465`, email
+      rate limit set to **20/hour** (2026-11-01).
 - [ ] **Site URL and Redirect URLs are exact** (step 3) — no wildcards.
 - [x] **A platform admin exists** (step 5) — `fanelesibonge50@gmail.com` added 2026-10-30. Still tick **2FA is on** for the
       Supabase, GitHub and Cloudflare/registrar accounts that own this project.
@@ -312,8 +313,9 @@ already stop counting).
 
 ## How it behaves
 
-- **Offline-first.** Every change is saved on the device straight away and uploaded when online. The logo dot:
-  grey = not signed in, amber = syncing/offline, green = up to date, red = problem (tap it for the reason).
+- **Offline-first** (after one online open per phone). Open the app once while online so the phone can save the shell
+  and a signed-in session; after that every change is saved on the device straight away and uploaded when online. The
+  logo dot: grey = not signed in, amber = syncing/offline, green = up to date, red = problem (tap it for the reason).
 - **Shared between desks.** Other desks' changes appear live. If two desks edit the same visitor at the same
   moment, the last upload wins for that row.
 - **Demo mode.** Until someone signs in, the device shows the built-in demo data. Signing in replaces it with the

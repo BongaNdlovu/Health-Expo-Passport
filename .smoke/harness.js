@@ -38,7 +38,7 @@ const EXPORTS = [
   'cloudSignIn', 'onRemoteChange', 'KINDS', 'sigOf', 'isSeedRow', 'mergeRemote', 'renderCloudBody', 'setCloud',
   'startRealtime', 'stopRealtime', 'pauseRealtime', 'saveSynced', 'loadSynced', 'viewNoVisitor', 'CLOUD_UI', 'attToRow', 'volToRow',
   'rowToAtt', 'rowToVol', 'openCloud', 'closeCloud', 'afterMerge',
-  'showAllCare', 'filterVisitors', 'visitorsToShow', 'fetchRows', 'fetchIds', 'pruneRemote',
+  'showAllCare', 'filterVisitors', 'visitorsToShow', 'fetchRows', 'fetchIds', 'pruneRemote', 'timedFetch', 'netTimes', 'netSlowCount', 'isTimeoutErr', 'acctSkel', 'acctRetry', 'clearVisitorSearch',
   'gateState', 'renderGate', 'gateDemo', 'togglePass',
   'gateView', 'cloudSignUp', 'cloudResend', 'cloudForgot', 'cloudNewPassword', 'passwordProblem', 'validEmail',
   'waNumber', 'waMessage', 'sendWhatsApp', 'openEmail', 'sendEmail', 'mailtoHref', 'toggleInterest', 'onPrayer', 'reservePouch', 'followUpCard', 'INT',
@@ -136,7 +136,7 @@ const sandbox = {
   setTimeout, clearTimeout, setInterval, clearInterval,
   URL: Object.assign(class extends URL {}, { createObjectURL: () => 'blob:x', revokeObjectURL() {} }),   /* a real constructor: the update check parses addresses */
   Blob: function () {},
-  Date, Math, JSON, console, performance: { now: () => Date.now() },
+  Date, Math, JSON, console, performance: { now: () => Date.now() }, AbortController,
   innerWidth: 390, innerHeight: 844, scrollY: 0, scrollTo() {},
   addEventListener(type, fn) { if (type === 'popstate') popHandlers.push(fn); }, removeEventListener() {},
   alert() {}, confirm: () => true, prompt: () => null,
@@ -2000,6 +2000,10 @@ function makeServer() {
     const acc = files.find(([f]) => f === 'account.js')[1];
     ok('a failed load of members, Health Expos or platform admins says so and offers Try again (not an empty list)',
       ['members', 'expos', 'pAdmins'].every(w => acc.includes("'" + w + "'))") || acc.includes(",'" + w + "')")) && reg.includes("'acct-retry'"));
+    /* the same for every other account box that loads: a failure is never dressed up as "nothing here" */
+    const cps = files.find(([f]) => f === 'churchPlans.js')[1];
+    ok('a failed load of my results, my team, the churches, recent changes or my follow-ups offers Try again too',
+      ['health', 'myTeam', 'plat', 'audit'].every(w => acc.includes(",'" + w + "')") && acc.includes("what==='" + w + "'")) && cps.includes(",'myFollow')") && acc.includes("what==='myFollow'"));
   }
   { const fb = require('fs').readFileSync(require('path').join(__dirname, '..', 'src', 'feedback.js'), 'utf8'), pg = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.html'), 'utf8');
     ok('the destructive confirm button has a style (bg-rose-600 was not compiled: white text on nothing)', /btn btn-danger/.test(fb) && /\.btn-danger\{background:/.test(pg) && !/bg-rose-600/.test(fb)); }
@@ -2437,6 +2441,57 @@ function makeServer() {
     ok('…and still picks up what changed while the page was closed', g.attendees.find(a => a.id === someone.id).name === 'Changed While Closed' && g.attendees.length === N, g.attendees.length);
     srv.tables.attendees.set(someone.id, { ...orig, updated_at: new Date(Date.now() + (srv.seq + 40) * 1000).toISOString() });
     await g.cloudSync(true);
+  }
+
+  /* UI states: every database request has a deadline, a slow one says so, a failed screen load offers Try again,
+     an empty search has a way out, and a rate-limited sign-in says what to do */
+  {
+    const keepT = { ...g.netTimes }, keepFetch = sandbox.fetch;
+    g.netTimes.slow = 30; g.netTimes.hard = 90;
+    let sig = null;
+    sandbox.fetch = (u, init) => new Promise((res, rej) => { sig = init.signal; sig.addEventListener('abort', () => rej(new Error('The user aborted a request.'))); });
+    const hang = g.timedFetch('https://db.example/rest/v1/x', {});
+    await sleep(55);
+    ok('a request past the slow mark shows the slow-connection notice and blocks nothing', g.netSlowCount() === 1 && $el('netSlow').classList.contains('is-on'));
+    let err = null; try { await hang; } catch (e) { err = e; }
+    ok('past the hard deadline the request is abandoned with a connection-style error', !!err && g.isTimeoutErr(err.message) && /network request/i.test(err.message) && sig.aborted, err && err.message);
+    ok('…and the notice goes away with no counter left behind', g.netSlowCount() === 0 && !$el('netSlow').classList.contains('is-on'));
+    sandbox.fetch = () => Promise.resolve({ ok: true, status: 200 });
+    const quick = await g.timedFetch('https://db.example/rest/v1/x', {}); await sleep(120);
+    ok('a quick answer passes straight through: no notice, nothing aborted later', quick.status === 200 && g.netSlowCount() === 0 && !$el('netSlow').classList.contains('is-on'));
+    const own = new AbortController();
+    sandbox.fetch = (u, init) => new Promise((res, rej) => init.signal.addEventListener('abort', () => rej(new Error('AbortError'))));
+    const mine = g.timedFetch('https://db.example/rest/v1/x', { signal: own.signal }); own.abort();
+    let e2 = null; try { await mine; } catch (e) { e2 = e; }
+    ok('a caller that cancels its own request still can, and it is not mistaken for a timeout', !!e2 && !g.isTimeoutErr(e2.message), e2 && e2.message);
+    Object.assign(g.netTimes, keepT); sandbox.fetch = keepFetch;
+
+    const C1 = g.cloud, keep = { plat: C1.plat, audit: C1.audit, pAdmins: C1.pAdmins, pAdminsErr: C1.pAdminsErr, adminData: C1.adminData };
+    C1.adminData = null; C1.plat = null; C1.audit = null; C1.pAdmins = []; C1.pAdminsErr = false;
+    srv.offline = true;
+    const first = g.platformHTML();
+    ok('a loading box shows placeholders shaped like its rows, with words for screen readers', /class="skel-box"/.test(first) && /Loading/.test(first), first.slice(0, 160));
+    await sleep(30);
+    const failed = g.platformHTML();
+    ok('a failed load says so and offers Try again, never "No church has registered yet"',
+      /data-action="acct-retry" data-args="plat"/.test(failed) && !/No church has registered yet/.test(failed), failed.slice(0, 200));
+    srv.offline = false;
+    g.acctRetry('plat');
+    ok('…and Try again starts the load afresh', C1.platErr === false && (C1.plat === null || Array.isArray(C1.plat)));
+    await sleep(30);
+    Object.assign(C1, keep); C1.platErr = false; C1.auditErr = false;
+
+    g.filterVisitors('zzzz-nobody');
+    ok('a search that matches nobody offers a one-tap Clear search', /data-action="vq-clear"/.test($el('visitorList').innerHTML));
+    $el('vq').value = 'zzzz-nobody'; g.clearVisitorSearch();
+    ok('…which empties the box and lists everyone again', $el('vq').value === '' && g.state.vq === '' && !/Nobody matches/.test($el('visitorList').innerHTML));
+
+    const auth = C1.client.auth, keepSI = auth.signInWithPassword;
+    auth.signInWithPassword = async () => ({ error: { status: 429, message: 'Request rate limit reached' } });
+    $el('cloudEmail').value = 'a@b.c'; $el('cloudPass').value = 'whatever';
+    await g.cloudSignIn({ preventDefault() {} });
+    ok('too many sign-ins from one network gets a wait-and-retry message, not the raw error', /Wait 5 minutes/.test(C1.formErr), C1.formErr);
+    auth.signInWithPassword = keepSI; C1.formErr = '';
   }
 
   /* removing a visitor who wandered off (PLAN-remove-visitor TST-01) */

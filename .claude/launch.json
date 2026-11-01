@@ -10,6 +10,12 @@
       "port": 5173
     },
     {
+      "name": "health-expo-dist",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["-e", "process.env.PORT='4180';require('./tools/serve.js')"],
+      "port": 4180
+    },
+    {
       "name": "rain-of-the-word",
       "runtimeExecutable": "python",
       "runtimeArgs": [
