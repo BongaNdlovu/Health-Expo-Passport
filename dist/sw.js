@@ -3,7 +3,7 @@
    it loads from CDNs. It NEVER stores anything from Supabase — visitor health data, volunteer details and sign-in
    tokens travel only between the app and the database (the app keeps its own saved copy on the device).
    VERSION is stamped by tools/build.js so every release replaces the old cache. */
-const VERSION = '69eb90bc41';
+const VERSION = '9b52c25d48';
 const SHELL = 'newstart-shell-' + VERSION;
 const LIBS = 'newstart-libs-v3';              /* v3: the scanner and QR libraries are gone, so their cached copies are dropped */
 
@@ -50,29 +50,25 @@ self.addEventListener('activate', event => {
 async function cleanCopy(res) {
   return new Response(await res.blob(), { status: res.status, statusText: res.statusText, headers: res.headers });
 }
-/* the page: use the network, and the saved copy only when the network does not answer.
-   A rejected answer here is shown on the phone as net::ERR_CACHE_MISS, so this must always return a response.
-   The 4s cutoff applies only when a saved copy exists. With nothing saved, a slow phone must be allowed to finish. */
+/* the page: the saved copy answers at once and the network copy is fetched in the background for the next open
+   (stale-while-revalidate, like the icons). Openings on venue wifi are then instant instead of racing a 4-second
+   cutoff, and updates still arrive: src/update.js watches /version.json and its banner swaps the worker, whose
+   install fetch has already cached the fresh page. With nothing saved yet there is nothing to show but the network,
+   and a failure is reported rather than faked. */
 async function page(request) {
   const cache = await caches.open(SHELL);
   const saved = await cache.match('index.html');
-  const pull = async () => {
-    const res = await fetch(request);
+  const pull = fetch(request).then(async res => {
     const html = res && res.ok && (res.headers.get('content-type') || '').includes('text/html');
-    if (html) cache.put('index.html', await cleanCopy(res.clone()));
+    if (html) await cache.put('index.html', await cleanCopy(res.clone()));
     return res;
-  };
+  }).catch(() => null);
   if (!saved) {
-    try { return await pull(); }
-    catch (err) {
-      return new Response('The page could not be loaded. Check the connection and try again.', { status: 503, headers: { 'Content-Type': 'text/plain; charset=UTF-8' } });
-    }
+    const res = await pull;
+    return res || new Response('The page could not be loaded. Check the connection and try again.', { status: 503, headers: { 'Content-Type': 'text/plain; charset=UTF-8' } });
   }
-  try {
-    return await Promise.race([pull(), new Promise((_, no) => setTimeout(() => no(new Error('slow')), 4000))]);
-  } catch (err) {
-    return saved;
-  }
+  pull.catch(() => {});                       /* refresh for the next open; the visitor waits for nobody */
+  return saved;
 }
 /* own files: answer from the saved copy at once, refresh it in the background */
 async function ownFile(request) {

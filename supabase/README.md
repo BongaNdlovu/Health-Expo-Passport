@@ -19,6 +19,17 @@ Next.js files in the Supabase quickstart (`utils/supabase/*`, middleware) do not
 4. **Set up real email sending before the event.** Supabase's built-in email sender is for testing only and allows just
    a handful of emails per hour. Authentication → Emails → SMTP Settings → connect a provider (Resend, SendGrid,
    Brevo, Gmail SMTP…). Without this, sign-up and reset emails stop arriving once the limit is hit.
+   **With a free Gmail account** (use one made for the expo, not a personal inbox):
+   - Turn on 2-Step Verification for that account, then create an app password at
+     `myaccount.google.com/apppasswords`. Changing the Google password cancels it; make a new one then.
+   - SMTP Settings: host `smtp.gmail.com`, port `465` (SSL) or `587` (TLS), username = the full Gmail address,
+     password = the app password, sender = the same Gmail address.
+   - Gmail stops sending for 1–24 hours once an account sends more than 500 emails in a day. With your own SMTP
+     the Supabase email limit becomes yours to set: Authentication → Rate Limits → emails per hour = **20**
+     (20 × 24 = 480, under Gmail's 500), so a burst of sign-ups queues up instead of locking the account for a day.
+   - Sources (1 Nov 2026): Supabase "Rate limits" (built-in sender 2 emails/hour, configurable with custom SMTP);
+     Google "Send email from a printer, scanner, or app" (smtp.gmail.com, 465 SSL / 587 TLS, app password);
+     Gmail help "You have reached a limit for sending mail" (500 a day, 1–24 h).
 5. **Make yourself the platform admin.** Create an account in the app (or Authentication → Users → Add user),
    confirm the email, then run this in the SQL editor with that email:
 
@@ -193,7 +204,7 @@ delete from public.staff where user_id = (select id from auth.users where email 
 
 ### Hardening (recommended before the expo)
 
-Findings of the security pressure test (21 Oct 2026) that only you can act on:
+Findings of the security pressure tests (21 Oct and 31 Oct 2026) that only you can act on:
 
 - **Android signing passwords** belong in a password manager. On this PC they are Windows credentials
   `NEWSTART-Expo/keystore-store` and `NEWSTART-Expo/keystore-key`. `tools/sign-app.ps1` reads those. Do not put them
@@ -205,6 +216,18 @@ Findings of the security pressure test (21 Oct 2026) that only you can act on:
 - **Live deletes are not filtered by row-level security** (Supabase Realtime docs, "Postgres Changes"). A signed-in
   account that listens for deletes can learn the church id and badge number of a visitor deleted in another church; no
   names or readings. The app ignores such events. Visitors are only ever deleted from this dashboard.
+
+Fixed in the database on 1 Nov 2026 (these need **schema.sql re-run** to take effect, and the app must be rebuilt so
+the client expects them):
+
+- **Team leaders may remove a visitor only from their own booth's line** (`remove_visitor`); church admins keep
+  church-wide removal. The remove screen's message already says what happened if the database refuses.
+- **A custom plan is size-capped in the database** (3–8 actions, per-field lengths), not only in the editor.
+- **Join requests notify the church's admins** (deduped to one per hour per person), **invite links are capped at
+  50 per church per day**, and the register/deregister/withdraw notifications are deduped over an hour, so cycling a
+  status cannot flood an inbox.
+- **Row-level-security helpers are evaluated once per statement**, not once per row — the ten-minute sync is much
+  cheaper on the database at a few thousand visitors.
 
 Open sign-ups mean strangers can request accounts and cost you emails. They still cannot see data. To reduce abuse,
 turn on Authentication → Attack Protection → **CAPTCHA** (Cloudflare Turnstile is supported) — note this app does not
@@ -258,11 +281,34 @@ yet" and everything else keeps working.
 
 ## For the live event
 
-- **Use the Pro plan for the event month.** Free projects are paused after a week without activity and have no
-  automatic backups; this is health data you cannot re-collect.
+- **The app is set up to run on the Free plan** — see *Staying on the Free plan* below for the limits and the few
+  things only you can do (keep the project awake, export after each day, watch the usage page).
 - Host the app over **https** and install it on each phone — see `HOSTING.md` (build with `node tools/build.js`,
   upload `dist/`). Camera scanning, install and offline mode all need https, and every desk needs the same link.
 - Load the page once on each device while it has Wi-Fi; after that, brief drops are fine (changes queue and upload).
+
+## Staying on the Free plan
+
+A Free project is never billed: going over a quota brings an email to the billing address and a grace period under
+Supabase's Fair Use Policy, not a charge (Supabase "Cost control" and "Realtime messages", read 1 Nov 2026). The
+hosting side is free too: `wrangler.jsonc` serves `dist/` as static assets only, which Cloudflare bills as "free
+and unlimited". What can still go wrong is *service*, not cost — so these are the limits to stay inside.
+
+| Free limit (Supabase pricing, 1 Nov 2026) | What uses it here | What the app does about it |
+|---|---|---|
+| **200** realtime connections at once | one per signed-in desk (all its live channels share one socket) | a desk out of sight for 2 min gives its connection back and reconnects on return; a desk refused past 200 (or dropped) re-checks every **20 s** instead of every minute, and an open queue screen re-reads the lines every 20 s — so it keeps working, just not instantly |
+| **2 million** realtime messages a month, **100** a second | every saved change counts **once per desk listening** (5 desks listening = 5 messages) | live updates are filtered to the desk's own church on the server; desks out of sight stop listening |
+| **5 GB** egress a month | first download per device, then small "changed since" pulls; a deletion check every 10 min reads only ids | a page reload resumes from where it stopped instead of downloading every visitor again |
+| **500 MB** database, **50,000** monthly active users | visitors, volunteers, queue lines; one account per volunteer | the daily purge clears readings after 7 days and visitors after 2 years (see *Retention* above), which keeps the database small |
+| Paused after **one week** without activity | — | **you:** use the app (or open the dashboard) at least weekly between expos. A paused project can still be restored from Studio with one click for a year (Supabase "Upgrading") |
+| **No** automatic backups | — | **you:** after each expo day, Care tab → **Export CSV**, and the volunteer roster's **Export volunteer roster CSV**; keep the files somewhere safe |
+| Leaked-password protection not included | sign-up | the app's own password rules still apply |
+
+How to read the realtime numbers for your expo: messages ≈ saved changes × desks listening. The count of changes
+per visitor depends on how many stations they visit and was not measured — so after the first busy day, open
+your organization's **Usage** page in the Supabase dashboard and compare *Realtime messages* and *Egress* with the limits above. If one of
+them is close, the cheapest lever is fewer desks signed in with the app in front of them (out-of-sight desks
+already stop counting).
 
 ## How it behaves
 

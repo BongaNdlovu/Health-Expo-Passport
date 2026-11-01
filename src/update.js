@@ -3,8 +3,10 @@
 
    Web / installed PWA — tools/build.js stamps the build's cache version into <meta name="app-version"> and writes
    it to /version.json. When those two differ, or a service worker is waiting to take over, a banner offers
-   Update. Tapping it hands the waiting worker SKIP_WAITING and reloads once it is in control. With no waiting
-   worker a plain reload is enough, because sw.js serves the page network-first.
+   Update. Tapping it hands the waiting worker SKIP_WAITING and reloads once it is in control — that reload is
+   served by the new worker, whose install fetch already cached the fresh page. With no waiting worker, sw.js
+   serves the page stale-while-revalidate, so this reload shows the old copy one last time; the worker (and the
+   fresh page with it) is picked up on the next open, which is what HOSTING.md promises.
 
    Android (Capacitor) — the page inside the APK carries the version it was packaged at, so a newer server build
    means a newer app is on offer. The app's own page is a local copy with no version.json, so inside the app the

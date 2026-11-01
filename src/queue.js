@@ -20,7 +20,7 @@ const QUEUE_DEFAULT_MIN={vitals:4,bp:5,sugar:6,kitchen:8,plan:10,prayer:10};   /
 const QUEUE_WARN=10,QUEUE_ALERT=20;      /* minutes the longest-waiting person has stood in line: amber, then red */
 const QUEUE_WINDOW_H=18;                 /* only today's queue is loaded */
 export const queue=[];                          /* {id,attendeeId,station,status,joinedAt,calledAt,finishedAt}; times in ms */
-export const qs={ready:false,err:'',ch:null,rt:'',subbed:false,skew:0,since:'',busy:false,syncing:false,seq:1,confirm:'',pick:'',pickQ:'',renderT:null};
+export const qs={ready:false,err:'',ch:null,rt:'',church:'',subbed:false,skew:0,since:'',busy:false,syncing:false,seq:1,confirm:'',pick:'',pickQ:'',renderT:null};
 
 export const qSafe=s=>String(s==null?'':s).replace(/[^A-Za-z0-9-]/g,'');           /* ids end up inside data-* attributes */
 const qT=v=>v?(Date.parse(String(v).replace(/(\.\d{3})\d+/,'$1'))||0):0;
@@ -178,9 +178,13 @@ export async function queueSync(manual){
  }finally{qs.syncing=false;qAfter();}
 }
 function startQueueRealtime(){
- if(qs.ch||!cloud.client)return;
+ if(qs.ch&&qs.church===cloud.churchId)return;
+ if(!cloud.client)return;
+ if(qs.ch){try{cloud.client.removeChannel(qs.ch);}catch(e){}qs.ch=null;}
  const ch=cloud.client.channel('newstart-queue');
- ch.on('postgres_changes',{event:'*',schema:'public',table:'queue_entries'},p=>{
+ /* inserts and updates filtered to this church on the server, deletes unfiltered (see startRealtime in account.js) */
+ const mine=cloud.churchId?{filter:'church_id=eq.'+cloud.churchId}:{};
+ const onQ=p=>{
   if(p.eventType==='DELETE'){
    /* Realtime delete events carry no row-level security, so count one only when it names this device's church
       (as onRemoteChange does for visitors and volunteers); the next full pull notices any real deletion. */
@@ -189,17 +193,26 @@ function startQueueRealtime(){
   else if(p.new&&p.new.id)qApply(p.new);
   else return;
   qRefresh();
- });
+ };
+ ch.on('postgres_changes',{event:'INSERT',schema:'public',table:'queue_entries',...mine},onQ)
+   .on('postgres_changes',{event:'UPDATE',schema:'public',table:'queue_entries',...mine},onQ)
+   .on('postgres_changes',{event:'DELETE',schema:'public',table:'queue_entries'},onQ);
  ch.subscribe(st=>{
   qs.rt=st;healthLive('queue',st);
   if(st==='SUBSCRIBED'){if(qs.subbed)queueSync();qs.subbed=true;}    /* reconnected: fetch whatever was missed */
   qRefresh();
  });
- qs.ch=ch;
+ qs.ch=ch;qs.church=cloud.churchId;
+}
+/* out of sight: drop the channel but keep the lines on the device (pauseRealtime in account.js); qs.subbed stays
+   set, so the channel that reopens on return re-reads whatever changed meanwhile */
+export function queuePause(){
+ if(qs.ch&&cloud.client){try{cloud.client.removeChannel(qs.ch);}catch(e){}}
+ qs.ch=null;qs.rt='';
 }
 export function queueReset(){
  if(qs.ch&&cloud.client){try{cloud.client.removeChannel(qs.ch);}catch(e){}}
- qs.ch=null;qs.rt='';qs.subbed=false;qs.ready=false;qs.err='';qs.since='';qs.skew=0;qs.confirm='';
+ qs.ch=null;qs.rt='';qs.church='';qs.subbed=false;qs.ready=false;qs.err='';qs.since='';qs.skew=0;qs.confirm='';
  queue.length=0;
 }
 function qRefresh(){clearTimeout(qs.renderT);qs.renderT=setTimeout(qAfter,150);}
@@ -337,4 +350,9 @@ export function viewQueue(){
   ${qDetail(sel,S[sel],can)}
  </section>`;
 }
-setInterval(()=>{if((state.tab==='queue'||tvOpen())&&!document.hidden)qAfter();},20000);   /* the "waiting 7 min" figures tick up */
+/* the "waiting 7 min" figures tick up. Without live updates (refused past the Free plan's 200 connections, or
+   dropped) the same tick re-reads the lines instead, so a queue screen is never more than 20 s behind */
+setInterval(()=>{
+ if(!(state.tab==='queue'||tvOpen())||document.hidden)return;
+ if(qs.ready&&qs.rt!=='SUBSCRIBED')queueSync();else qAfter();
+},20000);

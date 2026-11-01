@@ -3,12 +3,12 @@ import { KINDS, acctHealthHTML, isNet, renderGate } from './cloud.js';
 import { $ } from './helpers.js';
 import { cloud, persist, persistNow, seedDemo } from './state.js';
 import { CLOUD_UI, SB_KEY, SB_LIB, SB_URL, SYNC_KEY, closeCloud, resetLedgerSig, cloudDirtyList, cloudPending, gateBusy, gateView, healthFromError, healthLive, healthReset, healthUpload, installBlock, isDirty, isMissingErr, isOfflineErr, isSeedRow, noteHealth, passwordCheck, pwField, renderCloudBody, rowToAtt, savePassword, saveSynced, saveSyncedSoon, setCloud, sigOf, syncChrome, syncStatusText, syncTilesHTML, syncedLabel, validEmail } from './cloud.js';
-import { CHURCH_PLANS_KEY, FOLLOWUP_MAX, churchPlansBox, clearInvite, followupsFor, inviteBox, myFollowupsHTML, pendingInvite } from './churchPlans.js';
+import { CHURCH_PLANS_KEY, FOLLOWUP_MAX, churchPlansBox, clearInvite, followupsFor, inviteBox, inviteOwner, myFollowupsHTML, pendingInvite, setInviteOwner } from './churchPlans.js';
 import { GRACE_DAYS, clearReadings, clockKnown, followedUp, hasReadings, noteServerTime, readingsGone, visitIsOld } from './retention.js';
 import { render, toast } from './shell.js';
 import { confirmAsk, ok } from './feedback.js';
 import { BOOTHS, EXPO_TOTAL, EXPO_UPCOMING, PROTOCOLS, STATUS_UI, attendees, boothLabel, state, volunteers } from './data.js';
-import { qSafe, queueLeaveFor, queueReset, queueSync } from './queue.js';
+import { qSafe, queueLeaveFor, queuePause, queueReset, queueSync } from './queue.js';
 import { bmi, cat, chipClass, esc, fmt1, initials, redFlag } from './helpers.js';
 import { planNeeds } from './results.js';
 import { MY_PLEDGE_ACTS, emptyDraft, hideModal, isAdminAcct, mayPlace, pledgeFormParts, setVolTab, showModal } from './volunteer.js';
@@ -71,13 +71,17 @@ export async function loadAccount(){
  if(keepDraft)loadPledge(true);else{cloud.pledge=undefined;cloud.pledgeEdit=false;state.mf=null;}
  if(cloud.user&&cloud.notifWatched!==cloud.user.id){cloud.notifWatched=cloud.user.id;notifCountSoon();}   /* the bell count: once per sign-in */
  const m=r.data.membership,c=r.data.church;
- /* an invite link opened on this device: join that church now, approved (it is used once, whatever the answer) */
+ /* an invite link opened on this device: join that church now, approved (it is used once, whatever the answer).
+    An approved staff member or admin is not joined automatically — the code stays, bound to this account, so a
+    different person signing in later on the same desk does not join by accident (cloudAuthEvent drops it). */
  const inv=pendingInvite();
  if(inv&&!(m&&m.status==='approved'&&m.role!=='member')){
   clearInvite();
   const j=await cloud.client.rpc('join_with_invite',{p_code:inv,p_full_name:'',p_phone:''});
   if(j.error)toast(isOfflineErr(j.error.message)?'No connection: open the invite link again when you are online.':(j.error.message||'That invite link did not work.'));
   else{toast('You have joined the church ✓');return loadAccount();}
+ }else if(inv&&cloud.user){
+  setInviteOwner(cloud.user.id);
  }
  cloud.churchId=c?c.id:'';
  noteHealth('account','ok',c&&m?`${c.name} · ${roleLabel(m)}${m.status==='approved'?'':' (waiting for approval)'}`:'Signed in, not in a church yet.');
@@ -96,7 +100,7 @@ export function acctGate(){
 /* forget the church data saved on this device (another church's account, or no longer staff) */
 export function dropChurchData(){
  attendees.length=0;volunteers.length=0;
- cloud.synced={att:{},vol:{}};cloud.rejected={};cloud.since={att:'',vol:''};cloud.lastFull=0;
+ cloud.synced={att:{},vol:{}};cloud.rejected={};freshCursor();cloud.lastFull=0;
  queueReset();
  try{localStorage.removeItem(SYNC_KEY);localStorage.removeItem(CHURCH_KEY);}catch(e){}
  resetLedgerSig();afterMerge();persistNow();
@@ -600,7 +604,7 @@ async function loadNotifs(){
  const rows=r.data||[];
  cloud.notifs=rows;renderNotifs();
 }
-const KIND_L={membership:'Account',placement:'Placement',lead:'Team leader',church:'Church',pledge:'Pledge',register:'Registered',deregister:'Deregistered',unpledge:'Pledge withdrawn',team:'My team',shift:'Shift',expo:'Health Expo'};
+const KIND_L={membership:'Account',join:'Join request',placement:'Placement',lead:'Team leader',church:'Church',pledge:'Pledge',register:'Registered',deregister:'Deregistered',unpledge:'Pledge withdrawn',team:'My team',shift:'Shift',expo:'Health Expo'};
 export function renderNotifs(){
  const el=$('#notifBody');if(!el)return;
  if(!cloud.user){el.innerHTML=acctNote('Sign in to see notifications.');return;}
@@ -630,6 +634,7 @@ export function notifOpen(id){
  const x=(cloud.notifs||[]).find(n=>String(n.id)===String(id));if(!x)return;
  notifClose();
  const staff=cloud.acct&&cloud.acct.membership&&cloud.acct.membership.role!=='member';
+ if(x.kind==='join'){openAcct('church');return;}   /* only admins are told; the approval list is in My church */
  if(staff&&(x.kind==='placement'||x.kind==='team'||x.kind==='pledge'||x.kind==='lead'
    ||x.kind==='register'||x.kind==='deregister'||x.kind==='unpledge')){setVolTab('muster');render();}
  else openAcct('me');
@@ -1041,7 +1046,7 @@ function expoCard(x,admin){
  const [stL,stC]=EXPO_ST[x.status]||[x.status,'watch'];
  const id=qSafe(x.id);
  const needs=x.station_needs||{},placed=x.placed||{};
- const stations=admin?BOOTHS.filter(b=>needs[b.k]).map(b=>`<div class="flex items-center justify-between gap-2 text-[11px] text-[#33504f]"><span class="min-w-0 truncate">${esc(b.label)}</span><span class="flex-none font-bold">${Number(placed[b.k])||0} of ${needs[b.k]} placed</span></div>`).join(''):'';
+ const stations=admin?BOOTHS.filter(b=>needs[b.k]).map(b=>`<div class="flex items-center justify-between gap-2 text-[11px] text-[#33504f]"><span class="min-w-0 truncate">${esc(b.label)}</span><span class="flex-none font-bold">${Number(placed[b.k])||0} of ${Number(needs[b.k])||0} placed</span></div>`).join(''):'';
  const types=(x.doctor_types||[]).join(', ');
  const mine=cloud.pledge&&cloud.pledge.expo_id===x.id;
  return `<div class="border-t border-[#123033]/[.07] py-3">
@@ -1338,7 +1343,14 @@ export function cloudAuthEvent(ev,session){
  if(u){
   const same=cloud.user&&cloud.user.id===u.id;
   cloud.user=u;cloud.gateForce=false;noteHealth('auth','ok','Signed in as '+(u.email||''));
-  if(!same){cloud.mode=true;cloud.blocked=false;cloud.lastFull=0;cloud.since={att:'',vol:''};cloudSync();profileChanged(true);}
+  if(!same){
+   /* An invite link a previous account was offered (it was bound to them when their approved account declined
+      it) must not join this one automatically: drop it before the sync below would spend it. A code still
+      waiting for its anonymous arrival (owner '') is the normal sign-up round trip and is kept. */
+   const own=inviteOwner();
+   if(own&&own!==u.id)clearInvite();
+   cloud.mode=true;cloud.blocked=false;cloud.lastFull=0;freshCursor();resumeCursor();cloudSync();profileChanged(true);
+  }
  }else if(ev==='SIGNED_OUT'||ev==='INITIAL_SESSION'){
   /* A session that ends while the desk is open (expired, or revoked elsewhere) puts the sign-in gate back up:
      on a shared desk the next person must not continue in the previous operator's copy, and "Back to the app"
@@ -1392,7 +1404,7 @@ export async function cloudSignOut(force){
  cloud.view='login';cloud.viewEmail='';cloud.pending=false;cloud.recovery=false;cloud.formErr='';cloud.gateForce=false;cloud.delOpen=false;
  cloud.plans=null;cloud.adminPlans=null;cloud.planEdit=null;try{localStorage.removeItem(CHURCH_PLANS_KEY);}catch(e){}
  cloud.followups=null;cloud.adminFollowups=null;cloud.myFollow=null;cloud.inviteLink=null;clearInvite();   /* a stale invite link must not join the next account on this desk */
- cloud.user=null;cloud.mode=false;cloud.blocked=false;cloud.synced={att:{},vol:{}};cloud.rejected={};cloud.rejectedNote=null;cloud.lastFull=0;cloud.since={att:'',vol:''};
+ cloud.user=null;cloud.mode=false;cloud.blocked=false;cloud.synced={att:{},vol:{}};cloud.rejected={};cloud.rejectedNote=null;cloud.lastFull=0;freshCursor();
  cloud.phase='';cloud.prog={done:0,total:0};cloud.syncedAt=0;   /* the status chrome starts clean for the next account */
  try{localStorage.removeItem(SYNC_KEY);localStorage.removeItem(CHURCH_KEY);}catch(e){}
  resetLedgerSig();
@@ -1447,13 +1459,26 @@ export async function cloudSync(manual){
    }
   }}catch(e){}
   if(cloud.acct)adoptChurch(cloud.churchId);
-  /* A full pull on sign-in, "Sync now" and every 10 minutes (it is the only way to notice rows deleted on another
-     desk); in between, only rows changed since the last pull. */
+  /* A full pull on sign-in, "Sync now" and every 10 minutes — but "full" is two cheap pieces: the rows changed
+     since the last pull with all their columns, plus an id+updated_at pass that is the only way to notice rows
+     deleted on another desk (~15 bytes a row instead of the whole visitor — the difference between ~150 KB and
+     ~8 MB every ten minutes for a 10k-visitor church). In between, only the changed rows. */
   const full=!!manual||!cloud.lastFull||Date.now()-cloud.lastFull>600000;
-  const [ra,rv]=await Promise.all([fetchRows('attendees',full?'':cloud.since.att),fetchRows('volunteers',full?'':cloud.since.vol)]);
-  const changed=mergeRemote('att',ra,full)|mergeRemote('vol',rv,full);
-  noteSince('att',ra);noteSince('vol',rv);
-  if(full)cloud.lastFull=Date.now();
+  const [ra,rv,ia,iv]=await Promise.all([
+   fetchRows('attendees',cloud.since.att),fetchRows('volunteers',cloud.since.vol),
+   full?fetchIds('attendees'):null,full?fetchIds('volunteers'):null]);
+  let changed=mergeRemote('att',ra,false)|mergeRemote('vol',rv,false);
+  noteSince('att',ra);noteSince('vol',rv);noteSeen('att',ra);noteSeen('vol',rv);
+  if(full){
+   changed|=pruneRemote('att',ia)|pruneRemote('vol',iv);
+   /* The cursor only moves forward, so a row stamped before it (committed late, or missed by a page shifting while
+      rows were deleted) would never come back through the changed-since pull. The ids say what exists: fetch any
+      this device lacks or holds an older copy of. A normal full pull finds none and sends no extra request. */
+   const [wa,wv]=await Promise.all([fetchWanted('attendees','att',ia),fetchWanted('volunteers','vol',iv)]);
+   changed|=mergeRemote('att',wa,false)|mergeRemote('vol',wv,false);
+   noteSeen('att',wa);noteSeen('vol',wv);
+   cloud.lastFull=Date.now();
+  }
   /* the same 7-day rule the database applies, on this device, before anything is uploaded: an old record is cleared
      (or dropped) here rather than being sent back after the purge */
   const pruned=applyRetention();
@@ -1488,7 +1513,51 @@ export async function fetchRows(table,since){
  }
  throw new Error('Too many rows to sync in one go');
 }
+/* The deletion check of a full pull needs only each row's id and when it last changed: the ~15-byte version of the
+   table. Full columns for whatever changed arrive separately through fetchRows + mergeRemote. */
+export async function fetchIds(table){
+ const PAGE=500,rows=[];
+ for(let page=0;page<400;page++){
+  const {data,error}=await cloud.client.from(table).select('id,updated_at').order('created_at').order('id').range(page*PAGE,page*PAGE+PAGE-1);
+  if(error)throw error;
+  rows.push(...data);
+  if(data.length<PAGE)return rows;
+ }
+ throw new Error('Too many rows to sync in one go');
+}
 function noteSince(kind,rows){for(const r of rows)if(r.updated_at&&r.updated_at>cloud.since[kind])cloud.since[kind]=r.updated_at;}
+/* Where the pull cursor and the "last copy of each row I fetched" start over: sign-in, sign-out, a church change. The
+   first pull of a session has no cursor, so it fetches every row and fills `seen` completely. */
+function freshCursor(){cloud.since={att:'',vol:''};cloud.seen={att:new Map(),vol:new Map()};}
+/* A page reload keeps its saved copy, so its first sign-in need not download every row again (on the Free plan's
+   5 GB of egress a month, a 10k-visitor church re-downloading ≈ 8 MB on every open — the pressure test's figure for
+   a whole-table pull — would spend it in a few hundred opens). The cursor saved
+   in the same write as the rows (persistNow) resumes the changed-since pull; this sync is still a full one, so the
+   id pass drops what was deleted meanwhile and fetches any row the copy lacks. Used once, for the first sign-in after
+   the page loaded; a church change (adoptChurch → dropChurchData) still starts from nothing. */
+function resumeCursor(){
+ const s=cloud.savedSince;cloud.savedSince=null;
+ if(!s)return;
+ if(typeof s.att==='string'&&attendees.length)cloud.since.att=s.att;
+ if(typeof s.vol==='string'&&volunteers.length)cloud.since.vol=s.vol;
+}
+function noteSeen(kind,rows){const m=cloud.seen[kind];for(const r of rows)if(r.updated_at)m.set(r.id,r.updated_at);}
+/* The rows a full pull still has to fetch by id: every id the database lists that this device does not hold, or whose
+   updated_at is newer than the copy it last fetched (both strings come from the same select, so they compare as text).
+   In small chunks so the request line stays short. */
+const WANT_CHUNK=100;
+async function fetchWanted(table,kind,idRows){
+ if(!idRows)return [];
+ const have=new Set(KINDS[kind].list.map(o=>o.id)),seen=cloud.seen[kind];
+ const want=idRows.filter(r=>!have.has(r.id)||(seen.has(r.id)&&r.updated_at>seen.get(r.id))).map(r=>r.id);
+ const rows=[];
+ for(let i=0;i<want.length;i+=WANT_CHUNK){
+  const {data,error}=await cloud.client.from(table).select('*').in('id',want.slice(i,i+WANT_CHUNK));
+  if(error)throw error;
+  rows.push(...data);
+ }
+ return rows;
+}
 /* remote rows overwrite local ones that have no pending edit; local pending edits win and are uploaded.
    `full` = rows is the complete table, so a local row missing from it was deleted elsewhere. */
 export function mergeRemote(kind,rows,full=true){
@@ -1509,6 +1578,23 @@ export function mergeRemote(kind,rows,full=true){
   }
  }
  for(let i=full?k.list.length-1:-1;i>=0;i--){
+  const o=k.list[i];
+  if(remote.has(o.id))continue;
+  if(!pending.has(o.id)){k.list.splice(i,1);delete sy[o.id];changed=1;}   /* demo leftovers, or deleted on another desk */
+  else delete sy[o.id];                                                    /* edited here but gone there: upload it again */
+ }
+ return changed;
+}
+/* The deletion half of a full pull, fed by fetchIds: `idRows` is {id, updated_at} for every row in the table. The
+   rules are exactly mergeRemote's deletion loop — a local row missing from the list was deleted on another desk and
+   goes, unless it has a pending edit, in which case only its ledger entry is dropped so the push re-uploads it.
+   It never touches the row objects, so a projection pull cannot blank local data. */
+export function pruneRemote(kind,idRows){
+ if(!idRows)return 0;
+ const k=KINDS[kind],sy=cloud.synced[kind],remote=new Set(idRows.map(r=>r.id));
+ const pending=new Set(cloudDirtyList(kind).map(o=>o.id));      /* snapshotted before the ledger changes */
+ let changed=0;
+ for(let i=k.list.length-1;i>=0;i--){
   const o=k.list[i];
   if(remote.has(o.id))continue;
   if(!pending.has(o.id)){k.list.splice(i,1);delete sy[o.id];changed=1;}   /* demo leftovers, or deleted on another desk */
@@ -1686,9 +1772,22 @@ export async function cloudPush(){
 
 /* ---------- live updates from other desks ---------- */
 export function startRealtime(){
- if(cloud.channel||!cloud.client)return;
+ if(!cloud.client)return;
+ if(cloud.channel&&cloud.liveChurch===cloud.churchId)return;
+ if(cloud.channel){try{cloud.client.removeChannel(cloud.channel);}catch(e){}cloud.channel=null;}   /* another church: its filter is stale */
  const ch=cloud.client.channel('newstart-live');
- for(const kind of ['att','vol'])ch.on('postgres_changes',{event:'*',schema:'public',table:KINDS[kind].table},p=>onRemoteChange(kind,p));
+ /* Inserts and updates are filtered to this church on the server. Realtime authorises every change against every
+    subscriber, so on one shared project a filter keeps other churches' traffic off this desk's checks (Supabase's
+    Postgres Changes guide recommends exactly this). Deletes cannot be filtered without `replica identity full`, so
+    they stay unfiltered and onRemoteChange keeps judging them by church as before. */
+ const mine=cloud.churchId?{filter:'church_id=eq.'+cloud.churchId}:{};
+ for(const kind of ['att','vol']){
+  const table=KINDS[kind].table,on=p=>onRemoteChange(kind,p);
+  ch.on('postgres_changes',{event:'INSERT',schema:'public',table,...mine},on)
+    .on('postgres_changes',{event:'UPDATE',schema:'public',table,...mine},on)
+    .on('postgres_changes',{event:'DELETE',schema:'public',table},on);
+ }
+ cloud.liveChurch=cloud.churchId;
  /* the bell rides the same channel: a notification for this account arrives without any polling */
  if(cloud.user)ch.on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:'user_id=eq.'+cloud.user.id},p=>onNotifRow(p.new));
  ch.subscribe(st=>{cloud.liveSt=st;healthLive('live',st);});cloud.channel=ch;
@@ -1699,6 +1798,17 @@ export function stopRealtime(){
  if(cloud.channel&&cloud.client){try{cloud.client.removeChannel(cloud.channel);}catch(e){}}
  queueReset();
  cloud.channel=null;
+}
+/* A desk out of sight (phone in a pocket, laptop lid shut) gives its realtime connection back after two minutes: the
+   Free plan allows 200 devices connected at once and counts every change once per listening device, so a desk
+   nobody is looking at should hold neither. Unlike stopRealtime this keeps the queue and every row on the device:
+   coming back runs a sync (main.js), which reopens the channels and fetches whatever changed meanwhile. Removing the
+   last channel closes the socket itself (supabase-js removeChannel). */
+export function pauseRealtime(){
+ if(!cloud.client)return;
+ for(const k of ['channel','notifChannel'])if(cloud[k]){try{cloud.client.removeChannel(cloud[k]);}catch(e){}cloud[k]=null;}
+ cloud.liveSt='';queuePause();
+ noteHealth('live','off','Paused while the app is out of sight. It reconnects when you come back.');
 }
 export function onRemoteChange(kind,p){
  const k=KINDS[kind],sy=cloud.synced[kind];

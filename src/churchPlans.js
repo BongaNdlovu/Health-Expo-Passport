@@ -277,15 +277,30 @@ async function loadMyFollowups(){
 /* ================= INVITE LINKS =================
    A church admin shares a link (…/?join=CODE). Whoever opens it and signs in joins that church at once, approved,
    as a member or as staff: no searching for the church, no waiting for approval. The code waits in localStorage
-   through the sign-up email round trip, and loadAccount() uses it after the next sign-in. */
+   through the sign-up email round trip, and loadAccount() uses it after the next sign-in.
+   The stored value is {"c":code,"u":user id}. `u` records whose sign-in the code is waiting on: an approved staff
+   member who opens a link keeps it unspent (loadAccount declines to consume it), so it is bound to them there —
+   and when a different account signs in on the same desk, cloudAuthEvent drops it instead of joining that person
+   automatically. A bare code (an older link, or a test) still reads as before. */
 export const INVITE_KEY='newstart.invite.v1';
-export const pendingInvite=()=>{try{return localStorage.getItem(INVITE_KEY)||'';}catch(e){return '';}};
+export const pendingInvite=()=>{try{
+ const v=localStorage.getItem(INVITE_KEY)||'';
+ if(!v)return '';
+ try{const j=JSON.parse(v);return j&&typeof j.c==='string'?j.c:v;}catch(e){return v;}
+}catch(e){return '';}};
+export const inviteOwner=()=>{try{
+ const v=localStorage.getItem(INVITE_KEY)||'';
+ try{const j=JSON.parse(v);return j&&typeof j.u==='string'?j.u:'';}catch(e){return '';}
+}catch(e){return '';}};
+export const setInviteOwner=uid=>{try{
+ const c=pendingInvite();if(c)localStorage.setItem(INVITE_KEY,JSON.stringify({c,u:uid||''}));
+}catch(e){}};
 export const clearInvite=()=>{try{localStorage.removeItem(INVITE_KEY);}catch(e){}};
 (function takeInvite(){
  try{
   const q=new URLSearchParams(location.search),c=(q.get('join')||'').toLowerCase();
   if(!/^[0-9a-f]{32}$/.test(c))return;
-  localStorage.setItem(INVITE_KEY,c);
+  localStorage.setItem(INVITE_KEY,JSON.stringify({c,u:''}));
   q.delete('join');history.replaceState(null,'',location.pathname+(q.toString()?'?'+q:'')+location.hash);
  }catch(e){}
 })();

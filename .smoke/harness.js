@@ -36,9 +36,9 @@ const EXPORTS = [
   'firstName', 'initials', 'careNotes',
   'cloud', 'cloudInit', 'cloudSync', 'cloudPush', 'cloudDirtyList', 'cloudPending', 'cloudSignOut', 'cloudAuthEvent',
   'cloudSignIn', 'onRemoteChange', 'KINDS', 'sigOf', 'isSeedRow', 'mergeRemote', 'renderCloudBody', 'setCloud',
-  'startRealtime', 'stopRealtime', 'saveSynced', 'loadSynced', 'viewNoVisitor', 'CLOUD_UI', 'attToRow', 'volToRow',
+  'startRealtime', 'stopRealtime', 'pauseRealtime', 'saveSynced', 'loadSynced', 'viewNoVisitor', 'CLOUD_UI', 'attToRow', 'volToRow',
   'rowToAtt', 'rowToVol', 'openCloud', 'closeCloud', 'afterMerge',
-  'showAllCare', 'filterVisitors', 'visitorsToShow', 'fetchRows',
+  'showAllCare', 'filterVisitors', 'visitorsToShow', 'fetchRows', 'fetchIds', 'pruneRemote',
   'gateState', 'renderGate', 'gateDemo', 'togglePass',
   'gateView', 'cloudSignUp', 'cloudResend', 'cloudForgot', 'cloudNewPassword', 'passwordProblem', 'validEmail',
   'waNumber', 'waMessage', 'sendWhatsApp', 'openEmail', 'sendEmail', 'mailtoHref', 'toggleInterest', 'onPrayer', 'reservePouch', 'followUpCard', 'INT',
@@ -52,7 +52,7 @@ const EXPORTS = [
   'manageChurch', 'saveChurch', 'inChurch', 'conflictOn', 'dropChurchData', 'adoptChurch', 'healthHTML',
   'planFor', 'PRICE_DATE', 'ACTIONS', 'FOOD_WHY', 'urgentOf', 'DISCLAIMER', 'PRECAUTIONS', 'openFood', 'closeFood', 'problemOf',
   'churchPlanList', 'chooseChurchPlan', 'editChurchPlan', 'saveChurchPlan', 'deleteChurchPlan', 'DEMO_CHURCH_PLANS',
-  'followupList', 'chooseFollowup', 'setFollowup', 'makeInvite', 'cancelInvites', 'pendingInvite', 'nextBadge', 'INVITE_KEY',
+  'followupList', 'chooseFollowup', 'setFollowup', 'makeInvite', 'cancelInvites', 'pendingInvite', 'inviteOwner', 'setInviteOwner', 'nextBadge', 'INVITE_KEY',
   'health', 'noteHealth', 'healthReset', 'healthTest', 'statusPanelHTML', 'homeHealthHTML', 'acctHealthHTML', 'qStateBar',
   'SERVE_TABS', 'viewProfile', 'profGate', 'gateBack', 'profPassword', 'profDeleteAsk', 'profDeleteTyped', 'profDeleteGo',
   'profileChanged', 'passwordCheck', 'savePassword',
@@ -889,24 +889,27 @@ function makeServer() {
   const srv = { tables: { attendees: new Map(), volunteers: new Map() }, offline: false, staff: true, goodPassword: 'right',
     calls: [], handlers: [], authCb: null, seq: 0, maxRows: 1000, users: new Map(), signupMode: 'confirm' };
   srv.reset = () => { srv.tables.attendees.clear(); srv.tables.volunteers.clear(); srv.offline = false; srv.staff = true; srv.calls.length = 0; srv.users.clear(); srv.signupMode = 'confirm'; srv.rpcs = null; srv.rtState = ''; };
-  srv.emit = (table, payload) => srv.handlers.filter(h => h.table === table).forEach(h => h.cb(payload));
+  /* a handler hears its own event type ('*' hears all), like Realtime; the server-side church filter is recorded
+     (srv.handlers[].filter) for the tests to read, not applied: the fake's rows carry no church */
+  srv.emit = (table, payload) => srv.handlers.filter(h => h.table === table && (!h.event || h.event === '*' || h.event === payload.eventType)).forEach(h => h.cb(payload));
   const created = () => new Date(Date.now() + srv.seq++ * 1000).toISOString();
   const valid = (t, row) => t === 'attendees' ? /^EXPO-[0-9]{3,4}$/.test(row.id) && String(row.name || '').trim().length > 0
                                               : /^VOL-[0-9]+$/.test(row.id) && String(row.name || '').trim().length > 0;
   class Q {
-    constructor(t) { this.t = t; this.op = 'select'; this.f = []; this.gte_ = []; this.sort = []; this.rng = null; this.one = false; }
-    select() { return this; }
+    constructor(t) { this.t = t; this.op = 'select'; this.cols = ''; this.f = []; this.gte_ = []; this.in_ = []; this.sort = []; this.rng = null; this.one = false; }
+    select(cols) { this.cols = !cols || cols === '*' ? '' : cols; return this; }
     insert(row) { this.op = 'insert'; this.row = row; return this; }
     upsert(row, opts) { this.op = 'upsert'; this.row = row; srv.lastConflict = opts && opts.onConflict; return this; }
     eq(c, v) { this.f.push([c, v]); return this; }
     is(c, v) { this.f.push([c, v]); return this; }          /* PostgREST's IS NULL */
     gte(c, v) { this.gte_.push([c, v]); return this; }
+    in(c, vs) { this.in_.push([c, vs]); return this; }
     order(c, o) { this.sort.push([c, !o || o.ascending !== false]); return this; }
     range(a, b) { this.rng = [a, b]; return this; }
     maybeSingle() { this.one = true; return this; }
     then(res, rej) { return this.run().then(res, rej); }
     async run() {
-      srv.calls.push(this.op + ':' + this.t + (this.row ? ':' + this.row.id : '') + (this.rng ? ':range' + this.rng[0] : '') + (this.gte_.length ? ':since' : ''));
+      srv.calls.push(this.op + ':' + this.t + (this.cols ? ':' + this.cols : '') + (this.row ? ':' + this.row.id : '') + (this.rng ? ':range' + this.rng[0] : '') + (this.gte_.length ? ':since' : '') + (this.in_.length ? ':in' + this.in_[0][1].length : ''));
       if (srv.offline) return { data: null, error: { message: 'TypeError: Failed to fetch' } };
       const tbl = srv.tables[this.t];
       if (!tbl) return { data: null, error: { code: 'PGRST205', message: 'Could not find the table in the schema cache' } };
@@ -914,6 +917,7 @@ function makeServer() {
         let rows = srv.staff ? [...tbl.values()] : [];        /* RLS: non-staff silently see nothing */
         this.f.forEach(([c, v]) => { rows = rows.filter(r => r[c] === v); });
         this.gte_.forEach(([c, v]) => { rows = rows.filter(r => String(r[c]) >= String(v)); });
+        this.in_.forEach(([c, vs]) => { rows = rows.filter(r => vs.includes(r[c])); });
         if (this.sort.length) rows.sort((a, b) => { for (const [c, asc] of this.sort) { const x = String(a[c]), y = String(b[c]); if (x !== y) return (x < y ? -1 : 1) * (asc ? 1 : -1); } return 0; });
         /* PostgREST caps every response at max-rows (1000 by default), whatever range was asked for */
         const [from, to] = this.rng || [0, Infinity];
@@ -991,8 +995,9 @@ function makeServer() {
       if (srv.rpcs && srv.rpcs[name]) return srv.rpcs[name](args || {});
       return { data: srv.staff, error: null };
     },
-    channel() { const ch = { on(_t, filter, cb) { srv.handlers.push({ table: filter.table, cb }); return ch; }, subscribe(cb) { if (cb && srv.rtState) cb(srv.rtState); return ch; } }; return ch; },
-    removeChannel() { srv.handlers.length = 0; },
+    channel() { const ch = { on(_t, filter, cb) { srv.handlers.push({ ch, table: filter.table, event: filter.event, filter: filter.filter || '', cb }); return ch; }, subscribe(cb) { if (cb && srv.rtState) cb(srv.rtState); return ch; } }; return ch; },
+    /* like supabase-js: only that channel's listeners go */
+    removeChannel(ch) { for (let i = srv.handlers.length - 1; i >= 0; i--) if (srv.handlers[i].ch === ch) srv.handlers.splice(i, 1); },
   };
   return srv;
 }
@@ -2343,7 +2348,7 @@ function makeServer() {
 
   /* incremental pulls and deletions */
   srv.calls.length = 0;
-  const lateRow = { id: 'EXPO-4000', name: 'Late Arrival', age: 33, sex: 'Male', phone: '', height_cm: 165, s: {}, interests: {}, prayer: '', done: false, created_at: iso(N + 5), updated_at: new Date(Date.now() + 1000000).toISOString() };
+  const lateRow = { id: 'EXPO-4000', name: 'Late Arrival', age: 33, sex: 'Male', phone: '', height_cm: 165, s: {}, interests: {}, prayer: '', done: false, created_at: iso(N + 5), updated_at: new Date(Date.now() + (srv.seq + 10) * 1000).toISOString() };
   srv.tables.attendees.set('EXPO-4000', lateRow);
   await g.cloudSync();
   const incr = srv.calls.filter(c => /^select:(attendees|volunteers)/.test(c));
@@ -2355,29 +2360,115 @@ function makeServer() {
   ok('the next poll is down to one small request per table', polls.every(c => /:since/.test(c)) && new Set(pollTables).size === polls.length
     && pollTables.includes('attendees') && pollTables.includes('volunteers'), polls.join());
   ok('…and picked up the new visitor', g.attendees.length === N + 1 && g.attendees.some(a => a.id === 'EXPO-4000'));
+  ok('a routine poll carries no deletion pass (that is the full reconcile\'s job)', !polls.some(c => c.includes(':id,updated_at')), polls.join());
   srv.tables.attendees.delete('EXPO-4000');
   await g.cloudSync();
   ok('a routine poll does not mistake "unchanged" for "deleted"', g.attendees.length === N + 1);
   srv.calls.length = 0;
   await g.cloudSync(true);
-  ok('Sync now does the full reconcile and notices the deletion', g.attendees.length === N && srv.calls.filter(c => /^select:attendees:range/.test(c)).length === 7, g.attendees.length);
+  /* the full reconcile now pages the CHEAP list (id + updated_at) to find deletions; the fat columns ride only
+     on the "changed since" pull */
+  ok('Sync now does the full reconcile and notices the deletion', g.attendees.length === N && srv.calls.filter(c => /^select:attendees:id,updated_at:range/.test(c)).length === 7, g.attendees.length + ' / ' + srv.calls.filter(c => c.includes(':id,updated_at')).length);
+  ok('the deletion check asked for ids and timestamps, not whole visitors',
+    srv.calls.some(c => /^select:attendees:id,updated_at:range0$/.test(c)) && srv.calls.some(c => /^select:volunteers:id,updated_at:range0$/.test(c))
+    && !srv.calls.some(c => /^select:attendees:id,updated_at:range.*:since/.test(c)), srv.calls.filter(c => c.includes(':id,updated_at')).join());
   ok('rows are not lost when a full pull is split across pages', g.attendees.every(a => srv.tables.attendees.has(a.id)) && g.volunteers.length === VN);
+  ok('a normal full pull fetches no extra rows by id (nothing is missing)', !srv.calls.some(c => /:in\d+$/.test(c)), srv.calls.filter(c => /:in\d+$/.test(c)).join());
+
+  /* a full pull heals what the changed-since cursor skipped: a row stamped before the cursor (committed late) that this
+     desk never received, and a change stamped before the cursor on a row it already holds */
+  {
+    const seenOf = id => g.cloud.seen.att.get(id);
+    const target = g.attendees.find(a => seenOf(a.id) && Date.parse(seenOf(a.id)) + 1 < Date.parse(g.cloud.since.att) && !g.cloudDirtyList('att').some(d => d.id === a.id));
+    const orig = { ...srv.tables.attendees.get(target.id) };
+    srv.tables.attendees.set('EXPO-4200', { ...lateRow, id: 'EXPO-4200', name: 'Skipped By Cursor', created_at: iso(N + 6), updated_at: new Date(Date.now() - 864e5).toISOString() });
+    srv.tables.attendees.set(target.id, { ...orig, name: 'Renamed Elsewhere', updated_at: new Date(Date.parse(seenOf(target.id)) + 1).toISOString() });
+    await g.cloudSync();
+    ok('(premise) a routine poll cannot see rows stamped before its cursor',
+      !g.attendees.some(a => a.id === 'EXPO-4200') && g.attendees.find(a => a.id === target.id).name !== 'Renamed Elsewhere');
+    srv.calls.length = 0;
+    await g.cloudSync(true);
+    const byId = srv.calls.filter(c => /:in\d+$/.test(c));
+    ok('Sync now restores a visitor the cursor skipped and a change stamped before it',
+      g.attendees.some(a => a.id === 'EXPO-4200') && g.attendees.find(a => a.id === target.id).name === 'Renamed Elsewhere', byId.join());
+    ok('…by asking for just those two rows, not the table', byId.length === 1 && byId[0] === 'select:attendees:in2', byId.join());
+    srv.calls.length = 0;
+    await g.cloudSync(true);
+    ok('…and once healed the next full pull asks for nothing extra', !srv.calls.some(c => /:in\d+$/.test(c)), srv.calls.filter(c => /:in\d+$/.test(c)).join());
+    srv.tables.attendees.delete('EXPO-4200');
+    srv.tables.attendees.set(target.id, { ...orig, updated_at: new Date(Date.now() + (srv.seq + 20) * 1000).toISOString() });
+    await g.cloudSync(true);
+    ok('the healing test leaves the desk as it found it', g.attendees.length === N && g.attendees.find(a => a.id === target.id).name === orig.name, g.attendees.length + ' / ' + N);
+  }
+
+  /* Free-plan fit: live updates filtered to the desk's church, given back when the app is out of sight, and a page
+     reload that resumes the pull instead of downloading every row again */
+  {
+    const C0 = g.cloud, keepChurch = C0.churchId;
+    C0.churchId = 'ch-free'; g.startRealtime();
+    const live = srv.handlers.filter(h => h.table === 'attendees' || h.table === 'volunteers');
+    ok('live inserts and updates are filtered to this church on the server; deletes stay unfiltered',
+      live.length === 6 && live.filter(h => h.event !== 'DELETE').every(h => h.filter === 'church_id=eq.ch-free')
+      && live.filter(h => h.event === 'DELETE').length === 2 && live.filter(h => h.event === 'DELETE').every(h => h.filter === ''),
+      JSON.stringify(live.map(h => h.table + ':' + h.event + ':' + h.filter)));
+    C0.churchId = keepChurch; g.startRealtime();
+    ok('…and a church change re-opens the channel with the new filter', srv.handlers.filter(h => h.table === 'attendees' && h.event === 'INSERT').every(h => h.filter === (keepChurch ? 'church_id=eq.' + keepChurch : '')),
+      JSON.stringify(srv.handlers.map(h => h.filter)));
+
+    const rowsBefore = g.attendees.length;
+    g.pauseRealtime();
+    ok('out of sight, the desk gives its realtime connection back and keeps every row', C0.channel === null && srv.handlers.length === 0 && g.attendees.length === rowsBefore, srv.handlers.length);
+    await g.cloudSync();
+    ok('…and the next sync (coming back into sight) reopens it', !!C0.channel && srv.handlers.some(h => h.table === 'attendees'), srv.handlers.length);
+
+    await g.cloudSync(true); g.persistNow();
+    const saved = JSON.parse(store.get('newstart.passport.v2'));
+    ok('the pull cursor is saved in the same write as the rows', saved.since && saved.since.att === C0.since.att && !!saved.since.att, JSON.stringify(saved.since));
+    const someone = g.attendees[5], orig = { ...srv.tables.attendees.get(someone.id) };
+    srv.tables.attendees.set(someone.id, { ...orig, name: 'Changed While Closed', updated_at: new Date(Date.now() + (srv.seq + 30) * 1000).toISOString() });
+    const user = C0.user;
+    C0.user = null; g.loadPersisted();                               /* a page reload: the saved copy comes back */
+    srv.calls.length = 0;
+    g.cloudAuthEvent('SIGNED_IN', { user });
+    for (let i = 0; i < 300 && C0.busy; i++) await sleep(10);
+    const att = srv.calls.filter(c => /^select:attendees/.test(c));
+    ok('after a reload the first sync resumes from the saved cursor: no whole-table download',
+      !att.some(c => /^select:attendees:range\d+$/.test(c)) && att.some(c => /^select:attendees:range0:since$/.test(c)) && att.some(c => /^select:attendees:id,updated_at:range0$/.test(c)), att.join());
+    ok('…and still picks up what changed while the page was closed', g.attendees.find(a => a.id === someone.id).name === 'Changed While Closed' && g.attendees.length === N, g.attendees.length);
+    srv.tables.attendees.set(someone.id, { ...orig, updated_at: new Date(Date.now() + (srv.seq + 40) * 1000).toISOString() });
+    await g.cloudSync(true);
+  }
 
   /* removing a visitor who wandered off (PLAN-remove-visitor TST-01) */
   {
     const C0 = g.cloud, keepAcct = C0.acct, keepRpcs = srv.rpcs;
+    /* srv.queue models the active queue lines the real rule reads: attendee_id → {station, status}. Only
+       'waiting'/'serving' rows are in it, like the database's partial unique index. */
+    srv.queue = new Map();
     srv.rpcs = { ...(keepRpcs || {}), remove_visitor: a => {
       srv.calls.push('rpc:remove_visitor');
       if (srv.offline) return { data: null, error: { message: 'TypeError: Failed to fetch' } };
       if (srv.noRemoveFn) return { data: null, error: { code: 'PGRST202', message: 'Could not find the function public.remove_visitor' } };
       const had = srv.tables.attendees.get(a.p_id);
       if (srv.refuseDelete || !had) return { data: false, error: null };
+      /* the real rule (S-1): an admin removes any visitor of their church; a team leader only one standing in
+         their own booth's line right now */
+      const m = (g.cloud.acct && g.cloud.acct.membership) || {};
+      const vol = m.volunteer_id && g.volunteers.find(v => v.id === m.volunteer_id);
+      const isLead = m.role !== 'admin' && !!vol && !!vol.lead;
+      if (isLead) {
+        const line = srv.queue.get(a.p_id);
+        if (!line || line.station !== vol.booth || (line.status !== 'waiting' && line.status !== 'serving'))
+          return { data: false, error: null };
+      }
       srv.tables.attendees.delete(a.p_id);
+      srv.queue.delete(a.p_id);
       srv.emit('attendees', { eventType: 'DELETE', old: had });
       return { data: true, error: null };
     } };
-    for (const [id, name] of [['EXPO-4100', 'Wandered Off'], ['EXPO-4101', 'Also Gone']])
-      srv.tables.attendees.set(id, { ...lateRow, id, name, updated_at: new Date().toISOString() });
+    for (const [id, name] of [['EXPO-4100', 'Wandered Off'], ['EXPO-4101', 'Also Gone'], ['EXPO-4102', 'Third Wanderer']])
+      /* stamped past the fake clock's watermark, like a real arrival after the last pull */
+      srv.tables.attendees.set(id, { ...lateRow, id, name, updated_at: new Date(Date.now() + (srv.seq + 10) * 1000).toISOString() });
     await g.cloudSync(true);
     /* the sync re-reads my_account (the fake server has none), so the role is set after the pull */
     C0.acct = { ...(keepAcct || {}), membership: { role: 'admin', status: 'approved', church_id: C0.churchId } };
@@ -2403,13 +2494,25 @@ function makeServer() {
     /* a team leader: an ordinary member whose linked volunteer leads a station (mayPlace) */
     g.volunteers.push({ ...g.volunteers[0], id: 'VOL-9990', name: 'Station Lead', lead: true, booth: 'bp' });
     C0.acct = { ...(keepAcct || {}), membership: { role: 'member', status: 'approved', church_id: C0.churchId, volunteer_id: 'VOL-9990' } };
+    /* the new rule (S-1): the leader's removal reaches only a visitor standing in their own booth's line.
+       EXPO-4101 waits at their booth; EXPO-4102 is registered but in nobody's line yet. */
+    srv.queue.set('EXPO-4101', { station: 'bp', status: 'waiting' });
+    srv.calls.length = 0;
+    await g.removeVisitorAsk('EXPO-4102');
+    ok('TST-01-V8 a team leader cannot remove a visitor outside their own line',
+      g.attendees.some(a => a.id === 'EXPO-4102') && srv.tables.attendees.has('EXPO-4102')
+      && srv.calls.filter(c => c === 'rpc:remove_visitor').length === 1, srv.calls.join());
     srv.calls.length = 0;
     await Promise.all([g.removeVisitorAsk('EXPO-4101'), g.removeVisitorAsk('EXPO-4101')]);
-    ok('TST-01-V7 a team leader removes a visitor', !g.attendees.some(a => a.id === 'EXPO-4101') && !srv.tables.attendees.has('EXPO-4101'));
+    ok('TST-01-V7 a team leader removes a visitor who is in their line', !g.attendees.some(a => a.id === 'EXPO-4101') && !srv.tables.attendees.has('EXPO-4101'));
     ok('TST-01-V3 a double tap sends one request', srv.calls.filter(c => c === 'rpc:remove_visitor').length === 1, srv.calls.join());
+    srv.queue.delete('EXPO-4102');
+    C0.acct = { ...(keepAcct || {}), membership: { role: 'admin', status: 'approved', church_id: C0.churchId } };
+    await g.removeVisitorAsk('EXPO-4102');
+    ok('TST-01-V9 an admin still removes a visitor no leader line can claim', !g.attendees.some(a => a.id === 'EXPO-4102') && !srv.tables.attendees.has('EXPO-4102'));
     g.volunteers.splice(g.volunteers.findIndex(v => v.id === 'VOL-9990'), 1);
     await g.cloudSync(true);
-    ok('TST-01-V3b a full pull does not bring them back', !g.attendees.some(a => a.id === 'EXPO-4100' || a.id === 'EXPO-4101') && g.attendees.length === before - 2);
+    ok('TST-01-V3b a full pull does not bring them back', !g.attendees.some(a => a.id === 'EXPO-4100' || a.id === 'EXPO-4101' || a.id === 'EXPO-4102') && g.attendees.length === before - 3);
     C0.acct = keepAcct; srv.rpcs = keepRpcs;
   }
 
@@ -2424,6 +2527,17 @@ function makeServer() {
   srv.offline = false;
   const upT = Date.now(); await g.cloudSync(true); const upMs = Date.now() - upT;
   ok('the whole backlog uploads on reconnect (' + upMs + ' ms)', g.cloudPending() === 0 && [...srv.tables.attendees.keys()].filter(k => /^EXPO-5\d{3}$/.test(k)).length === 120, g.cloudPending());
+
+  /* the storage near-full warning (R4): a saved copy approaching the browser's ~5 MB budget says so while the
+     volunteer can still act, not only after a write is refused */
+  {
+    const probe = { ...g.attendees[0], id: 'EXPO-9001', name: 'Storage Probe', prayer: 'x'.repeat(Math.round(4.4 * 1024 * 1024)) };
+    g.attendees.push(probe);
+    g.persistNow(); await sleep(10);
+    ok('a saved copy near the browser\'s budget warns before it is refused (R4)', $el('toastMsg').textContent.includes('nearly full'), $el('toastMsg').textContent);
+    g.attendees.splice(g.attendees.indexOf(probe), 1);
+    g.persistNow();
+  }
 
   /* a burst of live changes from other desks */
   const burstT = Date.now();
@@ -2660,6 +2774,13 @@ function makeServer() {
     ok('…a draft offers Open for members, an open expo Mark done, and every expo Edit and Delete',
       /data-action="expo-status" data-args="ex-2" data-status="open"/.test(sheet()) && /data-action="expo-status" data-args="ex-1" data-status="done"/.test(sheet()) && /data-action="expo-edit" data-args="ex-1"/.test(sheet()) && /data-action="expo-delete" data-args="ex-1"/.test(sheet()));
     ok('…expo names from the database are escaped', !sheet().includes('<b>Health</b>') && sheet().includes('&lt;b&gt;Health'));
+    /* the station numbers come from a JSON column: a hostile value must land as 0, not as markup (S-5) */
+    { const keepNeeds = expoList[0].station_needs;
+      expoList[0].station_needs = { bp: '<img src=x onerror=alert(1)>' };
+      g.openAcct('church'); await sleep(40);
+      ok('…station needs from the database are read as numbers, never as markup (S-5)', / of 0 placed/.test(sheet()) && !sheet().includes('<img') && !sheet().includes('&lt;img'), sheet().match(/.{0,40}placed/) && sheet().match(/.{0,40}placed/)[0]);
+      expoList[0].station_needs = keepNeeds; g.openAcct('church'); await sleep(40);
+    }
     ok('…and a past sign-up deadline says closed', /Sign-ups closed on/.test(sheet()));
     shots.push(sheet());
     g.newExpo('ch-a'); sheet();
@@ -2763,6 +2884,20 @@ function makeServer() {
     ok('signing in with an invite link joins the church at once, approved, and uses the link up', rc.includes('joininv:fedcba9876543210fedcba9876543210') && g.pendingInvite() === ''
       && g.cloud.acct.membership.status === 'approved' && g.cloud.acct.membership.role === 'staff', rc.join());
     Object.assign(me, meBefore); await g.loadAccount();
+    /* a link bound to one account must not join the next one on a shared desk (S-2) */
+    {
+      const keep = { user: C.user, mode: C.mode, lastFull: C.lastFull, since: JSON.stringify(C.since), ready: C.ready, status: C.status, watched: C.notifWatched };
+      localStorage.setItem(g.INVITE_KEY, JSON.stringify({ c: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', u: 'user-a' }));
+      g.cloudAuthEvent('SIGNED_IN', { user: { id: 'user-b', email: 'b@example.org' } }); await sleep(30);
+      ok('an invite bound to another account is dropped when someone else signs in (S-2)', g.pendingInvite() === '' && g.inviteOwner() === '', g.pendingInvite());
+      localStorage.setItem(g.INVITE_KEY, JSON.stringify({ c: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', u: '' }));
+      g.cloudAuthEvent('SIGNED_IN', { user: { id: 'user-c', email: 'c@example.org' } }); await sleep(30);
+      ok('…but a code still waiting for its arrival is kept, and now belongs to the staff account it was shown to',
+        g.pendingInvite() === 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' && g.inviteOwner() === 'user-c', g.pendingInvite() + ' / ' + g.inviteOwner());
+      localStorage.removeItem(g.INVITE_KEY);
+      C.user = keep.user; C.mode = keep.mode; C.lastFull = keep.lastFull; C.since = JSON.parse(keep.since);
+      C.ready = keep.ready; C.status = keep.status; C.notifWatched = keep.watched; g.renderGate();
+    }
 
     /* the platform admin */
     me.platform_admin = true;
@@ -3076,6 +3211,8 @@ function makeServer() {
     r = await as(U.dave, `select public.join_church($1, 'Dave Dlamini', '082 000 0000')`, [A]);
     const daveM = await sys(`select role, status, full_name from public.memberships where user_id = $1`, [U.dave]);
     ok('a person who joins a church waits as a pending member', !r.error && daveM[0].role === 'member' && daveM[0].status === 'pending' && daveM[0].full_name === 'Dave Dlamini', r.error ? r.error.message : JSON.stringify(daveM));
+    const nDave = await sys(`select title from public.notifications where kind = 'join' and church_id = $1`, [A]);
+    ok('a join request tells the church admins who asked', nDave.length > 0 && nDave.every(x => x.title === 'Join request: Dave Dlamini'), JSON.stringify(nDave));
     r = await as(U.dave, `select count(*)::int n from public.attendees`);
     ok('a member sees no visitor data', !r.error && r.rows[0].n === 0);
     r = await as(U.dave, `select * from public.church_members($1)`, [A]);
@@ -3109,6 +3246,24 @@ function makeServer() {
     r = await as(U.frank, `select public.join_church($1)`, [A]);
     const r6 = await as(U.alice, `select public.link_member($1, 'EXPO-001')`, [U.frank]);
     ok('one badge cannot be linked to two members', !r.error && !!r6.error && /already linked/.test(r6.error.message), (r.error || r6.error || {}).message);
+    {
+      /* the app sends no name with a plain join: two people with no name on their account, asking within the same hour,
+         must each reach the admins (named by email) — not collapse into one "someone" that hides the second */
+      const NB = ['00000000-0000-4000-8000-0000000000b1', '00000000-0000-4000-8000-0000000000b2'];
+      for (const [i, id] of NB.entries()) await sys(`insert into auth.users (id, email, email_confirmed_at) values ($1, $2, now())`, [id, 'nameless' + (i + 1) + '@example.org']);
+      const j1 = await as(NB[0], `select public.join_church($1)`, [A]), j2 = await as(NB[1], `select public.join_church($1)`, [A]);
+      const titles = async () => (await sys(`select title from public.notifications where kind = 'join' and church_id = $1 and title like 'Join request: nameless%'`, [A])).map(x => x.title);
+      const t1 = await titles();
+      ok('two requests without names in one hour both reach the admins, named by email and never "someone"',
+        !j1.error && !j2.error && new Set(t1).size === 2 && t1.includes('Join request: nameless1@example.org') && t1.includes('Join request: nameless2@example.org') && !t1.some(x => /someone/.test(x)), JSON.stringify(t1));
+      await sys(`delete from public.memberships where user_id = $1`, [NB[0]]);
+      const j3 = await as(NB[0], `select public.join_church($1)`, [A]);
+      const t3 = await titles();
+      ok('…while the same person asking again within the hour does not repeat the notice', !j3.error && t1.length > 0 && t3.length === t1.length, t1.length + ' → ' + t3.length);
+      await sys(`delete from public.memberships where user_id = any($1::uuid[])`, [NB]);
+      await sys(`delete from public.notifications where kind = 'join' and title like 'Join request: nameless%'`);
+      await sys(`delete from auth.users where id = any($1::uuid[])`, [NB]);
+    }
     r = await as(U.alice, `select public.set_member($1, 'member', 'approved')`, [U.frank]);
     ok('an account that has not confirmed its email cannot be approved', !!r.error && /confirmed/.test(r.error.message), r.error && r.error.message);
     await sys(`delete from public.attendees where church_id = $1 and id = 'EXPO-001'`, [A]);
@@ -3317,8 +3472,12 @@ function makeServer() {
     const isGone = async id => (await sys(`select count(*)::int n from public.attendees where id = $1 and church_id = $2`, [id, A]))[0].n === 0;
     const adminGone = await rv(U.alice, 'EXPO-9701');
     ok('TST-02-V1 a church admin removes a visitor of their church', adminGone === true && await isGone('EXPO-9701'), String(adminGone));
+    /* a team leader's removal reaches only a visitor standing in their own booth line (S-1, the S-1 rule) */
     const leadGone = await rv(L1, 'EXPO-9702');
-    ok('TST-02-V1b a team leader (member + lead volunteer) removes one too', leadGone === true && await isGone('EXPO-9702'), String(leadGone));
+    ok('TST-02-V1b a team leader cannot remove a visitor who is in nobody\'s line', leadGone === false && !(await isGone('EXPO-9702')), String(leadGone));
+    await sys(`insert into public.queue_entries (church_id, attendee_id, station, status) values ($1, 'EXPO-9702', 'bp', 'waiting')`, [A]);
+    const leadGone2 = await rv(L1, 'EXPO-9702');
+    ok('TST-02-V1c a team leader removes a visitor waiting in their own booth\'s line', leadGone2 === true && await isGone('EXPO-9702'), String(leadGone2));
     const staffGone = await rv(S1, 'EXPO-9703'), plainGone = await rv(P1, 'EXPO-9703');
     ok('TST-02-V2 staff without a lead, and plain members, get false and nothing is deleted',
       staffGone === false && plainGone === false && !(await isGone('EXPO-9703')), staffGone + ' | ' + plainGone);
@@ -3849,7 +4008,10 @@ function makeServer() {
     /* live connections: reconnecting must not pile up handlers */
     device(); C.client = srv.client; C.user = { id: 'u-1', email: 'n@ex.org' };
     for (let i = 0; i < 50; i++) { g.stopRealtime(); g.startRealtime(); }
-    ok('50 live reconnects leave exactly one connection (three table handlers: visitors, volunteers, notifications), not fifty', srv.handlers.length === 3, srv.handlers.length);
+    /* one live channel: insert, update and delete for visitors and volunteers, plus the bell (seven listeners) */
+    ok('50 live reconnects leave exactly one connection (one live channel: visitors, volunteers, notifications), not fifty',
+      srv.handlers.filter(h => h.ch === C.channel).length === 7 && srv.handlers.filter(h => h.table === 'attendees').length === 3
+      && srv.handlers.filter(h => h.table === 'notifications').length <= 2, srv.handlers.map(h => h.table + ':' + h.event).join());
     g.stopRealtime(); C.user = null; srv.reset();
   }
   /* database attacks on a real Postgres (with NEWSTART_PGLITE) */
@@ -4267,9 +4429,11 @@ function makeServer() {
   ok('non-GET requests are left alone', route('https://expo.example/', { method: 'POST' }).handled === false);
   ok('unknown third-party hosts are left alone', route('https://evil.example/x.js').handled === false);
   const nav = route('https://expo.example/?x=1', { mode: 'navigate' });
-  ok('page loads are handled (network first)', nav.handled && (await nav.promise).ok === true && netCalls.length > 0);
+  ok('a first page load goes to the network (nothing is saved yet); later ones open from the saved copy at once',
+    nav.handled && (await nav.promise).ok === true && netCalls.length > 0);
+  await sleep(10);   /* the saved copy is served at once; the background revalidation lands a few ticks later */
   const savedPage = async () => (await swCaches.get('newstart-shell-test1').get(keyOf('index.html')).clone().text());
-  ok('the fetched page is saved for offline use', (await savedPage()) === 'net:https://expo.example/?x=1');
+  ok('the fetched page is saved for offline use', (await savedPage()) === 'net:https://expo.example/?x=1', JSON.stringify(await savedPage()).slice(0, 120));
   const plainNav = route('https://expo.example/?plain=1', { mode: 'navigate' });
   if (plainNav.handled) await plainNav.promise;
   ok('an answer that is not a web page is not saved as the offline page', plainNav.handled && (await savedPage()) === 'net:https://expo.example/?x=1');

@@ -230,8 +230,10 @@ REST/RPC endpoints, and *only* through the SQL functions defined in `schema.sql`
 ### 5.3 Offline and the service worker
 
 `sw.js` precaches the page, the icons, the manifest and one pinned CDN library. It **never** caches Supabase
-traffic — health data and tokens go straight to the network. The page is served network-first with a 4-second
-cutoff and a cached fallback; own files are cache-first with a background refresh.
+traffic — health data and tokens go straight to the network. The page is served stale-while-revalidate since
+1 Nov 2026: the saved copy answers at once and the network copy refreshes it for the next open (updates ride
+the version.json banner, not HTML freshness — see `src/update.js`); own files are cache-first with a
+background refresh.
 
 A new build installs **but does not activate** until the page asks (see §5.5). This is deliberate: a worker that
 swaps itself under a running page leaves the open tab executing the old bundle.

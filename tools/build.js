@@ -51,7 +51,7 @@ const policy = scripts => [
   "font-src https://fonts.gstatic.com",
   "img-src 'self' data: blob:",
   "media-src 'self' blob:",
-  "connect-src 'self' " + SITE_ORIGIN + " https://*.supabase.co wss://*.supabase.co https://*.supabase.in wss://*.supabase.in",
+  "connect-src 'self' " + SITE_ORIGIN + ' ' + SB_API,
   "worker-src 'self'", "manifest-src 'self'", "object-src 'none'", "base-uri 'self'", "form-action 'self'", "frame-ancestors 'none'",
 ].join('; ');
 /* the browser hashes the exact text between <script> and </script>, so the hash is taken of exactly what is
@@ -66,6 +66,12 @@ if (!APP_SITE) throw new Error('src/platform.js lost its APP_SITE line — the C
 const SITE_ORIGIN = new URL(APP_SITE).origin;
 const SB_CDN = (/export const SB_LIB='([^']+)'/.exec(fs.readFileSync(path.join(root, 'src', 'cloud.js'), 'utf8')) || [])[1];
 if (!SB_CDN) throw new Error('src/cloud.js lost its SB_LIB line — the CSP cannot name the library it must allow');
+/* Data may leave only for this one Supabase project (SB_URL in src/cloud.js), https for the REST/auth calls and
+   wss for realtime — not the *.supabase.co wildcard, which would have blessed every Supabase project on earth. */
+const SB_URL = (/export const SB_URL='([^']+)'/.exec(fs.readFileSync(path.join(root, 'src', 'cloud.js'), 'utf8')) || [])[1];
+if (!SB_URL) throw new Error('src/cloud.js lost its SB_URL line — the CSP cannot name the database host');
+const SB_HOST = new URL(SB_URL).host;
+const SB_API = 'https://' + SB_HOST + ' wss://' + SB_HOST;
 const CSP_DEV = policy("script-src 'self' " + SB_CDN);
 const CSP_DIST = policy("script-src 'self' " + hashOf(inlineBundle) + ' ' + SB_CDN);
 

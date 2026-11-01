@@ -10,7 +10,7 @@ const LS_KEY='newstart.passport.v2';
 /* Cloud state lives up here because persistence reads it. The sync code itself is further down. */
 export const cloud={client:null,user:null,mode:false,status:'off',err:'',busy:false,again:false,starting:false,blocked:false,
   synced:{att:{},vol:{}},rejected:{},rejectedNote:null,channel:null,pushT:null,retryT:null,renderT:null,formErr:'',
-  since:{att:'',vol:''},lastFull:0,ready:false,demo:false,gateKey:'',gateHide:false,
+  since:{att:'',vol:''},seen:{att:new Map(),vol:new Map()},savedSince:null,liveSt:'',liveChurch:'',lastFull:0,ready:false,demo:false,gateKey:'',gateHide:false,
   phase:'',prog:{done:0,total:0},syncedAt:0,   /* what the sync chrome shows: pull/push, upload progress, last success */
   view:'login',viewEmail:'',pending:false,recovery:false,resendAt:0,signingOut:false,
   acct:null,acctV:0,churchId:'',acctTab:'me',health:undefined,dir:null,regChurch:false,members:null,plat:null,audit:null,pAdmins:null,wants:'member',wantsBooths:[],expos:undefined,adminExpos:undefined,expoEdit:null,expoSaving:false,removing:'',expoBusy:false,pledgeExpo:'',adminChurch:'',gateForce:false,delOpen:false,
@@ -19,11 +19,18 @@ export const cloud={client:null,user:null,mode:false,status:'off',err:'',busy:fa
   notifN:0,notifT:null,notifLive:false,notifChannel:null,notifWatched:'',notifs:undefined,notifsOffline:false,notifOpen:false};
 /* Every screen change calls this, but the data rarely changes: compare a fingerprint first and only write (and only
    look for rows to upload) when something really changed. Writing ~1 MB to storage on every tap is what drained phones. */
-let _savedSig='',_fullWarned=false;
+let _savedSig='',_fullWarned=false,_nearWarned=false;
+/* Browsers cap localStorage around 5 MB per origin. The saved copy crosses 4.2 MB at roughly 10,000 visitors — past
+   that the next write can be refused, and an offline desk then loses edits on reload. Say so while there is still
+   time to act, not only once the write has already failed. */
+const NEAR_FULL_BYTES=4.2*1024*1024;
 export function persistNow(){
  let s;
  try{s=JSON.stringify({attendees,activeId:state.activeId,sim:state.sim,
-  volunteers,volId:state.volId,volTab:state.volTab,_volSeq:state._volSeq,cloud:cloud.mode});}catch(e){return;}
+  volunteers,volId:state.volId,volTab:state.volTab,_volSeq:state._volSeq,cloud:cloud.mode,
+  since:cloud.mode?cloud.since:undefined});}catch(e){return;}
+ if(s.length>NEAR_FULL_BYTES&&!_nearWarned){_nearWarned=true;
+  setTimeout(()=>toast('Saved copy is nearly full — sync now and remove old visitors. One device holds about 10,000.'),0);}
  const h=hashStr(s);
  if(h===_savedSig)return;
  try{localStorage.setItem(LS_KEY,s);_savedSig=h;}catch(e){storageFull();}
@@ -94,6 +101,9 @@ export function loadPersisted(){
   const d=JSON.parse(raw);
   /* a copy saved while connected to the shared database may legitimately be empty */
   cloud.mode=!!d.cloud;
+  /* the pull cursor saved in the same write as these rows: the first sign-in of this page picks up from it
+     (resumeCursor in account.js) instead of downloading every row again */
+  cloud.savedSince=cloud.mode&&d.since&&typeof d.since==='object'?d.since:null;
   if(!Array.isArray(d.attendees)||(!d.attendees.length&&!cloud.mode))return false;
   attendees.length=0; d.attendees.forEach(a=>attendees.push(migrateAttendee(a)));
   state.sim=Object.assign({kitchen:3,walk:30,hydro:2},d.sim||{});

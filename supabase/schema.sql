@@ -656,6 +656,9 @@ create unique index if not exists queue_entries_one_active_church_idx on public.
 create index if not exists queue_entries_church_idx on public.queue_entries (church_id, station, status, joined_at);
 
 -- ---------------------------------------------------------------- row level security, per church
+-- The helpers are wrapped in (select ...) so Postgres evaluates them once per statement (an initplan) instead of
+-- once per row: staff_church() runs a memberships+churches lookup, and bare it would run that 10,000 times over a
+-- 10k-row pull. The notifications policies below already use the same shape for auth.uid().
 do $$
 declare t text;
 begin
@@ -669,17 +672,17 @@ begin
     execute format('drop policy if exists "church staff add" on public.%I', t);
     execute format('drop policy if exists "church staff edit" on public.%I', t);
     execute format('drop policy if exists "church admins delete" on public.%I', t);
-    execute format('create policy "church staff read" on public.%I for select to authenticated using (church_id = public.staff_church())', t);
-    execute format('create policy "church staff add" on public.%I for insert to authenticated with check (church_id = public.staff_church())', t);
-    execute format('create policy "church staff edit" on public.%I for update to authenticated using (church_id = public.staff_church()) with check (church_id = public.staff_church())', t);
-    execute format('create policy "church admins delete" on public.%I for delete to authenticated using (church_id = public.staff_church() and public.is_admin())', t);
+    execute format('create policy "church staff read" on public.%I for select to authenticated using (church_id = (select public.staff_church()))', t);
+    execute format('create policy "church staff add" on public.%I for insert to authenticated with check (church_id = (select public.staff_church()))', t);
+    execute format('create policy "church staff edit" on public.%I for update to authenticated using (church_id = (select public.staff_church())) with check (church_id = (select public.staff_church()))', t);
+    execute format('create policy "church admins delete" on public.%I for delete to authenticated using (church_id = (select public.staff_church()) and (select public.is_admin()))', t);
   end loop;
 end $$;
 drop policy if exists "staff full access" on public.queue_entries;
 drop policy if exists "church staff queue" on public.queue_entries;
 create policy "church staff queue" on public.queue_entries
   for all to authenticated
-  using (church_id = public.staff_church()) with check (church_id = public.staff_church());
+  using (church_id = (select public.staff_church())) with check (church_id = (select public.staff_church()));
 
 -- "Call next" only ever takes someone from the caller's own church
 create or replace function public.queue_call_next(p_station text)
@@ -830,7 +833,7 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
-declare v_uid uuid := (select auth.uid()); v_wants text := coalesce(nullif(btrim(p_wants), ''), 'member'); v_booths text[];
+declare v_uid uuid := (select auth.uid()); v_wants text := coalesce(nullif(btrim(p_wants), ''), 'member'); v_booths text[]; v_who text;
 begin
   if v_uid is null then raise exception 'sign in first' using errcode = '42501'; end if;
   if exists (select 1 from public.memberships m where m.user_id = v_uid) then
@@ -850,6 +853,23 @@ begin
          left(coalesce(nullif(btrim(p_full_name), ''), u.raw_user_meta_data ->> 'full_name', ''), 200), left(btrim(coalesce(p_phone, '')), 40),
          v_wants, v_booths
   from auth.users u where u.id = v_uid;
+  /* The admins hear about the request — with the same 1-hour identical-title window pledge_notify uses, so a
+     join/leave/rejoin cycle cannot flood the inbox (one row per cycle is harmless; fifty notifications are not).
+     The title names the person as the membership row stored them (the name they typed, else the one on their
+     account, else their email — the church's admins already see all three in the members list). The app sends no
+     name with a plain join, so keying the window on p_full_name alone made every request "someone" and hid all but
+     the first request of the hour. */
+  select left(coalesce(nullif(btrim(m.full_name), ''), u.email::text, 'someone'), 100) into v_who
+    from public.memberships m join auth.users u on u.id = m.user_id where m.user_id = v_uid;
+  if not exists (select 1 from public.notifications n
+                 where n.church_id = p_church and n.kind = 'join'
+                   and n.title = left('Join request: ' || v_who, 120)
+                   and n.created_at > now() - interval '1 hour') then
+    insert into public.notifications (church_id, user_id, kind, title, body)
+    select p_church, m.user_id, 'join', left('Join request: ' || v_who, 120),
+           left('Open My church to approve ' || v_wants || case when cardinality(v_booths) > 0 then ' (' || array_to_string(v_booths, ', ') || ')' else '' end || '.', 300)
+    from public.memberships m where m.church_id = p_church and m.role = 'admin' and m.status = 'approved';
+  end if;
 end;
 $$;
 
@@ -2110,7 +2130,8 @@ create trigger pledge_notify after insert on public.volunteers
 -- pledge_notify above already tells a church's admins about a new pledge. These two cover the other three
 -- movements so an admin inbox reflects every change to who is coming: a registration, a deregistration, and a
 -- withdrawn pledge. One row per approved admin, and — like every other notification here — a row that can never
--- abort the change that caused it.
+-- abort the change that caused it. Both use pledge_notify's 1-hour identical-title window, so cycling a status
+-- back and forth (or a sync replaying a delete) cannot flood the inbox with the same line.
 create or replace function public.volunteers_admin_status_notify()
 returns trigger
 language plpgsql
@@ -2120,6 +2141,10 @@ as $$
 begin
   if new.status is not distinct from old.status then return null; end if;
   if new.status = 'registered' then
+    if exists (select 1 from public.notifications n
+               where n.church_id = new.church_id and n.kind = 'register'
+                 and n.title = left('Registered: ' || new.name, 120)
+                 and n.created_at > now() - interval '1 hour') then return null; end if;
     insert into public.notifications (church_id, user_id, kind, title, body)
     select new.church_id, m.user_id, 'register', left('Registered: ' || new.name, 120),
            case when new.booth is null then 'They are registered for the expo.'
@@ -2127,6 +2152,10 @@ begin
     from public.memberships m
     where m.church_id = new.church_id and m.role = 'admin' and m.status = 'approved';
   elsif new.status = 'prospect' and old.status = 'registered' then
+    if exists (select 1 from public.notifications n
+               where n.church_id = new.church_id and n.kind = 'deregister'
+                 and n.title = left('Deregistered: ' || new.name, 120)
+                 and n.created_at > now() - interval '1 hour') then return null; end if;
     insert into public.notifications (church_id, user_id, kind, title, body)
     select new.church_id, m.user_id, 'deregister', left('Deregistered: ' || new.name, 120),
            'They gave up their place at the expo. Their pledge still stands.'
@@ -2152,6 +2181,10 @@ begin
   /* deleting a church cascades here: there is no church left to notify, and a row pointing at it would
      fail the foreign key and abort the delete */
   if not exists (select 1 from public.churches c where c.id = old.church_id) then return null; end if;
+  if exists (select 1 from public.notifications n
+             where n.church_id = old.church_id and n.kind = 'unpledge'
+               and n.title = left((case when v_by_admin then 'Removed from the roster: ' else 'Pledge withdrawn: ' end) || old.name, 120)
+               and n.created_at > now() - interval '1 hour') then return null; end if;
   insert into public.notifications (church_id, user_id, kind, title, body)
   select old.church_id, m.user_id, 'unpledge',
          left((case when v_by_admin then 'Removed from the roster: ' else 'Pledge withdrawn: ' end) || old.name, 120),
@@ -2219,6 +2252,12 @@ declare v_code text := replace(gen_random_uuid()::text, '-', '');
 begin
   if not public.church_admin_of(p_church) then raise exception 'church admins only' using errcode = '42501'; end if;
   if p_role not in ('member', 'staff') then raise exception 'An invite is for a member or for staff.'; end if;
+  /* a real event needs a handful of links, never hundreds: a cap keeps a compromised admin token from minting
+     codes without end (a code joins whoever opens it, approved, for 30 days) */
+  if (select count(*) from public.church_invites i
+       where i.church_id = p_church and i.created_at > now() - interval '24 hours') >= 50 then
+    raise exception 'This church has created 50 invite links in one day. Cancel unused ones or wait until tomorrow.';
+  end if;
   insert into public.church_invites (code, church_id, role, created_by) values (v_code, p_church, p_role, (select auth.uid()));
   return v_code;
 end;
@@ -2386,6 +2425,8 @@ create trigger attendees_retention before insert or update on public.attendees
 -- other approved account may still change the rest of interests (consent, church plan, prayer flags) exactly as
 -- before (R-05). Shape follows volunteers_place_guard: an upsert fires the INSERT branch for a row that already
 -- exists, so it is judged against the stored row — never as a fresh insert that would block an ordinary edit.
+-- The size caps below mirror the client editor (normaliseCustomPlan, src/customPlan.js): only a plan that CHANGED
+-- is judged, so plans stored before this rule stay readable and sync untouched.
 create or replace function public.attendees_custom_plan_guard()
 returns trigger
 language plpgsql
@@ -2394,6 +2435,8 @@ set search_path = ''
 as $$
 declare v_new jsonb := new.interests -> 'customPlan';
         v_old jsonb;
+        v_action jsonb;
+        v_how_len int;
 begin
   if (select auth.uid()) is null then return new; end if;   -- anon has no write policy; nothing to judge
   /* An upsert fires BEFORE INSERT for a row it is about to update, so the stored plan has to be looked up.
@@ -2406,8 +2449,45 @@ begin
   elsif tg_op = 'UPDATE' then
     v_old := old.interests -> 'customPlan';
   end if;
-  if v_old is distinct from v_new and not (public.is_admin() or public.is_platform_admin()) then
+  if v_old is not distinct from v_new then return new; end if;   -- unchanged: nothing to judge, old plans keep working
+  if not (public.is_admin() or public.is_platform_admin()) then
     raise exception 'Only the church''s admins can write a custom plan' using errcode = '42501', hint = 'custom_plan_guard';
+  end if;
+  -- shape caps, same numbers as the client editor: a plan is a title, a problem, 3-8 actions and a note
+  if v_new is null then return new; end if;                      -- removing a plan is always allowed
+  if jsonb_typeof(v_new) <> 'object'
+     or exists (select 1 from jsonb_object_keys(v_new) k where k not in ('title', 'problem', 'actions', 'note', 'by', 'at')) then
+    raise exception 'A plan has only: title, problem, actions, note, by, at' using errcode = '42501', hint = 'custom_plan_guard';
+  end if;
+  if btrim(coalesce(v_new ->> 'title', '')) !~ '..*' or length(btrim(coalesce(v_new ->> 'title', ''))) > 120 then
+    raise exception 'Give the plan a title of at most 120 characters' using errcode = '42501', hint = 'custom_plan_guard';
+  end if;
+  if btrim(coalesce(v_new ->> 'problem', '')) !~ '..*' or length(btrim(coalesce(v_new ->> 'problem', ''))) > 60 then
+    raise exception 'Name the problem in at most 60 characters' using errcode = '42501', hint = 'custom_plan_guard';
+  end if;
+  if coalesce(jsonb_typeof(v_new -> 'actions'), '') <> 'array'
+     or jsonb_array_length(v_new -> 'actions') not between 3 and 8 then
+    raise exception 'A plan carries 3 to 8 things to do' using errcode = '42501', hint = 'custom_plan_guard';
+  end if;
+  for v_action in select * from jsonb_array_elements(v_new -> 'actions') loop
+    if jsonb_typeof(v_action) <> 'object'
+       or exists (select 1 from jsonb_object_keys(v_action) k where k not in ('do', 'why', 'how')) then
+      raise exception 'A thing to do has only: do, why, how' using errcode = '42501', hint = 'custom_plan_guard';
+    end if;
+    if length(btrim(coalesce(v_action ->> 'do', '')) ) not between 1 and 140 then
+      raise exception 'Each thing to do needs a short instruction (at most 140 characters)' using errcode = '42501', hint = 'custom_plan_guard';
+    end if;
+    if length(coalesce(v_action ->> 'why', '')) > 240 then
+      raise exception 'A reason is at most 240 characters' using errcode = '42501', hint = 'custom_plan_guard';
+    end if;
+    select coalesce(sum(length(h)), 0) into v_how_len
+      from jsonb_array_elements_text(case jsonb_typeof(v_action -> 'how') when 'array' then v_action -> 'how' else '[]'::jsonb end) h;
+    if v_how_len > 400 then
+      raise exception 'The how for one step is at most 400 characters' using errcode = '42501', hint = 'custom_plan_guard';
+    end if;
+  end loop;
+  if length(coalesce(v_new ->> 'note', '')) > 600 or length(coalesce(v_new ->> 'by', '')) > 80 or length(coalesce(v_new ->> 'at', '')) > 40 then
+    raise exception 'The plan''s note, by or at line is too long' using errcode = '42501', hint = 'custom_plan_guard';
   end if;
   return new;
 end;
@@ -2521,10 +2601,11 @@ create trigger expos_touch before update on public.expos
 alter table public.expos enable row level security;
 revoke all on public.expos from anon, authenticated;     -- no policies: only the functions below reach it
 
--- Remove a visitor who wandered off (PLAN-remove-visitor). Church admins and team leaders of the caller's own active
--- church; a team leader is an approved member whose linked volunteer has lead = true (the test can_place uses).
--- The table's "admins delete" policies are unchanged: this function is the only way a team leader deletes, and only
--- a row of their own church. false = not allowed or not found; the app keeps the visitor and says so.
+-- Remove a visitor who wandered off (PLAN-remove-visitor). Church admins of the caller's own active church may remove
+-- any visitor of that church; a team leader (an approved member whose linked volunteer has lead = true) may remove a
+-- visitor only while that visitor stands in the leader's own booth line — the "wandered off from MY station" case,
+-- scoped like every other leader power (can_place). The table's "admins delete" policies are unchanged: this function
+-- is the only way a team leader deletes. false = not allowed or not found; the app keeps the visitor and says so.
 create or replace function public.remove_visitor(p_id text)
 returns boolean
 language plpgsql
@@ -2533,18 +2614,27 @@ set search_path = ''
 as $$
 declare
   v_church uuid;
-  v_allowed boolean;
+  v_is_admin boolean;
+  v_lead boolean;
+  v_booth text;
 begin
-  select m.church_id, (m.role = 'admin' or coalesce(v.lead, false))
-    into v_church, v_allowed
+  select m.church_id, m.role = 'admin', coalesce(v.lead, false), v.booth
+    into v_church, v_is_admin, v_lead, v_booth
     from public.memberships m
     join public.churches c on c.id = m.church_id and c.status = 'active'
     left join public.volunteers v on v.church_id = m.church_id and v.id = m.volunteer_id
-   where m.user_id = (select auth.uid()) and m.status = 'approved';
-  if v_church is null or not v_allowed then
+   where m.user_id = (select auth.uid()) and m.status = 'approved'
+   order by (m.role = 'admin') desc
+   limit 1;
+  if v_church is null or not (v_is_admin or v_lead) then
     return false;
   end if;
-  delete from public.attendees a where a.id = p_id and a.church_id = v_church;
+  delete from public.attendees a
+   where a.id = p_id and a.church_id = v_church
+     and ( v_is_admin
+        or exists (select 1 from public.queue_entries q
+                    where q.church_id = v_church and q.attendee_id = p_id
+                      and q.station = v_booth and q.status in ('waiting', 'serving')));
   return found;
 end;
 $$;
