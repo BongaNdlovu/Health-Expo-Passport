@@ -446,7 +446,7 @@ export function recordConsent(id){
 export function toggleOptin(id){
  const a=attendees.find(x=>x.id===id);if(!a)return;
  a.interests=a.interests||{};a.interests.optin=!a.interests.optin;
- if(!a.interests.optin){delete a.interests.followUp;delete a.interests.followUpName;}
+ if(!a.interests.optin){delete a.interests.followUp;delete a.interests.followUpName;delete a.interests.nurse;}   /* a decliner leaves the 48-hour calls list (E6) */
  persist();renderMain();toast(a.interests.optin?'Follow-up allowed ✓':'No follow-up contact — the record is deleted with the readings 7 days after the visit.');
 }
 /* problems are shown inside the form (not a passing toast), so nothing typed is lost */

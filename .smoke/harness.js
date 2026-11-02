@@ -5824,6 +5824,29 @@ function makeServer() {
   g.exportCSV(); sandbox.Blob = function () {};
   ok('the follow-up CSV carries the interest ticks and the prayer flag, and never the raw prayer note', csvText.includes('Stress & peace') && csvText.includes('Yes (see prayer list)') && csvText.includes('</textarea>') === false);
 
+  /* E6/E7/E8: the Care screens and the exports respect consent and the grace period */
+  {
+    const dec = g.attendees.find(a => a.id === 'EXPO-088');
+    dec.interests.nurse = true; dec.interests.optin = false; dec.interests.guardianName = 'Guardian Three';
+    const aged = g.attendees.find(a => a.id === 'EXPO-117');
+    aged.created_at = new Date(Date.now() - 30 * 86400000).toISOString();
+    aged.prayer = 'Pray for the old visit'; aged.interests.guardianName = 'Guardian One';
+    g.state.tab = 'care'; g.render();
+    const flat = $main.innerHTML.replace(/\n/g, '');
+    const callsSection = (flat.split('48-hour follow-up calls')[1] || '').split('Seminar & co-op interests')[0] || '';   /* listSection renders its title unescaped: raw '&' */
+    ok('E6 a declined follow-up keeps no phone on the Care card and stays out of the calls list',
+      flat.includes('EXPO-088 · no follow-up') && callsSection !== '' && !callsSection.includes('EXPO-088'),
+      'card=' + flat.includes('EXPO-088 · no follow-up') + ' absent=' + !callsSection.includes('EXPO-088'));
+    let pTxt = null; const keepP = sandbox.Blob; sandbox.Blob = function (p) { pTxt = p.join(''); };
+    g.exportPrayerCSV(); sandbox.Blob = keepP;
+    ok('E7 the prayer CSV skips a visit past the grace period', !!pTxt && pTxt.includes('Badge') && !pTxt.includes('Pray for the old visit'), (pTxt || '').slice(0, 120));
+    const mins = g.followUpRows('minimal'), fullRows = g.followUpRows('full');
+    ok('E8 the minimal CSV drops the guardian column and value; the full CSV keeps them',
+      !JSON.stringify(mins).includes('Guardian One') && !mins[0].includes('Parent or guardian')
+      && fullRows[0].includes('Parent or guardian') && JSON.stringify(fullRows).includes('Guardian One'), mins[0].slice(-4).join(','));
+    dec.interests.nurse = false; aged.created_at = undefined; aged.prayer = '';
+  }
+
   /* ---- 20c. Android Back closes the big screen instead of leaving the app ---- */
   console.log('\n20c. The big screen and Back');
   {

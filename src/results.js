@@ -506,8 +506,11 @@ export function viewFood(){
 
 /* ================= VIEW: CARE ================= */
 export function viewCare(){
- const urgent=attendees.filter(redFlag),calls=attendees.filter(x=>x.interests.nurse),
-       inter=attendees.filter(x=>x.interests.cook||x.interests.stress||x.interests.pouch);
+ /* the lists draw what a screen may still show (old visits' readings are dropped), and only people who
+    agreed to follow-up appear in the calls list or with a phone number (E6) */
+ const live=attendees.map(withoutOldReadings);
+ const urgent=live.filter(redFlag),calls=live.filter(x=>x.interests.nurse&&optedIn(x)),
+       inter=live.filter(x=>x.interests.cook||x.interests.stress||x.interests.pouch);
  const countTile=(n,l,cls)=>`<div class="rounded-[18px] border px-2 py-2.5 text-center ${cls}">
   <div class="display text-xl leading-none font-extrabold">${n}</div>
   <div class="mt-1.5 text-[10px] font-bold opacity-75">${l}</div></div>`;
@@ -552,7 +555,7 @@ function careCard(a){
   <div class="flex items-center gap-2.5">
    <span class="flex h-9 w-9 flex-none items-center justify-center rounded-[13px] text-[11px] font-extrabold tint hue-${hueOf(a.id)}">${initials(a.name)}</span>
    <div class="min-w-0 flex-1"><div class="truncate text-[13px] font-bold">${esc(a.name)}</div>
-   <div class="mono truncate text-[10px] text-[#6b8187]">${esc(a.id)} · ${esc(a.phone)}</div></div>
+   <div class="mono truncate text-[10px] text-[#6b8187]">${esc(a.id)}${optedIn(a)&&a.phone?' · '+esc(a.phone):' · no follow-up'}</div></div>
    ${optedIn(a)?`<button data-action="openWAFor" data-args="${esc(a.id)}" aria-label="WhatsApp ${esc(a.name)}"
      class="btn flex-none rounded-[14px] text-[#128C4B] transition active:scale-95"
      style="width:44px;height:44px;background:rgba(37,211,102,.14)">${I.wa}</button>`
@@ -588,7 +591,7 @@ export function followUpRows(mode){
   'Fruit & veg (servings/day)','Exercise (min/day)','Water (glasses/day)','Sleep (hours/night)','Checks done (of 8)',
   ...(min?[]:['Pregnant','Major operations','Chronic illnesses',...SURVEY.map(x=>x.q),'Also talk about','Interests','Seminars','Heard via']),
   'Health age','Flags',...(min?[]:['Prayer request']),
-  'Health consent','Consent date','Notice version','Parent or guardian','Follow-up allowed','Expo','Recorded on','Exported (SAST)'];
+  'Health consent','Consent date','Notice version',...(min?[]:['Parent or guardian']),'Follow-up allowed','Expo','Recorded on','Exported (SAST)'];
  const rows=[head];
  attendees.forEach(raw=>{
   /* the readings of a visit past the grace period are never exported either (the database has already cleared them) */
@@ -603,7 +606,7 @@ export function followUpRows(mode){
    ...(min?[]:[yn(s.preg),yn(s.ops),s.chronic===1?'Yes'+(a.chronicList?': '+a.chronicList:''):yn(s.chronic),
     ...SURVEY.map(x=>s[x.k]?x.a[s[x.k]-1]:''),careNotes(a).join(' '),ticked(a,INT),ticked(a,SEMINARS),ticked(a,HEARD)]),
    ha.health!=null&&isFinite(ha.health)?fmt1(ha.health):'incomplete',fl,...(min?[]:[a.prayer?'Yes (see prayer list)':'No']),
-   hasConsent(a)?'Yes':'Not recorded',a.interests.consentOn||'',a.interests.consentV||'',a.interests.guardianName||'',ok?'Yes':'No',expo,by,stamp]);
+   hasConsent(a)?'Yes':'Not recorded',a.interests.consentOn||'',a.interests.consentV||'',...(min?[]:[a.interests.guardianName||'']),ok?'Yes':'No',expo,by,stamp]);
  });
  return rows;
 }
@@ -615,7 +618,8 @@ export function exportCSV(mode){
 /* the prayer team's own list: first name, a phone only when follow-up is allowed, and the request */
 export function exportPrayerCSV(){
  const st=sastStamp(),rows=[['Badge','First name','Phone (if follow-up allowed)','Prayer request','Exported (SAST)']];
- attendees.forEach(a=>{if(a.prayer)rows.push([a.id,firstName(a.name||''),optedIn(a)&&a.phone||'',a.prayer,st]);});
+ /* a past-grace visit's prayer request goes with its readings: a stale prayer is not the prayer team's business (E7) */
+ attendees.forEach(a=>{if(a.prayer&&!visitIsOld(a))rows.push([a.id,firstName(a.name||''),optedIn(a)&&a.phone||'',a.prayer,st]);});
  downloadCSV(rows,'newstart-prayer-list.csv','Prayer list exported (CSV) ✓ Share it only with the prayer team.');
 }
 /* Quote every cell, and defuse spreadsheet formulas: a typed name like =HYPERLINK(...) would

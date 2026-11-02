@@ -3,6 +3,7 @@ import { I } from './icons.js';
 import { $ } from './helpers.js';
 import { journeyTop } from './visitor.js';
 import { attendees, hueOf, state, volunteers } from './data.js';
+import { withoutOldReadings } from './retention.js';   /* the Care badge counts only readings a screen may still show (E7) */
 import { AV, badgeTier, closeSwitcher, closeVolModal, closeWhatsApp, needsRegistration, renderServeSheet, renderServeView } from './volunteer.js';
 import { persist } from './state.js';
 import { A, doneCount, esc, firstName, initials, redFlag } from './helpers.js';
@@ -64,7 +65,7 @@ function renderHeaderChip(){
 function syncNavH(){const n=document.querySelector('nav');if(n)document.documentElement.style.setProperty('--navh',n.offsetHeight+'px');}
 addEventListener('resize',syncNavH);
 export function renderNav(){
- const urgent=attendees.filter(redFlag).length;
+ const urgent=attendees.map(withoutOldReadings).filter(redFlag).length;
  const pending=volunteers.filter(needsRegistration).length;
  $('#navItems').innerHTML=SERVE_TABS.map(([k,l,ic])=>{
   const act=navKey(state.tab)===k;
