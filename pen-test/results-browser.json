@@ -1,0 +1,315 @@
+{
+  "date": "2026-11-01T05:55:28.755Z",
+  "coldLoad": {
+    "ms": 1245,
+    "requests": 7,
+    "bodyKB": 644,
+    "heap": {
+      "heapMB": 1.2,
+      "nodes": 1006,
+      "listeners": 31
+    }
+  },
+  "warmLoad": {
+    "sw": "controlled",
+    "readyMs": 81,
+    "ms": 81,
+    "requests": 6,
+    "bodyKB": 581,
+    "note": "bytes are the background refresh; the page opened from the saved copy"
+  },
+  "sizes": {
+    "1000": {
+      "memBaseline": {
+        "heapMB": 1.7,
+        "nodes": 1305,
+        "listeners": 31
+      },
+      "memLoaded": {
+        "heapMB": 2.4,
+        "nodes": 775,
+        "listeners": 31
+      },
+      "tab_home": {
+        "ms": 3.8
+      },
+      "tab_queue": {
+        "ms": 3.2
+      },
+      "tab_care": {
+        "ms": 4.5
+      },
+      "tab_serve": {
+        "ms": 27.4
+      },
+      "tab_me": {
+        "ms": 3.4
+      },
+      "journey": {
+        "ms": 59.8,
+        "out": {
+          "screen": 16.9,
+          "results": 11.2,
+          "plan": 28.8,
+          "send": 0
+        }
+      },
+      "editSaveMs": 5.6,
+      "dirtyMs": 10.1,
+      "savedCopyKB": 424,
+      "burstSyncMs": 3.7,
+      "renderAfterBurstMs": 1.8,
+      "tab": {
+        "home": 3.8,
+        "queue": 3.2,
+        "care": 4.5,
+        "serve": 27.4,
+        "me": 3.4
+      }
+    },
+    "3000": {
+      "memBaseline": {
+        "heapMB": 2.4,
+        "nodes": 1305,
+        "listeners": 31
+      },
+      "memLoaded": {
+        "heapMB": 4,
+        "nodes": 784,
+        "listeners": 31
+      },
+      "tab_home": {
+        "ms": 4.3
+      },
+      "tab_queue": {
+        "ms": 6.8
+      },
+      "tab_care": {
+        "ms": 7.7
+      },
+      "tab_serve": {
+        "ms": 14
+      },
+      "tab_me": {
+        "ms": 2.9
+      },
+      "journey": {
+        "ms": 58.1,
+        "out": {
+          "screen": 14.5,
+          "results": 11.1,
+          "plan": 28.4,
+          "send": 0
+        }
+      },
+      "editSaveMs": 16.9,
+      "dirtyMs": 22.9,
+      "savedCopyKB": 1274,
+      "burstSyncMs": 4.7,
+      "renderAfterBurstMs": 2.1,
+      "tab": {
+        "home": 4.3,
+        "queue": 6.8,
+        "care": 7.7,
+        "serve": 14,
+        "me": 2.9
+      }
+    },
+    "10000": {
+      "memBaseline": {
+        "heapMB": 4.9,
+        "nodes": 1305,
+        "listeners": 31
+      },
+      "memLoaded": {
+        "heapMB": 9.4,
+        "nodes": 775,
+        "listeners": 31
+      },
+      "tab_home": {
+        "ms": 7.4
+      },
+      "tab_queue": {
+        "ms": 5.5
+      },
+      "tab_care": {
+        "ms": 9
+      },
+      "tab_serve": {
+        "ms": 14.7
+      },
+      "tab_me": {
+        "ms": 3.2
+      },
+      "journey": {
+        "ms": 60.1,
+        "out": {
+          "screen": 15.5,
+          "results": 12,
+          "plan": 29,
+          "send": 0
+        }
+      },
+      "editSaveMs": 37.4,
+      "dirtyMs": 72.5,
+      "savedCopyKB": 4254,
+      "burstSyncMs": 7.8,
+      "renderAfterBurstMs": 2.9,
+      "tab": {
+        "home": 7.4,
+        "queue": 5.5,
+        "care": 9,
+        "serve": 14.7,
+        "me": 3.2
+      }
+    }
+  },
+  "leaks": {
+    "3000": {
+      "baseline": {
+        "heapMB": 2.4,
+        "nodes": 1305,
+        "listeners": 31
+      },
+      "end": {
+        "heapMB": 4.1,
+        "nodes": 796,
+        "listeners": 31
+      },
+      "samples": [
+        {
+          "heapMB": 2.4,
+          "nodes": 1305,
+          "listeners": 31
+        },
+        {
+          "heapMB": 2.8,
+          "nodes": 800,
+          "listeners": 31
+        },
+        {
+          "heapMB": 2.8,
+          "nodes": 800,
+          "listeners": 31
+        },
+        {
+          "heapMB": 2.8,
+          "nodes": 800,
+          "listeners": 31
+        },
+        {
+          "heapMB": 2.8,
+          "nodes": 800,
+          "listeners": 31
+        },
+        {
+          "heapMB": 2.8,
+          "nodes": 800,
+          "listeners": 31
+        },
+        {
+          "heapMB": 2.8,
+          "nodes": 796,
+          "listeners": 31
+        },
+        {
+          "heapMB": 2.8,
+          "nodes": 796,
+          "listeners": 31
+        },
+        {
+          "heapMB": 2.8,
+          "nodes": 796,
+          "listeners": 31
+        },
+        {
+          "heapMB": 2.8,
+          "nodes": 796,
+          "listeners": 31
+        },
+        {
+          "heapMB": 2.8,
+          "nodes": 796,
+          "listeners": 31
+        }
+      ],
+      "listenerDelta": 0,
+      "nodeDelta": -509,
+      "heapTrendMB": 0,
+      "verdict": "no leak"
+    },
+    "10000": {
+      "baseline": {
+        "heapMB": 4.9,
+        "nodes": 1305,
+        "listeners": 31
+      },
+      "end": {
+        "heapMB": 9.5,
+        "nodes": 796,
+        "listeners": 31
+      },
+      "samples": [
+        {
+          "heapMB": 4.9,
+          "nodes": 1305,
+          "listeners": 31
+        },
+        {
+          "heapMB": 5.2,
+          "nodes": 800,
+          "listeners": 31
+        },
+        {
+          "heapMB": 5.3,
+          "nodes": 800,
+          "listeners": 31
+        },
+        {
+          "heapMB": 5.3,
+          "nodes": 800,
+          "listeners": 31
+        },
+        {
+          "heapMB": 5.3,
+          "nodes": 796,
+          "listeners": 31
+        },
+        {
+          "heapMB": 5.3,
+          "nodes": 796,
+          "listeners": 31
+        },
+        {
+          "heapMB": 5.3,
+          "nodes": 796,
+          "listeners": 31
+        },
+        {
+          "heapMB": 5.3,
+          "nodes": 796,
+          "listeners": 31
+        },
+        {
+          "heapMB": 5.3,
+          "nodes": 796,
+          "listeners": 31
+        },
+        {
+          "heapMB": 5.3,
+          "nodes": 796,
+          "listeners": 31
+        },
+        {
+          "heapMB": 5.3,
+          "nodes": 796,
+          "listeners": 31
+        }
+      ],
+      "listenerDelta": 0,
+      "nodeDelta": -509,
+      "heapTrendMB": 0.1,
+      "verdict": "no leak"
+    }
+  }
+}
