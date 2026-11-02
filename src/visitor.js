@@ -14,6 +14,7 @@ import { homeHealthHTML, installEvt, validEmail } from './cloud.js';
 import { hiredCountLabel, mayPlace, pendingLabel, todayStr } from './volunteer.js';
 import { bannerHTML, capsuleHTML, ctaHTML, ecgHTML, journeyRailHTML, rulerHTML, spectrumHTML, splitBtnHTML, tileHTML } from './ui.js';
 import { confirmAsk } from './feedback.js';
+import { qAskClear, qDemoClear, qLeaveServing, qStartAsk, queue, seedDemoQueue } from './queue.js';
 import { QUEUE_OF_READING, queueConfirmGaps, queueFinishVisit, queueFlowStart, queueLineText, queueStripHTML, queueStripRefresh } from './queue.js';
 /* The visitor journey: Check → Results entry, registration, the paper record and the survey. Split from the original single-file app; bundled back into one file by tools/build.js. */
 /* ================= THE VISITOR JOURNEY: Check → Results → Plan → Send home ================= */
@@ -34,25 +35,25 @@ export function journeyTop(){
   </button>
   <div id="jrLine" class="jr-line"${queueLineText(a.id)?'':' hidden'}>${esc(queueLineText(a.id))}</div>
   ${a.id&&(!cloud.user||mayPlace())?`<div class="jr-tools"><button class="jr-remove" data-action="visitor-remove" data-args="${esc(a.id)}">Remove visitor</button></div>`:''}
-  <ol class="jr-steps">${JOURNEY.map((k,j)=>`<li><button class="jr-step ${j===i?'is-on':j<i?'is-past':''}" ${k==='results'&&state.tab==='screen'?'data-action="confirmResults"':`data-action="switchTab" data-args="${k}"`} ${j===i?'aria-current="step"':''}>
+  <ol class="jr-steps">${JOURNEY.map((k,j)=>`<li><button class="jr-step ${j===i?'is-on':j<i?'is-past':''}" ${k==='results'&&state.tab==='screen'?'data-action="confirmResults"':`data-action="switchTab" data-args="${esc(k)}"`} ${j===i?'aria-current="step"':''}>
    <span class="jr-dot">${done(k)&&j!==i?'✓':j+1}</span><span class="jr-lbl">${JOURNEY_LABEL[k]}${k==='screen'?` <small id="jrCount">${d<8?d+'/8':''}</small>`:''}</span></button></li>`).join('')}</ol>
  </div>`;
 }
 export function journeyBottom(){
  const a=A(),i=JOURNEY.indexOf(state.tab),prev=JOURNEY[i-1],next=JOURNEY[i+1],left=8-doneCount(a);
  /* the move from Check into Results asks the operator to confirm the readings (see confirmResults) */
- const nextBtn=k=>`<button class="btn btn-primary jr-next" ${k==='results'?'data-action="confirmResults"':`data-action="switchTab" data-args="${k}"`}>${k==='results'?'Next: Results':`Next: ${JOURNEY_LABEL[k]}`} →</button>`;
+ const nextBtn=k=>`<button class="btn btn-primary jr-next" ${k==='results'?'data-action="confirmResults"':`data-action="switchTab" data-args="${esc(k)}"`}>${k==='results'?'Next: Results':`Next: ${JOURNEY_LABEL[k]}`} →</button>`;
  /* Start and Finish for the volunteer's station sit above the buttons, where the thumb already is */
  const ms=myStation(),scope=ms?(QUEUE_OF_READING[ms]||null):'';
  const strip=state.tab==='screen'&&scope!==null?`<div id="jrQ" class="jr-q">${queueStripHTML(a,scope)}</div>`:'';
  /* a station volunteer's next move is the next visitor, not this visitor's results */
  if(state.tab==='screen'&&ms)return `<div class="jr-foot">${strip}<div class="jr-btns">
   <button class="btn btn-glass jr-back" data-action="confirmResults">Results →</button>
-  ${scope?`<button class="btn btn-primary jr-next" data-action="queueNextInLine" data-args="${scope}">Next in line</button>`:`<button class="btn btn-primary jr-next" data-action="registerNew">Next visitor</button>`}</div></div>`;
+  ${scope?`<button class="btn btn-primary jr-next" data-action="queueNextInLine" data-args="${esc(scope)}">Next in line</button>`:`<button class="btn btn-primary jr-next" data-action="registerNew">Next visitor</button>`}</div></div>`;
  return `<div class="jr-foot">${strip}
   ${state.tab==='screen'?`<p id="jrNote" class="jr-note" ${left>0?'':'hidden'}>${left} of 8 checks still empty. You can carry on and come back.</p>`:''}
   <div class="jr-btns">
-   ${prev?`<button class="btn btn-glass jr-back" data-action="switchTab" data-args="${prev}">← ${JOURNEY_LABEL[prev]}</button>`:'<span></span>'}
+   ${prev?`<button class="btn btn-glass jr-back" data-action="switchTab" data-args="${esc(prev)}">← ${JOURNEY_LABEL[prev]}</button>`:'<span></span>'}
    ${next?nextBtn(next)
     :`<button class="btn btn-primary jr-next" data-action="finishVisit">${a.done?'Visit complete ✓ · Home':'Finish visit ✓'}</button>`}
   </div>
@@ -103,7 +104,7 @@ function followUpLine(a,first,asked){
 export function viewSend(){
  const a=A(),P=planFor(a),first=esc(firstName(a.name)),wa=waNumber(a.phone);
  const asked=Object.keys(INT).filter(k=>a.interests&&a.interests[k]&&k!=='pouch').map(k=>INT[k]);
- const item=(fn,ic,t,sub,on)=>`<button class="snd-item ${on?'is-on':''}" data-action="${fn}"><span class="snd-ic" aria-hidden="true">${ic}</span>
+ const item=(fn,ic,t,sub,on)=>`<button class="snd-item ${on?'is-on':''}" data-action="${esc(fn)}"><span class="snd-ic" aria-hidden="true">${ic}</span>
   <span class="min-w-0 flex-1"><b>${t}</b><span>${sub}</span></span><span class="snd-go" aria-hidden="true">${on?'✓':'→'}</span></button>`;
  return `<section class="stagger space-y-3.5">
   <div class="glass p-4">
@@ -140,6 +141,9 @@ export function viewNoVisitor(){
  </div></section>`;
 }
 export function switchTab(t){
+ if(window.NSMem)window.NSMem.release('tab');                 /* timers that belong to the screen being left */
+ /* opening Results, Plan or Send home finishes the check stations still serving this visitor (queue.js qLeaveServing) */
+ if((t==='results'||t==='plan'||t==='send')&&state.activeId)qLeaveServing(state.activeId,t);
  if(JOURNEY.includes(t)){state.step=t;state.stepFor=state.activeId;}
  if(state.food)state.food.open=false;   /* tapping a tab (even Plan) leaves the Food screen — at the tap */
  if(t!=='screen'){state.metric='';state.metricFor='';}   /* the metric drill-down lives inside Check */
@@ -184,7 +188,8 @@ export function viewHome(){
       <button data-action="toggleTheme" class="hx-theme" aria-label="Switch light or dark" title="Switch light or dark">
        <svg class="hx-theme-light" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path stroke-linecap="round" d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg><svg class="hx-theme-dark" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
       </button>
-      <button data-action="openCloud" class="hx-round" aria-label="Cloud sync" title="Cloud sync">
+      <button data-action="openHelpHere" data-tour="help-btn-home" class="hx-round ns-help-round" aria-label="Help for this screen" title="Help">?</button>
+      <button data-action="openCloud" class="hx-round" aria-label="Cloud sync" title="Cloud sync" data-tour="cloud-btn">
        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17.5 19a4.5 4.5 0 0 0 .5-9 6 6 0 0 0-11.6 1.5A3.5 3.5 0 0 0 6.5 19z"/></svg>
        <span id="homeCloudDot" class="hx-cloud-dot"></span>
       </button>
@@ -235,7 +240,7 @@ export function viewHome(){
     <div class="grid grid-cols-2 gap-3">
      <div><label class="microlabel" for="rgAge">Age</label><input id="rgAge" type="text" inputmode="numeric" required placeholder="e.g. 46" class="field mono mt-1" data-on-input="guardian-show" data-args="rg"></div>
      <div><span class="microlabel">Sex</span><input type="hidden" id="rgSex" value="">
-      <div class="mt-1 grid grid-cols-2 gap-2" role="group" aria-label="Sex">${['Male','Female'].map(s=>`<button type="button" data-sex="${s}" aria-pressed="false" data-action="pick-sex" class="btn btn-glass py-2.5 text-[12px]">${s}</button>`).join('')}</div></div>
+      <div class="mt-1 grid grid-cols-2 gap-2" role="group" aria-label="Sex">${['Male','Female'].map(s=>`<button type="button" data-sex="${esc(s)}" aria-pressed="false" data-action="pick-sex" class="btn btn-glass py-2.5 text-[12px]">${s}</button>`).join('')}</div></div>
     </div>
     <div class="grid grid-cols-2 gap-3">
      <div><label class="microlabel" for="rgPhone">WhatsApp (optional)</label><input id="rgPhone" type="tel" inputmode="tel" placeholder="082 123 4567" class="field mono mt-1"></div>
@@ -266,7 +271,7 @@ export function viewHome(){
      data-on-input="visitors-filter" class="field mb-2" autocomplete="off">`:''}
    <div id="visitorList">${visitorListHTML(state.vq)}</div>
    <div class="hx-sheet-actions">
-    ${cloud.user||cloud.mode?'':`<button data-action="resetDemoAsk">Reset demo</button>`}
+    ${cloud.user||cloud.mode?'':'<button data-action="resetDemoAsk">Reset demo</button><button data-action="nsDiag">Memory diagnostics</button>'}
     ${installEvt?`<button data-action="installApp">Install app</button>`:''}
     <button data-action="openCloud">${cloud.user?'Sync':'Sign in'}</button>
     ${cloud.user?`<button data-action="cloudSignOut">Sign out</button>`:''}
@@ -284,7 +289,13 @@ export function viewHome(){
 /* With hundreds of visitors, drawing everyone on every tap would make the phone crawl, so long lists show the
    most recent few (plus whoever is open) and a search box finds the rest. Short lists show everyone as before. */
 export const LIST_CAP=25;
+/* the last 30 searches are remembered for a minute (nsmem.js), so typing and deleting a letter does not scan every visitor again */
+const visCache=window.NSMem?new window.NSMem.Cache('visitorSearch',{max:30,ttl:60000}):null;
 export function visitorsToShow(query){
+ if(visCache&&query)return visCache.memo(String(query).trim().toLowerCase(),()=>visitorsFind(query));
+ return visitorsFind(query);
+}
+function visitorsFind(query){
  const q=String(query||'').trim().toLowerCase(),out=[];
  if(q){
   for(let i=attendees.length-1;i>=0&&out.length<LIST_CAP;i--){const x=attendees[i];
@@ -304,7 +315,7 @@ function visitorRowHTML(x){
  /* Remove sits beside the row, not inside it (a button in a button is not valid): church admins and team leaders when signed in,
     anyone in practice mode; it asks first (removeVisitorAsk) */
  const rm=(!cloud.user||mayPlace())?`<button class="hx-row-x" data-action="visitor-remove" data-args="${esc(x.id)}" aria-label="Remove ${esc(x.name)}" title="Remove visitor"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l.9 12.5h9.2L17.5 7M10 11v5M14 11v5"/></svg></button>`:'';
- return `<div class="hx-rowwrap"><button data-action="switchTo" data-args="${x.id}" class="hx-row${act?' is-on':''}" style="font:inherit;text-align:left">
+ return `<div class="hx-rowwrap"><button data-action="switchTo" data-args="${esc(x.id)}" class="hx-row${act?' is-on':''}" style="font:inherit;text-align:left">
   <span class="hx-row-main"><span class="hx-row-dot" style="background:${dot}"></span>
    <span class="hx-row-txt"><strong class="hx-row-name">${esc(x.name)}${x.done?' ✓':''}</strong><span class="hx-row-sub">${esc(x.id)} · ${esc(line)} · ${d}/8 checks</span></span></span>
   <span class="hx-row-badge">${n} / 4</span></button>${rm}</div>`;
@@ -420,7 +431,7 @@ function consentCard(a){
   <p class="mt-1 text-[11px] leading-snug text-[#5c747a]">No consent is recorded for this passport, so its checks stay closed.</p>
   <div class="mt-3">${consentFields('cs',isMinor(a.age))}</div>
   <div id="csErr" class="st-warn mt-2" role="alert" hidden></div>
-  <button class="btn btn-primary mt-3 w-full py-3 text-sm" data-action="recordConsent" data-args="${a.id}">Record consent & open the checks</button>
+  <button class="btn btn-primary mt-3 w-full py-3 text-sm" data-action="recordConsent" data-args="${esc(a.id)}">Record consent & open the checks</button>
  </div>`;
 }
 export function recordConsent(id){
@@ -464,7 +475,7 @@ export function registerSubmit(e,force){
    ||(digits.length===9&&String(x.phone||'').replace(/\D/g,'').slice(-9)===digits)
    ||(email&&String(x.email||'').toLowerCase()===email.toLowerCase())));
  if(dup)return regError(`${esc(dup.name)} may already be registered as <b>${esc(dup.id)}</b>.
-   <span class="mt-2 btn-row"><button type="button" class="st-fix" style="background:#2b8074" data-action="switch-visitor" data-args="${dup.id}">Open ${esc(dup.id)}</button>
+   <span class="mt-2 btn-row"><button type="button" class="st-fix" style="background:#2b8074" data-action="switch-visitor" data-args="${esc(dup.id)}">Open ${esc(dup.id)}</button>
    <button type="button" class="st-fix" style="background:#6b8187" data-action="register-again">Register a new passport</button></span>`);
  const a=migrateAttendee({id,name,age,sex,phone:phone||'+27 —',email,heightCm:h,s:{},interests:cons.it,prayer:'',done:false});
  attendees.push(a);state.activeId=a.id;state.regOpen=false;state.newVisitOf=null;state.sugFor=null;state._goal=null;
@@ -474,7 +485,11 @@ export function registerSubmit(e,force){
 }
 export function resetDemo(){
  if(cloud.user||cloud.mode){toast('Reset is off while connected to the shared database');return;}
- seedDemo();state.sugFor=null;state._goal=null;render();toast('Demo data reset — storage cleared');
+ qAskClear();
+ if(window.NSMem)window.NSMem.bump('reset');             /* drop every cached screen and search */
+ seedDemo();
+ queue.length=0;qDemoClear();seedDemoQueue();          /* the practice queue starts again too */
+ state.sugFor=null;state._goal=null;render();toast('Demo data reset — storage cleared');
 }
 /* The button asks first; resetDemo itself stays synchronous because the smoke harness calls it directly and
    cannot answer a dialog. Same split as confirmAsk: the question belongs to the action, not the domain. */
@@ -493,14 +508,220 @@ export function switchTo(id){state.activeId=id;state.sugFor=null;state._goal=nul
 function stepperHTML(a,k,label,min,max,step,def){
  return `${label?`<div class="microlabel mb-1.5">${label}</div>`:''}
  <div class="flex items-center gap-1.5">
-  <button type="button" data-action="step" data-id="${a.id}" data-k="${k}" data-dir="-1" data-min="${min}" data-max="${max}" data-step="${step}" data-def="${def}" class="step-btn" aria-label="Lower">−</button>
+  <button type="button" data-action="step" data-id="${esc(a.id)}" data-k="${esc(k)}" data-dir="-1" data-min="${esc(min)}" data-max="${esc(max)}" data-step="${esc(step)}" data-def="${esc(def)}" class="step-btn" aria-label="Lower">−</button>
   <input id="in-${k}" type="text" inputmode="decimal" autocomplete="off" value="${disp(a.s[k])}" placeholder="—" aria-describedby="warn-${k}"
-   data-on-input="station-input" data-id="${a.id}" data-k="${k}" data-min="${min}" data-max="${max}" data-on-change="station-commit" data-id="${a.id}" data-k="${k}" data-min="${min}" data-max="${max}" data-step="${step}"
+   data-on-input="station-input" data-id="${esc(a.id)}" data-k="${esc(k)}" data-min="${esc(min)}" data-max="${esc(max)}" data-on-change="station-commit" data-id="${esc(a.id)}" data-k="${esc(k)}" data-min="${esc(min)}" data-max="${esc(max)}" data-step="${esc(step)}"
    class="step-input">
-  <button type="button" data-action="step" data-id="${a.id}" data-k="${k}" data-dir="1" data-min="${min}" data-max="${max}" data-step="${step}" data-def="${def}" class="step-btn" aria-label="Higher">+</button>
+  <button type="button" data-action="step" data-id="${esc(a.id)}" data-k="${esc(k)}" data-dir="1" data-min="${esc(min)}" data-max="${esc(max)}" data-step="${esc(step)}" data-def="${esc(def)}" class="step-btn" aria-label="Higher">+</button>
  </div>
  <p id="warn-${k}" class="st-warn" role="alert" hidden></p>`;
 }
+/* ---------- one check at a time (v1.6.2) ----------
+   The checks screen asks the 8 checks one by one, each with its own question, the app's range and Back / Skip / Next,
+   then shows a summary to tap back into. "Show all 8 checks" returns to the one-screen form (remembered for this tab
+   session in TF_KEY). A volunteer who has picked their own station keeps the one-station screen. */
+const TF_KEYS = ['bp', 'sugar', 'chol', 'weight', 'veg', 'walk', 'water', 'sleep'];
+const TF_KEY = 'newstart.checkView';
+const TF_Q = {
+ bp: [
+  'What is the blood pressure?',
+  'Top (systolic) and bottom (diastolic) number, in mmHg. Then tap Yes or No for BP medication.',
+  'Healthy is under 120/80 mmHg.'
+ ],
+ sugar: [
+  'What is the blood sugar?',
+  'A random finger-prick reading, in mmol/L.',
+  'The healthy range for a random reading is 4–8 mmol/L.'
+ ],
+ chol: ['What is the cholesterol?', 'The reading in mmol/L.', 'Healthy is under 5 mmol/L.'],
+ weight: [
+  'How much do they weigh?',
+  'Weight in kg, and their height in cm. The BMI is worked out for you.',
+  'Healthy BMI is 18.5–25.'
+ ],
+ veg: ['How many servings of fruit and veg a day?', 'Ask about a usual day.', 'On target is 5 or more servings a day.'],
+ walk: [
+  'How many minutes of brisk exercise a day?',
+  'Fast walking counts. Minutes on a usual day.',
+  'Active is 30 minutes or more a day.'
+ ],
+ water: ['How many glasses of water a day?', 'Glasses on a usual day.', 'Good is 8 glasses or more a day.'],
+ sleep: ['How many hours of sleep a night?', 'Hours on a usual night.', 'Restful is 7 to 9 hours a night.']
+};
+function tfMode0() {
+ if (state.tfMode === undefined) {
+  try {
+   state.tfMode = sessionStorage.getItem(TF_KEY) === 'all' ? 'all' : 'one';
+  } catch {
+   state.tfMode = 'one';
+  }
+ }
+ return state.tfMode;
+}
+function tfOn(a, ms) {
+ return !ms && tfMode0() === 'one' && !(attendees.some(x => x.id === a.id) && (!hasConsent(a) || visitIsOld(a)));
+}
+const tfDone = (a, k) => {
+ if (k === 'bp') {
+  return !!(a.s.sys && a.s.dia);
+ }
+ return a.s[k] != null;
+};
+const tfLabel = k => {
+ if (k === 'bp') {
+  return 'Blood pressure';
+ }
+ return (STATION_DEFS.find(y => y.k === k) || {}).label || k;
+};
+function tfIdx(a) {
+ if (!state.tf || state.tf.id !== a.id) {
+  const i = TF_KEYS.findIndex(k => !tfDone(a, k));
+  state.tf = {
+   id: a.id,
+   i: i < 0 ? TF_KEYS.length : i
+  };
+ }
+ return state.tf.i;
+}
+function tfSummary(a) {
+ const rows = TF_KEYS.map((k, j) => {
+  const c =
+   k === 'bp'
+    ? cat('bp', {
+       sys: a.s.sys,
+       dia: a.s.dia
+      })
+    : chipOf(a, k);
+  const v = k === 'bp' ? (tfDone(a, k) ? `${a.s.sys}/${a.s.dia}` : 'Not done') : a.s[k] != null ? disp(a.s[k]) : 'Not done';
+  return `<button type="button" class="tf-sum-row" data-action="tfGo" data-args="${j}" aria-label="Check ${j + 1}, ${tfLabel(k)}: ${v}. Tap to change"><span class="tf-sum-n" aria-hidden="true">${j + 1}</span><span class="tf-sum-l">${tfLabel(k)}</span><span class="tf-sum-v">${v}</span><span class="${chipClass(c[0])}">${c[1]}</span></button>`;
+ }).join('');
+ return `<div id="tfQ" class="glass tf-in p-4"><h2 id="tfTitle" class="tf-title" tabindex="-1">${doneCount(a)} of 8 checks recorded</h2><p class="tf-hint">Tap a check to change it.</p><div class="tf-sum">${rows}</div><button type="button" class="btn btn-primary tf-btn mt-3 w-full" data-action="tfMode" data-args="all">Rest of the paper record (all checks on one screen) \u2192</button></div>${followUpCard(a)}`;
+}
+function tfView(a, d, bpCard, cardOf) {
+ const n = TF_KEYS.length;
+ const i = tfIdx(a);
+ const fin = i >= n;
+ const k = TF_KEYS[Math.min(i, n - 1)];
+ const x = STATION_DEFS.find(y => y.k === k);
+ const q = TF_Q[k];
+ const pos = fin ? n : i + 1;
+ const head = `<div class="glass tf-head p-4" data-tour="tf-head"><div class="flex items-center justify-between gap-2"><div><div class="microlabel">Station screening \xB7 one at a time</div><div class="display text-base font-extrabold">${esc(firstName(a.name))}'s 8 checks</div></div><span id="stProgTxt" class="mono text-xs font-bold text-brand-700" aria-label="checks recorded">${d}/8</span></div><div class="tf-prog mt-3" role="progressbar" aria-valuemin="1" aria-valuemax="${n}" aria-valuenow="${pos}" aria-label="${fin ? 'Summary of the 8 checks' : `Check ${pos} of ${n}`}"><div class="tf-prog-fill" style="width:${(pos / n) * 100}%"></div></div><div class="mt-1 flex flex-wrap items-center justify-between gap-x-2"><span class="tf-count" aria-live="polite">${fin ? 'Summary' : `Check ${pos} of ${n} \xB7 ${tfLabel(k)}`}</span><button type="button" class="tap-link tf-link" data-action="tfMode" data-args="all" data-tour="tf-all">Show all 8 checks</button></div></div>`;
+ const body = fin
+  ? tfSummary(a)
+  : `<div id="tfQ" class="tf-q tf-in" role="group" aria-labelledby="tfTitle"><h2 id="tfTitle" class="tf-title" tabindex="-1">${q[0]}</h2><p class="tf-hint">${q[1]}</p><p class="tf-range"><b>The app\u2019s range:</b> ${q[2]}</p>${k === 'bp' ? bpCard : cardOf(x)}</div><div class="tf-nav"><button type="button" class="btn btn-glass tf-btn" data-action="tfBack"${i ? '' : ' disabled'}>\u2190 Back</button><button type="button" class="btn btn-glass tf-btn" data-action="tfSkip">${tfDone(a, k) ? 'Skip' : 'Not done · skip'}</button><button type="button" class="btn btn-primary tf-btn" data-action="tfNext">${i === n - 1 ? 'Finish ✓' : 'Next →'}</button></div><p class="tf-keys">Enter = Next. Answers are saved as you go.</p>`;
+ return `<section class="stagger space-y-3">
+  <div id="redBanner" class="${redFlag(a) ? '' : 'hidden'} flex items-start gap-2.5 rounded-2xl border border-rose-200/70 bg-rose-50/90 p-4 text-rose-700">
+   <span class="flex h-8 w-8 flex-none items-center justify-center rounded-[12px] bg-rose-500/15 font-extrabold">!</span>
+   <div><div class="text-[11px] font-extrabold uppercase tracking-wider">Clinical red flag</div>
+   <p class="mt-1 text-[11px] leading-relaxed text-rose-700">BP \u2265 160/100, or sugar \u2265 15 or under 3: do NOT run the step test. Emergency: attend to the visitor quickly.</p></div>
+  </div>
+  ${head}${body}${stationPicker()}<p class="text-center"><button type="button" class="tap-link tf-link" data-action="tfMode" data-args="all">Show all 8 checks on one screen</button></p></section>`;
+}
+export function tfGo(j, focus) {
+ const a = A();
+ if (!a) {
+  return;
+ }
+ tfIdx(a);
+ state.tf.i = Math.max(0, Math.min(TF_KEYS.length, j | 0));
+ renderMain();
+ setTimeout(() => {
+  const q = document.getElementById('tfQ');
+  const f = /** @type {HTMLElement|null} */ (q && (q.querySelector('.step-input') || document.getElementById('tfTitle')));
+  if (q && q.scrollIntoView) {
+   q.scrollIntoView({
+    block: 'nearest'
+   });
+  }
+  if (focus !== false && f) {
+   f.focus({
+    preventScroll: true
+   });
+  }
+ }, 40);
+}
+function tfCommit() {
+ const el = document.activeElement;
+ if (
+  el &&
+  el.tagName === 'INPUT' &&
+  el.closest &&
+  el.closest('#tfQ')
+ ) {
+  el.dispatchEvent(
+   new Event('change', {
+    bubbles: true
+   })
+  );
+ }
+}
+function tfBlocked() {
+ const q = document.getElementById('tfQ');
+ const a = A();
+ if (!q || !a) {
+  return false;
+ }
+ for (const el of /** @type {NodeListOf<HTMLInputElement>} */ (q.querySelectorAll('.step-input'))) {
+  const k = el.id.slice(3);
+  if (el.value.trim() !== '' && a.s[k] == null) {
+   el.focus();
+   return true;
+  }
+ }
+ return false;
+}
+export function tfNext() {
+ tfCommit();
+ if (tfBlocked()) {
+  return;
+ }
+ const a = A();
+ if (a) {
+  tfGo(tfIdx(a) + 1);
+ }
+}
+export function tfSkip() {
+ const a = A();
+ if (a) {
+  tfGo(tfIdx(a) + 1);
+ }
+}
+export function tfBack() {
+ tfCommit();
+ const a = A();
+ if (a) {
+  tfGo(tfIdx(a) - 1);
+ }
+}
+export function tfMode(m) {
+ if (m === 'all+') {
+  state.myStation = '';
+  try {
+   localStorage.removeItem(MS_KEY);
+  } catch {}
+ }
+ state.tfMode = m === 'one' ? 'one' : 'all';
+ try {
+  sessionStorage.setItem(TF_KEY, state.tfMode);
+ } catch {}
+ state.tf = null;
+ renderMain();
+ toast(state.tfMode === 'all' ? 'All 8 checks on one screen' : 'One check at a time');
+ if (window.scrollTo) {
+  window.scrollTo({
+   top: 0
+  });
+ }
+}
+/* Enter in a reading's box goes to the next check, as on paper */
+document.addEventListener('keydown', ev => {
+ if (ev.key !== 'Enter' || ev.isComposing || ev.shiftKey) return;
+ const t = /** @type {HTMLElement|null} */ (ev.target);
+ if (t && t.tagName === 'INPUT' && t.closest && t.closest('#tfQ')) {
+  ev.preventDefault();
+  tfNext();
+ }
+});
 export function viewScreen(){
  const a=A(),d=doneCount(a),cbp=cat('bp',{sys:a.s.sys,dia:a.s.dia});
  /* the vitals drill-down replaces the check grid inside the same tab (D-06) */
@@ -528,12 +749,13 @@ export function viewScreen(){
     <span class="flex flex-none flex-col items-end gap-1"><span id="chip-${x.k}" class="${chipClass(chip[0])}">${chip[1]}</span>${extra}</span>
    </div>
    ${stepperHTML(a,x.k,'',x.min,x.max,x.step,x.def)}
-   ${x.k==='weight'?`<label class="st-height"><span>Height</span><input id="in-height" type="text" inputmode="numeric" autocomplete="off" value="${a.heightCm||''}" placeholder="—" data-on-change="height-set" data-args="${a.id}"><span>cm</span></label>
+   ${x.k==='weight'?`<label class="st-height"><span>Height</span><input id="in-height" type="text" inputmode="numeric" autocomplete="off" value="${a.heightCm||''}" placeholder="—" data-on-change="height-set" data-args="${esc(a.id)}"><span>cm</span></label>
     <p id="warn-height" class="st-warn" role="alert" ${a.heightCm?'hidden':''}>${a.heightCm?'':'Add their height for the BMI.'}</p>`:''}
    ${(x.more||[]).map(m=>stepperHTML(a,m[0],m[1],m[2],m[3],m[4],m[5])).join('')}
    ${x.k==='fat'||x.k==='tbw'||x.k==='waist'?(SEX_RANGE[x.k][a.sex]?'':'<p class="st-warn">Choose Male or Female at registration for the range.</p>'):''}
   </div>`};
  const ms=myStation(),one=ms&&ms!=='bp'?STATION_DEFS.concat(EXTRA_DEFS).find(x=>x.k===ms):null;
+ if(tfOn(a,ms))return tfView(a,d,bpCard,cardOf);      /* one check at a time */
  /* POPIA: no consent on record, no checks */
  if(attendees.some(x=>x.id===a.id)&&!hasConsent(a))return `<section class="stagger space-y-3">${consentCard(a)}</section>`;
  /* a visit past the grace period takes no new readings: the database would clear them on upload */
@@ -542,7 +764,7 @@ export function viewScreen(){
   <div id="redBanner" class="${redFlag(a)?'':'hidden'} flex items-start gap-2.5 rounded-2xl border border-rose-200/70 bg-rose-50/90 p-4 text-rose-700">
    <span class="flex h-8 w-8 flex-none items-center justify-center rounded-[12px] bg-rose-500/15 font-extrabold">!</span>
    <div><div class="text-[11px] font-extrabold uppercase tracking-wider">Clinical red flag</div>
-   <p class="mt-1 text-[11px] leading-relaxed text-rose-600/90">BP ≥ 160/100, or sugar ≥ 15 or under 3: do NOT run the step test. Emergency: attend to the visitor quickly.</p></div>
+   <p class="mt-1 text-[11px] leading-relaxed text-rose-700">BP ≥ 160/100, or sugar ≥ 15 or under 3: do NOT run the step test. Emergency: attend to the visitor quickly.</p></div>
   </div>
 
   <div class="glass p-4">
@@ -553,7 +775,7 @@ export function viewScreen(){
    </div>
    <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-[#123033]/[.08]">
      <div id="stProgBar" class="bar-fill" style="width:${d/8*100}%"></div></div>
-   <p class="mt-2.5 text-[11px] leading-snug text-[#5c747a]">Tap − / + or type a number. Chips turn amber / rose when a value needs attention.</p>
+   <p class="mt-2.5 text-[11px] leading-snug text-[#5c747a]">Tap − / + or type a number. Chips turn amber / rose when a value needs attention.</p>${ms?'':'<button type="button" class="btn btn-glass tf-sw mt-2.5 w-full" data-action="tfMode" data-args="one" data-tour="tf-one">One at a time →</button>'}
   </div>
 
   ${stationPicker()}
@@ -565,7 +787,7 @@ export function viewScreen(){
   ${historyCard(a)}
   <div class="st-grid">${EXTRA_DEFS.map(cardOf).join('')}</div>
   ${surveyCard(a)}`}
-  ${ms?`<p class="text-center text-[12px] text-[#4f6870]">Saved automatically ✓ Only your station is shown. <button class="tap-link" data-action="setMyStation" data-args="">Show all 8 checks</button></p>`
+  ${ms?`<p class="text-center text-[12px] text-[#4f6870]">Saved automatically ✓ Only your station is shown. <button class="tap-link" data-action="tfMode" data-args="all+">Show all 8 checks</button></p>`
    :followUpCard(a)}
  </section>`;
 }
@@ -575,7 +797,7 @@ function pastVisitCard(a){
   <div class="microlabel">Past visit</div>
   <div class="display text-base font-extrabold">${esc(firstName(a.name))}’s visit was more than ${GRACE_DAYS} days ago</div>
   <p class="mt-1 text-[11px] leading-snug text-[#5c747a]">Readings of a past visit are deleted after ${GRACE_DAYS} days, so this passport takes no new checks. Register today’s visit on a new badge: their details are filled in, and they are asked for consent again.</p>
-  <button class="btn btn-primary mt-3 w-full py-3 text-sm" data-action="new-visit" data-args="${a.id}">Register as a new visit</button>
+  <button class="btn btn-primary mt-3 w-full py-3 text-sm" data-action="new-visit" data-args="${esc(a.id)}">Register as a new visit</button>
  </div>`;
 }
 /* opens New visitor with the past visit's details; the badge is new and the consent is asked again */
@@ -585,7 +807,7 @@ export function newVisitFrom(id){
  switchTab('home');
  const put=(sel,v)=>{const el=/** @type {HTMLInputElement|null} */ ($(sel));if(el&&v)el.value=String(v);};
  put('#rgName',a.name);put('#rgAge',a.age||'');put('#rgPhone',a.phone==='+27 —'?'':a.phone);put('#rgEmail',a.email);
- const sx=document.querySelector(`[data-action="pick-sex"][data-sex="${a.sex}"]`);if(sx)pickSex(sx);
+ const sx=document.querySelector(`[data-action="pick-sex"][data-sex="${esc(a.sex)}"]`);if(sx)pickSex(sx);
  showGuardian('rg',a.age);
 }
 /* "My station": a station volunteer sees only the check they do, so nothing to scroll past. Kept on this phone. */
@@ -595,11 +817,11 @@ export function setMyStation(k){state.myStation=k;try{k?localStorage.setItem(MS_
 function stationPicker(){
  const ms=myStation(),opts=[['','All 8 checks'],['bp','Blood pressure'],...STATION_DEFS.concat(EXTRA_DEFS).map(x=>[x.k,x.label])];
  return `<div class="glass p-3.5"><div class="microlabel">Your station</div>
-  <div class="fd-chips mt-2" role="group" aria-label="Your station">${opts.map(([k,l])=>`<button class="fd-chip hue-mint" aria-pressed="${k===ms}" data-action="setMyStation" data-args="${k}">${l}</button>`).join('')}</div></div>`;
+  <div class="fd-chips mt-2" role="group" aria-label="Your station">${opts.map(([k,l])=>`<button class="fd-chip hue-mint" aria-pressed="${k===ms}" data-action="setMyStation" data-args="${esc(k)}">${l}</button>`).join('')}</div></div>`;
 }
 /* A Yes / No pair, as circled on the paper form. Tapping the chosen answer again clears it. */
 function ynHTML(a,k,label){
- const v=a.s[k],b=(val,l)=>`<button type="button" class="availpill hue-mint ${v===val?'availpill-on':''}" aria-pressed="${v===val}" data-action="answer-set" data-id="${a.id}" data-k="${k}" data-val="${val}">${l}</button>`;
+ const v=a.s[k],b=(val,l)=>`<button type="button" class="availpill hue-mint ${v===val?'availpill-on':''}" aria-pressed="${v===val}" data-action="answer-set" data-id="${esc(a.id)}" data-k="${esc(k)}" data-val="${esc(val)}">${l}</button>`;
  return `<div class="flex flex-wrap items-center justify-between gap-2"><span class="text-[12px] font-semibold text-[#33504f]">${label}</span>
   <span class="flex gap-1.5">${b(1,'Yes')}${b(0,'No')}</span></div>`;
 }
@@ -610,7 +832,7 @@ function historyCard(a){
   ${MED_YN.filter(([k])=>k!=='bpMed'&&(k!=='preg'||a.sex!=='Male')).map(([k,l])=>ynHTML(a,k,l)).join('')}
   ${a.s.chronic===1?`<label class="block"><span class="microlabel">Which chronic illnesses?</span>
    <input type="text" maxlength="200" class="field mt-1" value="${esc(a.chronicList||'')}" placeholder="For example diabetes, asthma"
-    data-on-input="chronic-list" data-args="${a.id}"></label>`:''}
+    data-on-input="chronic-list" data-args="${esc(a.id)}"></label>`:''}
  </div>`;
 }
 /* the Health Age Survey; sleep is the Sleep check above, so it is not asked twice */
@@ -619,7 +841,7 @@ function surveyCard(a){
   <div class="microlabel">Health age survey</div>
   <div class="display text-base font-extrabold">How does ${esc(firstName(a.name))} live?</div>
   ${SURVEY.map(x=>`<div class="mt-3"><div class="text-[12px] font-semibold text-[#33504f]">${x.q}</div>
-   <div class="mt-1.5 flex flex-wrap gap-1.5">${x.a.map((l,i)=>`<button type="button" class="availpill hue-sand ${a.s[x.k]===i+1?'availpill-on':''}" aria-pressed="${a.s[x.k]===i+1}" data-action="answer-set" data-id="${a.id}" data-k="${x.k}" data-val="${i+1}">${l}</button>`).join('')}</div></div>`).join('')}
+   <div class="mt-1.5 flex flex-wrap gap-1.5">${x.a.map((l,i)=>`<button type="button" class="availpill hue-sand ${a.s[x.k]===i+1?'availpill-on':''}" aria-pressed="${a.s[x.k]===i+1}" data-action="answer-set" data-id="${esc(a.id)}" data-k="${esc(x.k)}" data-val="${i+1}">${l}</button>`).join('')}</div></div>`).join('')}
  </div>`;
 }
 export function setAnswer(id,k,v){
@@ -639,11 +861,11 @@ export function followUpCard(a){
   <p class="mt-1 text-[11px] leading-snug text-[#5c747a]">Tick anything they would like. It goes straight onto the Care lists for the team.</p>
   <div class="mt-3 flex flex-wrap gap-1.5">
    ${Object.keys(INT).map(k=>{const on=!!(a.interests&&a.interests[k]);
-    return `<button type="button" data-action="interest-toggle" data-id="${a.id}" data-k="${k}" class="availpill hue-${INT_HUE[k]} ${on?'availpill-on':''}" aria-pressed="${on}">${on?'✓ ':''}${INT[k]}</button>`;}).join('')}
+    return `<button type="button" data-action="interest-toggle" data-id="${esc(a.id)}" data-k="${esc(k)}" class="availpill hue-${INT_HUE[k]} ${on?'availpill-on':''}" aria-pressed="${on}">${on?'✓ ':''}${INT[k]}</button>`;}).join('')}
   </div>
   <div class="mt-3 rounded-[14px] bg-white/60 p-2.5">
    <div class="flex items-center justify-between gap-2"><span class="text-[12px] font-semibold text-[#33504f]">May the church contact them after the expo?</span>
-    <button type="button" data-action="toggleOptin" data-args="${a.id}" class="availpill hue-mint ${optedIn(a)?'availpill-on':''}" aria-pressed="${optedIn(a)}">${optedIn(a)?'✓ Yes':'No'}</button></div>
+    <button type="button" data-action="toggleOptin" data-args="${esc(a.id)}" class="availpill hue-mint ${optedIn(a)?'availpill-on':''}" aria-pressed="${optedIn(a)}">${optedIn(a)?'✓ Yes':'No'}</button></div>
    <p class="mt-1 text-[10.5px] text-[#6b8187]">Consent given ${esc(a.interests.consentOn||'(date not recorded)')}${a.interests.guardianName?` by ${esc(a.interests.guardianName)} (parent or guardian)`:''}. To withdraw it, a church admin deletes the record.</p>
    <details class="mt-1"><summary class="text-[10.5px] font-semibold text-brand-800">What they agreed to${a.interests.consentV?` (notice of ${esc(a.interests.consentV)})`:''} ▾</summary>
     ${!a.interests.consentV||a.interests.consentV===NOTICE_VERSION?noticeHTML():'<p class="mt-1 text-[10.5px] text-[#6b8187]">An older version of the notice; this app now shows the '+NOTICE_VERSION+' version.</p>'}</details>
@@ -654,7 +876,7 @@ export function followUpCard(a){
   <div class="mt-1.5 flex flex-wrap gap-1.5">${pillsHTML(a,HEARD,'sky')}</div>
   <label class="mt-3 block"><span class="microlabel">Prayer request (optional)</span>
    <textarea id="prayerNote" rows="3" maxlength="500" class="field mt-1" placeholder="Anything they would like us to pray for"
-    data-on-input="prayer-set" data-args="${a.id}">${esc(a.prayer||'')}</textarea></label>
+    data-on-input="prayer-set" data-args="${esc(a.id)}">${esc(a.prayer||'')}</textarea></label>
  </div>`;
 }
 export function toggleInterest(btn,id,k){
@@ -666,7 +888,7 @@ export function toggleInterest(btn,id,k){
 }
 /* tick boxes kept in interests, like the follow-up asks: SEMINARS and HEARD */
 const pillsHTML=(a,set,hue)=>Object.keys(set).map(k=>{const on=!!(a.interests&&a.interests[k]);
- return `<button type="button" data-action="tick-toggle" data-id="${a.id}" data-k="${k}" class="availpill hue-${hue} ${on?'availpill-on':''}" aria-pressed="${on}">${on?'✓ ':''}${set[k]}</button>`;}).join('');
+ return `<button type="button" data-action="tick-toggle" data-id="${esc(a.id)}" data-k="${esc(k)}" class="availpill hue-${hue} ${on?'availpill-on':''}" aria-pressed="${on}">${on?'✓ ':''}${set[k]}</button>`;}).join('');
 export function toggleTick(btn,id,k){
  const a=attendees.find(x=>x.id===id);if(!a)return;
  a.interests=a.interests||{};a.interests[k]=!a.interests[k];
@@ -697,7 +919,7 @@ function readingWarn(k,msg,fix){
  if(inp){inp.classList.toggle('is-bad',!!msg);inp.setAttribute('aria-invalid',msg?'true':'false');}
  if(!el)return;
  el.hidden=!msg;el.dataset.cross='';
- el.innerHTML=msg?esc(msg)+(fix!=null?` <button type="button" class="st-fix" data-action="reading-apply" data-args="${k}" data-fix="${fix}">Use ${disp(fix)}</button>`:''):'';
+ el.innerHTML=msg?esc(msg)+(fix!=null?` <button type="button" class="st-fix" data-action="reading-apply" data-args="${esc(k)}" data-fix="${esc(fix)}">Use ${disp(fix)}</button>`:''):'';
 }
 /* while typing: save only a complete, possible value; a half-typed "14" (on the way to 140) is simply not saved yet */
 export function onStationInput(id,k,el,min,max){
@@ -720,6 +942,7 @@ export function onStationCommit(id,k,el,min,max,step){
   readingWarn(k,`${disp(v)} cannot be right (possible: ${min}–${max}). Not saved: check and type it again.${fix!=null?` Did you mean ${disp(fix)}?`:''}`,fix);
  }else{a.s[k]=v;el.value=disp(v);readingWarn(k,'');}
  crossCheck(a);updateScreenMeta();
+ if(a.s[k]!=null)qStartAsk(id,k);      /* still waiting in this line? offer to start them (queue.js) */
 }
 /* height lives on the passport, not in the readings; the Weight station can add or correct it */
 export function onHeight(id,el){

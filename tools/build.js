@@ -14,13 +14,23 @@ fs.rmSync(dist, { recursive: true, force: true });
 fs.mkdirSync(path.join(dist, 'icons'), { recursive: true });
 
 const shell = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-const bundle = esbuild.buildSync({
+const rawBundle = esbuild.buildSync({
   entryPoints: [path.join(root, 'src', 'main.js')],
   bundle: true, format: 'iife', globalName: '__NEWSTART', write: false, logLevel: 'warning',
   /* Ship less without touching behaviour: whitespace/syntax only, identifiers stay readable in stack
      traces. The old build shipped a ~466 KB unminified IIFE inside every page. */
   minifyWhitespace: true, minifySyntax: true, minifyIdentifiers: false,
 }).outputFiles[0].text;
+/* v1.6.2: the app may only start once the secure store (the inline <script id="secureStore"> in index.html) has
+   decrypted localStorage into memory, so the bundle is wrapped: it runs when the store calls window.__bootApp(),
+   or at once if the store was already ready. */
+const bundle = 'window.__bootApp=function(){window.__bootApp=null;window.__NEWSTART=' + rawBundle.trim().replace(/^var __NEWSTART\s*=\s*/, '').replace(/;?$/, ';') + '};\nif(window.__secureReady)window.__bootApp();';
+if (!/^var __NEWSTART\s*=/.test(rawBundle.trim())) throw new Error('esbuild output did not start with var __NEWSTART= (the boot wrapper needs it)');
+/* nsmem.js ships with its diagnostics build flag OFF. Only a test build (NS_DEV_BUILD=1 node tools/build.js) turns it on. */
+const DEV_BUILD = process.env.NS_DEV_BUILD === '1';
+const nsmemSrc = fs.readFileSync(path.join(root, 'nsmem.js'), 'utf8');
+if (!/var NS_DEV_BUILD = false;/.test(nsmemSrc)) throw new Error('nsmem.js must keep "var NS_DEV_BUILD = false;" in source');
+const nsmemOut = DEV_BUILD ? nsmemSrc.replace('var NS_DEV_BUILD = false;', 'var NS_DEV_BUILD = true;') : nsmemSrc;
 /* The page is one inline-styled file; minify the shipped copy of each style block, not the source. */
 const minifiedShell = shell.replace(/<style([^>]*)>([\s\S]*?)<\/style>/g, (all, attrs, css) => {
   try { return '<style' + attrs + '>' + esbuild.transformSync(css, { loader: 'css', minify: true }).code + '</style>'; }
@@ -31,6 +41,17 @@ const minifiedShell = shell.replace(/<style([^>]*)>([\s\S]*?)<\/style>/g, (all, 
    icons under the old cache name, so installed apps kept serving the old files. */
 const versionHash = crypto.createHash('sha1').update(bundle).update(minifiedShell).update(fs.readFileSync(path.join(root, 'manifest.webmanifest')));
 for (const f of fs.readdirSync(path.join(root, 'icons')).sort()) versionHash.update(f).update(fs.readFileSync(path.join(root, 'icons', f)));
+/* v1.6.2: the page also loads these same-origin files, so they are part of the build's identity */
+const STATIC_DIRS = ['tutorial', 'vendor'];
+const staticFiles = [];
+for (const d of STATIC_DIRS) (function walk(rel) {
+  for (const e of fs.readdirSync(path.join(root, rel), { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : 1)) {
+    const r = path.join(rel, e.name);
+    if (e.isDirectory()) walk(r); else if (!e.name.endsWith('README.md')) staticFiles.push(r);
+  }
+})(d);
+versionHash.update(nsmemOut);
+for (const f of staticFiles) versionHash.update(f.replace(/\\/g, '/')).update(fs.readFileSync(path.join(root, f)));
 const version = versionHash.digest('hex').slice(0, 10);
 
 /* ---- CSP ---------------------------------------------------------------------------------------------
@@ -40,15 +61,21 @@ const version = versionHash.digest('hex').slice(0, 10);
    library the app loads, pinned down to its exact versioned path — jsDelivr serves arbitrary npm content,
    so the host name alone must never be enough. The style-src 'unsafe-inline' stays: the page styles itself inline. */
 const hashOf = s => "'sha256-" + crypto.createHash('sha256').update(s).digest('base64') + "'";
-const fontPick = (shell.match(/<script id="fontPick">([\s\S]*?)<\/script>/) || [])[1];
-if (!fontPick) throw new Error('index.html lost its fontPick script — the CSP hash cannot be computed');
+/* v1.6.2: two inline scripts in the shell, each allowed by its own hash: fontPick (theme before first paint) and
+   secureStore (encrypts localStorage, then boots the app). The sign-in library is now served from vendor/ ('self'). */
+const INLINE_IDS = ['fontPick', 'secureStore'];
+const inlineHashes = INLINE_IDS.map(id => {
+  const m = shell.match(new RegExp('<script id="' + id + '">([\\s\\S]*?)<\\/script>'));
+  if (!m) throw new Error('index.html lost its ' + id + ' script — the CSP hash cannot be computed');
+  return hashOf(m[1]);
+});
 
-const cspScripts = base => base.replace("'self'", "'self' " + hashOf(fontPick));
+const cspScripts = base => base.replace("'self'", "'self' " + inlineHashes.join(' '));
 const policy = scripts => [
   "default-src 'self'",
   cspScripts(scripts),
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src https://fonts.gstatic.com",
+  "style-src 'self' 'unsafe-inline'",
+  "font-src 'self'",
   "img-src 'self' data: blob:",
   "media-src 'self' blob:",
   "connect-src 'self' " + SITE_ORIGIN + ' ' + SB_API,
@@ -72,8 +99,10 @@ const SB_URL = (/export const SB_URL='([^']+)'/.exec(fs.readFileSync(path.join(r
 if (!SB_URL) throw new Error('src/cloud.js lost its SB_URL line — the CSP cannot name the database host');
 const SB_HOST = new URL(SB_URL).host;
 const SB_API = 'https://' + SB_HOST + ' wss://' + SB_HOST;
-const CSP_DEV = policy("script-src 'self' " + SB_CDN);
-const CSP_DIST = policy("script-src 'self' " + hashOf(inlineBundle) + ' ' + SB_CDN);
+/* a same-origin library path (vendor/...) is covered by 'self'; only an off-site URL needs naming */
+const SB_SRC = /^https:\/\//.test(SB_CDN) ? ' ' + SB_CDN : '';
+const CSP_DEV = policy("script-src 'self'" + SB_SRC);
+const CSP_DIST = policy("script-src 'self' " + hashOf(inlineBundle) + SB_SRC);
 
 /* The shell's meta tag is the development policy (dev loads src/main.js as an external module, so it needs
    'self' but not the bundle hash). It must carry the current fontPick hash — fail the build on drift. */
@@ -97,6 +126,9 @@ fs.writeFileSync(path.join(dist, 'index.html'), built);
 fs.copyFileSync(path.join(root, 'manifest.webmanifest'), path.join(dist, 'manifest.webmanifest'));
 fs.writeFileSync(path.join(dist, 'sw.js'), fs.readFileSync(path.join(root, 'sw.js'), 'utf8').replace('__VERSION__', version));
 for (const f of fs.readdirSync(path.join(root, 'icons'))) fs.copyFileSync(path.join(root, 'icons', f), path.join(dist, 'icons', f));
+fs.writeFileSync(path.join(dist, 'nsmem.js'), nsmemOut);
+for (const f of staticFiles) { fs.mkdirSync(path.dirname(path.join(dist, f)), { recursive: true }); fs.copyFileSync(path.join(root, f), path.join(dist, f)); }
+if (DEV_BUILD) console.log('NOTE: NS_DEV_BUILD=1 — nsmem.js diagnostics flag ON (test build only)');
 
 /* the Android app (capacitor/, built by tools/sign-app.ps1), if one has been built, so phones can download it from the
    same address */

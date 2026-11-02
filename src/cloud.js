@@ -3,12 +3,13 @@ import { APP_SITE, IS_APP } from './platform.js';
 import { $ } from './helpers.js';
 import { cloud, migrateAttendee, migrateVolunteer, storageFull } from './state.js';
 import { SEED, SEED_VOL, attendees, state, volunteers } from './data.js';
+import { nsAuthTimer } from './account.js';
 import { ACCT_GATES, acctButtons, acctGate, acctGateHTML, churchSearch, cloudInit, cloudRefresh, profileChanged, roleLabel } from './account.js';
 import { render, toast } from './shell.js';
 import { esc } from './helpers.js';
 import { pendingInvite } from './churchPlans.js';
 import { hideModal, showModal } from './volunteer.js';
-import { qSafe, qs } from './queue.js';
+import { qSafe, qs, seedDemoQueue } from './queue.js';
 /* Cloud sync with Supabase: sign-in gate, pull/push, live updates, libraries and installs. Split from the original single-file app; bundled back into one file by tools/build.js. */
 /* =====================================================================
    CLOUD SYNC  —  Supabase (shared database between desks)
@@ -23,16 +24,16 @@ import { qSafe, qs } from './queue.js';
    ===================================================================== */
 export const SB_URL='https://wlsrgihkijlvjyfxvhfl.supabase.co';
 export const SB_KEY='sb_publishable_mA_jEgF_t1sRrnfAgM-1eg_wNdvgQYG';
-export const SB_LIB='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js';
+export const SB_LIB='vendor/supabase.min.js';
 /* Subresource Integrity (sha384) of the pinned sign-in library. Changing a library version means recomputing its hash:
    curl -sL <url> | openssl dgst -sha384 -binary | openssl base64 -A   and prefixing it with sha384- */
 export const SRI={
- [SB_LIB]:'sha384-GFr3yTh5lJznCbZfpTtXnwboFsxqtTQoeTZCRHhE0579KrRmlCzen5AA8ohaB5ug',
+ [SB_LIB]:'sha384-UagCvVPT5XXA0Hx+nJYUAGBFseHT9zBgpJMSebsAxl9lciTwbT+39j5VfRjdP5Tp',
 };
 /* Inside the Android app the library is bundled (tools/build-app.js copies them and refuses any whose bytes do not
    match the hash above), so the app needs no internet to start. The integrity check still applies to the copy. */
 const APP_LIB={[SB_LIB]:'vendor/supabase.min.js'};
-export function appCopyOf(src){return IS_APP&&APP_LIB[src]||src;}
+export function appCopyOf(src){return APP_LIB[src]||src;}
 export const SYNC_KEY='newstart.cloud.v1';
 
 const nulIfEmpty=v=>v?v:null;
@@ -222,7 +223,8 @@ export function installBlock(){
  return '';
 }
 if(!IS_APP&&'serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1'))
- addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+ /* the app now boots after the secure store opens, which can be after the load event */
+ (document.readyState==='complete'?f=>f():f=>addEventListener('load',f))(()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 
 /* ---------- sign-in gate ---------- */
 /* Until someone has signed in on this device, a full-screen login covers the app. Devices that were signed in
@@ -265,7 +267,7 @@ export async function savePassword(pw){
 }
 /* a password box with one Show / Hide button for every box in its form (the sign-in screens and the Profile page both use it) */
 export const pwField=(id,label,auto,ph)=>`<label class="block"><span class="microlabel">${label}</span>
-   <span class="relative mt-1 block"><input id="${id}" type="password" autocomplete="${auto}" required placeholder="${ph||'Password'}" class="field" style="padding-right:4.5rem">
+   <span class="relative mt-1 block"><input id="${esc(id)}" type="password" autocomplete="${auto}" required placeholder="${ph||'Password'}" class="field" style="padding-right:4.5rem">
    <button type="button" data-action="toggle-pass" class="text-[11px] font-extrabold text-brand-700" style="position:absolute;right:.5rem;top:50%;transform:translateY(-50%);min-height:40px;min-width:44px;padding:0 .5rem">Show</button></span></label>`;
 /* where the e-mailed links (confirm / reset) send people back to: this page, if it has a web address */
 export const authRedirect=()=>IS_APP?APP_SITE:/^https?:$/.test(location.protocol)?location.origin+location.pathname:undefined;
@@ -322,7 +324,7 @@ export function renderGate(){
  const keepEmail=($('#gateEmail')||{}).value||cloud.viewEmail||'',keepName=($('#gateName')||{}).value||'';
  const title=t=>`<div class="display hx-gate-title text-[17px] font-extrabold">${t}</div>`;
  const note=(t,cls)=>`<p class="mt-1.5 text-[11px] leading-relaxed ${cls||'text-[#5c747a]'}">${t}</p>`;
- const link=(view,t)=>`<button type="button" data-action="gateView" data-args="${view}" style="min-height:44px;padding:0 .2rem" class="text-[11px] font-extrabold text-brand-700">${t}</button>`;
+ const link=(view,t)=>`<button type="button" data-action="gateView" data-args="${esc(view)}" style="min-height:44px;padding:0 .2rem" class="text-[11px] font-extrabold text-brand-700">${t}</button>`;
  const err=`<p id="gateErr" role="alert" class="text-[11px] font-bold text-rose-600">${esc(cloud.formErr)}</p>`;
  const emailField=`<label class="block"><span class="microlabel">Email</span>
    <input id="gateEmail" type="email" inputmode="email" autocomplete="username" required placeholder="you@example.org" class="field mt-1" value="${esc(keepEmail)}"></label>`;
@@ -421,7 +423,12 @@ export function togglePass(btn){
  boxes.forEach(i=>{i.type=show?'text':'password';i.setAttribute('data-pw','1');});
  btn.textContent=show?'Hide':'Show';
 }
-export function gateDemo(){cloud.demo=true;renderGate();render();toast('Practice mode: demo visitors, nothing is shared');}
+export function gateDemo(){
+ nsAuthTimer(false);                   /* practice mode keeps no session refresh timer (account.js) */
+ cloud.demo=true;seedDemoQueue();renderGate();render();
+ toast('Practice mode: demo visitors, nothing is sent to the shared database');
+ if(window.NSTour)window.NSTour.offer('demo');          /* first time only: offer the guided tour */
+}
 
 /* ---------- account actions ---------- */
 export async function cloudSignUp(e){
@@ -550,7 +557,8 @@ export function renderCloudBody(){
   if(cloud.isAdmin===undefined&&!cloud.acct)loadApprovals();
   return;
  }
- body.innerHTML=`<div class="display text-base font-extrabold">Staff sign-in</div>
+ body.innerHTML=`<div class="display text-base font-extrabold">${cloud.demo?"Sync &amp; sign-in":"Staff sign-in"}</div>
+  ${cloud.demo?'<div class="q-state q-state-info mt-2" data-tour="cloud-practice"><span class="q-dot"></span><span style="flex:1"><b>Practice mode — sign in to sync.</b> Nothing is sent to the shared database. Demo data stays on this phone until you reset it.</span></div>':''}
   <p class="mt-1 text-[11px] leading-relaxed text-[#5c747a]">Sign in to share visitors and volunteers between desks. Until you do, this device only shows demo data.</p>
   ${cloud.client?`<form data-action="cloudSignIn" class="mt-3 space-y-3">
     <input id="cloudEmail" type="email" inputmode="email" autocomplete="username" required placeholder="Staff email" class="field" value="${esc(keep)}">
@@ -619,7 +627,7 @@ export function healthFromError(key,err,what){
  const msg=String((err&&err.message)||err||''),name=what||missingName(err);
  if(isOfflineErr(msg))return noteHealth(key,'warn','No connection. It retries by itself; changes stay on this phone.',msg);
  if(isMissingErr(err)){
-  noteHealth('schema','bad',`Missing in the database: ${name||'a table or function'}. Run supabase/schema.sql again in the Supabase SQL editor.`,msg);
+  noteHealth('schema','bad',`Missing in the database: ${name||'a table or function'}. Ask the app\u2019s support to update the database.`,msg);
   return noteHealth(key,'bad','Not set up in the database yet (see Database setup).',msg);
  }
  if(err&&(err.code==='42501'||/row-level security|permission denied/i.test(msg)))return noteHealth(key,'bad','Refused: this account has no access to it.',msg);
@@ -688,10 +696,10 @@ export async function healthTest(){
  if(qc&&qt)healthLive('queue',qs.rt||'');
  const me=await probe('account','my_account',()=>cloud.client.rpc('my_account'));
  if(me&&me.data&&typeof me.data==='object')noteHealth('account','ok','Account functions answer.');
- else if(me){missing.push('my_account (churches part)');noteHealth('account','warn','Churches are not set up in this database. Until schema.sql is run again, the old staff list decides who gets in.');}
+ else if(me){missing.push('my_account (churches part)');noteHealth('account','warn','Church accounts are not switched on for this database yet, so the old staff list decides who gets in. Ask the app’s support to update the database.');}
  healthUpload();
  if(cloud.channel)healthLive('live',cloud.liveSt||'');else noteHealth('live','off','Not connected (connects after the first download).');
- if(missing.length)noteHealth('schema','bad',`Missing in the database: ${missing.join(', ')}. Run supabase/schema.sql again in the Supabase SQL editor.`);
+ if(missing.length)noteHealth('schema','bad',`Missing in the database: ${missing.join(', ')}. Ask the app’s support to update the database.`);
  else if(unreached)noteHealth('schema','warn',`Could not be checked: ${unreached} request${unreached>1?'s':''} failed for another reason (see the rows above).`);
  else noteHealth('schema','ok','Every table and function Test now checks was found: attendees, volunteers, queue_entries, queue_now, my_account.');
  cloud.testing=false;cloud.testedAt=Date.now();

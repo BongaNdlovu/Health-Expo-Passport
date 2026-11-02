@@ -105,7 +105,7 @@ export function customPlanHTML(a){
  const p=cp&&typeof cp==='object'?cp:(state.customDraft||blankCustomPlan());
  const acts=Array.isArray(p.actions)?p.actions:[];
  const keys=Object.keys(PROTOCOLS),own=!keys.includes(p.problem);
- const field=(id,ph,v,max)=>`<input id="${id}" value="${esc(v||'')}" placeholder="${ph}" maxlength="${max}" class="field mt-1.5 text-xs">`;
+ const field=(id,ph,v,max)=>`<input id="${esc(id)}" value="${esc(v||'')}" placeholder="${ph}" maxlength="${max}" class="field mt-1.5 text-xs">`;
  const slot=i=>{const x=acts[i]||{};
   return `<div class="rounded-[14px] border border-[#123033]/[.07] p-2.5">
    <div class="microlabel">Thing to do ${i+1}${i<CUSTOM_MIN_ACTIONS?' (required)':' (optional)'}</div>
@@ -116,7 +116,7 @@ export function customPlanHTML(a){
   <form data-action="customPlanSave" class="mt-3 space-y-2.5">
   <label class="block"><span class="microlabel">Title</span>${field('cpxTitle','e.g. Easing stiff, painful joints',p.title,LIMITS.title)}</label>
   <label class="block"><span class="microlabel">Problem area</span>
-   <select id="cpxProblem" class="field mt-1 text-xs">${keys.map(k=>`<option value="${k}" ${k===p.problem?'selected':''}>${esc(PROTOCOLS[k].tag)}</option>`).join('')}<option value="own" ${own?'selected':''}>Another problem (type it below)</option></select></label>
+   <select id="cpxProblem" class="field mt-1 text-xs">${keys.map(k=>`<option value="${esc(k)}" ${k===p.problem?'selected':''}>${esc(PROTOCOLS[k].tag)}</option>`).join('')}<option value="own" ${own?'selected':''}>Another problem (type it below)</option></select></label>
   ${field('cpxOwn','Another problem, e.g. Joint pain',own?p.problem:'',LIMITS.problem)}
   ${Array.from({length:CUSTOM_MAX_ACTIONS},(_,i)=>slot(i)).join('')}
   <label class="block"><span class="microlabel">Safety note (optional)</span><textarea id="cpxNote" rows="2" maxlength="${LIMITS.note}" class="field mt-1 text-xs">${esc(p.note||'')}</textarea></label>
@@ -236,7 +236,7 @@ export function customPlanTemplate(){
   const P=window.Capacitor.Plugins.CardPrinter;
   if(!P||!P.saveDownload){toast('Saving files needs the latest version of the app');return;}
   P.saveDownload({name:filename,text,mime:'application/json'})
-   .then(r=>toast(`Template saved in ${r&&r.where||'Downloads'} as ${filename}.`))
+   .then(r=>toast(`Template ready. Choose where to send ${filename} (it is not kept in Downloads).`))
    .catch(e=>toast('Could not save the file: '+(e&&e.message||e)));
   return;
  }

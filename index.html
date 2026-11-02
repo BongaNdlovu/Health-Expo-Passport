@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <!-- Same policy as dist/_headers (tools/build.js checks the two stay identical). The header needs a host that reads
      _headers (Cloudflare); this meta travels with the page, so the packaged Android app keeps the same protections. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-hgUPi7Y2iI77XI9Qw6IEOC8/OowKupAKF4UbLcd/qN4=' https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://winter-bonus-626a.ndlovufanelesibonge8.workers.dev https://wlsrgihkijlvjyfxvhfl.supabase.co wss://wlsrgihkijlvjyfxvhfl.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-jHF5kcI45dj1J0vBtQFZmMlLev+5KxohjpFMn4YE924=' 'sha256-Zr72/7Oe0bQTjyb7b+7MYX0en9/H/Peyg9q7oEsABTs='; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://winter-bonus-626a.ndlovufanelesibonge8.workers.dev https://wlsrgihkijlvjyfxvhfl.supabase.co wss://wlsrgihkijlvjyfxvhfl.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <meta name="theme-color" content="#f4f3ee"/>
 <!-- Stamped by tools/build.js with the cache version this page was built from. src/update.js compares it with
@@ -25,11 +25,20 @@
      the web site loads them from Google Fonts as before. -->
 <script id="fontPick">(function(){
  try{var t=localStorage.getItem('newstart.theme')==='dark'?'dark':'light';document.documentElement.dataset.theme=t;var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content',t==='dark'?'#0b0e0c':'#f4f3ee');}catch(e){}
- var app=!!(window.Capacitor&&typeof window.Capacitor.isNativePlatform==='function'&&window.Capacitor.isNativePlatform());
- document.write(app?'<link href="vendor/fonts.css" rel="stylesheet">'
-  :'<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
-  +'<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Plus+Jakarta+Sans:wght@600..800&display=swap" rel="stylesheet">');
 })();</script>
+<!-- v1.6.2: memory helper (window.NSMem; diagnostics only when its build flag is on), guided tour, and the fonts
+     always from vendor/ (no Google Fonts request: nothing leaves the device, and the CSP drops font/style CDNs) -->
+<script src="nsmem.js"></script>
+<style>
+  .ns-diag{position:fixed;inset:auto 12px 12px 12px;z-index:90;background:#fff;color:#123;border-radius:16px;padding:14px;box-shadow:0 10px 40px rgba(0,0,0,.3);font:13px system-ui}
+  .ns-diag dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:8px 0}
+  .ns-diag dt{color:#567}
+  .ns-diag-b{display:flex;gap:8px}
+  .ns-diag-b button{flex:1;min-height:44px;border-radius:12px;border:1px solid #9bb;background:#eef6f4;font-weight:700}
+</style>
+<link rel="stylesheet" href="tutorial/tour.css">
+<script src="tutorial/tour.js" defer></script>
+<link href="vendor/fonts.css" rel="stylesheet">
 <style>
   /* ============ HX TOKENS — mockup contract (see docs/ui-contract.md) ============
      Dark is the target look. It becomes the default only after every screen is migrated (Phase 6);
@@ -1358,6 +1367,326 @@
   #helpBody .help-steps{margin:6px 0 0 18px;display:grid;gap:5px;font-size:12px;line-height:1.5;color:#4f6870;list-style:decimal}
   html[data-theme=dark] #helpBody .help-what,html[data-theme=dark] #helpBody .help-list dd,html[data-theme=dark] #helpBody .help-steps{color:#b9cdd1}
   html[data-theme=dark] #helpBody .help-list dt{color:#eaf4f2}
+  /* v1.6.2: multi-serve places, skip-filled toggle, one-at-a-time checks, help button. Last in the head so these win over the generic .btn rules above (as in v43) */
+.q-ms {
+  min-height: 44px;
+  min-width: 44px;
+  border-radius: 14px;
+  font-weight: 800;
+  font-size: 12px;
+}
+.q-ms-b {
+  background: #123033;
+  color: #fff;
+  font-size: 18px;
+  line-height: 1;
+}
+.q-ms-b:disabled {
+  opacity: .4;
+}
+.q-ms-soft {
+  background: #3aa5971f;
+  color: #1f6b62;
+  padding: 0 .85rem;
+}
+.q-places {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+  margin: .15rem .1rem .55rem;
+}
+.q-places-t {
+  flex: 1;
+  min-width: 8.5rem;
+  font-size: 12px;
+  font-weight: 700;
+  color: #36525a;
+}
+.q-places-n {
+  min-width: 1.6rem;
+  text-align: center;
+  font-size: 16px;
+  color: #123033;
+}
+.q-slot-free {
+  border: 2px dashed #3aa59780;
+  border-radius: 18px;
+  padding: .55rem .6rem;
+  margin-top: .4rem;
+}
+.q-row-serving {
+  flex-wrap: wrap;
+}
+.q-slot-tag {
+  width: 100%;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: #1f5c55;
+  margin: 0 0 .35rem;
+}
+.q-names {
+  display: grid;
+  gap: .4rem;
+  margin: 0 .1rem .6rem;
+}
+.q-name-row {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  font-size: 12px;
+  font-weight: 700;
+  color: #36525a;
+}
+.q-name-row span {
+  min-width: 4.2rem;
+}
+.q-name-in {
+  min-height: 44px;
+  flex: 1;
+  min-width: 0;
+}
+.q-tv-slots {
+  display: grid;
+  gap: .25em;
+  margin-bottom: .2em;
+}
+.q-tv-slot {
+  display: flex;
+  justify-content: space-between;
+  gap: .6em;
+  font-family:
+    Plus Jakarta Sans,
+    Inter,
+    sans-serif;
+  font-weight: 800;
+  font-size: clamp(16px, 3.8vmin, 52px);
+  font-variant-numeric: tabular-nums;
+}
+.q-tv-slot span {
+  font-weight: 700;
+  opacity: .8;
+}
+.q-tv-slot.is-free b {
+  opacity: .6;
+  font-weight: 700;
+}
+html[data-theme=dark] .q-places-t,
+html[data-theme=dark] .q-name-row {
+  color: #b9cdd1;
+}
+html[data-theme=dark] .q-places-n {
+  color: #eaf4f2;
+}
+html[data-theme=dark] .q-slot-tag {
+  color: #8fe0d3;
+}
+html[data-theme=dark] .q-ms-b {
+  background: #d8efeb;
+  color: #0f2a2c;
+}
+.q-skipf {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  margin-top: 6px;
+  padding: 0 4px;
+  font-size: 12px;
+  color: #1f5c55;
+  background: none;
+  border: 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+[data-theme=dark] .q-skipf {
+  color: #9fe0d4;
+}
+.tf-prog {
+  height: 8px;
+  border-radius: 99px;
+  background: #1230331a;
+  overflow: hidden;
+}
+.tf-prog-fill {
+  height: 100%;
+  background:
+    linear-gradient(
+      90deg,
+      #3aa597,
+      #1f6b62);
+  border-radius: 99px;
+  transition: width .35s;
+}
+.tf-count {
+  font-size: 12px;
+  font-weight: 800;
+  color: #1f5c55;
+}
+.tf-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 .3rem;
+  font-size: 12px;
+  font-weight: 800;
+}
+.tf-title {
+  font-family:
+    Plus Jakarta Sans,
+    Inter,
+    sans-serif;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.2;
+  color: #0f2a2c;
+  margin: .3rem .2rem .3rem;
+  outline: none;
+}
+.tf-hint {
+  font-size: 13px;
+  line-height: 1.4;
+  color: #4f6870;
+  margin: 0 .2rem .35rem;
+}
+.tf-range {
+  font-size: 12.5px;
+  color: #1f5c55;
+  margin: 0 .2rem .7rem;
+}
+.tf-q .step-input {
+  font-size: 30px;
+  min-height: 64px;
+  font-weight: 800;
+}
+.tf-q .step-btn {
+  min-width: 56px;
+  min-height: 56px;
+  font-size: 24px;
+}
+.tf-q .availpill {
+  min-height: 44px;
+  min-width: 64px;
+  font-size: 14px;
+}
+.tf-q .st-height input {
+  min-height: 48px;
+  font-size: 20px;
+}
+.tf-nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.3fr;
+  gap: .5rem;
+}
+.tf-btn {
+  min-height: 48px;
+  font-size: 13px;
+  font-weight: 800;
+}
+.tf-btn:disabled {
+  opacity: .45;
+}
+.tf-sw {
+  min-height: 44px;
+  font-size: 12px;
+  font-weight: 800;
+}
+.tf-keys {
+  text-align: center;
+  font-size: 11px;
+  color: #5b7178;
+  margin: 0;
+}
+.tf-in {
+  animation: tfIn .28s ease-out;
+}
+@keyframes tfIn {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tf-in {
+    animation: none;
+  }
+  .tf-prog-fill {
+    transition: none;
+  }
+}
+.tf-sum {
+  display: grid;
+  gap: .4rem;
+  margin-top: .5rem;
+}
+.tf-sum-row {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  min-height: 48px;
+  padding: .4rem .6rem;
+  border-radius: 14px;
+  background: #3aa59714;
+  text-align: left;
+  width: 100%;
+}
+.tf-sum-n {
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 99px;
+  background: #123033;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.tf-sum-l {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f2a2c;
+  min-width: 0;
+}
+.tf-sum-v {
+  font-size: 13px;
+  font-weight: 800;
+  color: #33504f;
+  font-variant-numeric: tabular-nums;
+}
+html[data-theme=dark] .tf-title,
+html[data-theme=dark] .tf-sum-l {
+  color: #eaf4f2;
+}
+html[data-theme=dark] .tf-hint,
+html[data-theme=dark] .tf-keys {
+  color: #b9cdd1;
+}
+html[data-theme=dark] .tf-range,
+html[data-theme=dark] .tf-count {
+  color: #8fe0d3;
+}
+html[data-theme=dark] .tf-sum-v {
+  color: #d8efeb;
+}
+html[data-theme=dark] .tf-sum-n {
+  background: #d8efeb;
+  color: #0f2a2c;
+}
+html[data-theme=dark] .tf-prog {
+  background: #ffffff1f;
+}
+n {
+}
 </style>
 </head>
 <body>
@@ -1383,6 +1712,7 @@
         </div>
       </div>
       <div class="hdr-tools flex items-center gap-2">
+        <button id="helpBtn" data-action="openHelpHere" data-tour="help-btn" aria-label="Help for this screen" title="Help" class="btn btn-glass ns-help-btn">?</button>
         <button id="notifBell" data-action="openNotifs" data-notif-bell-hide aria-label="Notifications" title="Notifications"
           class="btn btn-glass relative hidden h-9 w-9 flex-none items-center justify-center rounded-[14px]">
           <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
@@ -1451,7 +1781,7 @@
 </div>
 
 <!-- ===== Help & tutorial (src/help.js) ===== -->
-<div id="helpModal" role="dialog" aria-modal="true" aria-label="Help and tutorial" class="fixed inset-0 z-50 hidden items-end bg-[#0b1a1c]/40 backdrop-blur-md" data-action="closeHelp" data-backdrop="1">
+<div id="helpModal" role="dialog" aria-modal="true" aria-label="Help and tutorial" style="z-index:72" class="fixed inset-0 z-50 hidden items-end bg-[#0b1a1c]/40 backdrop-blur-md" data-action="closeHelp" data-backdrop="1">
   <div class="glass sheet-up mx-auto flex max-h-[92vh] w-full max-w-md flex-col rounded-b-none rounded-t-[28px] p-5">
     <div class="mx-auto mb-4 h-1.5 w-10 rounded-full bg-[#123033]/10"></div>
     <button type="button" data-action="closeHelp" style="align-self:flex-start;margin-bottom:.25rem" class="tap-link text-[12px] font-extrabold text-brand-700">&larr; Back</button>
@@ -1551,7 +1881,7 @@
       <span class="hx-staff-av" style="background:linear-gradient(145deg,#34d375,#15803d)">
        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
       </span>
-      <span class="hx-staff-meta"><b>HealthExpo</b><span>· v4.2</span></span>
+      <span class="hx-staff-meta"><b>Health Expo Passport</b><span>· v4.2</span></span>
      </span>
      <span class="hx-hero-tools">
       <button type="button" data-action="cloudSignOut" class="hx-gate-out hx-gate-acct">Sign out</button>
@@ -1583,11 +1913,12 @@
 
   <div id="gateSandbox" class="hx-gate-sandbox">
    <button type="button" data-action="gateDemo" class="hx-gate-tile hx-gate-tile-mint">
-    <span class="hx-gate-tile-head"><span>Practise<br>Sandbox</span>
+    <span class="hx-gate-tile-head"><span>Try it with<br>demo visitors</span>
      <span class="hx-gate-tile-ico"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></span></span>
     <span class="hx-gate-tile-sub">3 demo visitors loaded</span>
     <span class="hx-split"><span class="hx-split-label">3 demos</span><span class="hx-split-circle" aria-hidden="true">→</span></span>
    </button>
+   <button type="button" data-action="openHelp" data-tour="gate-help" class="ns-gate-help">How this app works</button>
   </div>
  </div>
 </div>
@@ -1615,7 +1946,7 @@
     <div class="mt-4 flex gap-2">
       <button id="cfNo" data-action="confirmNo" class="btn btn-glass flex-1 py-2.5 text-xs">Cancel</button>
       <button id="cfAlt" data-action="confirmAlt" class="btn btn-glass flex-1 py-2.5 text-xs hidden"></button>
-      <button id="cfGo" data-action="confirmYes" class="btn btn-primary flex-1 py-2.5 text-xs">Confirm</button>
+      <button id="cfGo" data-action="confirmYes" class="btn btn-primary flex-1 py-2.5 text-xs" style="min-height:44px">Confirm</button>
     </div>
   </div>
 </div>
@@ -1629,6 +1960,52 @@
   </div>
 </div>
 
+<script id="secureStore">
+(function(){
+ /* F-02/F-06 fix: everything this app keeps in localStorage (passport records, cloud session tokens)
+    is stored AES-256-GCM encrypted at rest. Key: Android Keystore-wrapped (SecureKey plugin) in the app,
+    a non-extractable WebCrypto key in IndexedDB on the web. Reads are served from an in-memory copy. */
+ var P='enc1:', S=Storage.prototype, ls=window.localStorage, raw={g:S.getItem,s:S.setItem,r:S.removeItem,c:S.clear,k:S.key};
+ /* v1.6.2: 'newstart.theme' (only 'light'/'dark') and 'newstart.tour.v1' (tour progress: step number and done/offered flags) hold no personal data and stay plaintext so they can be read synchronously before the key is ready */
+ var PLAIN={'newstart.theme':1,'newstart.tour.v1':1}, mem=new Map(), key=null, te=new TextEncoder(), td=new TextDecoder();
+ function b64(u){var s='';for(var i=0;i<u.length;i++)s+=String.fromCharCode(u[i]);return btoa(s);}
+ function unb64(s){var b=atob(s),u=new Uint8Array(b.length);for(var i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u;}
+ function idbKey(){return new Promise(function(res,rej){var o=indexedDB.open('newstart.keys',1);
+  o.onupgradeneeded=function(){o.result.createObjectStore('k');};
+  o.onerror=function(){rej(o.error);};
+  o.onsuccess=function(){var db=o.result,g=db.transaction('k').objectStore('k').get('main');
+   g.onsuccess=function(){if(g.result)return res(g.result);
+    crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']).then(function(k){
+     var t=db.transaction('k','readwrite');t.objectStore('k').put(k,'main');t.oncomplete=function(){res(k);};t.onerror=function(){rej(t.error);};});};
+   g.onerror=function(){rej(g.error);};};});}
+ function getKey(){var C=window.Capacitor,SK=C&&C.Plugins&&C.Plugins.SecureKey;
+  if(C&&C.isNativePlatform&&C.isNativePlatform()&&SK)return SK.getKey().then(function(r){
+   return crypto.subtle.importKey('raw',unb64(r.key),{name:'AES-GCM'},false,['encrypt','decrypt']);});
+  return idbKey();}
+ function enc(k,v){var iv=crypto.getRandomValues(new Uint8Array(12));
+  return crypto.subtle.encrypt({name:'AES-GCM',iv:iv,additionalData:te.encode(k)},key,te.encode(v)).then(function(c){
+   var c8=new Uint8Array(c),o=new Uint8Array(12+c8.length);o.set(iv);o.set(c8,12);return P+b64(o);});}
+ function dec(k,s){var u=unb64(s.slice(P.length));
+  return crypto.subtle.decrypt({name:'AES-GCM',iv:u.slice(0,12),additionalData:te.encode(k)},key,u.slice(12)).then(function(p){return td.decode(p);});}
+ var seq=new Map();
+ function persist(k){if(PLAIN[k]){return mem.has(k)?raw.s.call(ls,k,mem.get(k)):raw.r.call(ls,k);}var n=(seq.get(k)||0)+1;seq.set(k,n);
+  if(!mem.has(k))return raw.r.call(ls,k);
+  enc(k,mem.get(k)).then(function(c){if(seq.get(k)===n&&mem.has(k))raw.s.call(ls,k,c);}).catch(function(e){console.error('secure store write failed',e);});}
+ function boot(){window.__secureReady=true;if(typeof window.__bootApp==='function')window.__bootApp();}
+ getKey().then(function(k){key=k;var ks=[],jobs=[];for(var i=0;i<ls.length;i++)ks.push(raw.k.call(ls,i));
+  ks.forEach(function(k){var v=raw.g.call(ls,k);if(v==null)return;
+   if(PLAIN[k]){mem.set(k,v);return;}
+   if(v.indexOf(P)===0)jobs.push(dec(k,v).then(function(p){mem.set(k,p);},function(){console.warn('secure store: dropped unreadable',k);raw.r.call(ls,k);}));
+   else{mem.set(k,v);persist(k);} /* one-time migration of old plaintext */});
+  return Promise.all(jobs);}).then(function(){
+  S.getItem=function(k){if(this!==ls)return raw.g.call(this,k);k=String(k);return mem.has(k)?mem.get(k):null;};
+  S.setItem=function(k,v){if(this!==ls)return raw.s.call(this,k,v);k=String(k);mem.set(k,String(v));persist(k);};
+  S.removeItem=function(k){if(this!==ls)return raw.r.call(this,k);k=String(k);mem.delete(k);persist(k);};
+  S.clear=function(){if(this!==ls)return raw.c.call(this);mem.clear();seq.clear();raw.c.call(ls);};
+  boot();}).catch(function(e){console.error('secure store unavailable; app not started',e);
+  document.body&&document.body.insertAdjacentHTML('afterbegin','<p style="padding:1rem">Secure storage could not start on this device. Please update the app or browser.</p>');});
+})();
+</script>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>

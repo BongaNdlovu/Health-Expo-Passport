@@ -10,12 +10,14 @@ import { closeCloud, cloudForgot, cloudNewPassword, cloudResend, cloudSignUp, ga
 import { approveStaff } from './cloud.js';
 import { state } from './data.js';
 import { queueBack, queueCallNext, queueClearHistory, queueDone, queueCancelHere, queueDoneNext, queueFinishHere, queueNextInLine, queueRemove, queueServe, queueStart } from './queue.js';
+import { qCapSet, qNamesToggle, qPlacesOpen, qSkipFilledToggle, qSlotCall, qSlotMove, qSlotNameSet } from './queue.js';
 import { closeBigScreen, closeQueuePick, openBigScreen, openQueuePick, qFilterPick, qPickAdd, qSelect, queueSync } from './queue.js';
-import { closeFood, exportCSV, openFood, showAllCare } from './results.js';
-import { closeHelp, openHelp } from './help.js';
+import { closeFood, exportCSV, exportPrayerCSV, exportXLSX, openFood, showAllCare } from './results.js';
+import { closeHelp, openHelp, openHelpHere, startTour } from './help.js';
 import { onSim, setFoodPlan, toggleFood } from './results.js';
 import { isServe, render, toggleTheme } from './shell.js';
 import { cloud } from './state.js';
+import { tfBack, tfGo, tfMode, tfNext, tfSkip } from './visitor.js';
 import { clearVisitorSearch, filterVisitors, onPrayer, onStationCommit, onStationInput, onStep, registerSubmit, reservePouch, resetDemo, resetDemoAsk, switchTab, toggleInterest, toggleReg } from './visitor.js';
 import { applyReading, cancelReg, confirmResults, editReadings, finishVisit, goVisit, metricBack, newVisitFrom, onChronicList, onHeight, openMetric, pickSex, recordConsent, setAnswer, setMyStation, showGuardian, switchTo, toggleOptin, toggleTick } from './visitor.js';
 import { customPlanClear, customPlanEdit, customPlanFromCurrent, customPlanImport, customPlanSave, customPlanTemplate } from './customPlan.js';
@@ -30,6 +32,7 @@ import { closeSwitcher, closeVolModal, closePlaceSheet, filterSwitcher, filterVo
 
 export const ACTION_MAP = {
   /* -- plain functions (no arguments) -- */
+  openHelpHere, startTour,
   cancelReg, closeAcct, closeBigScreen, closeCloud, closeFood, closeQueuePick, closeSwitcher,
   closeVolModal, closeVolReg, closeWhatsApp, cloudInit, cloudResend, cloudSignOut, copyInvite,
   editReadings, exportCSV, exportVolCSV, finishVisit, gateBack, gateDemo, goVisit, healthTest, installApp, leaveChurch,
@@ -62,6 +65,25 @@ export const ACTION_MAP = {
   qSelect: el => qSelect(el.dataset.args),
   queueBack: el => queueBack(el.dataset.args),
   queueCallNext: el => queueCallNext(el.dataset.args),
+  /* one check at a time (visitor.js) */
+  tfNext: () => tfNext(),
+  tfBack: () => tfBack(),
+  tfSkip: () => tfSkip(),
+  tfGo: el => tfGo(Number(el.dataset.args)),
+  tfMode: el => tfMode(el.dataset.args),
+  /* several people served at once (queue.js) */
+  qSlotCall: el => qSlotCall(el.dataset.args),
+  qSlotMove: el => qSlotMove(el.dataset.args),
+  qCapSet: el => qCapSet(el.dataset.args),
+  qNamesToggle: el => qNamesToggle(el.dataset.args),
+  qSlotName: el => qSlotNameSet(el.dataset.args, /** @type {HTMLInputElement} */ (el).value),
+  qPlacesOpen: () => qPlacesOpen(),
+  qSkipFilledToggle: () => qSkipFilledToggle(),
+  /* the memory diagnostics panel exists only in practice mode */
+  nsDiag: () => { if (!cloud.user && !cloud.mode && window.NSMem) window.NSMem.openDiag(true); },
+  exportCSVMin: () => exportCSV('minimal'),
+  exportXLSX: () => exportXLSX(),
+  exportPrayerCSV: () => exportPrayerCSV(),
   queueDone: el => queueDone(el.dataset.args),
   queueDoneNext: el => queueDoneNext(el.dataset.args),
   queueCancelHere: el => queueCancelHere(...el.dataset.args.split('|')),

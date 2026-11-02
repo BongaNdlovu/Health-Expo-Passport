@@ -1,10 +1,11 @@
 // @ts-check
 import { I } from './icons.js';
 import { $, A } from './helpers.js';
-import { INT } from './data.js';
+import { EXPO_UPCOMING, INT } from './data.js';
+import { disp } from './helpers.js';
 import { DROPS, FOOD_PRICES, PRICE_DATE, SEX_RANGE, autoProtocol, bmi, cat, chipClass, clamp, costOf, doneCount, esc, firstName, fmt1, healthAge, initials, money, pefPct, projection, redFlag, simBP, tweenGoal } from './helpers.js';
 import { ACTIONS, DISCLAIMER, FOOD_WHY, HEARD, HUE_P, PLAN_GOAL, PROTOCOLS, RECHECK, SEMINARS, SURVEY, attendees, cholUp, heavy, hueOf, planBooks, precautionsHTML, refLabel, state } from './data.js';
-import { persist } from './state.js';
+import { cloud, persist } from './state.js';
 import { IS_APP } from './platform.js';
 import { jelly, renderMain, syncRanges, toast } from './shell.js';
 import { chosenChurchPlan, churchPlanFor, churchPlanPicker, customPlanFor, viewChurchPlan } from './churchPlans.js';
@@ -39,12 +40,12 @@ export function viewResults(){
  const raw=A(),a=withoutOldReadings(raw),gone=visitIsOld(raw),ha=healthAge(a),{sys,dia}=simBP(a),proj=projection(a),pk=autoProtocol(a),first=esc(firstName(a.name));
  const tile=(l,v,sub,cls,id)=>`<div class="rounded-[18px] border px-2 py-3 text-center ${cls}">
   <div class="text-[10px] font-bold opacity-65">${l}</div>
-  <div class="display mt-1.5 text-xl leading-none font-extrabold" ${id?`id="${id}"`:''}>${v}</div>
+  <div class="display mt-1.5 text-xl leading-none font-extrabold" ${id?`id="${esc(id)}"`:''}>${v}</div>
   <div class="mt-1 text-[9px] font-bold opacity-80" ${id?`id="${id}Sub"`:''}>${sub}</div></div>`;
  const bar=(id,lblId,label,base,now)=>`<div>
   <div class="flex justify-between text-[10px] font-bold"><span class="text-[#5c747a]">${label}</span>
-  <span id="${lblId}" class="mono text-brand-700">${base} → ${now}</span></div>
-  <div class="bar-track mt-1.5"><div id="${id}" class="bar-fill" style="width:${clamp(now/base*100,30,100)}%"></div></div></div>`;
+  <span id="${esc(lblId)}" class="mono text-brand-700">${base} → ${now}</span></div>
+  <div class="bar-track mt-1.5"><div id="${esc(id)}" class="bar-fill" style="width:${clamp(now/base*100,30,100)}%"></div></div></div>`;
  /* biggest first: the counsellor talks about the top three */
  const byYears=[...ha.f].sort((x,y)=>y[2]-x[2]);
  const row=([n,val,y])=>`<div class="flex items-center justify-between rounded-[14px] px-3 py-2 ${y>0.05?'bg-rose-50/70':'bg-white/50'}">
@@ -161,10 +162,10 @@ export function viewMetric(key){
 function simSlider(id,key,label,badgeId,min,max,step,val,caption){
  return `<div class="glass-thin hue-${{kitchen:'sage',walk:'aqua',hydro:'lilac'}[key]} p-3.5">
   <div class="flex items-center justify-between gap-2">
-   <label for="${id}" class="text-[12px] font-bold leading-tight text-[#33504f]">${label}</label>
-   <span id="${badgeId}" class="mono flex-none rounded-full tint px-2 py-0.5 text-[10px] font-bold"></span>
+   <label for="${esc(id)}" class="text-[12px] font-bold leading-tight text-[#33504f]">${label}</label>
+   <span id="${esc(badgeId)}" class="mono flex-none rounded-full tint px-2 py-0.5 text-[10px] font-bold"></span>
   </div>
-  <input id="${id}" type="range" min="${min}" max="${max}" step="${step}" value="${val}" data-on-input="sim-set" data-args="${key}" class="mt-1 w-full">
+  <input id="${esc(id)}" type="range" min="${min}" max="${max}" step="${step}" value="${esc(val)}" data-on-input="sim-set" data-args="${esc(key)}" class="mt-1 w-full">
   <p class="mt-0.5 text-[10px] leading-snug text-[#667d83]">${caption}</p></div>`;
 }
 export function onSim(k,v){state.sim[k]=+v;updateSimUI();persist();}
@@ -471,7 +472,7 @@ export function viewFood(){
   const chart=parts.length?`<span class="fd-trio">${parts.map((p,j)=>foodMiniBars(p,i+j*3)).join('')}</span>`:`<span class="fd-one">${esc(f.store)}</span>`;
   const right=`<span class="fd-more">Why? ▾</span>`;
   return `<li class="fd-row hue-${fh}">
-   <button id="fh-${f.k}" class="fd-head" data-action="toggleFood" data-args="${f.k}" aria-expanded="false" aria-controls="fd-${f.k}">
+   <button id="fh-${f.k}" class="fd-head" data-action="toggleFood" data-args="${esc(f.k)}" aria-expanded="false" aria-controls="fd-${f.k}">
     <span class="fd-name">${esc(f.name)}<small>${esc(f.dose)}${plan==='all'?' · '+f.plans.map(k=>esc(PROTOCOLS[k].tag)).join(', '):''}</small></span>
     ${right}${chart}
    </button>
@@ -485,7 +486,7 @@ export function viewFood(){
     <button class="btn btn-glass q-tvbtn" data-action="closeFood">← Plan</button></div>
    <p class="mt-1 text-[11px] leading-snug text-[#5c747a]">What each food costs at the amount in the plan, and why it is in the plan. Tap a food to see why.</p>
    <div class="fd-chips mt-3" role="group" aria-label="Which plan">
-    ${Object.keys(PROTOCOLS).filter(k=>PROTOCOLS[k].items.length).map(k=>`<button class="fd-chip hue-${HUE_P[k]}" aria-pressed="${k===plan}" data-action="setFoodPlan" data-args="${k}">${esc(PROTOCOLS[k].tag)}</button>`).join('')}
+    ${Object.keys(PROTOCOLS).filter(k=>PROTOCOLS[k].items.length).map(k=>`<button class="fd-chip hue-${HUE_P[k]}" aria-pressed="${k===plan}" data-action="setFoodPlan" data-args="${esc(k)}">${esc(PROTOCOLS[k].tag)}</button>`).join('')}
     <button class="fd-chip hue-mint" aria-pressed="${plan==='all'}" data-action="setFoodPlan" data-args="all">All foods</button>
    </div>
    <div class="fd-tiles mt-3">${tiles}</div>
@@ -515,8 +516,8 @@ export function viewCare(){
    <div class="flex items-start justify-between gap-3">
     <div><div class="microlabel">Ministry follow-up</div>
     <div class="display text-base font-extrabold">Tonight's care lists</div>
-    <p class="mt-1 text-[11px] leading-snug text-[#5c747a]">Sorted automatically — no more paper cards.</p></div>
-    <button data-action="exportCSV" class="btn btn-primary flex-none px-3 py-2 text-[11px]">Export CSV</button>
+    <p class="mt-1 text-[11px] leading-snug text-[#5c747a]">Sorted automatically — no more paper cards.</p><div class="mt-1.5 flex flex-wrap gap-1.5"><button data-action="exportCSVMin" class="btn btn-glass px-2.5 py-1.5 text-[11px]" style="min-height:44px">Minimal CSV</button><button data-action="exportPrayerCSV" class="btn btn-glass px-2.5 py-1.5 text-[11px]" style="min-height:44px">Prayer list</button></div></div>
+    <div class="flex flex-none flex-col gap-1.5"><button data-action="exportCSV" class="btn btn-primary px-3 py-2 text-[11px]" style="min-height:44px">Export CSV</button><button data-action="exportXLSX" class="btn btn-soft px-3 py-2 text-[11px]" style="min-height:44px">Excel</button></div>
    </div>
    <div class="mt-3.5 grid grid-cols-3 gap-2">
     ${countTile(urgent.length,'Urgent','border-rose-200/70 bg-rose-50/70 text-rose-700')}
@@ -539,7 +540,7 @@ function listSection(title,arr,tone){
  return `<div class="space-y-2">
   <div class="px-1 text-[11px] font-extrabold uppercase tracking-wider ${head}">${title} · ${arr.length}</div>
  ${shown.map(x=>careCard(x)).join('')}
- ${left>0?`<button data-action="showAllCare" data-args="${tone}" class="btn btn-glass w-full py-2.5 text-[11px] text-[#5b7178]">Show ${Math.min(CARE_MORE,left)} more · ${left} left</button>`:''}</div>`;
+ ${left>0?`<button data-action="showAllCare" data-args="${esc(tone)}" class="btn btn-glass w-full py-2.5 text-[11px] text-[#5b7178]">Show ${Math.min(CARE_MORE,left)} more · ${left} left</button>`:''}</div>`;
 }
 const CARE_CAP=30,CARE_MORE=100;
 export function showAllCare(tone){state.careMore=Object.assign({},state.careMore,{[tone]:((state.careMore&&state.careMore[tone])||0)+CARE_MORE});renderMain();}
@@ -552,7 +553,7 @@ function careCard(a){
    <span class="flex h-9 w-9 flex-none items-center justify-center rounded-[13px] text-[11px] font-extrabold tint hue-${hueOf(a.id)}">${initials(a.name)}</span>
    <div class="min-w-0 flex-1"><div class="truncate text-[13px] font-bold">${esc(a.name)}</div>
    <div class="mono truncate text-[10px] text-[#6b8187]">${esc(a.id)} · ${esc(a.phone)}</div></div>
-   ${optedIn(a)?`<button data-action="openWAFor" data-args="${a.id}" aria-label="WhatsApp ${esc(a.name)}"
+   ${optedIn(a)?`<button data-action="openWAFor" data-args="${esc(a.id)}" aria-label="WhatsApp ${esc(a.name)}"
      class="btn flex-none rounded-[14px] text-[#128C4B] transition active:scale-95"
      style="width:44px;height:44px;background:rgba(37,211,102,.14)">${I.wa}</button>`
     :`<span class="chip chip-none flex-none">No contact</span>`}
@@ -562,49 +563,175 @@ function careCard(a){
   ${a.prayer?`<p class="mt-2.5 rounded-[14px] bg-white/60 px-2.5 py-2 text-[11px] italic leading-snug text-[#5c747a]">“${esc(a.prayer)}”</p>`:''}
  </div>`;
 }
-export function exportCSV(){
- const rows=[['Badge','Name','Phone','Email','Age','Sex','Height cm','Weight kg','BP','BP medication','Sugar mmol/L','BMI','Waist cm','Body fat %','Body water %',
-  'PEF','PEF recommended','Resting pulse','Exercise pulse','Recovery pulse','Pregnant','Major operations','Chronic illnesses',
-  ...SURVEY.map(x=>x.q),'Health age','Flags','Also talk about','Interests','Seminars','Heard via','Prayer note',
-  'Health consent','Consent date','Notice version','Parent or guardian','Follow-up allowed']];
+/* ---------- exports (v1.6.2) ----------
+   The follow-up sheet has one column per value so it sorts and filters in a spreadsheet: all 8 checks, blood pressure
+   as two numbers, a flag next to each check, units in the headers, and when and where it was exported (SAST). Prayer
+   requests are not in it: they go in their own list for the prayer team (exportPrayerCSV). The minimal sheet leaves
+   out names, contact details, medical history and the survey. */
+function sastStamp(d=new Date()){
+ const p=new Intl.DateTimeFormat('en-ZA',{timeZone:'Africa/Johannesburg',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(d);
+ const g=t=>(p.find(x=>x.type===t)||{}).value||'';
+ return `${g('year')}-${g('month')}-${g('day')} ${g('hour')}:${g('minute')} SAST`;
+}
+/** @param {'full'|'minimal'|string} [mode] @returns {string[][]} the header row, then one row per visitor */
+export function followUpRows(mode){
+ const min=mode==='minimal',stamp=sastStamp();
+ const expo=EXPO_UPCOMING&&EXPO_UPCOMING.name?`${EXPO_UPCOMING.name}${EXPO_UPCOMING.date?` (${EXPO_UPCOMING.date})`:''}`:'';
+ const by=cloud.user?'Signed-in team device':'This device (practice mode)';
+ /* a number as the passport shows it, '' for nothing; kept as text so a badge like 007 keeps its zeros */
+ const n=v=>v==null||v===''||(typeof v==='number'&&!isFinite(v))?'':typeof v==='number'?disp(v):String(v);
  const yn=v=>v===1?'Yes':v===0?'No':'';
+ const flag=c=>c&&c[1]&&c[0]!=='ok'?`${c[0]==='flag'?'FLAG':'Watch'}: ${c[1]}`:c&&c[1]?'In range':'';
  const ticked=(a,set)=>Object.keys(set).filter(k=>a.interests[k]).map(k=>set[k]).join('; ');
+ const head=['Badge',...(min?[]:['Name','Phone','Email']),'Age','Sex','Height (cm)','Weight (kg)','Waist (cm)','BMI (kg/m²)','BMI flag',
+  'BP systolic (mmHg)','BP diastolic (mmHg)','BP flag','BP medication','Blood sugar (mmol/L)','Sugar flag','Cholesterol (mmol/L)','Cholesterol flag',
+  'Fruit & veg (servings/day)','Exercise (min/day)','Water (glasses/day)','Sleep (hours/night)','Checks done (of 8)',
+  ...(min?[]:['Pregnant','Major operations','Chronic illnesses',...SURVEY.map(x=>x.q),'Also talk about','Interests','Seminars','Heard via']),
+  'Health age','Flags',...(min?[]:['Prayer request']),
+  'Health consent','Consent date','Notice version','Parent or guardian','Follow-up allowed','Expo','Recorded on','Exported (SAST)'];
+ const rows=[head];
  attendees.forEach(raw=>{
   /* the readings of a visit past the grace period are never exported either (the database has already cleared them) */
-  const a=withoutOldReadings(raw),ha=healthAge(a),s=a.s;
-  const fl=[cat('bp',{sys:s.sys,dia:s.dia}),cat('sugar',s.sugar),cat('bmi',bmi(a))].filter(c=>c[0]==='flag'||c[0]==='watch').map(c=>c[1]).join('; ');
+  const a=withoutOldReadings(raw),s=a.s||{},ha=healthAge(a),b=bmi(a);
   /* this is the follow-up sheet: no contact details for anyone who did not agree to be contacted */
   const ok=optedIn(a);
-  rows.push([a.id,a.name,ok?a.phone:'',ok?a.email||'':'',a.age,a.sex,a.heightCm??'',s.weight??'',s.sys&&s.dia?`${s.sys}/${s.dia}`:'',yn(s.bpMed),s.sugar??'',bmi(a)?fmt1(bmi(a)):'',
-   s.waist??'',s.fat??'',s.tbw??'',s.pef??'',s.pefExp??'',s.pulseRest??'',s.pulseEx??'',s.pulseRec??'',
-   yn(s.preg),yn(s.ops),s.chronic===1?'Yes'+(a.chronicList?': '+a.chronicList:''):yn(s.chronic),
-   ...SURVEY.map(x=>s[x.k]?x.a[s[x.k]-1]:''),ha.health!=null?fmt1(ha.health):'incomplete',fl,careNotes(a).join(' '),
-   ticked(a,INT),ticked(a,SEMINARS),ticked(a,HEARD),a.prayer,
-   hasConsent(a)?'Yes':'Not recorded',a.interests.consentOn||'',a.interests.consentV||'',a.interests.guardianName||'',ok?'Yes':'No']);
+  const cb=s.sys&&s.dia?cat('bp',{sys:s.sys,dia:s.dia}):null,cs=s.sugar!=null?cat('sugar',s.sugar):null,cc=s.chol!=null?cat('chol',s.chol):null,cm=b?cat('bmi',b):null;
+  const fl=[['BP',cb],['Sugar',cs],['Cholesterol',cc],['BMI',cm]].filter(([,c])=>c&&(c[0]==='flag'||c[0]==='watch')).map(([l,c])=>`${l}: ${c[1]}`).join('; ');
+  const done=[s.weight!=null&&a.heightCm,s.sys&&s.dia,s.sugar!=null,s.chol!=null,s.veg!=null,s.walk!=null,s.water!=null,s.sleep!=null].filter(Boolean).length;
+  rows.push([a.id,...(min?[]:[a.name||'',ok&&a.phone||'',ok&&a.email||'']),n(a.age),a.sex||'',n(a.heightCm),n(s.weight),n(s.waist),b?fmt1(b):'',flag(cm),
+   n(s.sys),n(s.dia),flag(cb),yn(s.bpMed),n(s.sugar),flag(cs),n(s.chol),flag(cc),n(s.veg),n(s.walk),n(s.water),n(s.sleep),String(done),
+   ...(min?[]:[yn(s.preg),yn(s.ops),s.chronic===1?'Yes'+(a.chronicList?': '+a.chronicList:''):yn(s.chronic),
+    ...SURVEY.map(x=>s[x.k]?x.a[s[x.k]-1]:''),careNotes(a).join(' '),ticked(a,INT),ticked(a,SEMINARS),ticked(a,HEARD)]),
+   ha.health!=null&&isFinite(ha.health)?fmt1(ha.health):'incomplete',fl,...(min?[]:[a.prayer?'Yes (see prayer list)':'No']),
+   hasConsent(a)?'Yes':'Not recorded',a.interests.consentOn||'',a.interests.consentV||'',a.interests.guardianName||'',ok?'Yes':'No',expo,by,stamp]);
  });
- downloadCSV(rows,'newstart-followup.csv','Follow-up sheet exported (CSV) ✓ This file holds health data: delete it when you are done.');
+ return rows;
+}
+export function exportCSV(mode){
+ const minimal=mode==='minimal';
+ downloadCSV(followUpRows(minimal?'minimal':'full'),minimal?'newstart-followup-minimal.csv':'newstart-followup.csv',
+  minimal?'Minimal sheet exported (CSV: badge, checks and consent only) ✓':'Follow-up sheet exported (CSV) ✓ This file holds health data: delete it when you are done.');
+}
+/* the prayer team's own list: first name, a phone only when follow-up is allowed, and the request */
+export function exportPrayerCSV(){
+ const st=sastStamp(),rows=[['Badge','First name','Phone (if follow-up allowed)','Prayer request','Exported (SAST)']];
+ attendees.forEach(a=>{if(a.prayer)rows.push([a.id,firstName(a.name||''),optedIn(a)&&a.phone||'',a.prayer,st]);});
+ downloadCSV(rows,'newstart-prayer-list.csv','Prayer list exported (CSV) ✓ Share it only with the prayer team.');
 }
 /* Quote every cell, and defuse spreadsheet formulas: a typed name like =HYPERLINK(...) would
    otherwise execute when the file is opened in Excel. Phone numbers starting "+27" stay as they are. */
 /* Anything starting with + or - is a formula to a spreadsheet ("+1+HYPERLINK(...)", "-2+3"), unless it is plainly a phone
-   number or a number: only digits, spaces and . , ( ) - after the sign. */
-export const csvCell=c=>{let s=String(c==null?'':c);
- if(/^[=@\t\r]/.test(s)||(/^[+-]/.test(s)&&!/^(\+\d[\d\s().-]*|-?\d+([.,]\d+)?|\+27 —)$/.test(s)))s="'"+s;
+   number or a number: only digits, spaces and . , ( ) - after the sign. A leading | is defused too (DDE). */
+export const csvCell=c=>{let s=c==null||(typeof c==='number'&&!isFinite(c))?'':String(c);
+ if(/^[=@\t\r|]/.test(s)||(/^[+-]/.test(s)&&!/^(\+\d[\d\s().-]*|-?\d+([.,]\d+)?|\+27 —)$/.test(s)))s="'"+s;
  return `"${s.replace(/"/g,'""')}"`;};
-/* Saves the CSV and says so only once it is saved. The Android app's WebView ignores a blob link's download, so there
-   the native plugin writes the file into Downloads (CardPrinterPlugin.saveDownload). */
+
+/* ---------- Excel (.xlsx) without a library ----------
+   An .xlsx is a zip of a few XML files. zipStore writes them uncompressed ("stored"), which every spreadsheet app
+   reads. The header row is bold, shaded, frozen and has filters; numbers are numbers, except ones with leading zeros. */
+/** @type {Uint32Array|null} */
+let crcTable=null;
+/** @param {Uint8Array} u */
+function crc32(u){
+ if(!crcTable){
+  crcTable=new Uint32Array(256);
+  for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;crcTable[n]=c>>>0;}
+ }
+ let c=0xFFFFFFFF;
+ for(let i=0;i<u.length;i++)c=crcTable[(c^u[i])&255]^(c>>>8);
+ return (c^0xFFFFFFFF)>>>0;
+}
+/** @param {[string,string][]} files name and text of each file in the zip @returns {Blob} */
+function zipStore(files){
+ const te=new TextEncoder(),parts=[],cen=[];
+ const u16=v=>[v&255,(v>>8)&255],u32=v=>[v&255,(v>>8)&255,(v>>16)&255,(v>>>24)&255];
+ /* version 2.0, UTF-8 names, stored, fixed 1980-01-01 time */
+ const common=c=>[...u16(20),0,8,0,0,0,0,0,33,...u32(c)];
+ let off=0;
+ for(const [name,txt] of files){
+  const nb=te.encode(name),d=te.encode(txt),c=crc32(d);
+  const h=new Uint8Array([80,75,3,4,...common(c),...u32(d.length),...u32(d.length),...u16(nb.length),0,0]);
+  parts.push(h,nb,d);
+  cen.push(new Uint8Array([80,75,1,2,...u16(20),...common(c),...u32(d.length),...u32(d.length),...u16(nb.length),0,0,0,0,0,0,0,0,0,0,0,0,...u32(off)]),nb);
+  off+=h.length+nb.length+d.length;
+ }
+ const cs=cen.reduce((t,x)=>t+x.length,0);
+ const end=new Uint8Array([80,75,5,6,0,0,0,0,...u16(files.length),...u16(files.length),...u32(cs),...u32(off),0,0]);
+ return new Blob([...parts,...cen,end],{type:XLSX_MIME});
+}
+const XLSX_MIME='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+const XML_HEAD='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const NS_MAIN='http://schemas.openxmlformats.org/spreadsheetml/2006/main',NS_REL='http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+/** @param {{name:string,rows:string[][],data:boolean}[]} sheets the first sheet with data:true gets the frozen, filtered header */
+export function xlsxBuild(sheets){
+ const x=v=>String(v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'');
+ const col=i=>{let r='';for(i++;i>0;i=((i-1)/26)|0)r=String.fromCharCode(65+((i-1)%26))+r;return r;};
+ const num=/^-?\d+(\.\d+)?$/;
+ const cell=(v,ri,ci,isData)=>{
+  const ref=col(ci)+(ri+1),sv=v==null?'':String(v);
+  if(ri>0&&isData&&num.test(sv)&&!/^0\d/.test(sv)&&sv.length<15)return `<c r="${ref}"><v>${sv}</v></c>`;
+  return `<c r="${ref}" t="inlineStr"${ri===0?' s="1"':''}><is><t xml:space="preserve">${x(sv)}</t></is></c>`;
+ };
+ const sheetXml=(rows,isData)=>{
+  const w=rows[0].map((_,ci)=>Math.min(48,Math.max(8,...rows.slice(0,200).map(r=>String(r[ci]??'').length+2))));
+  return XML_HEAD+`<worksheet xmlns="${NS_MAIN}"><sheetViews><sheetView workbookViewId="0">${isData?'<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>':''}</sheetView></sheetViews>`
+   +`<cols>${w.map((v,i)=>`<col min="${i+1}" max="${i+1}" width="${v}" customWidth="1"/>`).join('')}</cols>`
+   +`<sheetData>${rows.map((r,ri)=>`<row r="${ri+1}">${r.map((v,ci)=>cell(v,ri,ci,isData)).join('')}</row>`).join('')}</sheetData>`
+   +(isData?`<autoFilter ref="A1:${col(rows[0].length-1)}${rows.length}"/>`:'')+'</worksheet>';
+ };
+ const first=sheets[0];
+ const files=[
+  ['[Content_Types].xml',XML_HEAD+'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+   +sheets.map((_,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')+'</Types>'],
+  ['_rels/.rels',XML_HEAD+`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${NS_REL}/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
+  ['xl/workbook.xml',XML_HEAD+`<workbook xmlns="${NS_MAIN}" xmlns:r="${NS_REL}"><sheets>${sheets.map((sh,i)=>`<sheet name="${x(sh.name)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join('')}</sheets>`
+   +(first.data?`<definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">'${x(first.name)}'!$A$1:$${col(first.rows[0].length-1)}$${first.rows.length}</definedName></definedNames>`:'')+'</workbook>'],
+  ['xl/_rels/workbook.xml.rels',XML_HEAD+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+   +sheets.map((_,i)=>`<Relationship Id="rId${i+1}" Type="${NS_REL}/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join('')
+   +`<Relationship Id="rId${sheets.length+1}" Type="${NS_REL}/styles" Target="styles.xml"/></Relationships>`],
+  /* style 1: bold on a light green fill, for the header row */
+  ['xl/styles.xml',XML_HEAD+`<styleSheet xmlns="${NS_MAIN}"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFDCEFEA"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`],
+  ...sheets.map((sh,i)=>/** @type {[string,string]} */([`xl/worksheets/sheet${i+1}.xml`,sheetXml(sh.rows,sh.data)]))
+ ];
+ return zipStore(/** @type {[string,string][]} */(files));
+}
+export function exportXLSX(mode){
+ const minimal=mode==='minimal',rows=followUpRows(minimal?'minimal':'full');
+ const meta=[['About this file',''],['Exported (SAST)',sastStamp()],['Expo',EXPO_UPCOMING&&EXPO_UPCOMING.name||''],['Rows',String(rows.length-1)],
+  ['Sheet',minimal?'Minimal: badge, checks and consent only':'Full follow-up sheet (contact details only when follow-up is allowed)'],
+  ['Prayer requests','Not included: export the separate prayer list'],
+  ['Privacy','Holds health data (POPIA special personal information). Share only with the follow-up team and delete it when you are done.']];
+ const blob=xlsxBuild([{name:'Follow-up',rows,data:true},{name:'About',rows:meta,data:false}]);
+ saveExport(minimal?'newstart-followup-minimal.xlsx':'newstart-followup.xlsx',XLSX_MIME,blob,
+  'Follow-up sheet exported (Excel) ✓ This file holds health data: delete it when you are done.');
+}
+/* Saves the CSV and says so only once it is saved. */
 export function downloadCSV(rows,filename,okMsg){
- const csv=rows.map(r=>r.map(csvCell).join(',')).join('\n');
+ const csv=rows.map(r=>r.map(csvCell).join(',')).join('\r\n')+'\r\n';
+ saveExport(filename,'text/csv','\uFEFF'+csv,okMsg);      /* the byte-order mark makes Excel read the file as UTF-8 */
+}
+/* The Android app's WebView ignores a blob link's download, so there the native plugin writes the file into the app's
+   private folder and opens the share sheet (CardPrinterPlugin.saveDownload → SecureExport): nothing is left in the
+   public Downloads folder. In a browser it is an ordinary download.
+   @param {string} filename @param {string} mime @param {string|Blob} data */
+function saveExport(filename,mime,data,okMsg){
  if(IS_APP){
   const P=window.Capacitor.Plugins.CardPrinter;
   if(!P||!P.saveDownload){toast('Saving files needs the latest version of the app');return;}
-  P.saveDownload({name:filename,text:'﻿'+csv,mime:'text/csv'})
-   .then(r=>toast(`${okMsg} Saved in ${r&&r.where||'Downloads'} as ${filename}.`))
+  /* the plugin takes text; binary files go as base64 behind a b64: marker */
+  const text=typeof data==='string'?Promise.resolve(data):data.arrayBuffer().then(ab=>{
+   const u=new Uint8Array(ab);let b='';
+   for(let i=0;i<u.length;i+=32768)b+=String.fromCharCode.apply(null,u.subarray(i,i+32768));
+   return 'b64:'+btoa(b);
+  });
+  text.then(t=>P.saveDownload({name:filename,text:t,mime}))
+   .then(()=>toast(`${okMsg} Choose where to send ${filename} (it is not kept in Downloads).`))
    .catch(e=>toast('Could not save the file: '+(e&&e.message||e)));
   return;
  }
  toast(okMsg);
- const url=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}));
+ const blob=typeof data==='string'?new Blob([data],{type:mime+';charset=utf-8'}):data;
+ const url=URL.createObjectURL(blob);
  const link=document.createElement('a');link.href=url;link.download=filename;
  document.body.appendChild(link);link.click();link.remove();
  setTimeout(()=>URL.revokeObjectURL(url),1000);

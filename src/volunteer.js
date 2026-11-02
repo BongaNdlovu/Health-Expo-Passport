@@ -154,7 +154,7 @@ function serveTabs(){
  return who+`<div class="vt-tabs">${T.map(([k,l])=>{
   const act=state.volTab===k&&!state.volRegOpen;
   const badge=k==='muster'&&pending?`<span class="rounded-full bg-white/70 px-1.5 text-[9px] font-extrabold">${pending}</span>`:'';
-  return `<button data-action="setVolTab" data-args="${k}" class="${act?'btn btn-primary':'btn btn-glass'} gap-1.5 rounded-full px-2 py-2 text-[12px] ${act?'':'text-[#5b7178]'}" style="white-space:nowrap">${l}${badge}</button>`;
+  return `<button data-action="setVolTab" data-args="${esc(k)}" class="${act?'btn btn-primary':'btn btn-glass'} gap-1.5 rounded-full px-2 py-2 text-[12px] ${act?'':'text-[#5b7178]'}" style="white-space:nowrap">${l}${badge}</button>`;
  }).join('')}</div>`;
 }
 
@@ -317,7 +317,7 @@ function volCapped(arr,key){
  return out;
 }
 const volMore=(arr,key)=>arr.length>LIST_CAP&&!(state.volAll&&state.volAll[key])
- ?`<button data-action="showAllVol" data-args="${key}" class="btn btn-glass mt-2 w-full py-2.5 text-[11px] text-[#5b7178]">Show all ${arr.length}</button>`:'';
+ ?`<button data-action="showAllVol" data-args="${esc(key)}" class="btn btn-glass mt-2 w-full py-2.5 text-[11px] text-[#5b7178]">Show all ${arr.length}</button>`:'';
 export function showAllVol(key){state.volAll=Object.assign({},state.volAll,{[key]:true});render();}
 /* which volunteers are linked to a member account. The admin's loaded member list (src/account.js) is the only
    source on a staff device, so the mark appears once My church has been opened — no extra request for it. */
@@ -376,14 +376,14 @@ function placeSheetHTML(){
   ${linked&&!linked.has(v.id)&&isAdm&&v.lead?'<p class="mt-2 rounded-xl bg-amber-50/80 p-2 text-[10.5px] font-semibold leading-snug text-[#8a5a12]">This team leader has no account linked — link them under My church so they can manage their team.</p>':''}
   <div class="microlabel mt-3">Move to…</div>
   <div class="mt-1.5 grid grid-cols-2 gap-1.5">
-   ${stations.map(({b,n})=>`<button data-action="place-move" data-args="${b.k}" class="boothpick hue-${b.hue} ${v.booth===b.k?'boothpick-sel':''}">
+   ${stations.map(({b,n})=>`<button data-action="place-move" data-args="${esc(b.k)}" class="boothpick hue-${b.hue} ${v.booth===b.k?'boothpick-sel':''}">
      <span class="flex items-center gap-2"><span class="boothpick-glyph">${b.letter}</span>
       <span class="min-w-0"><span class="block truncate text-[10.5px] font-extrabold leading-tight text-[#123033]">${esc(b.label)}</span>
        <span class="mono block text-[8.5px] font-bold text-[#8a9aa0]">${n}${v.booth===b.k?'':'/'+b.cap} filled</span></span></span></button>`).join('')}
   </div>
   ${v.booth?`<div class="microlabel mt-3">Swap with…</div>
    <div class="mt-1.5 max-h-[26vh] space-y-1 overflow-y-auto no-scrollbar">
-    ${swappable.slice(0,25).map(x=>`<button data-action="place-swap" data-args="${x.id}" class="flex w-full items-center gap-2 rounded-[14px] px-2 py-1.5 text-left transition hover:bg-white/60">
+    ${swappable.slice(0,25).map(x=>`<button data-action="place-swap" data-args="${esc(x.id)}" class="flex w-full items-center gap-2 rounded-[14px] px-2 py-1.5 text-left transition hover:bg-white/60">
       <span class="flex h-6 w-6 flex-none items-center justify-center rounded-full text-[9px] font-extrabold tint hue-${badgeTier(x).hue}">${initials(x.name)}</span>
       <span class="min-w-0 flex-1 truncate text-[11.5px] font-bold text-[#123033]">${esc(x.name)}</span>
       <span class="flex-none text-[9.5px] font-bold text-[#6b8187]">${x.booth?esc(boothLabel(x.booth)):'unplaced'}</span></button>`).join('')||'<p class="px-1 py-2 text-[11px] text-[#6b8187]">Nobody to swap with.</p>'}
@@ -431,7 +431,7 @@ export async function placeLead(){
 export function volRow(v,confirmed,placeMode){
  const act=!placeMode&&v.id===state.volId;
  const t=badgeTier(v);
- return `<button data-action="${placeMode?'openPlaceSheet':'setVol'}" data-args="${v.id}" class="flex w-full items-center gap-2.5 rounded-[18px] px-2 py-2 text-left transition-all duration-300 ${act?'bg-brand-500/10 ring-1 ring-brand-400/25':'hover:bg-white/60'}">
+ return `<button data-action="${placeMode?'openPlaceSheet':'setVol'}" data-args="${esc(v.id)}" class="flex w-full items-center gap-2.5 rounded-[18px] px-2 py-2 text-left transition-all duration-300 ${act?'bg-brand-500/10 ring-1 ring-brand-400/25':'hover:bg-white/60'}">
   <span class="flex h-8 w-8 flex-none items-center justify-center rounded-full text-[10px] font-extrabold av hue-${t.hue}">${initials(v.name)}</span>
   <span class="min-w-0 flex-1">
    <span class="block truncate text-[12px] font-bold text-[#123033]">${esc(v.name)}</span>
@@ -505,7 +505,7 @@ function viewVolBooth(){
    </div>
    <div class="mt-2 flex flex-wrap gap-1.5">
     ${EXPO_UPCOMING.shifts.map(s=>{const on=onShift.includes(s);
-      return `<button data-action="toggleShift" data-args="${s}" class="availpill ${on?'availpill-on':''} hue-${boothHue(v.booth)}">${on?'✓ ':''}${s}</button>`;}).join('')}
+      return `<button data-action="toggleShift" data-args="${esc(s)}" class="availpill ${on?'availpill-on':''} hue-${boothHue(v.booth)}">${on?'✓ ':''}${s}</button>`;}).join('')}
    </div>
    <div class="mt-2 text-[10px] leading-relaxed text-[#6b8187]">Tap the slots you can cover. ${onShift.length?`You are down for <b class="text-[#33504f]">${esc(onShift.join(', '))}</b>.`:'Nothing selected yet.'}</div>
   </div>
@@ -535,7 +535,7 @@ function boothPicker(d,{onToggleA,onToggleB}){
   <div class="microlabel">First choice booth <span class="font-bold normal-case tracking-normal text-[#8a9aa0]">(tap to change)</span></div>
   <div class="grid grid-cols-2 gap-2">
    ${BOOTHS.map(b=>{const on=selA.includes(b.k);
-    return `<button type="button" data-action="${onToggleA}" data-args="${b.k}" class="boothpick hue-${b.hue} ${on?'boothpick-sel':''}">
+    return `<button type="button" data-action="${esc(onToggleA)}" data-args="${esc(b.k)}" class="boothpick hue-${b.hue} ${on?'boothpick-sel':''}">
      ${on?`<span class="boothpick-tick"><svg viewBox="0 0 24 24" style="width:.6rem;height:.6rem" fill="none" stroke="currentColor" stroke-width="3.4"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></span>`:''}
      <span class="flex items-center gap-2">
       <span class="boothpick-glyph">${b.letter}</span>
@@ -547,7 +547,7 @@ function boothPicker(d,{onToggleA,onToggleB}){
   <div class="microlabel pt-1">Second choice <span class="font-bold normal-case tracking-normal text-[#8a9aa0]">(backup if the first is full)</span></div>
   <div class="no-scrollbar -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5">
    ${BOOTHS.map(b=>{const on=selB===b.k;
-    return `<button type="button" data-action="${onToggleB}" data-args="${b.k}" class="availpill flex-none hue-${b.hue} ${on?'availpill-on':''}">${on?'✓ ':''}${esc(b.label)}</button>`;}).join('')}
+    return `<button type="button" data-action="${esc(onToggleB)}" data-args="${esc(b.k)}" class="availpill flex-none hue-${b.hue} ${on?'availpill-on':''}">${on?'✓ ':''}${esc(b.label)}</button>`;}).join('')}
   </div>
  </div>`;
 }
@@ -662,7 +662,7 @@ function logForm(){
    <label><span class="microlabel">Hours</span>
     <input id="lgHours" type="number" step="0.5" min="0" max="24" inputmode="decimal" class="step-input mt-1" placeholder="6"></label>
    <label class="col-span-2"><span class="microlabel">Booth worked</span>
-    <select id="lgBooth" class="field mt-1 text-[12px]">${BOOTHS.map(b=>`<option value="${b.k}" ${b.k===(AV()||{}).booth?'selected':''}>${esc(b.label)}</option>`).join('')}</select></label>
+    <select id="lgBooth" class="field mt-1 text-[12px]">${BOOTHS.map(b=>`<option value="${esc(b.k)}" ${b.k===(AV()||{}).booth?'selected':''}>${esc(b.label)}</option>`).join('')}</select></label>
   </div>
   <div class="mt-2.5 flex gap-2">
    <button data-action="log-close" class="btn btn-glass flex-1 py-2 text-[11px] text-[#5b7178]">Cancel</button>
@@ -688,16 +688,16 @@ export function pledgeFormParts(d,pfx,acts){
  return `<div class="glass p-4 space-y-3">
    <div class="microlabel">1 · Who you are</div>
    <label class="block"><span class="microlabel">Full name *</span>
-    <input id="${pfx}Name" value="${esc(d.name)}" data-on-input="${acts.name}" class="field mt-1" placeholder="e.g. Thandi Mabaso" autocomplete="name"></label>
+    <input id="${pfx}Name" value="${esc(d.name)}" data-on-input="${esc(acts.name)}" class="field mt-1" placeholder="e.g. Thandi Mabaso" autocomplete="name"></label>
    <div class="grid grid-cols-2 gap-2">
     <label class="block"><span class="microlabel">Mobile **</span>
-     <input id="${pfx}Phone" value="${esc(d.phone)}" data-on-input="${acts.phone}" type="tel" inputmode="tel" class="field mt-1" placeholder="082 000 0000" autocomplete="tel"></label>
+     <input id="${pfx}Phone" value="${esc(d.phone)}" data-on-input="${esc(acts.phone)}" type="tel" inputmode="tel" class="field mt-1" placeholder="082 000 0000" autocomplete="tel"></label>
     <label class="block"><span class="microlabel">T-shirt</span>
-     <select id="${pfx}Shirt" data-on-change="${acts.shirt}" class="field mt-1">
-      ${['','S','M','L','XL','2XL','3XL'].map(s=>`<option value="${s}" ${d.shirt===s?'selected':''}>${s||'—'}</option>`).join('')}</select></label>
+     <select id="${pfx}Shirt" data-on-change="${esc(acts.shirt)}" class="field mt-1">
+      ${['','S','M','L','XL','2XL','3XL'].map(s=>`<option value="${esc(s)}" ${d.shirt===s?'selected':''}>${s||'—'}</option>`).join('')}</select></label>
    </div>
    <label class="block"><span class="microlabel">Email **</span>
-    <input id="${pfx}Email" value="${esc(d.email)}" data-on-input="${acts.email}" type="email" inputmode="email" class="field mt-1" placeholder="you@example.org" autocomplete="email"></label>
+    <input id="${pfx}Email" value="${esc(d.email)}" data-on-input="${esc(acts.email)}" type="email" inputmode="email" class="field mt-1" placeholder="you@example.org" autocomplete="email"></label>
    <p class="text-[11px] leading-snug text-[#6b8187]">** A mobile number or an email address: at least one, so the team can reach you.</p>
   </div>
 
@@ -706,19 +706,19 @@ export function pledgeFormParts(d,pfx,acts){
    <div class="mt-2">
     <span class="microlabel">How many expos are you pledging to help at?</span>
     <div class="mt-1.5 flex flex-wrap gap-1.5">
-     ${[1,2,3,4,6,12].map(n=>`<button type="button" data-action="${acts.pledge}" data-args="${n}" class="availpill hue-peach ${d.pledgeExpos===n?'availpill-on':''}">${n}${n===12?'+':''} expo${n>1?'s':''}</button>`).join('')}
+     ${[1,2,3,4,6,12].map(n=>`<button type="button" data-action="${esc(acts.pledge)}" data-args="${esc(n)}" class="availpill hue-peach ${d.pledgeExpos===n?'availpill-on':''}">${n}${n===12?'+':''} expo${n>1?'s':''}</button>`).join('')}
     </div>
    </div>
    <div class="mt-3">
     <span class="microlabel">What can you help with?</span>
     <div class="mt-1.5 flex flex-wrap gap-1.5">
-     ${SKILLS.map(([k,l])=>`<button type="button" data-action="${acts.list}" data-list="${acts.skillsKey}" data-args="${k}" class="availpill hue-aqua ${d.skills.includes(k)?'availpill-on':''}">${l}</button>`).join('')}
+     ${SKILLS.map(([k,l])=>`<button type="button" data-action="${esc(acts.list)}" data-list="${esc(acts.skillsKey)}" data-args="${esc(k)}" class="availpill hue-aqua ${d.skills.includes(k)?'availpill-on':''}">${l}</button>`).join('')}
     </div>
    </div>
    <div class="mt-3">
     <span class="microlabel">When are you usually free?</span>
     <div class="mt-1.5 flex flex-wrap gap-1.5">
-     ${AVAIL.map(([k,l])=>`<button type="button" data-action="${acts.list}" data-list="${acts.availKey}" data-args="${k}" class="availpill hue-sage ${d.avail.includes(k)?'availpill-on':''}">${l}</button>`).join('')}
+     ${AVAIL.map(([k,l])=>`<button type="button" data-action="${esc(acts.list)}" data-list="${esc(acts.availKey)}" data-args="${esc(k)}" class="availpill hue-sage ${d.avail.includes(k)?'availpill-on':''}">${l}</button>`).join('')}
     </div>
    </div>
   </div>
@@ -898,7 +898,7 @@ export function showModal(sel,close){const el=$(sel);clearTimeout(el._t);
  if(!wasOpen)overlayOpened(sel,close||(()=>hideModal(sel)));}
 export function hideModal(sel){const el=$(sel);if(el.classList.contains('hidden'))return;el.classList.add('is-closing');clearTimeout(el._t);el._t=setTimeout(()=>{el.classList.add('hidden');el.classList.remove('flex','is-closing');},260);overlayClosed(sel);}
 function modeToggle(mode){
- const B=(k,l)=>`<button data-action="setSwitchMode" data-args="${k}" class="flex-1 rounded-full py-1.5 text-[11px] font-extrabold transition ${mode===k?'sw-on':'text-[#5b7178]'}">${l}</button>`;
+ const B=(k,l)=>`<button data-action="setSwitchMode" data-args="${esc(k)}" class="flex-1 rounded-full py-1.5 text-[11px] font-extrabold transition ${mode===k?'sw-on':'text-[#5b7178]'}">${l}</button>`;
  return `<div class="flex gap-1 rounded-full bg-[#123033]/[.06] p-1">${B('visitor','Visitors')}${B('volunteer','Volunteers')}</div>`;
 }
 export function setSwitchMode(m){state.switchMode=m;openSwitcher();}
@@ -930,7 +930,7 @@ function switcherListHTML(query){
  const rows=visitorsToShow(query);
  if(!rows.length)return `<p class="px-1 py-4 text-center text-[11px] text-[#6b8187]">${String(query||'').trim()?'Nobody matches that.':'No visitors yet — register the first one.'}</p>`;
  return rows.map(a=>{const act=a.id===state.activeId;
-  return `<button data-action="pickAttendee" data-args="${a.id}" class="flex w-full items-center gap-3 rounded-[18px] px-2.5 py-2.5 text-left transition-all duration-300 ${act?'bg-brand-500/10 ring-1 ring-brand-400/25':'hover:bg-white/60'}">
+  return `<button data-action="pickAttendee" data-args="${esc(a.id)}" class="flex w-full items-center gap-3 rounded-[18px] px-2.5 py-2.5 text-left transition-all duration-300 ${act?'bg-brand-500/10 ring-1 ring-brand-400/25':'hover:bg-white/60'}">
    <span class="flex h-9 w-9 flex-none items-center justify-center rounded-[13px] text-[11px] font-extrabold ${act?'av':'tint'} hue-${hueOf(a.id)}">${initials(a.name)}</span>
    <span class="min-w-0 flex-1"><span class="block truncate text-[13px] font-bold">${esc(a.name)}</span>
    <span class="mono block text-[10px] text-[#6b8187]">${esc(a.id)}</span></span>
@@ -951,7 +951,7 @@ function volSwitcherHTML(query){
  const rows=volsToShow(query);
  if(!rows.length)return `<p class="px-1 py-4 text-center text-[11px] text-[#6b8187]">${String(query||'').trim()?'Nobody matches that.':'No volunteers yet — pledge the first one.'}</p>`;
  return rows.map(v=>{const act=v.id===state.volId,t=badgeTier(v);
-  return `<button data-action="pickVolunteer" data-args="${v.id}" class="flex w-full items-center gap-3 rounded-[18px] px-2.5 py-2.5 text-left transition-all duration-300 ${act?'bg-brand-500/10 ring-1 ring-brand-400/25':'hover:bg-white/60'}">
+  return `<button data-action="pickVolunteer" data-args="${esc(v.id)}" class="flex w-full items-center gap-3 rounded-[18px] px-2.5 py-2.5 text-left transition-all duration-300 ${act?'bg-brand-500/10 ring-1 ring-brand-400/25':'hover:bg-white/60'}">
    <span class="flex h-9 w-9 flex-none items-center justify-center rounded-full text-[11px] font-extrabold ${act?'av':'tint'} hue-${t.hue}">${initials(v.name)}</span>
    <span class="min-w-0 flex-1"><span class="block truncate text-[13px] font-bold">${esc(v.name)}</span>
     <span class="mt-0.5 flex flex-wrap items-center gap-1"><span class="servechip ${STATUS_UI[v.status].cls}">${STATUS_UI[v.status].label}</span>

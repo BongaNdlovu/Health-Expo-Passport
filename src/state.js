@@ -19,7 +19,7 @@ export const cloud={client:null,user:null,mode:false,status:'off',err:'',busy:fa
   notifN:0,notifT:null,notifLive:false,notifChannel:null,notifWatched:'',notifs:undefined,notifsOffline:false,notifOpen:false};
 /* Every screen change calls this, but the data rarely changes: compare a fingerprint first and only write (and only
    look for rows to upload) when something really changed. Writing ~1 MB to storage on every tap is what drained phones. */
-let _savedSig='',_fullWarned=false,_nearWarned=false;
+let _savedSig='',_pMax=0,_fullWarned=false,_nearWarned=false;
 /* Browsers cap localStorage around 5 MB per origin. The saved copy crosses 4.2 MB at roughly 10,000 visitors — past
    that the next write can be refused, and an offline desk then loses edits on reload. Say so while there is still
    time to act, not only once the write has already failed. */
@@ -42,7 +42,8 @@ export function storageFull(){
  setTimeout(()=>toast(cloud.user?'This phone\'s app storage is full — keep it online so changes upload straight away.'
   :'This phone\'s app storage is full — recent changes may not be kept after closing the app.'),0);
 }
-let _pt;export function persist(){clearTimeout(_pt);_pt=setTimeout(persistNow,250);}
+/* a burst of taps saves 250 ms after the last one, and at least every 2 s while it lasts */
+let _pt;export function persist(){clearTimeout(_pt);_pt=setTimeout(persistNow,250);if(!_pMax)_pMax=setTimeout(()=>{_pMax=0;persistNow();},2000);}
 addEventListener('pagehide',persistNow);document.addEventListener('visibilitychange',()=>{if(document.hidden)persistNow()});
 /* Rows arrive from the shared database, where a staff account can write anything into a JSON column. Readings are numbers
    or nothing, so a reading can never carry markup into the many places that print it. */

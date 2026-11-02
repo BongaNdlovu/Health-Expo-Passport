@@ -70,6 +70,8 @@ export function confirmAsk(o) {
   go.className = o.danger
     ? 'btn btn-danger flex-1 py-2.5 text-xs'
     : 'btn btn-primary flex-1 py-2.5 text-xs';
+  go.style.minHeight = '44px';             /* WCAG 2.5.5: a full-size tap target */
+  if (no) no.style.minHeight = '44px';
   sheet.classList.remove('hidden', 'is-closing');
   sheet.classList.add('flex');
   overlayOpened(SHEET, () => answer(false));

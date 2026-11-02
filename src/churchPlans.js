@@ -158,10 +158,10 @@ export function churchPlansBox(cid){
 function churchPlanForm(cid,ed){
  const keys=Object.keys(PROTOCOLS),own=!keys.includes(ed.problem),acts=ed.actions||[];
  const slots=Math.min(8,Math.max(CP_SLOTS,acts.length));
- const field=(id,ph,v,max)=>`<input id="${id}" value="${esc(v||'')}" placeholder="${ph}" maxlength="${max}" class="field mt-1.5 text-xs">`;
+ const field=(id,ph,v,max)=>`<input id="${esc(id)}" value="${esc(v||'')}" placeholder="${ph}" maxlength="${max}" class="field mt-1.5 text-xs">`;
  return `<form data-action="plan-save" data-args="${qSafe(cid)}" class="mt-3 space-y-2.5">
   <label class="block"><span class="microlabel">Problem</span>
-   <select id="cpProblem" class="field mt-1 text-xs">${keys.map(k=>`<option value="${k}" ${k===ed.problem?'selected':''}>${PROTOCOLS[k].tag}</option>`).join('')}<option value="own" ${own?'selected':''}>Another problem (type it below)</option></select></label>
+   <select id="cpProblem" class="field mt-1 text-xs">${keys.map(k=>`<option value="${esc(k)}" ${k===ed.problem?'selected':''}>${PROTOCOLS[k].tag}</option>`).join('')}<option value="own" ${own?'selected':''}>Another problem (type it below)</option></select></label>
   ${field('cpOwn','Another problem, e.g. Joint pain',own?ed.problem:'',60)}
   <label class="block"><span class="microlabel">Title</span>${field('cpTitle','e.g. Easing stiff, painful joints',ed.title,120)}</label>
   ${Array.from({length:slots},(_,i)=>{const x=acts[i]||{};return `<div class="rounded-[14px] border border-[#123033]/[.07] p-2.5"><div class="microlabel">Thing to do ${i+1}${i?' (optional)':''}</div>

@@ -38,6 +38,13 @@ fs.writeFileSync(path.join(www, 'index.html'), html);
 fs.copyFileSync(path.join(root, 'manifest.webmanifest'), path.join(www, 'manifest.webmanifest'));
 for (const f of fs.readdirSync(path.join(root, 'icons'))) fs.copyFileSync(path.join(root, 'icons', f), path.join(www, 'icons', f));
 fs.cpSync(vendor, path.join(www, 'vendor'), { recursive: true, filter: s => !s.endsWith('README.md') });
+/* v1.6.2: the memory helper and the guided tour, exactly as tools/build.js wrote them into dist/ (nsmem.js carries
+   the build flag build.js chose: off unless NS_DEV_BUILD=1) */
+for (const f of ['nsmem.js']) {
+  if (!fs.existsSync(path.join(root, 'dist', f))) { console.error('NOT built: dist/' + f + ' is missing — run tools/build.js first'); process.exit(1); }
+  fs.copyFileSync(path.join(root, 'dist', f), path.join(www, f));
+}
+fs.cpSync(path.join(root, 'dist', 'tutorial'), path.join(www, 'tutorial'), { recursive: true });
 
 const files = [];
 (function walk(d) { for (const e of fs.readdirSync(d, { withFileTypes: true })) e.isDirectory() ? walk(path.join(d, e.name)) : files.push(path.relative(www, path.join(d, e.name))); })(www);

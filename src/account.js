@@ -57,7 +57,7 @@ export async function loadAccount(){
  if(r.data&&typeof r.data==='object')noteServerTime(r.data.server_now,sentAt,Date.now());
  if(r.error||!r.data||typeof r.data!=='object'){         /* no churches in this database yet: the old staff check decides */
   cloud.acct=null;cloud.churchId='';
-   if(!r.error||!isOfflineErr(r.error.message))noteHealth('account','warn','Churches are not set up in this database. Until schema.sql is run again, the old staff list decides who gets in.',r.error?String(r.error.message||''):'my_account gave no account');
+   if(!r.error||!isOfflineErr(r.error.message))noteHealth('account','warn','Church accounts are not switched on for this database yet, so the old staff list decides who gets in. Ask the app’s support to update the database.',r.error?String(r.error.message||''):'my_account gave no account');
    notifWatch();
    const chk=await cloud.client.rpc('is_staff');
   if(chk.error)throw chk.error;
@@ -126,7 +126,7 @@ async function acctReload(){
  if(r&&r.data&&typeof r.data==='object'){cloud.acct=r.data;cloud.acctV++;}
  renderGate();renderAcct();profileChanged();
 }
-export const retryNote=(t,what)=>acctNote(t)+`<button class="btn btn-glass mt-2 w-full py-2.5 text-xs" data-action="acct-retry" data-args="${what}">Try again</button>`;
+export const retryNote=(t,what)=>acctNote(t)+`<button class="btn btn-glass mt-2 w-full py-2.5 text-xs" data-action="acct-retry" data-args="${esc(what)}">Try again</button>`;
 export const acctNote=t=>`<p class="mt-1.5 text-[11px] leading-relaxed text-[#5c747a]">${t}</p>`;
 /* a loading placeholder shaped like the rows it stands in for (a name line and a detail line each), so the box keeps
    its height when they arrive; the words stay for screen readers. Motion stops under prefers-reduced-motion. */
@@ -157,11 +157,11 @@ export function acctGateHTML(st){
  return `${title('My account')}
   ${acctNote(esc(m.full_name||a.email||'')+' · '+roleLabel(m)+' of <b class="text-[#33504f]">'+esc(c.name)+'</b>')}
   ${healthHTML()}${notifBoxHTML()}${expoMemberHTML()}${pledgeHTML()}${myTeamHTML()}${meFormHTML('gm')}<div class="pf">${profPasswordBox()}</div>
-  <button data-action="openHelp" class="btn btn-soft mt-4 w-full py-2.5 text-xs">Help &amp; tutorial</button>
+  <button data-action="openHelp" data-tour="prof-help" class="btn btn-soft mt-4 w-full py-2.5 text-xs ns-tap">Help &amp; tutorial</button><button data-action="startTour" data-tour="prof-tour" class="btn btn-primary mt-2 w-full py-2.5 text-xs ns-tap">Take the guided tour</button>
   <button data-action="cloudSignOut" class="btn btn-glass mt-3 w-full py-2.5 text-xs text-[#5b7178]">Sign out</button>${leave}${admin}<div class="pf mt-3">${profDeleteHTML()}</div>`;
 }
 function churchPickHTML(){
- const link=(fn,t)=>`<div class="mt-3 text-center"><button type="button" data-action="${fn}" class="text-[11px] font-extrabold text-brand-700">${t}</button></div>`;
+ const link=(fn,t)=>`<div class="mt-3 text-center"><button type="button" data-action="${esc(fn)}" class="text-[11px] font-extrabold text-brand-700">${t}</button></div>`;
  if(cloud.regChurch)return `${dirBoxHTML('Already registered — is yours here? Join it instead of registering it again.','max-h-[26vh]')}
   <form data-action="registerChurch" class="mt-4 space-y-3">
    <label class="block"><span class="microlabel">Church or organisation name</span><input id="rcName" required maxlength="120" placeholder="e.g. Grace Chapel" class="field mt-1"></label>
@@ -179,7 +179,7 @@ function wantsPickHTML(){
  const w=cloud.wants||'member',one=w==='team_leader',needs=w==='team_leader'||w==='team_member'||w==='pledge';
  /* a title over its description, left-aligned: .btn centres a row, which put the two side by side and squeezed them */
  const two=(t,d)=>`<span class="block min-w-0 text-left"><b class="block text-xs">${esc(t)}</b><span class="block text-[10px] font-semibold leading-snug opacity-80">${esc(d)}</span></span>`;
- const btn=(k,t,d)=>`<button type="button" data-action="want-pick" data-args="${k}" aria-pressed="${w===k}" class="btn ${w===k?'btn-primary':'btn-glass'} w-full px-3 py-2.5 text-left" style="justify-content:flex-start">${two(t,d)}</button>`;
+ const btn=(k,t,d)=>`<button type="button" data-action="want-pick" data-args="${esc(k)}" aria-pressed="${w===k}" class="btn ${w===k?'btn-primary':'btn-glass'} w-full px-3 py-2.5 text-left" style="justify-content:flex-start">${two(t,d)}</button>`;
  return `<div class="mt-4"><div class="microlabel">What would you like to be?</div>
   <div class="mt-1.5 space-y-1.5">${WANTS.map(x=>btn(x[0],x[1],x[2])).join('')}
    <button type="button" data-action="reg-church-form" class="btn btn-glass w-full px-3 py-2.5 text-left" style="justify-content:flex-start">${two('Health Department Leader','Register my church — I lead it')}</button></div>
@@ -265,7 +265,7 @@ export async function leaveChurch(){
 function meFormHTML(p){
  const m=(cloud.acct&&cloud.acct.membership)||{};
  const f=(id,l,v,x)=>`<label class="block"><span class="microlabel">${l}</span><input id="${p}${id}" value="${esc(v||'')}" class="field mt-1" ${x}></label>`;
- return acctBox('My details',`<form data-action="saveMyDetails" data-pre="${p}" class="mt-2 space-y-3">
+ return acctBox('My details',`<form data-action="saveMyDetails" data-pre="${esc(p)}" class="mt-2 space-y-3">
   ${f('Name','Full name',m.full_name,'autocomplete="name" maxlength="200" required')}
   ${f('Phone','Phone',m.phone,'type="tel" inputmode="tel" autocomplete="tel" maxlength="40"')}
   ${f('Area','Area or suburb',m.area,'maxlength="120"')}
@@ -343,7 +343,7 @@ export function pledgeHTML(){
  const m=cloud.acct&&cloud.acct.membership;
  if(!m||m.status!=='approved')return '';
  if(cloud.pledge===undefined){loadPledge();return acctBox('My pledge',acctSkel(2));}
- if(cloud.pledgeErr)return acctBox('My pledge',acctNote('Pledging needs the latest supabase/schema.sql — ask the church to update the database first.'));
+ if(cloud.pledgeErr)return acctBox('My pledge',acctNote('Pledging is not switched on for your church yet. Ask your church admin to contact the app’s support.'));
  if(!cloud.pledge)return acctBox('My pledge',acctNote('Pledge to help at the next expo and your name goes onto the team list straight away. Your church’s admin registers you and chooses your station. Your pledge details stay on the roster until you unpledge or your church’s admin removes them.')+myPledgeFormHTML());
  if(cloud.pledgeEdit)return acctBox('My pledge',myPledgeFormHTML());
  const p=cloud.pledge,st=STATUS_UI[p.status];
@@ -595,7 +595,7 @@ export function renderNotifs(){
  el.innerHTML=`<div class="display text-base font-extrabold">Notifications</div>
   <div class="mt-1 flex items-center justify-between gap-2">
    <span class="text-[11px] text-[#5c747a]">${navigator.onLine?'The last 50, newest first.':'Connect to see new notifications.'}</span>
-   ${L.length?`<button data-action="notif-mark-read" data-args="${maxId}" class="tap-link ${unread?'':'opacity-50'}">Mark all read</button>`:''}</div>
+   ${L.length?`<button data-action="notif-mark-read" data-args="${esc(maxId)}" class="tap-link ${unread?'':'opacity-50'}">Mark all read</button>`:''}</div>
   ${L.length?L.map(x=>`<button data-action="notif-open" data-args="${qSafe(String(x.id))}" class="mt-2 w-full rounded-[16px] border border-[#123033]/[.07] bg-white/60 p-3 text-left ${x.read_at?'opacity-70':''}">
     <div class="flex items-center justify-between gap-2"><span class="microlabel">${esc(KIND_L[x.kind]||x.kind||'Notification')}</span>
      <span class="mono flex-none text-[9px] text-[#8a9aa0]">${esc(String(x.created_at||'').slice(0,16).replace('T',' '))}${x.read_at?'':' · new'}</span></div>
@@ -641,10 +641,10 @@ export function closeAcct(){hideModal('#acctSheet');}
 export function renderAcct(){
  const hd=$('#acctTabs'),el=$('#acctBody'),sheet=$('#acctSheet');
  if(!hd||!el||!sheet||sheet.classList.contains('hidden'))return;
- if(!cloud.acct){hd.innerHTML='';el.innerHTML=acctNote('Accounts need the churches part of supabase/schema.sql. Run the whole file again in the Supabase SQL editor.');return;}
+ if(!cloud.acct){hd.innerHTML='';el.innerHTML=acctNote('Accounts are not switched on for your church yet. Ask your church admin to contact the app’s support.');return;}
  const tabs=acctTabs();
  if(!tabs.some(t=>t[0]===cloud.acctTab))cloud.acctTab=(tabs[0]||['me'])[0];
- hd.innerHTML=`<div class="flex gap-2">${tabs.map(([k,l])=>`<button data-action="openAcct" data-args="${k}" class="btn ${k===cloud.acctTab?'btn-primary':'btn-glass'} flex-1 py-2 text-xs">${l}</button>`).join('')}</div>`;
+ hd.innerHTML=`<div class="flex gap-2">${tabs.map(([k,l])=>`<button data-action="openAcct" data-args="${esc(k)}" class="btn ${k===cloud.acctTab?'btn-primary':'btn-glass'} flex-1 py-2 text-xs">${l}</button>`).join('')}</div>`;
  el.innerHTML=`<div id="acctHealth">${acctHealthHTML()}</div>`+(cloud.acctTab==='admin'?platformHTML():cloud.acctTab==='church'?churchAdminHTML():meHTML());
 }
 function meHTML(){
@@ -658,7 +658,7 @@ function meHTML(){
 /* the signed-in staff member's shortcut into the sheet (the panel behind the logo) */
 export function acctButtons(){
  const a=cloud.acct;if(!a)return '';
- const m=a.membership,b=(t,l)=>`<button data-action="hub-open" data-args="${t}" class="btn btn-soft flex-1 py-2.5 text-xs">${l}</button>`;
+ const m=a.membership,b=(t,l)=>`<button data-action="hub-open" data-args="${esc(t)}" class="btn btn-soft flex-1 py-2.5 text-xs">${l}</button>`;
  return acctBox(esc(a.church?a.church.name:'No church')+(m?' · '+roleLabel(m):''),
   `<div class="mt-2 flex gap-2">${b('me','My account')}${isChurchAdmin()?b('church','My church'):''}${a.platform_admin?b('admin','All churches'):''}</div>`);
 }
@@ -696,8 +696,13 @@ export function viewProfile(){
  if(window.NEWSTART_NO_CLOUD)return wrap(profHero('Your profile','Sign-in is switched off in this copy of the app.'));
  return wrap(cloud.user?profSignedIn():profSignedOut());
 }
+/* Help, the guided tour and the queue's places, reachable signed in or out */
+function profLearnBox(){
+ const t=window.NSTour&&window.NSTour.status?window.NSTour.status():'';
+ return acctBox('Settings & help',`<div data-tour="prof-learn"><button data-action="openHelp" data-tour="prof-help" class="btn btn-soft mt-1 w-full py-3 text-xs ns-tap">Help &amp; tutorial</button><button data-action="startTour" data-tour="prof-tour" class="btn btn-primary mt-2 w-full py-3 text-xs ns-tap">Take the guided tour</button><button data-action="qPlacesOpen" data-tour="prof-places" class="btn btn-soft mt-2 w-full py-3 text-xs ns-tap">Queue: people served at once</button>${t?acctNote(esc(t)):''}</div>`);
+}
 function profSignedOut(){
- const hero=profHero('Your profile',(cloud.demo?'<b>Practice mode</b>: demo visitors, nothing is shared. ':'')+'Sign in to share visitors and volunteers between desks and to manage your account.');
+ const hero=profHero('Your profile',(cloud.demo?'<b>Practice mode</b>: demo visitors, nothing is shared. ':'')+'Sign in to share visitors and volunteers between desks and to manage your account.')+profLearnBox();
  /* the sign-in service is still loading, or could not load */
  if(!cloud.client){
   const failed=cloud.status==='unavailable';
@@ -743,7 +748,7 @@ export function setProfSection(k){
 }
 export function profSectionBar(){
  const cur=profSection();
- return `<div class="pf-tabs" role="tablist" aria-label="Profile sections">${PF_SECTIONS.map(([k,l])=>`<button role="tab" aria-selected="${k===cur}" data-action="profSection" data-args="${k}" class="pf-tab${k===cur?' is-on':''}">${esc(l)}</button>`).join('')}</div>`;
+ return `<div class="pf-tabs" role="tablist" aria-label="Profile sections">${PF_SECTIONS.map(([k,l])=>`<button role="tab" aria-selected="${k===cur}" data-action="profSection" data-args="${esc(k)}" class="pf-tab${k===cur?' is-on':''}">${esc(l)}</button>`).join('')}</div>`;
 }
 /* role, church and approval as small labels under the name */
 function profChips(){
@@ -758,7 +763,7 @@ function profChips(){
 function profShortcuts(){
  const a=cloud.acct;
  if(!a)return '';
- const go=(t,l)=>`<button data-action="openAcct" data-args="${t}" class="btn btn-soft flex-1 py-2.5 text-xs">${l}</button>`;
+ const go=(t,l)=>`<button data-action="openAcct" data-args="${esc(t)}" class="btn btn-soft flex-1 py-2.5 text-xs">${l}</button>`;
  const row=(isChurchAdmin()?go('church','My church'):'')+(a.platform_admin?go('admin','All churches'):'');
  return row?`<div class="mt-3 flex gap-2">${row}</div>`:'';
 }
@@ -792,7 +797,7 @@ export async function profPassword(e){
  profMsg('pwErr','');toast('Password updated');
 }
 function profAccountBox(){
- return acctBox('Account',`<button data-action="openHelp" class="btn btn-soft mt-2 w-full py-2.5 text-xs">Help &amp; tutorial</button><button data-action="cloudSignOut" class="btn btn-glass mt-2 w-full py-2.5 text-xs text-[#5b7178]">Sign out</button>${profDeleteHTML()}`);
+ return acctBox('Account',`<button data-action="openHelp" data-tour="prof-help" class="btn btn-soft mt-2 w-full py-2.5 text-xs ns-tap">Help &amp; tutorial</button><button data-action="startTour" data-tour="prof-tour" class="btn btn-primary mt-2 w-full py-2.5 text-xs ns-tap">Take the guided tour</button><button data-action="cloudSignOut" class="btn btn-glass mt-2 w-full py-2.5 text-xs text-[#5b7178]">Sign out</button>${profDeleteHTML()}`);
 }
 /* Deleting is two steps: open the panel, then type DELETE. The database refuses only the only platform admin. */
 function profDeleteHTML(){
@@ -820,7 +825,7 @@ export async function profDeleteGo(){
  if(r.error){
   const m=String(r.error.message||'');
   profIdle('pfDelGo');
-  profMsg('pfDelErr',isMissingErr(r.error)?'Deleting accounts needs the latest supabase/schema.sql. Ask the administrator to run it again.':isNet(m)?'No connection — try again when you are online.':(m||'Could not delete the account.'));
+  profMsg('pfDelErr',isMissingErr(r.error)?'Deleting accounts is not switched on yet. Ask your church admin to contact the app’s support. You can also ask your church admin to remove your details.':isNet(m)?'No connection — try again when you are online.':(m||'Could not delete the account.'));
   return;
  }
  await cloudSignOut(true);
@@ -873,15 +878,15 @@ export function memberRow(u,F,admins,ranks,canPost){
    ${ranks&&ranks[u.user_id]?`<div class="text-[10px] font-bold text-[#33504f]">${esc(ADMIN_TITLES[ranks[u.user_id]-1])}</div>`:''}
    ${want?`<div class="text-[10px] font-bold text-brand-700">${esc(want)}</div>`:''}
    <div class="truncate text-[11px] text-[#4f6870]">${esc(u.email||'')}${u.phone?' · '+esc(u.phone):''}${u.area?' · '+esc(u.area):''}${u.confirmed?'':' · has not confirmed the email yet'}</div></div>
-   ${u.status==='pending'&&u.confirmed?`<button class="btn btn-primary flex-none px-4 text-xs" data-action="${asst?'member-approve-assistant':'member-approve'}" data-user="${id}" data-role="${qSafe(u.role)}">${asst?'Approve as Assistant':'Approve'}</button>`:''}</div>
+   ${u.status==='pending'&&u.confirmed?`<button class="btn btn-primary flex-none px-4 text-xs" data-action="${asst?'member-approve-assistant':'member-approve'}" data-user="${esc(id)}" data-role="${qSafe(u.role)}">${asst?'Approve as Assistant':'Approve'}</button>`:''}</div>
   ${u.status==='pending'&&u.wants==='assistant'&&!canPost?acctNote('Only the Health Department Leader or the Expo admin can make someone the Assistant. Approve them as a member now, and they can appoint them.'):''}
   <div class="mt-1.5 flex flex-wrap items-center gap-2">
-   ${isAdmin?'':`<select data-on-change="member-role" data-user="${id}" data-status="${qSafe(u.status)}" aria-label="Role" class="field py-1.5 text-xs" style="width:auto">${['member','staff'].map(r=>`<option value="${r}" ${r===u.role?'selected':''}>${ROLE_L[r]}</option>`).join('')}</select>`}
-   ${canPost&&u.status==='approved'?`<select data-on-change="member-post" data-user="${id}" aria-label="Admin post" class="field py-1.5 text-xs" style="width:auto">${[['none','No admin post'],['leader',ADMIN_TITLES[0]],['assistant','Assistant']].map(o=>`<option value="${o[0]}" ${o[0]===post?'selected':''}>${o[1]}</option>`).join('')}</select>`:''}
-   <button class="tap-link" data-action="member-link" data-user="${id}" data-cur="${qSafe(u.attendee_id||'')}">${u.attendee_id?'Badge '+esc(u.attendee_id):'Link badge'}</button>
-   <button class="tap-link" data-action="member-vol-link" data-user="${id}" data-cur="${qSafe(u.volunteer_id||'')}">${u.volunteer_id?'Vol '+esc(u.volunteer_id):'Link volunteer'}</button>
-   ${F&&u.status==='approved'?`<button class="tap-link" aria-pressed="${fu}" data-action="followup-toggle" data-user="${id}" data-on="${fu?0:1}">${fu?'✓ Follow-up person':'Make follow-up person'}</button>`:''}
-   ${isAdmin&&!canPost?'':`<button class="tap-link text-rose-700" data-action="removeMember" data-args="${id}">Remove</button>`}</div></div>`;
+   ${isAdmin?'':`<select data-on-change="member-role" data-user="${esc(id)}" data-status="${qSafe(u.status)}" aria-label="Role" class="field py-1.5 text-xs" style="width:auto">${['member','staff'].map(r=>`<option value="${esc(r)}" ${r===u.role?'selected':''}>${ROLE_L[r]}</option>`).join('')}</select>`}
+   ${canPost&&u.status==='approved'?`<select data-on-change="member-post" data-user="${esc(id)}" aria-label="Admin post" class="field py-1.5 text-xs" style="width:auto">${[['none','No admin post'],['leader',ADMIN_TITLES[0]],['assistant','Assistant']].map(o=>`<option value="${o[0]}" ${o[0]===post?'selected':''}>${o[1]}</option>`).join('')}</select>`:''}
+   <button class="tap-link" data-action="member-link" data-user="${esc(id)}" data-cur="${qSafe(u.attendee_id||'')}">${u.attendee_id?'Badge '+esc(u.attendee_id):'Link badge'}</button>
+   <button class="tap-link" data-action="member-vol-link" data-user="${esc(id)}" data-cur="${qSafe(u.volunteer_id||'')}">${u.volunteer_id?'Vol '+esc(u.volunteer_id):'Link volunteer'}</button>
+   ${F&&u.status==='approved'?`<button class="tap-link" aria-pressed="${fu}" data-action="followup-toggle" data-user="${esc(id)}" data-on="${fu?0:1}">${fu?'✓ Follow-up person':'Make follow-up person'}</button>`:''}
+   ${isAdmin&&!canPost?'':`<button class="tap-link text-rose-700" data-action="removeMember" data-args="${esc(id)}">Remove</button>`}</div></div>`;
 }
 async function loadMembers(cid){
  if(!cid||cloud.membersBusy===cid)return;
@@ -1066,13 +1071,13 @@ function expoCard(x,admin){
   <div class="mt-1.5 text-[11px] leading-snug text-[#4f6870]">${x.clinic?`Medical clinic: ${x.doctors?nOf(x.doctors,'doctor'):'doctors to be confirmed'}${types?' · '+esc(types):''}`:'No medical clinic'}</div>
   ${x.signup_deadline?`<div class="text-[11px] leading-snug ${expoClosed(x)?'font-bold text-rose-700':'text-[#4f6870]'}">${expoClosed(x)?'Sign-ups closed on ':'Sign up by '}${esc(expoDate({starts_on:x.signup_deadline}))}</div>`:''}
   ${admin?`<div class="mt-2 flex flex-wrap items-center gap-3">
-    <button class="tap-link" data-action="expo-edit" data-args="${id}">Edit</button>
-    ${x.status==='draft'?`<button class="tap-link text-brand-700" data-action="expo-status" data-args="${id}" data-status="open">Open for members</button>`
-     :x.status==='open'?`<button class="tap-link" data-action="expo-status" data-args="${id}" data-status="done">Mark done</button>`
-     :`<button class="tap-link" data-action="expo-status" data-args="${id}" data-status="open">Reopen</button>`}
-    <button class="tap-link text-rose-700" data-action="expo-delete" data-args="${id}">Delete</button></div>`
+    <button class="tap-link" data-action="expo-edit" data-args="${esc(id)}">Edit</button>
+    ${x.status==='draft'?`<button class="tap-link text-brand-700" data-action="expo-status" data-args="${esc(id)}" data-status="open">Open for members</button>`
+     :x.status==='open'?`<button class="tap-link" data-action="expo-status" data-args="${esc(id)}" data-status="done">Mark done</button>`
+     :`<button class="tap-link" data-action="expo-status" data-args="${esc(id)}" data-status="open">Reopen</button>`}
+    <button class="tap-link text-rose-700" data-action="expo-delete" data-args="${esc(id)}">Delete</button></div>`
   :mine?`<div class="mt-2 text-[11px] font-bold text-brand-700">You have pledged to this expo ✓</div>`
-  :expoClosed(x)?'':`<button class="btn btn-primary mt-2 w-full py-2.5 text-xs" data-action="expo-pledge" data-args="${id}">${cloud.pledge?'Pledge to this expo instead':'Pledge to help at this expo'}</button>`}</div>`;
+  :expoClosed(x)?'':`<button class="btn btn-primary mt-2 w-full py-2.5 text-xs" data-action="expo-pledge" data-args="${esc(id)}">${cloud.pledge?'Pledge to this expo instead':'Pledge to help at this expo'}</button>`}</div>`;
 }
 /* the members' view: only open expos, nothing at all when there are none */
 export function expoMemberHTML(){
@@ -1105,7 +1110,7 @@ export function expoAdminHTML(cid){
  if(cloud.expoEdit)return expoFormHTML();
  const E=cloud.adminExpos;
  if(!E||E.cid!==cid){loadAdminExpos(cid);return acctSkel(2);}
- return `${E.err==='schema'?acctNote('Health Expos need the latest supabase/schema.sql — ask the administrator to run it again.')
+ return `${E.err==='schema'?acctNote('Health Expos are not switched on for your church yet. Ask the app’s support to update the database.')
    :E.err?retryNote('Could not load the Health Expos. Check your connection.','expos')
    :E.list.length?E.list.map(x=>expoCard(x,true)).join(''):acctNote('No expo yet. Add one: members see it once it is open, and pledge to it.')}
   ${E.err?'':`<button class="btn btn-primary mt-3 w-full py-2.5 text-xs" data-action="expo-new" data-args="${qSafe(cid)}">+ New Health Expo</button>`}`;
@@ -1143,7 +1148,7 @@ export function expoType(t){
 }
 export function cancelExpo(){cloud.expoEdit=null;renderAcct();}
 function expoFormHTML(){
- const d=cloud.expoEdit,f=(k,l,type,x)=>`<label class="block"><span class="microlabel">${l}</span><input data-on-input="expo-field" data-k="${k}" type="${type}" value="${esc(d[k]||'')}" class="field mt-1" ${x||''}></label>`;
+ const d=cloud.expoEdit,f=(k,l,type,x)=>`<label class="block"><span class="microlabel">${l}</span><input data-on-input="expo-field" data-k="${esc(k)}" type="${type}" value="${esc(d[k]||'')}" class="field mt-1" ${x||''}></label>`;
  return `<div class="mt-2 space-y-3">
   ${f('name','Name of the expo *','text','maxlength="120" placeholder="e.g. Pinetown Health Expo 2027" autocomplete="off"')}
   ${f('startsOn','Date *','date')}
@@ -1251,10 +1256,10 @@ function churchRow(c){
    <div class="text-[11px] leading-snug text-[#4f6870]">${esc(c.city||'—')} · ${nOf(c.members,'member')} · ${c.staff} staff · ${nOf(c.visitors,'visitor')} · ${nOf(c.volunteers,'volunteer')}${c.pending?' · '+c.pending+' waiting':''}</div></div>
    <span class="${chipClass(c.status==='active'?'ok':c.status==='pending'?'watch':'flag')}">${CHURCH_L[c.status]||esc(c.status)}</span></div>
   <div class="mt-1.5 flex flex-wrap items-center gap-2">
-   ${c.status==='active'?`<button class="tap-link text-rose-700" data-action="church-status" data-args="${id}" data-status="suspended">Pause</button>`
-    :`<button class="btn btn-primary px-4 py-1.5 text-xs" data-action="church-status" data-args="${id}" data-status="active">${c.status==='pending'?'Approve':'Reactivate'}</button>`}
-   <button class="tap-link" data-action="openChurchData" data-args="${id}">Data</button>
-   <button class="tap-link" data-action="manageChurch" data-args="${id}">Members & details</button></div></div>`;
+   ${c.status==='active'?`<button class="tap-link text-rose-700" data-action="church-status" data-args="${esc(id)}" data-status="suspended">Pause</button>`
+    :`<button class="btn btn-primary px-4 py-1.5 text-xs" data-action="church-status" data-args="${esc(id)}" data-status="active">${c.status==='pending'?'Approve':'Reactivate'}</button>`}
+   <button class="tap-link" data-action="openChurchData" data-args="${esc(id)}">Data</button>
+   <button class="tap-link" data-action="manageChurch" data-args="${esc(id)}">Members & details</button></div></div>`;
 }
 /* the owner's read-only look at one church's visitors and volunteers (admin_church_data) */
 export function openChurchData(id){cloud.adminData=id;cloud.adminRows=null;renderAcct();}
@@ -1337,15 +1342,26 @@ export async function cloudInit(){
   if(!window.supabase)await loadScript(SB_LIB);
   if(!window.supabase||!window.supabase.createClient)throw new Error('library missing');
  }catch(e){cloud.starting=false;noteHealth('auth','bad','The sign-in service did not load, usually because there is no internet. Connect, then reopen the app.',String((e&&e.message)||e));setCloud(cloud.mode?'offline':'unavailable');return;}
- cloud.client=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true},
+ cloud.client=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:false,detectSessionInUrl:true},
   global:{fetch:timedFetch}});   /* a deadline on every request (cloud.js) */
  /* never await Supabase calls inside this callback — hand off to a timer */
  cloud.client.auth.onAuthStateChange((ev,session)=>setTimeout(()=>cloudAuthEvent(ev,session),0));
  try{document.addEventListener('visibilitychange',checkWhileWaiting);addEventListener('online',checkWhileWaiting);}catch(e){/* no page events here */};
  cloud.starting=false;
 }
+/* The session's refresh timer runs only while someone is signed in and the app is in view (autoRefreshToken is off
+   above): practice mode and a signed-out phone keep no timer, and the refresh restarts on sign-in. */
+export function nsAuthTimer(on){
+ try{
+  const a=cloud.client&&cloud.client.auth;
+  if(a){if(on&&!document.hidden)a.startAutoRefresh();else a.stopAutoRefresh();}
+ }catch(e){/* an older client without these */}
+}
+document.addEventListener('visibilitychange',()=>nsAuthTimer(!!cloud.user));
 export function cloudAuthEvent(ev,session){
  const u=session&&session.user;
+ nsAuthTimer(!!u);
+ if(!u&&window.NSMem)window.NSMem.bump('signout');          /* nothing cached from a signed-in session outlives it */
  /* the link in a "reset password" email opens the app signed in; hold the gate until a new password is saved */
  if(ev==='PASSWORD_RECOVERY'){cloud.recovery=true;cloud.gateKey='';}
  if(u){
@@ -1437,10 +1453,10 @@ function cloudError(err,where){
   setCloud('offline');clearTimeout(cloud.retryT);cloud.retryT=setTimeout(()=>cloudSync(),20000);return;
  }
  if(err&&(err.code==='PGRST205'||err.code==='PGRST202'||/schema cache|could not find the (table|function)/i.test(msg)))
-  {cloud.blocked=true;setCloud('error','The database tables are not set up yet. Run supabase/schema.sql in the Supabase SQL editor.');return;}
+  {cloud.blocked=true;setCloud('error','The shared database is not set up for your church yet. Ask your church admin to contact the app’s support.');return;}
  /* the place guard also answers 42501, but that is one row another desk has already moved, not a bad sign-in */
  if(err&&(err.code==='42501'||/row-level security|permission denied/i.test(msg))&&!isPlaceRefusal(err))
-  {cloud.blocked=true;setCloud('error','This sign-in is not on the staff list yet. Ask the administrator to add it (step 3 at the bottom of supabase/schema.sql).');return;}
+  {cloud.blocked=true;setCloud('error','This sign-in is not on the staff list yet. Ask your church admin to approve it (Profile → My church → Staff approval).');return;}
  /* the raw message is already in Details (healthFromError put it there): the status line keeps calm words */
  setCloud('error','Sync hit a problem. It retries by itself — Details has the technical bit.');
  clearTimeout(cloud.retryT);cloud.retryT=setTimeout(()=>cloudSync(),60000);

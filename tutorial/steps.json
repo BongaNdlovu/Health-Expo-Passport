@@ -1,0 +1,361 @@
+{
+ "version": 1,
+ "title": "Guided tour",
+ "note": "Single source of truth for the tour. Targets are tried in order: data-tour first, then data-action fallbacks. 'before' runs only whitelisted, local, read-only UI actions (see tour.js ACTIONS). 'demoOnly' steps are skipped when signed in.",
+ "steps": [
+  {
+   "id": "welcome",
+   "title": "Welcome to Health Expo Passport",
+   "body": "This tour shows every part of the app using the three made-up demo visitors. It changes nothing in your church's database. Use Next and Back, or press Escape to pause. You can pick it up again from Profile → Settings & help.",
+   "before": [
+    "ensureDemo",
+    "tab:home"
+   ],
+   "target": []
+  },
+  {
+   "id": "home-hero",
+   "title": "Home: who is being screened now",
+   "body": "The top card is the visitor whose checks are open, with their key readings. Tap the name to switch to another visitor.",
+   "before": [
+    "tab:home"
+   ],
+   "target": [
+    "[data-tour='home-now']",
+    ".hx-hero"
+   ]
+  },
+  {
+   "id": "help-btn",
+   "title": "Help on every screen",
+   "body": "The ? button opens the help for the screen you are on. It works in practice mode too.",
+   "before": [
+    "tab:home"
+   ],
+   "target": [
+    "[data-tour='help-btn-home']",
+    "[data-tour='help-btn']"
+   ]
+  },
+  {
+   "id": "cloud",
+   "title": "Practice mode or live",
+   "body": "The cloud button shows sync status. In practice mode it opens “Sync & sign-in”: sign in there to work a real expo with your church.",
+   "before": [
+    "tab:home"
+   ],
+   "target": [
+    "[data-tour='cloud-btn']",
+    "#cloudBtn"
+   ]
+  },
+  {
+   "id": "visitors",
+   "title": "Today's visitors",
+   "body": "Each row is a visitor, coloured green, amber or red by their readings. Tap a row to continue their passport. The bin removes a demo visitor.",
+   "before": [
+    "tab:home"
+   ],
+   "target": [
+    "[data-tour='visitor-row']",
+    "[data-action='switchTo']"
+   ]
+  },
+  {
+   "id": "tabs",
+   "title": "The six tabs",
+   "body": "The bottom bar is the whole app: Home, Visitor, Queue, Care, Team and Profile. The numbers are counts, such as people waiting in the queue.",
+   "before": [
+    "tab:home"
+   ],
+   "target": [
+    "nav.bottom-nav",
+    "[data-tour='nav-home']"
+   ]
+  },
+  {
+   "id": "register",
+   "title": "Step 1 — Register",
+   "body": "Every visit starts here: Register a new visitor, with their name, age, sex and their consent (POPIA). In the tour we use the demo visitor David instead.",
+   "before": [
+    "tab:home"
+   ],
+   "target": [
+    "[data-tour='register']",
+    "[data-action='toggleReg']"
+   ]
+  },
+  {
+   "id": "visitor-tab",
+   "title": "The Visitor tab",
+   "body": "Visitor holds one person's passport and the four steps of a visit.",
+   "before": [
+    "tab:visit"
+   ],
+   "target": [
+    "[data-tour='nav-visit']"
+   ]
+  },
+  {
+   "id": "check",
+   "title": "Step 2 — Check",
+   "body": "Each station records its readings here. The checks open one at a time, like a short form: answer, then Next → or Enter. Volunteers pick Your station so they only see their own check. If they are still waiting in that station's line, the app asks whether to start serving them.",
+   "before": [
+    "journey:screen"
+   ],
+   "target": [
+    "[data-action='setMyStation'][data-args='bp']",
+    "[data-action='switchTab'][data-args='screen']"
+   ]
+  },
+  {
+   "id": "check-one",
+   "title": "Checks: one at a time",
+   "body": "The bar shows Check n of 8. Back keeps your answers, Skip leaves a check for later, and the summary lists all 8. Prefer the paper-style form? Tap Show all 8 checks; One at a time brings you back.",
+   "before": [
+    "journey:screen"
+   ],
+   "target": [
+    "[data-tour='tf-head']",
+    "[data-action='switchTab'][data-args='screen']"
+   ]
+  },
+  {
+   "id": "results",
+   "title": "Step 3 — Results",
+   "body": "Confirm the readings and see the health age. The health age is an estimate to start a conversation, not a diagnosis. Opening Results marks a station still serving them as done.",
+   "before": [
+    "journey:results"
+   ],
+   "target": [
+    "[data-action='switchTab'][data-args='results']"
+   ]
+  },
+  {
+   "id": "plan",
+   "title": "Step 4 — Plan",
+   "body": "A 90-day healthy-living plan is built from the readings. Your church can add its own plans.",
+   "before": [
+    "journey:plan"
+   ],
+   "target": [
+    "[data-action='chooseChurchPlan']",
+    "[data-action='switchTab'][data-args='plan']"
+   ]
+  },
+  {
+   "id": "send",
+   "title": "Step 5 — Send home",
+   "body": "Send the plan by WhatsApp or email, or print a card. You always see a preview first.",
+   "before": [
+    "journey:send"
+   ],
+   "target": [
+    "[data-action='openWhatsApp']",
+    "[data-action='switchTab'][data-args='send']"
+   ]
+  },
+  {
+   "id": "finish",
+   "title": "Step 6 — Finish the visit",
+   "body": "Finish visit ✓ takes the visitor out of every queue and returns you to Home. (We won't press it in the tour.)",
+   "before": [
+    "journey:send"
+   ],
+   "target": [
+    "[data-action='finishVisit']"
+   ]
+  },
+  {
+   "id": "queue-tab",
+   "title": "The Queue",
+   "body": "One line per station. Every desk sees the same line when signed in; in practice mode the line is only on this phone.",
+   "before": [
+    "tab:queue"
+   ],
+   "target": [
+    "[data-tour='nav-queue']"
+   ]
+  },
+  {
+   "id": "queue-station",
+   "title": "Pick a station",
+   "body": "Tap a station card to see who is waiting there. Vitals & BMI has two demo visitors waiting.",
+   "before": [
+    "tab:queue",
+    "qSelect:vitals"
+   ],
+   "target": [
+    "[data-action='qSelect'][data-args='vitals']"
+   ]
+  },
+  {
+   "id": "queue-call",
+   "title": "Try it: Call next",
+   "body": "Tap Call next to call the first person in the Vitals line. This is practice data on this phone only. (Or tap Next to skip.)",
+   "before": [
+    "tab:queue",
+    "qSelect:vitals"
+   ],
+   "target": [
+    "[data-action='queueCallNext']"
+   ],
+   "interactive": true,
+   "demoOnly": true
+  },
+  {
+   "id": "queue-done",
+   "title": "Done · call next",
+   "body": "When their check is done, Done · call next marks them finished here and sends them on to their next station. ↩ Put back returns someone to their place; ✕ removes them.",
+   "before": [
+    "tab:queue",
+    "qSelect:vitals"
+   ],
+   "target": [
+    "[data-action='queueFinishHere']",
+    "[data-action='queueServe']",
+    "[data-action='qSelect'][data-args='vitals']"
+   ]
+  },
+  {
+   "id": "queue-places",
+   "title": "Several people at once",
+   "body": "If a station serves more than one person at a time (3 blood-pressure nurses, 2 prayer partners), tap + next to People served at once. Each place gets its own card with the person, start time and minutes; a free place shows Call next → Place 2. ⇄ moves someone to another place and Name places labels them (Nurse A, Room 2). The big screen then shows Serving 2 of 3.",
+   "before": [
+    "tab:queue",
+    "qSelect:vitals"
+   ],
+   "target": [
+    "[data-tour='q-places']",
+    "[data-action='qSelect'][data-args='vitals']"
+   ]
+  },
+  {
+   "id": "bigscreen",
+   "title": "Big screen",
+   "body": "Shows who is being served and who is next, for a TV at the expo. A station with several places lists each place and Serving 2 of 3. ✕ or Escape closes it.",
+   "before": [
+    "tab:queue"
+   ],
+   "target": [
+    "[data-action='openBigScreen']"
+   ]
+  },
+  {
+   "id": "care",
+   "title": "Care: follow-up after the expo",
+   "body": "The team works from these lists after the screenings: Urgent first, then the 48-hour calls, then interests. The WhatsApp button opens a message to the visitor.",
+   "before": [
+    "tab:care"
+   ],
+   "target": [
+    "[data-action='openWAFor']",
+    "[data-tour='nav-care']"
+   ]
+  },
+  {
+   "id": "care-export",
+   "title": "Export CSV holds personal data",
+   "body": "The export contains health information. The app asks where to send it; keep the file private and delete it when you are done. Minimal CSV leaves out names, contacts and prayer notes; Excel gives a formatted sheet; the prayer list is a separate file.",
+   "before": [
+    "tab:care"
+   ],
+   "target": [
+    "[data-action='exportCSV']"
+   ]
+  },
+  {
+   "id": "team",
+   "title": "Team: volunteers",
+   "body": "Pledge to help, see who stands where (Muster and Booth), and log expo hours (Record). If you are a volunteer, start on Pledge.",
+   "before": [
+    "tab:serve"
+   ],
+   "target": [
+    "[data-action='setVolTab'][data-args='pledge']",
+    "[data-tour='nav-serve']"
+   ]
+  },
+  {
+   "id": "team-booth",
+   "title": "Booths and team leaders",
+   "body": "Booth shows each station's helpers. A team leader leads one booth and can place helpers there.",
+   "before": [
+    "tab:serve"
+   ],
+   "target": [
+    "[data-action='setVolTab'][data-args='booth']"
+   ]
+  },
+  {
+   "id": "profile",
+   "title": "Profile and settings",
+   "body": "Your account, sign-in, sync status and pledge.",
+   "before": [
+    "tab:me"
+   ],
+   "target": [
+    "[data-tour='nav-me']"
+   ]
+  },
+  {
+   "id": "settings-help",
+   "title": "Settings & help",
+   "body": "Help & tutorial opens the full guide. Take the guided tour brings you back here at any time, to resume or start again. Queue: people served at once jumps to the station places setting.",
+   "before": [
+    "tab:me"
+   ],
+   "target": [
+    "[data-tour='prof-learn']",
+    "[data-tour='prof-tour']"
+   ]
+  },
+  {
+   "id": "demo-live",
+   "title": "Practice mode vs live",
+   "body": "Practice mode uses made-up visitors; nothing is sent to your church's database and demo data stays on this phone until you tap Reset demo. Sign in to work a real expo. Never enter real visitors in practice mode.",
+   "before": [
+    "tab:me"
+   ],
+   "target": [
+    "#cloudBtn",
+    "[data-tour='cloud-btn']"
+   ]
+  },
+  {
+   "id": "roles",
+   "title": "Who does what",
+   "body": "Volunteer: works a station. Team leader: leads one booth. Church admin: approves people, sets up expos, writes plans, exports data and clears the queue. A new staff account needs an admin's approval before it sees church data.",
+   "before": [],
+   "target": []
+  },
+  {
+   "id": "privacy",
+   "title": "Privacy and how long data is kept",
+   "body": "Only your church's admins and the staff they approve see visitor records. Readings and prayer notes are deleted 7 days after the visit; follow-up contact details are kept up to 2 years. Visitors may ask to see, correct or delete their data (POPIA).",
+   "before": [],
+   "target": []
+  },
+  {
+   "id": "red",
+   "title": "If a reading is red",
+   "body": "Red means a reading is in the danger range. Stay calm and kind. Tell the counselling or health lead now, and encourage a clinic visit soon. For chest pain, stroke signs, fainting or a very low sugar, call for emergency help straight away.",
+   "extra": "[PLACEHOLDER — church health lead to confirm before the expo] Ambulance 10177 · Emergency from a cellphone 112",
+   "before": [
+    "tab:home"
+   ],
+   "target": [
+    "[data-action='switchTo'][data-args='EXPO-117']"
+   ]
+  },
+  {
+   "id": "done",
+   "title": "You're ready",
+   "body": "That's the whole app. Practise as much as you like with the demo visitors. Take the tour again from Profile → Settings & help.",
+   "before": [
+    "tab:home"
+   ],
+   "target": []
+  }
+ ]
+}

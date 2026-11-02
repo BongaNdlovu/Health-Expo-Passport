@@ -6,7 +6,8 @@ import { attendees, hueOf, state, volunteers } from './data.js';
 import { AV, badgeTier, closeSwitcher, closeVolModal, closeWhatsApp, needsRegistration, renderServeSheet, renderServeView } from './volunteer.js';
 import { persist } from './state.js';
 import { A, doneCount, esc, firstName, initials, redFlag } from './helpers.js';
-import { queue, viewQueue } from './queue.js';
+import { closeQueuePick, queue, viewQueue } from './queue.js';
+import { closeHelp } from './help.js';
 import { journeyBottom, viewHome, viewNoVisitor, viewScreen, viewSend } from './visitor.js';
 import { updateSimUI, viewCare, viewFood, viewPlan, viewResults } from './results.js';
 import { viewProfile } from './account.js';
@@ -31,6 +32,7 @@ export const SERVE_TABS=[
 export function isServe(){return state.tab==='serve';}
 
 export function render(){
+ if(window.NSMem)window.NSMem.bump('render');
  renderHeaderChip();renderNav();
  /* The mockup has no separate app header on the hub: the visitor pill and tools live inside the hero. */
  const hdr=/** @type {HTMLElement|null} */(document.querySelector('#app > header'));
@@ -69,9 +71,9 @@ export function renderNav(){
   let badge='';
   if(k==='visit'&&attendees.length)badge=`<span id="navCount" class="nav-badge">${doneCount(A())}/8</span>`;
   if(k==='care'&&urgent)badge=`<span class="nav-badge nav-badge-alert">${urgent}</span>`;
-  if(k==='queue'){const w=queue.filter(e=>e.status==='waiting').length;if(w)badge=`<span class="nav-badge">${w>99?'99+':w}</span>`;}
+  if(k==='queue'){const w=queue.filter(e=>e.status==='waiting').length;if(w)badge=`<span class="nav-badge" title="${w} waiting in all lines">${w>99?'99+':w}</span>`;}
   if(k==='serve'&&pending)badge=`<span id="navVol" class="nav-badge">${pending}</span>`;
-  return `<button data-action="nav-go" data-tab="${k}" class="nav-item hue-${HUE_N[k]} ${act?'nav-item-active':''}" ${act?'aria-current="page"':''}>
+  return `<button data-action="nav-go" data-tour="nav-${esc(k)}" data-tab="${esc(k)}" class="nav-item hue-${HUE_N[k]} ${act?'nav-item-active':''}" ${act?'aria-current="page"':''}>
    <span class="nav-ico">${ic}${badge}</span><span class="nav-lbl">${l}</span></button>`}).join('');movePill();syncNavH();
 }
 export function renderMain(anim){
@@ -103,7 +105,7 @@ export function toastUndo(m,fn){
  clearTimeout(toastTimer);
  toastTimer=setTimeout(()=>{undoFn=null;const b=$('#toastUndo');if(b)b.classList.add('hidden');$('#toast').classList.add('opacity-0','translate-y-3');},6000);   /* the message leaves with the offer: left up, it covered the buttons */
 }
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeSwitcher();closeWhatsApp();closeVolModal();closeCloud();}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeHelp();closeQueuePick();closeSwitcher();closeWhatsApp();closeVolModal();closeCloud();}});
 
 /* ================= LIQUID INTERACTIONS ================= */
 export function syncRanges(){document.querySelectorAll('input[type=range]').forEach(/** @param {HTMLInputElement} r */(r)=>r.style.setProperty('--pct',((Number(r.value)-Number(r.min))/((Number(r.max)-Number(r.min))||1)*100)+'%'));}

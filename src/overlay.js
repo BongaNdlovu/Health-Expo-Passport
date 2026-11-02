@@ -19,6 +19,7 @@ export function overlayOpened(key,close){
 
 /** Deregister an overlay closed from the screen (X, Escape, backdrop) rather than by Back. */
 export function overlayClosed(key){
+ if(window.NSMem)window.NSMem.release('overlay');       /* timers the overlay started stop with it */
  const i=open.findIndex(o=>o.key===key);
  if(i<0)return;
  open.splice(i,1);
