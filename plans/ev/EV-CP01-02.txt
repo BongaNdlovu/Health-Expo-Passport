@@ -1,0 +1,29 @@
+src/account.js:1514:async function pushDirty(){
+src/account.js:1617:  if(!followedUp(a)){attendees.splice(i,1);delete cloud.synced.att[a.id];n++;}
+src/account.js:1653:export function onRemoteChange(kind,p){
+src/action-registry.js:12:import { queueBack, queueCallNext, queueDone, queueRemove, queueServe } from './queue.js';
+src/action-registry.js:18:import { filterVisitors, onPrayer, onStationCommit, onStationInput, onStep, registerSubmit, reservePouch, resetDemo, resetDemoAsk, switchTab, toggleInterest, toggleReg } from
+src/action-registry.js:38:  switchToVol, toggleReg, closeSettings, deregisterMyPledge, openSettings, resetDemoAsk, updateLater, updateNow,
+src/action-registry.js:63:  queueRemove: el => queueRemove(el.dataset.args),
+src/cloud.js:112:export function cloudDirtyList(kind){return KINDS[kind].list.filter(o=>isDirty(kind,o));}
+src/main.js:20:import { qCan, qList, qMode, qStateBar, qStats, qs, queue, queueBack, queueCallNext, queueDone, queueJoin, queueRemove, queueServe, viewQueue, openBigScreen, closeBigScreen } from './qu
+src/main.js:45:export const __internals = { manageExpos, syncExpoHeadline, hasAction, setAutoAnswer, confirmAsk, answerConfirm: answer, openSettings, closeSettings, renderSettings, deregisterMyPledge,
+src/queue.js:131:export function queueRemove(id){
+src/queue.js:286: const sure=qs.confirm===e.id,x=`<button class="q-mini q-mini-x ${sure?'q-sure':''}" data-action="queueRemove" data-args="${e.id}" aria-label="Remove ${esc(name)} from the line">${sur
+src/visitor.js:260:    ${cloud.user||cloud.mode?'':`<button data-action="resetDemoAsk">Reset demo</button>`}
+src/visitor.js:300:function visitorListHTML(query){
+src/visitor.js:465:export async function resetDemoAsk(){
+supabase/schema.sql:20:create or replace function public.is_staff()
+supabase/schema.sql:29:revoke all on function public.is_staff() from public, anon;
+supabase/schema.sql:30:grant execute on function public.is_staff() to authenticated;
+supabase/schema.sql:181:  using (public.is_staff()) with check (public.is_staff());
+supabase/schema.sql:186:  using (public.is_staff()) with check (public.is_staff());
+supabase/schema.sql:246:  using (public.is_staff()) with check (public.is_staff());
+supabase/schema.sql:260:  if not public.is_staff() then
+supabase/schema.sql:347:    execute format('create policy "staff read" on public.%I for select to authenticated using (public.is_staff())', t);
+supabase/schema.sql:348:    execute format('create policy "staff add" on public.%I for insert to authenticated with check (public.is_staff())', t);
+supabase/schema.sql:349:    execute format('create policy "staff edit" on public.%I for update to authenticated using (public.is_staff()) with check (public.is_staff())', t);
+supabase/schema.sql:549:create or replace function public.is_staff()
+supabase/schema.sql:694:  if not public.is_staff() then
+supabase/schema.sql:2290:  foreach f in array array['is_platform_admin()', 'staff_church()', 'is_staff()', 'is_admin()', 'church_admin_of(uuid)',
+exit 0
