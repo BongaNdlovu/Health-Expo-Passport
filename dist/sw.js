@@ -1,21 +1,23 @@
 /* Health Expo Passport — service worker.
-   Lets the installed app open with no signal: it keeps a copy of the page, its icons and the three code libraries
-   it loads from CDNs. It NEVER stores anything from Supabase — visitor health data, volunteer details and sign-in
+   Lets the installed app open with no signal: it keeps a copy of the page, its icons, the memory helper, the guided
+   tour and the vendored sign-in library and fonts. v1.6.2: nothing is loaded from a CDN any more. It NEVER stores anything from Supabase — visitor health data, volunteer details and sign-in
    tokens travel only between the app and the database (the app keeps its own saved copy on the device).
    VERSION is stamped by tools/build.js so every release replaces the old cache. */
-const VERSION = 'aa1c570d6f';
+const VERSION = '24bec817f2';
 const SHELL = 'newstart-shell-' + VERSION;
-const LIBS = 'newstart-libs-v3';              /* v3: the scanner and QR libraries are gone, so their cached copies are dropped */
+const LIBS = 'newstart-libs-v4';              /* v4: the CDN copies (supabase-js 2.45.4, Google Fonts) are dropped; everything is same-origin */
 
 /* the page itself is fetched separately (see install): some hosts redirect /index.html to /, and a redirected
    response may not be handed to a page navigation */
 const SHELL_FILES = ['manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png',
-  'icons/icon-maskable-512.png', 'icons/icon-180.png', 'icons/favicon-32.png'];
-/* keep in step with SB_LIB in src/cloud.js (tools/check is in .smoke/harness.js) */
-const LIB_URLS = [
-  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js',
-];
-const LIB_HOSTS = ['cdn.jsdelivr.net', 'cdnjs.cloudflare.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
+  'icons/icon-maskable-512.png', 'icons/icon-180.png', 'icons/favicon-32.png',
+  'nsmem.js', 'tutorial/tour.js', 'tutorial/tour.css', 'tutorial/steps.json', 'vendor/fonts.css',
+  /* keep in step with SB_LIB in src/cloud.js (supabase-js 2.118.0, integrity-pinned there) */
+  'vendor/supabase.min.js'];
+/* best-effort extras: a missing font must not stop the app installing */
+const LIB_URLS = ['vendor/fonts/Inter-latin.woff2', 'vendor/fonts/Inter-latin-ext.woff2',
+  'vendor/fonts/PlusJakartaSans-latin.woff2', 'vendor/fonts/PlusJakartaSans-latin-ext.woff2'];
+const LIB_HOSTS = [];                          /* no off-site libraries or fonts (CSP allows none) */
 const isSupabase = host => host === 'supabase.co' || host.endsWith('.supabase.co') || host.endsWith('.supabase.in');
 
 self.addEventListener('install', event => {
@@ -25,9 +27,8 @@ self.addEventListener('install', event => {
     const home = await fetch('./', { cache: 'reload' });
     if (!home.ok) throw new Error('page not available');
     await shell.put('index.html', await cleanCopy(home));
-    const libs = await caches.open(LIBS);
-    /* libraries are best-effort: a CDN hiccup must not stop the app installing */
-    await Promise.allSettled(LIB_URLS.map(async url => { if (!(await libs.match(url))) await libs.add(url); }));
+    /* fonts are best-effort and same-origin, so they live in the shell cache that ownFile() reads */
+    await Promise.allSettled(LIB_URLS.map(async url => { if (!(await shell.match(url))) await shell.add(url); }));
     /* No skipWaiting() here. A new build now waits until the page asks for it (src/update.js shows the banner
        and its Update button sends UPDATE_NOW). Swapping the worker under a running page is how an app ends up
        half-updated: the open page still runs the old bundle while every later fetch comes from the new worker. */

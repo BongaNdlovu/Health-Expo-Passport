@@ -1,0 +1,33 @@
+/* guided tour + help entry points (v1.6.2-patches) */
+.nst-root{position:fixed;inset:0;z-index:90;pointer-events:none}
+.nst-root.nst-on{pointer-events:none}
+.nst-shade{position:fixed;background:rgba(7,22,24,.62);pointer-events:auto}
+.nst-ring{position:fixed;border-radius:14px;box-shadow:0 0 0 3px #fbbf24,0 0 0 6px rgba(251,191,36,.35);pointer-events:none;transition:all .18s ease}
+.nst-block{position:fixed;pointer-events:auto;background:transparent}
+.nst-tip{position:fixed;pointer-events:auto;background:#ffffff;color:#0f2a2c;border-radius:18px;padding:14px 14px 10px;box-shadow:0 20px 50px -18px rgba(0,0,0,.55);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-height:calc(100vh - 16px);overflow:auto}
+.nst-count{font-size:12px;font-weight:700;color:#35524f;letter-spacing:.02em}
+.nst-title{margin:2px 0 4px;font-size:16px;font-weight:800;color:#0f2a2c;outline:none}
+.nst-body{margin:0 0 6px;color:#1f3b3d}
+.nst-extra{margin:6px 0;padding:8px 10px;border-radius:10px;background:#fff4d6;color:#5a3d00;font-size:13px;font-weight:700;border:1px dashed #b7791f}
+.nst-btns,.nst-offer-b{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px}
+.nst-sp{flex:1}
+.nst-btn{min-height:44px;min-width:44px;padding:0 14px;border-radius:12px;font-weight:800;font-size:14px;cursor:pointer;border:1px solid transparent}
+.nst-next{background:#0f766e;color:#fff}
+.nst-back{background:#e6f2f0;color:#0f2a2c;border-color:#b9d6d1}
+.nst-skip{background:transparent;color:#334f52;text-decoration:underline}
+.nst-btn:focus-visible{outline:3px solid #f59e0b;outline-offset:2px}
+.nst-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.nst-offer{position:fixed;left:8px;right:8px;bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:85;background:#fff;color:#0f2a2c;border-radius:16px;padding:12px;box-shadow:0 16px 40px -16px rgba(0,0,0,.5);font:14px/1.4 system-ui,sans-serif;max-width:420px;margin:0 auto}
+[data-tour-active]{scroll-margin:90px}
+/* help entry points: 44x44 hit areas */
+.ns-help-btn{display:flex;align-items:center;justify-content:center;flex:none;width:44px;height:44px;min-width:44px;border-radius:14px;font-weight:800;font-size:16px}
+.hx-round.ns-help-round{font-weight:800;font-size:14px;line-height:1}
+.hx-hero-tools .hx-round{min-width:44px;min-height:44px}
+.ns-gate-help{display:block;width:100%;min-height:44px;margin-top:10px;border-radius:14px;font-weight:800;font-size:14px;color:#0f2a2c;background:rgba(255,255,255,.85);border:1px solid rgba(15,42,44,.15)}
+.ns-tap{min-height:44px}
+html[data-theme=dark] .nst-tip,html[data-theme=dark] .nst-offer{background:#102326;color:#e8f3f1}
+html[data-theme=dark] .nst-title{color:#f1fbf9} html[data-theme=dark] .nst-body{color:#d3e6e3} html[data-theme=dark] .nst-count{color:#a9cbc6}
+html[data-theme=dark] .nst-skip{color:#cde3df} html[data-theme=dark] .nst-back{background:#1d3a3e;color:#e8f3f1;border-color:#2f5a5f}
+
+/* a11y: queue 'are you sure' button contrast (was #fff on #d6584a = 3.92:1) */
+.q-sure{background:#b23a2c!important;color:#fff!important}
