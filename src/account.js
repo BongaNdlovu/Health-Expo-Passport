@@ -10,7 +10,7 @@ import { confirmAsk, ok } from './feedback.js';
 import { BOOTHS, EXPO_TOTAL, EXPO_UPCOMING, PROTOCOLS, STATUS_UI, attendees, boothLabel, state, volunteers } from './data.js';
 import { qSafe, queueLeaveFor, queuePause, queueReset, queueSync } from './queue.js';
 import { bmi, cat, chipClass, esc, fmt1, initials, redFlag } from './helpers.js';
-import { planNeeds } from './results.js';
+import { planNeeds, downloadCSV } from './results.js';
 import { MY_PLEDGE_ACTS, emptyDraft, hideModal, isAdminAcct, mayPlace, pledgeFormParts, setVolTab, showModal } from './volunteer.js';
 import { loadScript } from './libs.js';
 /* The account hub: my account, my church, all churches (platform admin), members and approvals. Split from the original single-file app; bundled back into one file by tools/build.js. */
@@ -23,6 +23,7 @@ import { loadScript } from './libs.js';
    tab with every church. The database checks every one of these actions; the screens only call its functions.
    A database without the CHURCHES part has no my_account function: the app then works exactly as it did before. */
 const CHURCH_KEY='newstart.church.v1';               /* which church the data saved on this device belongs to */
+const QUAR_KEY='newstart.quarantine.v1';             /* unsent rows kept when the device left a church (D1) */
 export const ACCT_GATES=['church','churchwait','suspended','pending','member'];
 const ROLE_L={member:'Member',staff:'Staff',admin:'Admin'};
 /* a church's two admin posts, oldest admin first: the Health Department Leader and their Assistant (rank from my_account) */
@@ -97,8 +98,52 @@ export function acctGate(){
  if(m.status!=='approved')return 'pending';
  return 'member';
 }
-/* forget the church data saved on this device (another church's account, or no longer staff) */
+/* forget the church data saved on this device (another church's account, or no longer staff). Unsent and refused
+   rows are never silently lost: they are kept aside and restored if the same church comes back (D1). */
+export function quarantineDiscard(){
+ confirmAsk({title:'Discard the kept records?',
+  body:'The records saved when this device left another church are deleted for good. Rows already uploaded are not touched.',
+  label:'Discard',danger:true}).then(yes=>{
+  if(!yes)return;
+  try{localStorage.removeItem(QUAR_KEY);}catch(e){}
+  renderCloudBody();toast('Kept records discarded');
+ });
+}
+export function quarantineExport(){
+ let q;try{q=JSON.parse(localStorage.getItem(QUAR_KEY)||'null');}catch(e){q=null;}
+ if(!q||!Array.isArray(q.att)||!Array.isArray(q.vol))return;
+ const rows=[['Kind','Id','Name','Email','Phone'],
+  ...q.att.map(r=>['Visitor',r.id||'',r.name||'',r.email||'',r.phone||'']),
+  ...q.vol.map(r=>['Volunteer',r.id||'',r.name||'',r.email||'',r.phone||''])];
+ downloadCSV(rows,'newstart-kept-records.csv','The kept records are exported (CSV) ✓ Delete the file when you are done.');
+}
+function quarantineKeep(church){
+ let rows;
+ try{rows=['att','vol'].map(k=>KINDS[k].list.filter(o=>isDirty(k,o)||cloud.rejected[o.id]!==undefined).map(o=>JSON.parse(JSON.stringify(o))));}catch(e){return;}
+ const n=rows[0].length+rows[1].length;
+ if(!n)return;
+ try{localStorage.setItem(QUAR_KEY,JSON.stringify({church,at:Date.now(),att:rows[0],vol:rows[1]}));}catch(e){}
+ renderCloudBody();
+ toast(`${n} not-yet-uploaded ${n===1?'record':'records'} from this church kept on this phone`);
+}
+/* the same church came back: its unsent rows go back into the lists as never-uploaded, so they upload normally */
+function quarantineRestore(id){
+ let q;try{q=JSON.parse(localStorage.getItem(QUAR_KEY)||'null');}catch(e){q=null;}
+ if(!q||q.church!==id)return;
+ let n=0;
+ for(const kind of ['att','vol']){
+  const k=KINDS[kind];
+  for(const o of (Array.isArray(q[kind])?q[kind]:[])){
+   let row;try{row=k.migrate(JSON.parse(JSON.stringify(o)));}catch(e){continue;}
+   if(row&&row.id&&!k.list.some(x=>x.id===row.id)){k.list.push(row);n++;}
+  }
+ }
+ try{localStorage.removeItem(QUAR_KEY);}catch(e){}
+ if(n){afterMerge();persistNow();toast(`${n} unsent ${n===1?'record':'records'} from before are back — they will upload now`);}
+}
 export function dropChurchData(){
+ let had='';try{had=localStorage.getItem(CHURCH_KEY)||'';}catch(e){}
+ quarantineKeep(had||cloud.churchId||'');
  attendees.length=0;volunteers.length=0;
  cloud.synced={att:{},vol:{}};cloud.rejected={};freshCursor();cloud.lastFull=0;
  queueReset();
@@ -110,6 +155,7 @@ export function dropChurchData(){
 export function adoptChurch(id){
  let had='';try{had=localStorage.getItem(CHURCH_KEY)||'';}catch(e){}
  if(had&&had!==id){dropChurchData();toast('Signed in to another church — loading its data');}
+ quarantineRestore(id);
  try{localStorage.setItem(CHURCH_KEY,id);}catch(e){}
 }
 /* one database call from the account screens; a refusal is shown in the database's own words */
@@ -1416,7 +1462,9 @@ export async function cloudSignIn(e){
  cloud.formErr='';closeCloud();
 }
 export async function cloudSignOut(force){
- const n=cloudPending();
+ if(cloud.signingOut)return;       /* one sign-out at a time */
+ const refused=['att','vol'].reduce((n,k)=>n+KINDS[k].list.filter(o=>cloud.rejected[o.id]!==undefined&&!isDirty(k,o)).length,0);
+ const n=cloudPending()+refused;   /* the warning names every record that will be lost: pending edits AND refused rows (B2) */
  if(!force){
   const yes=await confirmAsk(n
    ?{title:'Sign out with unsaved changes?',body:`${n} change${n>1?'s':''} on this device ${n>1?'have':'has'} not been uploaded yet and will be lost.`,label:'Sign out',danger:true}
@@ -1588,14 +1636,15 @@ async function fetchWanted(table,kind,idRows){
 }
 /* remote rows overwrite local ones that have no pending edit; local pending edits win and are uploaded.
    `full` = rows is the complete table, so a local row missing from it was deleted elsewhere. */
-export function mergeRemote(kind,rows,full=true){
+export function mergeRemote(kind,rows,full=false){
  if(!rows.length&&!full)return 0;                     /* nothing changed anywhere: skip re-reading every local row */
  const k=KINDS[kind],sy=cloud.synced[kind],remote=new Map(rows.map(r=>[r.id,r]));
  const at=new Map(k.list.map((o,i)=>[o.id,i]));       /* id → position, so a big list is not searched once per row */
  /* a full pull needs to know every pending row (to keep local edits when deleting what is gone elsewhere); a small
     incremental pull only needs to ask about the rows that arrived */
  const dirtyAll=full?new Set(cloudDirtyList(kind).map(o=>o.id)):null;
- const pending={has:id=>{if(dirtyAll)return dirtyAll.has(id);const i=at.get(id);return i!==undefined&&isDirty(kind,k.list[i]);}};
+ const pending={has:id=>{const refused=cloud.rejected[id]!==undefined;   /* a refused row is never "deleted on the server" (A3) */
+  if(dirtyAll)return dirtyAll.has(id)||refused;const i=at.get(id);return (i!==undefined&&isDirty(kind,k.list[i]))||refused;}};
  let changed=0;
  for(const [id,row] of remote){
   const obj=k.fromRow(row),s=sigOf(k.toRow(obj)),i=at.has(id)?at.get(id):-1;
@@ -1608,6 +1657,7 @@ export function mergeRemote(kind,rows,full=true){
  for(let i=full?k.list.length-1:-1;i>=0;i--){
   const o=k.list[i];
   if(remote.has(o.id))continue;
+  if(sy[o.id]===undefined&&!isSeedRow(kind,o))continue;   /* refused on its first upload: never on the server, so not "deleted on another desk" (BUG-A) */
   if(!pending.has(o.id)){k.list.splice(i,1);delete sy[o.id];changed=1;}   /* demo leftovers, or deleted on another desk */
   else delete sy[o.id];                                                    /* edited here but gone there: upload it again */
  }
@@ -1625,6 +1675,7 @@ export function pruneRemote(kind,idRows){
  for(let i=k.list.length-1;i>=0;i--){
   const o=k.list[i];
   if(remote.has(o.id))continue;
+  if(sy[o.id]===undefined&&!isSeedRow(kind,o))continue;   /* refused on its first upload: never on the server, so not "deleted on another desk" (BUG-A) */
   if(!pending.has(o.id)){k.list.splice(i,1);delete sy[o.id];changed=1;}   /* demo leftovers, or deleted on another desk */
   else delete sy[o.id];                                                    /* edited here but gone there: upload it again */
  }

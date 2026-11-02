@@ -818,7 +818,8 @@ export function saveVolunteer(){
     trigger refuses anybody else writing booth, on a new row as well as on an edit. A plain staff pledge keeps
     its choices and an admin places them; the demo and the admins' own form keep the one-tap registration. */
  const cloudStaff=!!(cloud.user&&cloud.acct&&cloud.acct.membership&&cloud.acct.membership.status==='approved');
- const mayPlaceHere=!cloudStaff||isAdminAcct()||!!myLeadBooth();
+ const leadHere=!!myLeadBooth()&&d.pref[0]===myLeadBooth();   /* a team leader places only at their own station */
+ const mayPlaceHere=!cloudStaff||isAdminAcct()||leadHere;
  const placed=registered&&mayPlaceHere;
  if(isNew){
   let id;do{id='VOL-'+state._volSeq++;}while(volunteers.some(x=>x.id===id));   /* never reuse a number already on this device */
@@ -831,9 +832,11 @@ export function saveVolunteer(){
  }else{
   Object.assign(v,{name,phone,email:d.email,pledgeExpos:d.pledgeExpos,skills:[...d.skills],
    pref:[...d.pref],pref2:d.pref2,availability:[...d.avail],shirt:d.shirt,emergency:d.emergency,notes:d.notes});
-  if(mayPlaceHere){
-   if(registered){v.status=v.status==='checkedin'?'checkedin':'registered';v.booth=d.pref[0];v.registeredOn=v.registeredOn||today;}
-   else if(v.status!=='checkedin'){v.status='prospect';}
+  /* the placement is the admin's (or the reader's own-station) call: only hands that own it rewrite booth; a
+     leader editing someone placed elsewhere keeps that station instead of writing one the guard would refuse */
+  if(isAdminAcct()||!cloudStaff||!v.booth||v.booth===myLeadBooth()){
+   if(registered){v.status=v.status==='checkedin'?'checkedin':'registered';v.booth=v.booth||d.pref[0];v.registeredOn=v.registeredOn||today;}
+   else if(v.status!=='checkedin'){v.status='prospect';v.booth=null;}   /* status and station agree */
   }
   toast('Saved ✓');
  }

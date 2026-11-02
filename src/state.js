@@ -72,7 +72,7 @@ export function migrateAttendee(a){
  }
  /* ids are interpolated into data-* attributes, so keep them to letters, digits and dashes */
  const id=String(a.id==null?'':a.id).replace(/[^A-Za-z0-9-]/g,'');
- const o=/** @type {import('./types.js').Attendee} */ (Object.assign({heightCm:165,interests:{},email:'',prayer:'',done:false},a,{id,s,email:String(a.email==null?'':a.email).trim().slice(0,200)}));
+ const o=/** @type {import('./types.js').Attendee} */ (Object.assign({heightCm:null,interests:{},email:'',prayer:'',done:false},a,{id,s,email:String(a.email==null?'':a.email).trim().slice(0,200)}));   /* heightCm null, not 165: a made-up height wrote a false BMI (D2) */
  /* the visit's date, sent to the database so an old record keeps its real date (see attToRow) */
  if(a.created_at!=null&&!isNaN(Date.parse(String(a.created_at))))o.created_at=new Date(String(a.created_at)).toISOString();
  else delete o.created_at;
@@ -105,7 +105,11 @@ export function loadPersisted(){
   /* the pull cursor saved in the same write as these rows: the first sign-in of this page picks up from it
      (resumeCursor in account.js) instead of downloading every row again */
   cloud.savedSince=cloud.mode&&d.since&&typeof d.since==='object'?d.since:null;
-  if(!Array.isArray(d.attendees)||(!d.attendees.length&&!cloud.mode))return false;
+  /* an empty visitor list alone is not an empty copy: the volunteers saved beside it stand (D2) */
+  const hasAtt=Array.isArray(d.attendees)&&d.attendees.length>0;
+  const hasVol=Array.isArray(d.volunteers)&&d.volunteers.length>0;
+  if(!hasAtt&&!hasVol&&!cloud.mode)return false;
+  if(!Array.isArray(d.attendees))d.attendees=[];
   attendees.length=0; d.attendees.forEach(a=>attendees.push(migrateAttendee(a)));
   state.sim=Object.assign({kitchen:3,walk:30,hydro:2},d.sim||{});
   state.activeId=attendees.some(a=>a.id===d.activeId)?d.activeId:(attendees[0]||{}).id||'';

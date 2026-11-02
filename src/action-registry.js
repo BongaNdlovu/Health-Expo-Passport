@@ -1,5 +1,5 @@
 // @ts-check
-import { acctRetry, manageExpos, removeVisitorAsk, closeAcct, cloudInit, cloudSignIn, cloudSignOut, cloudSync, gateBack, joinChurch, leaveChurch, linkMember, linkVolunteer, manageChurch, markNotifsRead, myField, myPickPledge, myPledgeEdit, myPledgeSave, mySecondBooth, myToggleBooth, myToggleList, notifClose, notifOpen, openAcct, openNotifs, profDeleteAsk, profDeleteGo, profDeleteTyped, profGate, profPassword, registerChurch, removeMember, renderAcct, saveChurch, saveMyDetails, setChurchStatus, setMember, teamAdd, teamRelease, teamShift, withdrawMyPledge } from './account.js';
+import { acctRetry, manageExpos, removeVisitorAsk, closeAcct, cloudInit, cloudSignIn, cloudSignOut, cloudSync, gateBack, joinChurch, leaveChurch, linkMember, linkVolunteer, manageChurch, markNotifsRead, myField, myPickPledge, myPledgeEdit, myPledgeSave, mySecondBooth, myToggleBooth, myToggleList, notifClose, notifOpen, openAcct, openNotifs, profDeleteAsk, profDeleteGo, profDeleteTyped, profGate, profPassword, quarantineDiscard, quarantineExport, registerChurch, removeMember, renderAcct, saveChurch, saveMyDetails, setChurchStatus, setMember, teamAdd, teamRelease, teamShift, withdrawMyPledge } from './account.js';
 import { addPlatformAdmin, approveAssistant, cancelExpo, churchSearchSoon, deleteExpoAsk, editExpo, expoField, expoStation, expoType, newExpo, openChurchData, pickExpo, pickWant, pickWantBooth, pledgeToExpo, saveExpoForm, setAdminPost, setExpoStatus, stepDown } from './account.js';
 import { deregisterMyPledge, setProfSection } from './account.js';
 import { answer } from './feedback.js';
@@ -34,7 +34,7 @@ export const ACTION_MAP = {
   /* -- plain functions (no arguments) -- */
   openHelpHere, startTour,
   cancelReg, closeAcct, closeBigScreen, closeCloud, closeFood, closeQueuePick, closeSwitcher,
-  closeVolModal, closeVolReg, closeWhatsApp, cloudInit, cloudResend, cloudSignOut, copyInvite,
+  closeVolModal, closeVolReg, closeWhatsApp, cloudInit, cloudResend, copyInvite,
   editReadings, exportCSV, exportVolCSV, finishVisit, gateBack, gateDemo, goVisit, healthTest, installApp, leaveChurch,
   logExpoEntry, metricBack, queueClearHistory, openBigScreen, openCloud, openEmail, openFood, openSwitcher, openVolModal,
   openVolReg, openVolSwitcher, openWhatsApp, profDeleteAsk, profDeleteGo, recycleBadge, registerNew, resetDemo,
@@ -119,6 +119,9 @@ export const ACTION_MAP = {
 
   /* -- account hub -- */
   'sync-now': () => cloudSync(true),
+  cloudSignOut: () => cloudSignOut(),   /* adapter: the real function reads its first argument as `force`; dispatch passes the button (BUG-B) */
+  'quarantine-export': () => quarantineExport(),
+  'quarantine-discard': () => quarantineDiscard(),
   'church-search': el => churchSearchSoon(el.value),
   'join-church': el => joinChurch(el.dataset.args, el),
   'hub-open': el => { closeCloud(); openAcct(el.dataset.args); },

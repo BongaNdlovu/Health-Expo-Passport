@@ -236,7 +236,7 @@ export function viewHome(){
    </div>
    <div class="mt-0.5 text-[11px] leading-snug text-[#5c747a]">Takes about 30 seconds. Their number is given automatically.</div>
    <form data-action="registerSubmit" novalidate class="pop-in mt-4 space-y-3">
-    <input id="rgName" required placeholder="Full name e.g. Sipho Ndlovu" class="field">
+    <input id="rgName" required maxlength="200" placeholder="Full name e.g. Sipho Ndlovu" class="field">
     <div class="grid grid-cols-2 gap-3">
      <div><label class="microlabel" for="rgAge">Age</label><input id="rgAge" type="text" inputmode="numeric" required placeholder="e.g. 46" class="field mono mt-1" data-on-input="guardian-show" data-args="rg"></div>
      <div><span class="microlabel">Sex</span><input type="hidden" id="rgSex" value="">
@@ -333,7 +333,9 @@ export function clearVisitorSearch(){const i=$('#vq');if(i){i.value='';i.focus()
    EXPO-001 on a fresh start. A clash with another desk is settled on upload (resolveConflict in account.js). */
 export function nextBadge(){
  let max=0;
- for(const a of attendees){const m=/^EXPO-(\d+)$/.exec(a.id);if(m&&+m[1]>max)max=+m[1];}
+ /* only ids the database's own check allows feed the next number, so the badge it generates is never one that
+    would be refused (EXPO-10000 is five digits — D3) */
+ for(const a of attendees){const m=/^EXPO-(\d+)$/.exec(a.id);if(m&&+m[1]>max&&+m[1]<9999)max=+m[1];}
  return 'EXPO-'+String(max+1).padStart(3,'0');
 }
 export function toggleReg(){state.regOpen=!state.regOpen;renderMain();if(state.regOpen){const n=$('#rgName');if(n)n.focus();}}
@@ -453,7 +455,7 @@ const normName=n=>String(n||'').toLowerCase().replace(/[^a-z]/g,'');
 export function registerSubmit(e,force){
  if(e)e.preventDefault();
  regError('');
- const name=$('#rgName').value.trim().replace(/\s+/g,' ');
+ const name=$('#rgName').value.trim().replace(/\s+/g,' ').slice(0,200);   /* the database caps names at 200 (D3) */
  const ageRaw=$('#rgAge').value.trim(),age=Math.round(+ageRaw);
  const sex=$('#rgSex').value,phone=$('#rgPhone').value.trim(),hRaw=$('#rgHeight').value.trim().replace(',','.');
  const email=$('#rgEmail')?$('#rgEmail').value.trim().slice(0,200):'';

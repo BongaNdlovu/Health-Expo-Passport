@@ -551,9 +551,9 @@ export function renderCloudBody(){
    <div class="mono mt-2 text-[10px] text-[#6b8187]">${esc(cloud.user.email||'')}</div>
    <div class="mt-3 grid grid-cols-3 gap-2" id="cloudSyncTiles">${syncTilesHTML()}</div>
    <div class="mt-4 flex gap-2">
-    <button data-action="cloudSignOut" class="btn btn-glass flex-1 py-2.5 text-xs text-[#5b7178]">Sign out</button>
-    <button data-action="sync-now" class="btn btn-primary flex-1 py-2.5 text-xs"${cloud.busy?' disabled':''}>Sync now</button>
-   </div>${statusPanelHTML()}${acctButtons()}${cloud.isAdmin&&!cloud.acct?approvalsHTML():''}${installBlock()}`;
+    <button data-action="cloudSignOut" class="btn btn-glass flex-1 py-2.5 text-xs text-[#5b7178]"${cloud.signingOut?' disabled':''}>Sign out</button>
+     <button data-action="sync-now" class="btn btn-primary flex-1 py-2.5 text-xs"${cloud.busy?' disabled':''}>Sync now</button>
+    </div>${statusPanelHTML()}${quarantineNote()}${acctButtons()}${cloud.isAdmin&&!cloud.acct?approvalsHTML():''}${installBlock()}`;
   if(cloud.isAdmin===undefined&&!cloud.acct)loadApprovals();
   return;
  }
@@ -650,6 +650,14 @@ function healthRefresh(){
  const m=$('#cloudModal');if(m&&!m.classList.contains('hidden'))renderCloudBody();
  const h=$('#homeHealth');if(h)h.innerHTML=homeHealthHTML();
  for(const id of ['acctHealth','gateHealth']){const e=$('#'+id);if(e)e.innerHTML=acctHealthHTML();}
+}
+/* D1: unsent records kept when the device left another church, shown with a way out either way */
+export function quarantineNote(){
+ let q;try{q=JSON.parse(localStorage.getItem('newstart.quarantine.v1')||'null');}catch(e){q=null;}
+ if(!q||!Array.isArray(q.att)||!Array.isArray(q.vol))return '';
+ const n=q.att.length+q.vol.length;
+ if(!n)return '';
+ return `<div class="q-state q-state-warn mt-3"><span class="q-dot"></span><span style="flex:1">${n} unsent ${n===1?'record':'records'} from another church are kept on this phone. <button type="button" class="tap-link" data-action="quarantine-export">Export CSV</button> · <button type="button" class="tap-link" data-action="quarantine-discard">Discard</button></span></div>`;
 }
 /* the panel behind the logo */
 export function statusPanelHTML(){

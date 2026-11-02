@@ -384,6 +384,35 @@ g.resetDemo();
   g.setVol(''); g.state.vf = { name: '', phone: '', email: '', pledgeExpos: 1, skills: [], pref: [], avail: [] };
 }
 
+/* TST-BUG-C (Wave 1, C2): a team leader can only place at their own station — registering someone for
+   another station keeps them an unplaced prospect, which the database accepts (no refusal, nothing lost). */
+g.resetDemo();
+{
+  const lead = g.volunteers.find(v => v.id === 'VOL-1001');
+  const keptUser = g.cloud.user, keptAcct = g.cloud.acct;
+  lead.lead = true; lead.booth = 'bp';
+  g.cloud.user = { id: 'u-lead' }; g.cloud.acct = { membership: { role: 'team_leader', status: 'approved', volunteer_id: 'VOL-1001' }, church: { id: 'ch-a', status: 'active' } };
+  const beforeC3 = g.volunteers.length;
+  g.startNewVolunteer();
+  g.state.vf = { name: 'C3 Cross Station', phone: '082 000 4243', email: '', pledgeExpos: 1, skills: [], pref: ['kids', 'vitals'], avail: [] };
+  g.saveVolunteer();
+  const c3 = byName('C3 Cross Station');
+  ok('TST-BUG-C3 a team leader registering someone for another station keeps them an unplaced prospect', g.volunteers.length === beforeC3 + 1 && !!c3 && c3.status === 'prospect' && c3.booth === null,
+    'status=' + (c3 && c3.status) + ' booth=' + JSON.stringify(c3 && c3.booth));
+  g.cloud.user = keptUser; g.cloud.acct = keptAcct;
+  g.setVol(''); g.state.vf = { name: '', phone: '', email: '', pledgeExpos: 1, skills: [], pref: [], avail: [] };
+}
+
+/* D2 and D3: the saved copy and the badge generator */
+g.resetDemo();
+g.attendees.push({ id: 'EXPO-10000', name: 'Five Digit', age: 40, sex: 'Male', phone: '', heightCm: 170, s: {}, interests: {}, prayer: '', done: false }, { id: 'EXPO-340', name: 'Valid', age: 40, sex: 'Male', phone: '', heightCm: 170, s: {}, interests: {}, prayer: '', done: false });
+ok('TST-BADGE-1 nextBadge never returns a badge the database would refuse', /^EXPO-\d{3,4}$/.test(g.nextBadge()) && g.nextBadge() !== 'EXPO-10001', g.nextBadge());
+store.set('newstart.passport.v2', JSON.stringify({ attendees: [], volunteers: JSON.parse(JSON.stringify(g.volunteers.slice(0, 1))), _volSeq: 2 }));
+g.attendees.length = 0; g.volunteers.length = 0;
+const gotState = g.loadPersisted();
+ok('TST-STATE-1 an empty visitor list does not discard the saved volunteers', gotState === true && g.volunteers.length === 1 && g.attendees.length === 0, 'got=' + gotState + ' vols=' + g.volunteers.length);
+g.resetDemo();
+
 /* second booth choice caps the first-choice list at 2 */
 g.state.vf = { name: '', phone: '', email: '', pledgeExpos: 1, skills: [], pref: [], avail: [] };
 g.toggleDraftBooth('bp'); g.toggleDraftBooth('sugar'); g.toggleDraftBooth('kids');
@@ -1837,6 +1866,38 @@ function makeServer() {
   ok('TST-BUG-B1 the Sign out button asks first when changes are not uploaded (answer No keeps the user signed in)', !!C.user, 'user=' + !!C.user);
   ok('TST-BUG-B2 ...and the unsaved visitor stays', g.attendees.some(a => a.id === 'EXPO-360'), g.attendees.map(a => a.id).join(','));
   g.setAutoAnswer(true);
+
+  /* TST-BUG-B3 (FIX-B2): the sign-out question counts refused rows too — they are wiped on sign-out the same way */
+  device(); await signIn();
+  g.attendees.push({ id: 'EXPO-1', name: 'Bad Id Two', age: 20, sex: 'Male', phone: '', heightCm: 170, s: {}, interests: {}, prayer: '', done: false });
+  g.persistNow();
+  for (let i = 0; i < 80 && (g.cloudPending() > 0 || C.busy); i++) await sleep(50);
+  ok('TST-BUG-B3 setup: the row sits refused and pending is 0', C.rejected['EXPO-1'] !== undefined && g.cloudPending() === 0, 'rejected=' + Object.keys(C.rejected).join('|'));
+  g.setAutoAnswer(null); const prB3 = g.cloudSignOut(); await sleep(20);
+  const tB3 = $el('cfTitle').textContent, bB3 = $el('cfBody').textContent; g.answerConfirm(false); await prB3; g.setAutoAnswer(true);
+  ok('TST-BUG-B3 the sign-out warning counts the refused row', /unsaved changes/.test(tB3) && /will be lost/.test(bB3) && !!C.user, tB3 + ' | ' + bB3);
+
+  /* D1: a church switch keeps a safe copy of unsent rows and hands them back when that church returns */
+  device(); await signIn();
+  const churchId = C.churchId || 'ch-a';   /* loadAccount sets this on a real sign-in; the fixture names it directly */
+  C.churchId = churchId;
+  registerLocal('Quarantine Row', 'EXPO-370');
+  g.dropChurchData();
+  let q1 = null; try { q1 = JSON.parse(store.get('newstart.quarantine.v1') || 'null'); } catch (e) { }
+  ok('TST-QUAR-1 dropping the church keeps the unsent visitor in the quarantine instead of losing it', !!q1 && (q1.att || []).some(r => r.id === 'EXPO-370') && q1.church === churchId && !g.attendees.some(a => a.id === 'EXPO-370'),
+    JSON.stringify(q1 && { church: q1.church, att: (q1.att || []).map(r => r.id) }));
+  g.adoptChurch(churchId);
+  ok('TST-QUAR-2 signing back into that church restores the row so it uploads', g.attendees.some(a => a.id === 'EXPO-370') && g.cloudDirtyList('att').some(a => a.id === 'EXPO-370'),
+    JSON.stringify(g.attendees.map(a => a.id)) + ' pending=' + g.cloudPending());
+
+  /* TST-BUG-A3 (A3): a full pull that carries another desk's copy of a refused id does not overwrite the local row */
+  device(); await signIn();
+  g.attendees.push({ id: 'EXPO-1', name: 'Still Refused', age: 31, sex: 'Male', phone: '', heightCm: 170, s: {}, interests: {}, prayer: '', done: false });
+  g.persistNow();
+  for (let i = 0; i < 80 && (g.cloudPending() > 0 || C.busy); i++) await sleep(50);
+  await g.mergeRemote('att', [{ id: 'EXPO-1', name: 'Other Desk', age: 60, sex: 'Male', phone: '', height_cm: 170, s: {}, interests: {}, prayer: '', done: false, church_id: 'ch-a', created_at: new Date().toISOString(), updated_at: new Date().toISOString() }], true);
+  ok('TST-BUG-A3 a refused row keeps its content when the same id arrives from a full pull', g.attendees.some(a => a.id === 'EXPO-1' && a.name === 'Still Refused'),
+    JSON.stringify(g.attendees.filter(a => a.id === 'EXPO-1').map(a => a.name)));
 
   /* a placement refusal (42501 from the place guard) is one row, not a bad sign-in */
   device(); await signIn();
