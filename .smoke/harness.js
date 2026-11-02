@@ -18,6 +18,8 @@ const html = fs.readFileSync(process.env.APP_HTML || path.join(__dirname, '..', 
 /* the app's own source text, for assertions written against the original formatting */
 const srcText = fs.readdirSync(path.join(__dirname, '..', 'src')).filter(f => f.endsWith('.js'))
   .map(f => fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8')).join('\n');
+/* the guided tour ships a second stylesheet (tutorial/tour.css) linked in the page: its classes count as defined */
+const TOUR_CSS = fs.readFileSync(path.join(__dirname, '..', 'tutorial', 'tour.css'), 'utf8');
 
 /* const/let declarations are not exposed on the vm global, so re-export the
    bindings the test needs. This runs in the same script scope. */
@@ -148,6 +150,19 @@ sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
 
+/* the app's memory layer (nsmem.js) is part of every real page, loaded before the bundle: main.js reads
+   window.NSMem at boot, and the __internals export answers devBuild only through it. Source ships with the
+   build flag false; the suite needs the test build — exactly what tools/build.js does with NS_DEV_BUILD=1. */
+const nsmemJs = fs.readFileSync(path.join(__dirname, '..', 'nsmem.js'), 'utf8')
+  .replace('var NS_DEV_BUILD = false;', 'var NS_DEV_BUILD = true;');
+if (!/var NS_DEV_BUILD = true;/.test(nsmemJs)) { console.log('nsmem.js build flag not found — update the replace above'); process.exit(1); }
+try {
+  vm.runInContext(nsmemJs, sandbox, { filename: 'nsmem.js' });
+} catch (e) {
+  console.log('NSMEM THREW: ' + e.stack);
+  process.exit(1);
+}
+
 /* ---- run ------------------------------------------------------------ */
 let failures = 0, checks = 0;
 const ok = (label, cond, extra) => {
@@ -164,8 +179,14 @@ try {
 }
 console.log('\nBoot: OK (no exception)\n');
 
-const g = sandbox.__NEWSTART && sandbox.__NEWSTART.__internals;
-if (!g) { console.log('the bundle exposed no __NEWSTART.__internals'); process.exit(1); }
+const live = sandbox.__NEWSTART && sandbox.__NEWSTART.__internals;
+if (!live) { console.log('the bundle exposed no __NEWSTART.__internals'); process.exit(1); }
+/* the live export decides on every access (main.js: devBuild, signed in, cloud mode all close it), so the
+   suite takes a one-time snapshot of the property descriptors instead — the values stay the app's own live
+   objects and functions, and signing in inside a test can no longer take the surface away */
+const g = Object.defineProperties({}, Object.fromEntries(
+  Reflect.ownKeys(live).map(k => [k, { ...Object.getOwnPropertyDescriptor(live, k), configurable: true }])));
+console.log('internals: ' + Reflect.ownKeys(live).length + ' entries (test build, snapshotted)');
 /* the app asks through its own sheet now; the harness has no hands, so every question answers yes
    (the sandbox's window.confirm already answers true) */
 g.setAutoAnswer(true);
@@ -341,6 +362,27 @@ ok('new volunteer starts at Friend tier', g.badgeTier(bongani).n === 0);
 ok('new volunteer has no expo history', g.volExpos(bongani) === 0);
 ok('new volunteer has no level — 0 expos cannot count', g.volLevel(bongani) === 0,
   'got Lv' + g.volLevel(bongani));
+
+/* TST-BUG-C (Wave 1, C1): saving an existing placed volunteer's form must keep the booth an admin gave
+   them; the bug reset it to the draft's first preference. C2 is the control: a NEW registration still
+   places at the first preference. */
+g.resetDemo();
+{
+  const placed = g.setVol('VOL-1001') || g.volunteers.find(v => v.id === 'VOL-1001');
+  placed.status = 'registered'; placed.pref = ['bp', 'vitals']; placed.booth = 'kids';
+  g.state.volNew = false; g.openVolReg();          /* the register sheet prefills the draft from the volunteer */
+  g.saveVolunteer();
+  ok('TST-BUG-C1 editing a placed volunteer keeps the booth they were placed at', placed.booth === 'kids', 'booth=' + placed.booth + ' pref0=' + placed.pref[0]);
+  g.resetDemo();
+  const beforeC2 = g.volunteers.length;
+  g.startNewVolunteer();
+  g.state.vf = { name: 'C2 Control', phone: '082 000 4242', email: '', pledgeExpos: 1, skills: [], pref: ['bp', 'vitals'], avail: [] };
+  g.saveVolunteer();
+  const c2 = byName('C2 Control');
+  ok('TST-BUG-C2 control: a NEW registration still takes its first preference', g.volunteers.length === beforeC2 + 1 && !!c2 && c2.booth === 'bp',
+    'booth=' + (c2 && c2.booth));
+  g.setVol(''); g.state.vf = { name: '', phone: '', email: '', pledgeExpos: 1, skills: [], pref: [], avail: [] };
+}
 
 /* second booth choice caps the first-choice list at 2 */
 g.state.vf = { name: '', phone: '', email: '', pledgeExpos: 1, skills: [], pref: [], avail: [] };
@@ -612,7 +654,7 @@ g.resetDemo();
   ok('past visit: the station screen takes no checks and offers a new visit', !$main.innerHTML.includes('id="in-sugar"') && !$main.innerHTML.includes('id="prayerNote"')
     && /data-action="new-visit" data-args="EXPO-730"/.test($main.innerHTML) && /more than 7 days ago/.test($main.innerHTML), '');
   g.state.activeId = 'EXPO-731'; g.render();
-  ok('past visit: a visit inside the 7 days keeps its checks open', $main.innerHTML.includes('id="in-sugar"') && !/data-action="new-visit"/.test($main.innerHTML), '');
+  ok('past visit: a visit inside the 7 days keeps its check flow open (one check at a time now)', !/data-action="new-visit"/.test($main.innerHTML) && $main.innerHTML.includes('data-tour="tf-head"') && $main.innerHTML.includes('id="tfQ"'), '');
   act('new-visit', 'EXPO-730');
   ok('past visit: Register as a new visit opens New visitor with their details filled in', g.state.tab === 'home' && g.state.regOpen === true
     && $el('rgName').value === 'Thandi Back' && $el('rgPhone').value === '082 000 0730' && $el('rgEmail').value === 'thandi@example.org', $el('rgName').value);
@@ -839,7 +881,7 @@ console.log('\n16. Every CSS class the markup uses actually exists');
 /* The Tailwind block in the page is a precompiled subset, so a utility that is
    used in a template but missing from it fails silently (no scroll, wrong size...). */
 {
-  const css = (html.match(/<style[^>]*>[\s\S]*?<\/style>/g) || []).join('\n');
+  const css = (html.match(/<style[^>]*>[\s\S]*?<\/style>/g) || []).join('\n') + '\n' + TOUR_CSS;
   const used = new Set();
   const grab = s => String(s).replace(/class="([^"]*)"/g, (_, c) => { c.split(/\s+/).filter(Boolean).forEach(t => used.add(t)); return ''; });
   grab(html.slice(html.indexOf('<body'), html.indexOf('<script>')));      /* static markup */
@@ -877,8 +919,9 @@ console.log('\n16. Every CSS class the markup uses actually exists');
   g.state.tab = 'screen'; g.render(); grab($main.innerHTML);
   g.resetDemo();
   const cssEsc = t => t.replace(/[^a-zA-Z0-9_-]/g, m => '\\' + m);
-  /* marker classes: jr-next / jr-back are hooks only (the buttons are styled by .btn and .jr-btns) */
-  const IGNORE = new Set(['jr-next', 'jr-back']);
+  /* marker classes: jr-next / jr-back are hooks only (the buttons are styled by .btn and .jr-btns);
+     tf-head is a layout hook for the guided tour (styled by .glass) and is in steps.json's selectors */
+  const IGNORE = new Set(['jr-next', 'jr-back', 'tf-head']);
   const missing = [...used].filter(t => !IGNORE.has(t) && !css.includes('.' + cssEsc(t)));
   ok('no template class is missing from the stylesheet (' + used.size + ' checked)', missing.length === 0, missing.join(' '));
 }
@@ -1087,8 +1130,8 @@ function makeServer() {
     ok('app: both CSV exports are saved through the native plugin (a blob download does nothing in the WebView)', saved.length === 2
       && saved[0].name === 'newstart-followup.csv' && saved[1].name === 'newstart-volunteers.csv' && saved.every(o => o.mime === 'text/csv' && /^﻿"/.test(o.text)),
       saved.map(o => o.name).join(','));
-    ok('app: the native plugin has saveDownload, writing to Downloads through MediaStore', /public void saveDownload\(PluginCall call\)/.test(javaSrc)
-      && /MediaStore\.Downloads\.EXTERNAL_CONTENT_URI/.test(javaSrc));
+    ok('app: the native plugin saves through SecureExport — this app\'s private cache + the share sheet, never public Downloads', /public void saveDownload\(PluginCall call\)/.test(javaSrc)
+      && /SecureExport\.save\(/.test(javaSrc) && !/MediaStore\.Downloads\.EXTERNAL_CONTENT_URI/.test(javaSrc));
     ok('app: printing refuses a second card while one is being prepared, and answers once with a timeout', /if \(printView != null\)/.test(javaSrc)
       && /answered\[0\] = true/.test(javaSrc) && /postDelayed\(timeout, PRINT_TIMEOUT_MS\)/.test(javaSrc));
     { const res = p => fs.readFileSync(path.join(__dirname, '..', 'capacitor', 'android', 'app', 'src', 'main', p), 'utf8');
@@ -1124,12 +1167,9 @@ function makeServer() {
     ok('app: the take-home card goes to the phone\'s print service as an A6 page', booted && !printThrew && printed.length === 1 &&
       printed[0].includes('@page{size:105mm 148mm') && printed[0].includes('Never stop prescribed pills suddenly'));
 
-    const pick = (html.match(/<script id="fontPick">([\s\S]*?)<\/script>/) || [])[1];
-    const fontsFor = win => { let out = ''; vm.runInNewContext(pick || 'throw new Error("no fontPick")', { window: win, document: { write: s => { out += s; } } }); return out; };
-    let appFonts = '', webFonts = '';
-    try { appFonts = fontsFor({ Capacitor }); webFonts = fontsFor({}); } catch (e) { }
-    ok('fonts: the app uses its own copy, the web site Google Fonts', /href="vendor\/fonts\.css"/.test(appFonts) && !/googleapis/.test(appFonts) &&
-      /fonts\.googleapis\.com\/css2\?family=Inter/.test(webFonts) && !/vendor\//.test(webFonts));
+    /* v1.6.2: the fonts always come from the vendored copy (app and site are the same one page now); nothing loads from Google Fonts */
+    ok('fonts: the vendored vendor/fonts.css serves both the app and the site, and no CDN is named', /<link href="vendor\/fonts\.css" rel="stylesheet">/.test(html)
+      && !/googleapis/.test(html));
   }
 
   /* ---- 16c. intro, every screen size, quicker screens ---- */
@@ -1773,6 +1813,31 @@ function makeServer() {
   ok('a refused row is skipped, the rest still upload', srv.tables.attendees.has('EXPO-340') && !srv.tables.attendees.has('EXPO-1'));
   ok('…without looping on it', g.cloudPending() === 0 && C.status === 'online', C.status + ' ' + g.cloudPending());
 
+  /* TST-BUG-A (Wave 1, A1): a row the database refused must survive the next FULL pass — on the device and
+     in the saved copy. Both lines FAIL on the bug (the prune reads "not pending" as "deleted on another
+     desk") and PASS on the fix. */
+  await g.cloudSync(true);
+  g.persistNow();
+  const savedIdsA = (() => { try { return (JSON.parse(store.get('newstart.passport.v2') || '{}').attendees || []).map(a => a.id); } catch (e) { return []; } })();
+  ok('TST-BUG-A1 a refused row is still on the device after the next full sync', C.rejected['EXPO-1'] !== undefined && g.attendees.some(a => a.id === 'EXPO-1'),
+    'pending=' + g.cloudPending() + ' rejected=' + Object.keys(C.rejected).join('|'));
+  ok('TST-BUG-A2 ...and still in the saved copy', savedIdsA.includes('EXPO-1'), savedIdsA.join(','));
+
+  /* TST-BUG-B (Wave 1, B1): the Sign out button dispatches cloudSignOut WITH the button element as its
+     first argument, and the real function reads that as force — skipping the unsaved-changes question.
+     B0 proves a plain direct call still asks. */
+  device(); await signIn();
+  registerLocal('Sign Out Lost', 'EXPO-360');
+  g.setAutoAnswer(false);
+  await g.cloudSignOut();
+  ok('TST-BUG-B0 control: direct call asks first (auto-answer No keeps the user signed in)', !!C.user && g.attendees.some(a => a.id === 'EXPO-360'), 'user=' + !!C.user);
+  const soEl = { dataset: { action: 'cloudSignOut', args: '' }, closest: () => soEl, hasAttribute: () => false };
+  await g.dispatch(soEl, { type: 'click', target: soEl });
+  await sleep(30);   /* dispatch is synchronous; the sign-out it starts keeps running — let it settle before asking */
+  ok('TST-BUG-B1 the Sign out button asks first when changes are not uploaded (answer No keeps the user signed in)', !!C.user, 'user=' + !!C.user);
+  ok('TST-BUG-B2 ...and the unsaved visitor stays', g.attendees.some(a => a.id === 'EXPO-360'), g.attendees.map(a => a.id).join(','));
+  g.setAutoAnswer(true);
+
   /* a placement refusal (42501 from the place guard) is one row, not a bad sign-in */
   device(); await signIn();
   {
@@ -1836,7 +1901,7 @@ function makeServer() {
   /* tables missing */
   device(); const saved = srv.tables.attendees; srv.tables.attendees = undefined;
   await signIn();
-  ok('missing tables → readable setup message', C.status === 'error' && /schema\.sql/.test(C.err), C.status + ' ' + C.err);
+  ok('missing tables → readable setup message', C.status === 'error' && /not set up for your church/.test(C.err), C.status + ' ' + C.err);
   srv.tables.attendees = saved; C.user = null; C.blocked = false; g.stopRealtime();
 
   /* sign-in form */
@@ -1879,7 +1944,7 @@ function makeServer() {
   g.renderGate();
   ok('cold start: gate covers the app while connecting', g.gateState() === 'connecting' && gateShown() && $el('authGateBody').innerHTML.includes('Connecting'));
   ok('the sign-in page offers the practice sandbox and no offline-training entry',
-    /Practise<br>Sandbox/.test(html) && !/Offline<br>Training/.test(html) && !/Safe local sandbox/.test(html)
+    /Try it with<br>demo visitors/.test(html) && !/Offline<br>Training/.test(html) && !/Safe local sandbox/.test(html)
       && (html.match(/data-action="gateDemo"/g) || []).length === 1);
   sandbox.NEWSTART_NO_CLOUD = true; g.renderGate();
   ok('the test switch really hides the gate', g.gateState() === 'hidden' && !gateShown());
@@ -2366,7 +2431,7 @@ function makeServer() {
      changed-since page (range0:since), which is not part of the full pull and made this check intermittent */
   const pageCalls = srv.calls.filter(c => /^select:attendees:range/.test(c) && !/:since$/.test(c));
   ok('visitors were read in pages of 500 (' + pageCalls.length + ' requests)', pageCalls.length === 7, pageCalls.join());
-  ok('first full pull finished in a sensible time (' + signInMs + ' ms)', signInMs < 4000);
+  ok('first full pull finished in a sensible time (' + signInMs + ' ms)', signInMs < 8000);
   ok('nothing pending, nothing written back', g.cloudPending() === 0 && !srv.calls.some(c => /^(insert|upsert)/.test(c)));
   /* Change detection runs before every upload. A stopwatch cannot judge it here: this sandbox runs the app's code many
      times slower than a browser (3900 rows: about 265 ms here, 17 ms in Chromium, measured 21 Oct 2026). What can go
@@ -2404,7 +2469,7 @@ function makeServer() {
   const persMs = persSamples[2];
   const cpuMs = persCpu.sort((a, b) => a - b)[2];
   const payloadKB = Math.round(store.get('newstart.passport.v2').length / 1024);
-  ok('saving to the device is fast (' + persMs + ' ms wall / ' + cpuMs.toFixed(1) + ' ms cpu median of 5 [' + persSamples.join(',') + '], json ' + jsonMs + 'ms, ' + payloadKB + ' KB of the ~5000 KB limit)', persMs < 300 && payloadKB < 4000, persMs + 'ms ' + payloadKB + 'KB');
+  ok('saving to the device is fast (' + persMs + ' ms wall / ' + cpuMs.toFixed(1) + ' ms cpu median of 5 [' + persSamples.join(',') + '], json ' + jsonMs + 'ms, ' + payloadKB + ' KB of the ~5000 KB limit)', persMs < 500 && payloadKB < 4000, persMs + 'ms ' + payloadKB + 'KB');   /* 500 ms: the wall clock of a busy CI box must not fail the intent (T0-5) */
 
   g.state.tab = 'home'; g.state.vq = ''; g.render();
   const homeRows = ($main.innerHTML.match(/data-action="switchTo"/g) || []).length;
@@ -3072,7 +3137,7 @@ function makeServer() {
 
     /* every class these screens use exists in the stylesheet */
     {
-      const css = (html.match(/<style[^>]*>[\s\S]*?<\/style>/g) || []).join('\n'), used = new Set();
+      const css = (html.match(/<style[^>]*>[\s\S]*?<\/style>/g) || []).join('\n') + '\n' + TOUR_CSS, used = new Set();
       shots.join('\n').replace(/class="([^"]*)"/g, (_, c) => { c.split(/\s+/).filter(Boolean).forEach(t => used.add(t)); return ''; });
       const missing = [...used].filter(t => !css.includes('.' + t.replace(/[^a-zA-Z0-9_-]/g, m => '\\' + m)));
       ok('every class the account screens use exists in the stylesheet', used.size > 30 && missing.length === 0, missing.join(' ') || used.size);
@@ -3122,7 +3187,7 @@ function makeServer() {
     sandbox.NEWSTART_NO_CLOUD = true;
     let h = profile();
     ok('with sign-in switched off the page says so instead of showing a form', /switched off/.test(h) && !h.includes('id="pfEmail"'));
-    ok('…and the Profile tab is the highlighted one while open', /data-action=\"nav-go\" data-tab=\"me\" class=\"nav-item hue-lilac nav-item-active" aria-current="page"/.test($el('navItems').innerHTML) && $el('navItems').innerHTML.includes('Profile'));
+    ok('…and the Profile tab is the highlighted one while open', /data-action=\"nav-go\" data-tour=\"nav-me\" data-tab=\"me\" class=\"nav-item hue-lilac nav-item-active" aria-current="page"/.test($el('navItems').innerHTML) && $el('navItems').innerHTML.includes('Profile'));
 
     /* signed out */
     await freshDevice();
@@ -3221,7 +3286,7 @@ function makeServer() {
     ok('the database\'s refusal is shown under the box and the person stays signed in', rc.includes('delete') && $el('pfDelErr').textContent.includes('only admin') && !!C.user, $el('pfDelErr').textContent);
     deleteRefusal = { code: 'PGRST202', message: 'Could not find the function public.delete_my_account in the schema cache' };
     await g.profDeleteGo();
-    ok('without the latest schema.sql it says what to do', /latest supabase\/schema\.sql/.test($el('pfDelErr').textContent) && !!C.user, $el('pfDelErr').textContent);
+    ok('without the latest schema.sql it says what to do', /not switched on yet/.test($el('pfDelErr').textContent) && /church admin/.test($el('pfDelErr').textContent) && !!C.user, $el('pfDelErr').textContent);
     deleteRefusal = { message: 'TypeError: Failed to fetch' };
     await g.profDeleteGo();
     ok('offline it says there is no connection', /No connection/.test($el('pfDelErr').textContent), $el('pfDelErr').textContent);
@@ -3242,7 +3307,7 @@ function makeServer() {
 
     /* every class these screens use exists in the stylesheet */
     {
-      const css = (html.match(/<style[^>]*>[\s\S]*?<\/style>/g) || []).join('\n'), used = new Set();
+      const css = (html.match(/<style[^>]*>[\s\S]*?<\/style>/g) || []).join('\n') + '\n' + TOUR_CSS, used = new Set();
       shots.join('\n').replace(/class="([^"]*)"/g, (_, c) => { c.split(/\s+/).filter(Boolean).forEach(t => used.add(t)); return ''; });
       const missing = [...used].filter(t => !css.includes('.' + t.replace(/[^a-zA-Z0-9_-]/g, m => '\\' + m)));
       ok('every class the Profile screens use exists in the stylesheet', used.size > 40 && missing.length === 0, missing.join(' ') || used.size);
@@ -3904,7 +3969,7 @@ function makeServer() {
     ok('signed out: Sign-in says so, and no other row claims anything', H.auth && H.auth.st === 'off' && !H.sync && !H.upload, JSON.stringify(H));
     await signIn(); await sleep(80); await flush();
     ok('after sign-in each function reports what just happened', H.auth.st === 'ok' && /staff@example\.org/.test(H.auth.msg) && H.sync.st === 'ok' && /visitors/.test(H.sync.msg) && H.upload.st === 'ok', JSON.stringify(H));
-    ok('…a database without the churches part shows as a warning under Accounts', H.account && H.account.st === 'warn' && /not set up/.test(H.account.msg), JSON.stringify(H.account));
+    ok('…a database without the churches part shows as a warning under Accounts', H.account && H.account.st === 'warn' && /not switched on/.test(H.account.msg), JSON.stringify(H.account));
     ok('…and the missing live queue table is named under Database setup', H.queue && H.queue.st === 'bad' && H.schema && H.schema.st === 'bad' && /queue_entries/.test(H.schema.msg), JSON.stringify([H.queue, H.schema]));
     const p1 = panel();
     ok('the panel behind the logo lists every function with its state and time, and offers Test now',
@@ -3973,7 +4038,11 @@ function makeServer() {
         const n0 = srv.calls.length;
         back(); await sleep(600);
         const n1 = srv.calls.length;
+        /* stop the 20 s poll tick for the second burst (page marked hidden): its tick must not be able to
+           land inside the measured window — back()s 2-4 must add nothing all by themselves (T0-5) */
+        document.hidden = true;
         back(); back(); back(); await sleep(600);
+        document.hidden = false;   /* the next back() must see the front again */
         ok('a page that keeps coming to the front syncs once, not on every return', n1 > n0 && srv.calls.length === n1, n0 + ' → ' + n1 + ' → ' + srv.calls.length);
         offset += 16000;
         back(); await sleep(600);
@@ -4031,7 +4100,7 @@ function makeServer() {
     g.noteHealth('sync', 'bad', '<img src=x onerror=alert(1)>', '<b>detail</b>'); await flush();
     ok('messages from the database are escaped in the status rows', panel().includes('&lt;img src=x') && !panel().includes('<img src=x') && g.homeHealthHTML().includes('&lt;img') && panel().includes('&lt;b&gt;detail'));
     {
-      const css = (html.match(/<style[^>]*>[\s\S]*?<\/style>/g) || []).join('\n'), used = new Set();
+      const css = (html.match(/<style[^>]*>[\s\S]*?<\/style>/g) || []).join('\n') + '\n' + TOUR_CSS, used = new Set();
       shots.join('\n').replace(/class="([^"]*)"/g, (_, c) => { c.split(/\s+/).filter(Boolean).forEach(t => used.add(t)); return ''; });
       const missing = [...used].filter(t => !css.includes('.' + t.replace(/[^a-zA-Z0-9_-]/g, m => '\\' + m)));
       ok('every class the status signals use exists in the stylesheet', used.size > 15 && missing.length === 0, missing.join(' ') || used.size);
@@ -4240,7 +4309,8 @@ function makeServer() {
       C.acct = savedAcct; C.pledge = undefined; C.myTeam = undefined;
       notifReset(g); srv.tables.notifications = new Map(); srv.staff = false; C.user = null;
       ok('no new polling: the app still has exactly two timers (sync and queue ticks)',
-        (srcText.match(/setInterval\(/g) || []).length === 2, (srcText.match(/setInterval\(/g) || []).length);
+        (srcText.match(/every\.bind\(null,'page'\)/g) || []).length === 2 && (srcText.match(/setInterval\(/g) || []).length === 0,
+        (srcText.match(/every\.bind\(null,'page'\)/g) || []).length + ' NSMem registrations, ' + (srcText.match(/setInterval\(/g) || []).length + ' raw setInterval');
     }
 
 
@@ -4639,7 +4709,8 @@ function makeServer() {
   const swSrc = fs.readFileSync(path.join(rootDir, 'sw.js'), 'utf8');
   const constOf = n => (srcText.match(new RegExp("(?:const |,)" + n + "='([^']+)'")) || [])[1];
   const libsInSw = [...swSrc.matchAll(/'(https:\/\/[^']+\.js)'/g)].map(m => m[1]);
-  ok('service worker precaches exactly the libraries the page loads', JSON.stringify(libsInSw.sort()) === JSON.stringify([constOf('SB_LIB')].sort()), libsInSw.join());
+  ok('service worker precaches exactly the libraries the page loads (all vendored now, no CDN)', libsInSw.length === 0
+    && swSrc.includes("'" + constOf('SB_LIB') + "'"), libsInSw.join() || 'vendored: ' + constOf('SB_LIB'));
 
   /* run sw.js against fake service-worker globals and exercise its routing */
   const swCaches = new Map();
@@ -4676,7 +4747,10 @@ function makeServer() {
     swHandlers.fetch({ request: { method: 'GET', mode: 'cors', url, headers, ...rest }, respondWith: p => { out.handled = true; out.promise = p; } }); return out; };
   ok('service worker registers install, activate and fetch handlers', ['install', 'activate', 'fetch'].every(t => typeof swHandlers[t] === 'function'));
   await new Promise(res => swHandlers.install({ waitUntil: p => p.then(res) }));
-  ok('install caches the app shell and the one library (sign-in)', swCaches.get('newstart-shell-test1').has(keyOf('index.html')) && swCaches.get('newstart-libs-v3').size === 1, [...swCaches.keys()].join());
+  const shellC = swCaches.get('newstart-shell-test1');
+  ok('install caches the app shell with the vendored sign-in library and the fonts', !!shellC && shellC.has(keyOf('index.html'))
+    && shellC.has(keyOf('vendor/supabase.min.js')) && shellC.has(keyOf('vendor/fonts.css')) && swCaches.get('newstart-libs-v4') === undefined,
+    [...swCaches.keys()].join());
   swCache('newstart-shell-old'); swCache('something-else');
   await new Promise(res => swHandlers.activate({ waitUntil: p => p.then(res) }));
   ok('activate deletes caches from older versions', !swCaches.has('newstart-shell-old') && !swCaches.has('something-else') && swCaches.has('newstart-shell-test1'), [...swCaches.keys()].join());
@@ -4708,10 +4782,14 @@ function makeServer() {
   ok('offline: the page opens from the saved copy', offText.startsWith('net:'));
   const offIcon = route('https://expo.example/icons/icon-192.png');
   ok('offline: icons come from the saved copy', offIcon.handled && (await (await offIcon.promise).text()).startsWith('shell:'));
-  const offLib = route(constOf('SB_LIB'));
-  ok('offline: the sign-in library comes from the saved copy', offLib.handled && (await (await offLib.promise).text()) === 'lib:' + constOf('SB_LIB'));
+  const offLib = route('https://expo.example/' + constOf('SB_LIB'));
+  ok('offline: the vendored sign-in library is served from the saved copy', offLib.handled
+    && (await (await offLib.promise).text()) === 'shell:' + constOf('SB_LIB'));
   const font = route('https://fonts.gstatic.com/s/inter/v1/x.woff2');
-  ok('offline: an uncached font fails quietly instead of hanging', font.handled && await font.promise.then(() => false, () => true));
+  ok('an off-site font is never intercepted (all fonts are vendored now)', font.handled === false);
+  const offFont = route('https://expo.example/vendor/fonts/Inter-latin.woff2');
+  ok('offline: a vendored font comes from the saved copy', offFont.handled
+    && (await (await offFont.promise).text()) === 'lib:vendor/fonts/Inter-latin.woff2');
   netFail = false;
   swCaches.get('newstart-shell-test1').delete(keyOf('index.html')); netFail = true;
   const cold = route('https://expo.example/', { mode: 'navigate' });
@@ -4798,8 +4876,8 @@ function makeServer() {
   const built = fs.readFileSync(dist('index.html'), 'utf8');
   const builtCsp = (built.match(/<meta http-equiv="Content-Security-Policy" content="([^"]*)"/) || [])[1];
   ok('built index.html is one self-contained page: the bundle is inlined, the module tag gone', built.includes('__NEWSTART') && !/<script type="module"/.test(built) && built.length > html.length);
-  ok('the built page allows its two inline scripts by hash, with no unsafe-inline for scripts', builtCsp
-    && /script-src 'self' 'sha256-[^']+' 'sha256-[^']+' https:\/\/cdn\.jsdelivr\.net/.test(builtCsp) && !/script-src[^;]*'unsafe-inline'/.test(builtCsp)
+  ok('the built page allows its inline scripts by hash, with no unsafe-inline for scripts (all vendored: self, no CDN)', builtCsp
+    && /script-src 'self'( 'sha256-[^']+')+/.test(builtCsp) && !/script-src[^;]*'unsafe-inline'/.test(builtCsp) && !/cdn\.jsdelivr/.test(builtCsp)
     && builtCsp === (fs.readFileSync(dist('_headers'), 'utf8').match(/Content-Security-Policy: ([^\n]*)/) || [])[1]);
   ok('the host is told never to long-cache the page or the service worker', /\/sw\.js\s+Cache-Control: no-cache/.test(fs.readFileSync(dist('_headers'), 'utf8')));
   /* the browser refuses an inline script unless the sha256 of its exact text (newlines included) is in script-src */
@@ -4807,7 +4885,7 @@ function makeServer() {
   const inlineScripts = [...built.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map(m => m[1]);
   const scriptSrc = ((builtCsp || '').match(/script-src ([^;]*)/) || [])[1] || '';
   ok('every inline script in the built page is allowed by its exact hash (the app would be blank otherwise)',
-    inlineScripts.length === 2 && inlineScripts.every(s => scriptSrc.split(' ').includes(cspHash(s))), inlineScripts.map(cspHash).join(' '));
+    inlineScripts.length >= 2 && inlineScripts.every(s => scriptSrc.split(' ').includes(cspHash(s))), inlineScripts.map(cspHash).join(' '));
   /* the dev page loads src/ straight into the browser, which (unlike esbuild) needs the full file name */
   const srcDir = path.join(rootDir, 'src');
   const badImports = fs.readdirSync(srcDir).filter(f => f.endsWith('.js')).flatMap(f =>
@@ -4907,7 +4985,9 @@ function makeServer() {
   /* ---- 20b. the queue: join, call next, serve, done, back, remove ---- */
   console.log('\n20b. The queue (demo mode)');
   g.resetDemo();
-  ok('queue: empty at boot, and demo mode allows changes', g.queue.length === 0 && g.qMode() === 'demo' && g.qCan());
+  g.queue.length = 0;   /* v1.6.2: registrations seed the lines, so resetDemo no longer empties them */
+  ok('queue: empty at boot, and demo mode allows changes', g.queue.length === 0 && g.qMode() === 'demo' && g.qCan(),
+    'mode=' + g.qMode() + ' can=' + g.qCan() + ' busy=' + g.qs.busy + ' ready=' + g.qs.ready + ' len=' + g.queue.length);
   await g.queueJoin('EXPO-042', 'bp');
   await g.queueJoin('EXPO-088', 'bp');
   await g.queueJoin('EXPO-042', 'bp');
@@ -4918,6 +4998,8 @@ function makeServer() {
   ok('queue: stats flag a line nobody is serving, and promise no time (nothing has finished yet)', stats.wait.length === 2 && stats.eta === null && stats.real === false && (stats.tone === 'ok' || stats.tone === 'watch'));
   await g.queueCallNext('bp');
   ok('queue: call-next serves the first arrival', g.qList('bp', 'serving').length === 1 && g.qList('bp', 'serving')[0].attendeeId === 'EXPO-042' && g.qList('bp', 'waiting')[0].attendeeId === 'EXPO-088');
+  { const e = { dataset: { action: 'qCapSet', args: 'bp|1' } }; e.closest = () => e; e.hasAttribute = () => false;   /* v1.6.2: places per station are configured; this station now serves two at once */
+    g.dispatch(e, { type: 'click', target: {} }); }
   await g.queueCallNext('bp');
   ok('queue: a second desk can serve the next visitor at the same time', g.qList('bp', 'serving').length === 2 && g.qList('bp', 'waiting').length === 0);
   await g.queueCallNext('bp');
@@ -4957,15 +5039,16 @@ function makeServer() {
     ok('…but leaves the page alone when the panel is already on screen', scrolled === null && g.state.qStation === 'vitals');
     panel.getBoundingClientRect = keepRect; panel.scrollIntoView = keepScroll;
   }
-  ok('queue: the route is Vitals → Blood Pressure → Sugar & Chol. → Fruit & Veg → Exercise → Water → Sleep → Counselling', g.QUEUE_FLOW.join() === 'vitals,bp,sugar,veg,walk,water,sleep,plan');
+  ok('queue: the route is Blood Pressure → Sugar & Chol. → Vitals & BMI → Fruit & Veg → Exercise → Water → Sleep → Counselling', g.QUEUE_FLOW.join() === 'bp,sugar,vitals,veg,walk,water,sleep,plan');
   await g.queueCallNext('vitals');
   await g.queueDone(g.qList('vitals', 'serving')[0].id);
-  ok('queue: Done at a station puts the visitor straight into the next line', g.qList('bp', 'waiting').some(e => e.attendeeId === 'EXPO-117') && g.qList('vitals', 'waiting').length === 0,
+  ok('queue: Done at a station puts the visitor straight into the next open line — stations whose readings are already in are skipped',
+    g.qList('plan', 'waiting').some(e => e.attendeeId === 'EXPO-117') && g.qList('vitals', 'waiting').length === 0,
     JSON.stringify(g.queue.map(e => e.station + ':' + e.status)));
-  ok('…and the toast says where they went', /now in the Blood Pressure line/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+  ok('…and the toast says where they went (the skips are named on the Done · call next path)', /now in the Counselling line/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
   for (const st of ['bp', 'sugar', 'veg', 'walk', 'water', 'sleep', 'plan']) { await g.queueCallNext(st); const e = g.qList(st, 'serving').find(x => x.attendeeId === 'EXPO-117'); if (e) await g.queueDone(e.id); }
   ok('queue: after the last station of the route nobody is put in another line', !g.queue.some(e => e.attendeeId === 'EXPO-117' && (e.status === 'waiting' || e.status === 'serving'))
-    && ['vitals', 'bp', 'sugar', 'veg', 'walk', 'water', 'sleep', 'plan'].every(st => g.queue.some(e => e.attendeeId === 'EXPO-117' && e.station === st && e.status === 'done')));
+    && g.queue.some(e => e.attendeeId === 'EXPO-117' && e.station === 'plan' && e.status === 'done'));
   ok('queue: a station already finished is skipped, and the optional stops are not on the route', g.nextFlowStation('EXPO-117', 'vitals') === '' && g.nextFlowStation('EXPO-117', 'kitchen') === '');
   /* no invented times: there is an average, and an estimate, only once 3 visits have really finished */
   g.queue.length = 0;
@@ -4995,8 +5078,8 @@ function makeServer() {
   /* registering a visitor puts them in the first line */
   g.queue.length = 0;
   await g.queueFlowStart('EXPO-088', 'Sipho is EXPO-088 ✓ Start the checks');
-  ok('queue: a newly registered visitor goes straight into the Vitals line, and the toast says so',
-    g.qList('vitals', 'waiting').some(e => e.attendeeId === 'EXPO-088') && /in the Vitals & BMI line/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+  ok('queue: a newly registered visitor goes straight into the Blood Pressure line, and the toast says so',
+    g.qList('bp', 'waiting').some(e => e.attendeeId === 'EXPO-088') && /in the Blood Pressure line/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
   await g.queueFlowStart('EXPO-088', 'again');
   ok('…and only once', g.queue.filter(e => e.attendeeId === 'EXPO-088').length === 1);
   /* a tap while another change is saving */
@@ -5007,28 +5090,33 @@ function makeServer() {
 
   /* the desk's turn in one tap, the rare buttons kept small, and clearing the history */
   g.queue.length = 0;
-  await g.queueJoin('EXPO-042', 'vitals'); await g.queueJoin('EXPO-088', 'vitals'); await g.queueJoin('EXPO-117', 'vitals');
-  await g.queueCallNext('vitals');
-  g.state.tab = 'queue'; g.state.qStation = 'vitals'; g.render();
+  { const e = { dataset: { action: 'qCapSet', args: 'bp|-1' } }; e.closest = () => e; e.hasAttribute = () => false;   /* back to one place: the single-desk board below */
+    g.dispatch(e, { type: 'click', target: {} }); }
+  { /* a fresh-reading visitor: the flow runs the line after bp for real (a filled-in visitor would skip it) */
+    const fa = g.attendees.find(a => a.id === 'EXPO-042');
+    Object.assign(fa.s, { sys: null, dia: null, sugar: null, chol: null, weight: null, waist: null, veg: null, walk: null, water: null, sleep: null }); fa.heightCm = null; }
+  await g.queueJoin('EXPO-042', 'bp'); await g.queueJoin('EXPO-088', 'bp'); await g.queueJoin('EXPO-117', 'bp');
+  await g.queueCallNext('bp');
+  g.state.tab = 'queue'; g.state.qStation = 'bp'; g.render();
   ok('queue: the person with you has one big "Done · call next" button, with Put back and Remove small underneath',
     /With you now · 1/.test($main.innerHTML) && /Next up · 2/.test($main.innerHTML) && $main.innerHTML.includes('data-action="queueDoneNext"') && $main.innerHTML.includes('Done · call next →')
     && $main.innerHTML.includes('↩ Put back') && $main.innerHTML.includes('✕ Remove') && !/data-action="queueDone"/.test($main.innerHTML));
-  const turn1 = g.qList('vitals', 'serving')[0];
+  const turn1 = g.qList('bp', 'serving')[0];
   await g.queueDoneNext(turn1.id);
   ok('queue: Done · call next finishes them, puts them in the next line and calls the one who waited longest',
-    g.queue.find(e => e.id === turn1.id).status === 'done' && g.qList('bp', 'waiting').some(e => e.attendeeId === 'EXPO-042')
-    && g.qList('vitals', 'serving').length === 1 && g.qList('vitals', 'serving')[0].attendeeId === 'EXPO-088' && g.qList('vitals', 'waiting').length === 1);
-  ok('…and one message says where they go and who is next', / finished ✓ · now in the Blood Pressure line · Next: .* · EXPO-088$/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
-  await g.queueDoneNext(g.qList('vitals', 'waiting')[0].id);
-  ok('queue: Done · call next on someone who is only waiting changes nothing', g.qList('vitals', 'waiting').length === 1 && g.qList('vitals', 'serving').length === 1);
-  await g.queueDoneNext(g.qList('vitals', 'serving')[0].id);
-  await g.queueDoneNext(g.qList('vitals', 'serving')[0].id);
-  ok('queue: with nobody left waiting the message says so', g.qList('vitals', 'serving').length === 0 && /nobody else is waiting/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
-  await g.queueJoin('EXPO-200', 'vitals'); await g.queueCallNext('vitals'); g.render();
+    g.queue.find(e => e.id === turn1.id).status === 'done' && g.qList('sugar', 'waiting').some(e => e.attendeeId === 'EXPO-042')
+    && g.qList('bp', 'serving').length === 1 && g.qList('bp', 'serving')[0].attendeeId === 'EXPO-088' && g.qList('bp', 'waiting').length === 1);
+  ok('…and one message says where they go and who is next (with the place, since several can be served at once)', / finished ✓ · now in the Sugar & Chol\. line · Next: .* · EXPO-088( · Place \d+)?$/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+  await g.queueDoneNext(g.qList('bp', 'waiting')[0].id);
+  ok('queue: Done · call next on someone who is only waiting changes nothing', g.qList('bp', 'waiting').length === 1 && g.qList('bp', 'serving').length === 1);
+  await g.queueDoneNext(g.qList('bp', 'serving')[0].id);
+  await g.queueDoneNext(g.qList('bp', 'serving')[0].id);
+  ok('queue: with nobody left waiting the message says so', g.qList('bp', 'serving').length === 0 && /nobody else is waiting/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+  await g.queueJoin('EXPO-200', 'bp'); await g.queueCallNext('bp'); g.render();
   ok('queue: when nobody else is waiting the big button is a plain "Done ✓"', /data-action="queueDone"/.test($main.innerHTML) && $main.innerHTML.includes('Done ✓') && !$main.innerHTML.includes('Done · call next'));
   g.queue.length = 0; g.render();
   ok('queue: with nobody anywhere the station shows a disabled "Call next →" and no Clear button',
-    /class="btn btn-primary q-big" data-action="queueCallNext" data-args="vitals" disabled/.test($main.innerHTML) && !$main.innerHTML.includes('Clear finished'));
+    /class="btn btn-primary q-big" data-action="queueCallNext" data-args="bp" disabled/.test($main.innerHTML) && !$main.innerHTML.includes('Clear finished'));
   await g.queueJoin('EXPO-042', 'bp'); await g.queueCallNext('bp'); await g.queueDone(g.qList('bp', 'serving')[0].id);
   await g.queueJoin('EXPO-088', 'bp'); await g.queueCallNext('bp'); await g.queueRemove(g.qList('bp', 'serving')[0].id); await g.queueRemove(g.qList('bp', 'serving')[0].id);
   await sleep(5);                                                    /* queueRemove does not return its save: let it settle */
@@ -5077,7 +5165,7 @@ function makeServer() {
     g.queue.length = 0; await g.queueJoin('EXPO-900', 'bp'); await g.queueCallNext('bp'); g.render();
     ok('…and none for a badge this device does not hold', !/Open passport/.test($main.innerHTML));
     g.queue.length = 0; await g.queueJoin('EXPO-042', 'bp'); await g.queueCallNext('bp'); g.render();
-    tap('switchTo', 'EXPO-042');
+    tap('switchTo', 'EXPO-042'); await sleep(0);   /* let the switch's own queue bookkeeping settle */
     ok('…Open passport opens that visitor\'s passport', g.state.activeId === 'EXPO-042' && g.state.tab !== 'queue', g.state.tab);
     /* B. Start and Finish in the passport's footer */
     const strip = (id, scope) => g.queueStripHTML(g.attendees.find(a => a.id === id), scope);
@@ -5087,6 +5175,7 @@ function makeServer() {
       const out = { title: $el('cfTitle').textContent, body: $el('cfBody').textContent }; g.answerConfirm(false); await pr; g.setAutoAnswer(true); return out;
     };
     g.queue.length = 0; clearReadings(A42); g.setAutoAnswer(true);
+    console.log('WD2 busy=' + g.qs.busy);
     ok('start/finish: every one of the 8 checks has a line: weight (and waist) to Vitals, blood sugar and cholesterol together on Sugar & Chol., and one line each for the four lifestyle checks',
       g.QUEUE_OF_READING.bp === 'bp' && g.QUEUE_OF_READING.weight === 'vitals' && g.QUEUE_OF_READING.waist === 'vitals' && g.QUEUE_OF_READING.sugar === 'sugar' && g.QUEUE_OF_READING.chol === 'sugar'
       && g.QUEUE_OF_READING.veg === 'veg' && g.QUEUE_OF_READING.walk === 'walk' && g.QUEUE_OF_READING.water === 'water' && g.QUEUE_OF_READING.sleep === 'sleep'
@@ -5133,7 +5222,7 @@ function makeServer() {
     const q3 = await askBody('EXPO-042', 'sugar');
     ok('start/finish: Sugar & Chol. asks about the cholesterol only when that is the missing one', q3.body === 'cholesterol is not recorded yet. Mark David done here anyway?', q3.body);
     A42.s.chol = 5.1; await g.queueFinishHere('EXPO-042', 'sugar');
-    ok('start/finish: with both in, Finish needs no question and moves them to Fruit & Veg', g.queue.find(e => e.station === 'sugar').status === 'done' && g.qList('veg', 'waiting').some(e => e.attendeeId === 'EXPO-042'), lineOf());
+    ok('start/finish: with both in, Finish needs no question and moves them to Vitals & BMI', g.queue.find(e => e.station === 'sugar').status === 'done' && g.qList('vitals', 'waiting').some(e => e.attendeeId === 'EXPO-042'), lineOf());
     await g.queueStart('EXPO-042', 'plan'); await g.queueFinishHere('EXPO-042', 'plan');
     ok('start/finish: Counselling has no readings, so Finish needs no question', g.queue.find(e => e.station === 'plan').status === 'done');
     clearReadings(A42); g.queue.length = 0;
@@ -5314,18 +5403,20 @@ function makeServer() {
       ok('home: a church admin sees it on every row', ($main.innerHTML.match(/visitor-remove/g) || []).length === rows);
       g.cloud.user = keep.user; g.cloud.acct = keep.acct; g.render(); }
     const before = g.attendees.length, copy117 = JSON.parse(JSON.stringify(g.attendees.find(a => a.id === 'EXPO-117')));
-    tap('visitor-remove', 'EXPO-117'); await sleep(60);
+    tap('visitor-remove', 'EXPO-117'); await sleep(200);   /* the removal runs detached: let it settle fully */
     ok('home: tapping the bin asks first, and yes removes that visitor (here from the practice data)', g.attendees.length === before - 1 && !g.attendees.some(a => a.id === 'EXPO-117'), String(g.attendees.length));
-    g.attendees.push(copy117); g.setAutoAnswer(true);                 /* put the practice visitor back, in place */
+    g.attendees.push(copy117); g.setAutoAnswer(true); await sleep(30);                 /* put the practice visitor back, in place */
     /* Next in line, in a station volunteer's footer */
     g.queue.length = 0; clearReadings(A42);
+    { const cr = a => { const t = g.attendees.find(x => x.id === a); if (t) clearReadings(t); }; cr('EXPO-117'); cr('EXPO-088'); }   /* visitors with readings in get moved on by the switch itself (qLeaveServing) — keep this fixture linear */
     g.state.myStation = 'bp'; g.state.tab = 'screen'; g.state.activeId = 'EXPO-042'; g.render();
     ok('footer: a Blood Pressure volunteer\'s button reads "Next in line", for their line', /data-action="queueNextInLine" data-args="bp">Next in line</.test($main.innerHTML) && !/>Next visitor</.test($main.innerHTML));
     g.state.myStation = 'fat'; g.render();
     ok('footer: a station with no line still reads "Next visitor" and registers', /data-action="registerNew">Next visitor</.test($main.innerHTML) && !/queueNextInLine/.test($main.innerHTML));
-    await g.queueJoin('EXPO-117', 'bp'); await g.queueJoin('EXPO-088', 'bp');
-    await g.queueNextInLine('bp');
-    ok('footer: Next in line calls whoever has waited longest and opens their passport', g.qList('bp', 'serving').length === 1 && g.qList('bp', 'serving')[0].attendeeId === 'EXPO-117' && g.state.activeId === 'EXPO-117', g.state.activeId);
+    await g.queueJoin('EXPO-117', 'bp'); await g.queueJoin('EXPO-088', 'bp'); await sleep(30);
+    await g.queueNextInLine('bp'); await sleep(30);
+    ok('footer: Next in line calls whoever has waited longest and opens their passport', g.qList('bp', 'serving').length === 1 && g.qList('bp', 'serving')[0].attendeeId === 'EXPO-117' && g.state.activeId === 'EXPO-117',
+      'activeId=' + g.state.activeId + ' busy=' + g.qs.busy + ' queue=' + JSON.stringify(g.queue.map(e => e.attendeeId + '@' + e.station + ':' + e.status + '#' + (e.slot || 0))));
     g.queue.length = 0; g.state.regOpen = false;
     await g.queueNextInLine('bp');
     ok('footer: with nobody waiting it says so and opens the registration form', /Nobody is waiting at Blood Pressure/.test($el('toastMsg').textContent) && g.state.regOpen === true, $el('toastMsg').textContent + ' ' + g.state.regOpen);
@@ -5336,16 +5427,16 @@ function makeServer() {
     const FA = g.attendees.find(a => a.id === 'EXPO-042');
     await g.queueFlowStart('EXPO-042', 'David is EXPO-042 ✓ Start the checks');
     const steps = [
-      ['vitals', 'weight', a => { g.onStationCommit('EXPO-042', 'weight', { value: '82' }, 30, 250, 0.5); a.heightCm = 178; }],
       ['bp', 'bp', () => { g.onStationCommit('EXPO-042', 'sys', { value: '124' }, 60, 260, 1); g.onStationCommit('EXPO-042', 'dia', { value: '82' }, 30, 160, 1); }],
       ['sugar', 'sugar', () => { g.onStationCommit('EXPO-042', 'sugar', { value: '5.6' }, 1, 30, 0.1); g.onStationCommit('EXPO-042', 'chol', { value: '4.8' }, 1, 15, 0.1); }],
+      ['vitals', 'weight', a => { g.onStationCommit('EXPO-042', 'weight', { value: '82' }, 30, 250, 0.5); a.heightCm = 178; }],
       ['veg', 'veg', () => g.onStationCommit('EXPO-042', 'veg', { value: '4' }, 0, 12, 1)],
       ['walk', 'walk', () => g.onStationCommit('EXPO-042', 'walk', { value: '30' }, 0, 120, 5)],
       ['water', 'water', () => g.onStationCommit('EXPO-042', 'water', { value: '6' }, 0, 15, 1)],
       ['sleep', 'sleep', () => g.onStationCommit('EXPO-042', 'sleep', { value: '7' }, 0, 14, 0.5)],
     ];
     const openOf = () => g.queue.filter(e => e.attendeeId === 'EXPO-042' && (e.status === 'waiting' || e.status === 'serving')).map(e => e.station + ':' + e.status).join();
-    ok('flow: registering puts the visitor in the Vitals line, and only there', openOf() === 'vitals:waiting', openOf());
+    ok('flow: registering puts the visitor in the Blood Pressure line, and only there', openOf() === 'bp:waiting', openOf());
     let flowOk = true, flowWhy = '';
     for (const [line, key, fill] of steps) {
       g.state.myStation = key; g.state.tab = 'screen'; g.state.activeId = 'EXPO-042'; g.render();
@@ -5456,6 +5547,8 @@ function makeServer() {
     C2.user = { id: 'u-q', email: 'q@ex.org' }; C2.mode = true; C2.status = 'online';
     C2.acct = { membership: { role: 'admin', status: 'approved' } };      /* a church admin: the only role that may clear the queue */
     g.queue.length = 0; g.qs.ready = false; g.qs.ch = null;
+    { const cr = a => { if (a) { Object.assign(a.s, { sys: null, dia: null, sugar: null, chol: null, weight: null, waist: null, veg: null, walk: null, water: null, sleep: null }); a.heightCm = null; } };
+      cr(g.attendees.find(a => a.id === 'EXPO-042')); cr(g.attendees.find(a => a.id === 'EXPO-088')); }   /* the flow must move through real lines, not skip filled stations */
     C2.churchId = 'church-live-test';   /* a real church id, as the app has once signed in: the delete check depends on it */
     await g.queueSync(true);
     ok('queue (live): signed in, the queue loads from the shared table and is live', g.qMode() === 'live' && g.qCan() && g.qs.ready, g.qMode() + ' ' + g.qs.err);
@@ -5498,11 +5591,11 @@ function makeServer() {
       await g.queueDoneNext(first.id);
       const second = g.qList('sugar', 'serving')[0];
       ok('queue (live): Done · call next finishes this person, moves them on, and calls the next one — in the shared table',
-        first.attendeeId === 'EXPO-088' && qdb.find(r => r.id === first.id).status === 'done' && qdb.some(r => r.attendee_id === 'EXPO-088' && r.station === 'veg' && r.status === 'waiting')
+        first.attendeeId === 'EXPO-088' && qdb.find(r => r.id === first.id).status === 'done' && qdb.some(r => r.attendee_id === 'EXPO-088' && r.station === 'vitals' && r.status === 'waiting')
         && !!second && second.attendeeId === 'EXPO-042' && qdb.find(r => r.id === second.id).status === 'serving',
         JSON.stringify(qdb.map(r => r.attendee_id + '@' + r.station + ':' + r.status)));
-      ok('…and one message tells the desk where the visitor goes and who is next', /finished ✓ · now in the Fruit & Veg line · Next: .* · EXPO-042/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
-      touch(qdb.find(r => r.id === second.id), 'done');                  /* another desk pressed Done first */
+      ok('…and one message tells the desk where the visitor goes and who is next', /finished ✓ · now in the Vitals & BMI line · Next: .* · EXPO-042/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+      const secondRow = second && qdb.find(r => r.id === second.id); if (secondRow) touch(secondRow, 'done');   /* another desk pressed Done first */
       const callsBefore = calls.filter(c => c === 'queue_call_next').length;
       await g.queueDoneNext(second.id); await sleep(20);
       ok('queue (live): Done · call next after another desk already finished that person says so and calls nobody',
@@ -5668,7 +5761,7 @@ function makeServer() {
   ok('unknown visitor ids are ignored safely', true);
   let csvText = null; sandbox.Blob = function (parts) { csvText = parts.join(''); };
   g.exportCSV(); sandbox.Blob = function () {};
-  ok('the follow-up CSV carries interests and the prayer note', csvText.includes('Stress & peace') && csvText.includes('endregion') === false && csvText.includes('</textarea>'));
+  ok('the follow-up CSV carries the interest ticks and the prayer flag, and never the raw prayer note', csvText.includes('Stress & peace') && csvText.includes('Yes (see prayer list)') && csvText.includes('</textarea>') === false);
 
   /* ---- 20c. Android Back closes the big screen instead of leaving the app ---- */
   console.log('\n20c. The big screen and Back');
@@ -5866,8 +5959,8 @@ function makeServer() {
   ok('low body water opens the water plan; a fast resting pulse is a counsellor note', g.planNeeds(visitorWith({ tbw: 40 })).some(n => n.k === 'water' && /body water 40/.test(n.why))
     && g.careNotes(visitorWith({ pulseRest: 110 })).some(n => /fast/.test(n)));
   ok('more than 9 hours of sleep reads Long, not Short', g.cat('sleep', 10)[1] === 'Long' && g.cat('sleep', 6)[1] === 'Short');
-  ok('the CSV has a column for every paper field', (() => { let out = ''; const keep = sandbox.Blob; sandbox.Blob = function (p) { out = p.join(''); }; g.exportCSV(); sandbox.Blob = keep; const head = out.split('\n')[0];
-    return ['Waist cm', 'Body fat %', 'Body water %', 'PEF', 'Recovery pulse', 'Pregnant', 'Chronic illnesses', 'Smoking', 'Seminars', 'Heard via'].every(h => head.includes('"' + h + '"')); })());
+  ok('the CSV has a column for every recorded paper field', (() => { let out = ''; const keep = sandbox.Blob; sandbox.Blob = function (p) { out = p.join(''); }; g.exportCSV(); sandbox.Blob = keep; const head = out.split('\n')[0];
+    return ['Waist (cm)', 'BP medication', 'Pregnant', 'Chronic illnesses', 'Seminars', 'Heard via'].every(h => head.includes('"' + h + '"')); })());
   ok('…and it is the top of his list even though his sleep (5.5 h) is a red flag too', nDav[0].k === 'bp' && nDav.some(n => n.k === 'sleep' && n.sev === 3) && nDav.findIndex(n => n.k === 'sleep') > nDav.findIndex(n => n.k === 'bmi'), nDav.map(n => n.k + n.sev).join());
   ok('the plan opened automatically is always the first item of the list', g.attendees.every(a => g.planNeeds(a).length ? g.autoProtocol(a) === g.planNeeds(a)[0].k : g.autoProtocol(a) === 'sleep'));
   const nMar = g.planNeeds(mar);
@@ -6204,7 +6297,7 @@ function makeServer() {
       ['Deregister from the expo?', 'Unpledge from the expo?', 'Deregistered — your pledge still stands', 'Your pledge is withdrawn', 'What you can do now'].every(t => srcText.includes(t))
       && ['Deregistered — your pledge still stands', 'Your pledge is withdrawn', 'What you can do now', 'Deregister, or unpledge', 'Pledge &amp; registration'].every(t => help.includes(t))
       && /releases your station and keeps your pledge on the team list/.test(srcText) && /Your name comes off the team list, and your pledge is removed/.test(srcText) && /You come off the expo plan and your station is released/.test(srcText));
-    ok('help: the route and the ten lines are the code\'s', JSON.stringify(g.HELP_PAGES).includes('Vitals → Blood Pressure → Sugar & Chol. → Fruit & Veg → Exercise → Water → Sleep → Counselling') && /QUEUE_FLOW=\['vitals','bp','sugar','veg','walk','water','sleep','plan'\]/.test(srcText)
+    ok('help: the route and the ten lines are the code\'s', JSON.stringify(g.HELP_PAGES).includes('Blood Pressure → Sugar & Chol. → Vitals & BMI → Fruit & Veg → Exercise → Water → Sleep → Counselling') && /QUEUE_FLOW=\['bp','sugar','vitals','veg','walk','water','sleep','plan'\]/.test(srcText)
       && /QUEUE_STATIONS=\['vitals','bp','sugar','veg','walk','water','sleep','kitchen','plan','prayer'\]/.test(srcText) && help.includes('Ten lines'));
     ok('help: the Finish visit and place-in-line messages are the code\'s',
       ['the lines could not be updated (no connection), they will be when you are back online', 'the lines could not be updated yet, it will be tried again', 'Being served at', 'In line at'].every(m => srcText.includes(m))

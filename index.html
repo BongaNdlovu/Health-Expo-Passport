@@ -21,8 +21,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="color-scheme" content="light dark"/>
 <title>Health Expo Passport</title>
-<!-- Fonts: the Android app carries its own copy (vendor/fonts.css), so it shows the same letters with no internet;
-     the web site loads them from Google Fonts as before. -->
+<!-- Fonts: the one vendored copy (vendor/fonts.css) serves both the Android app and the web site — nothing is
+     loaded from Google Fonts or any other CDN (v1.6.2). -->
 <script id="fontPick">(function(){
  try{var t=localStorage.getItem('newstart.theme')==='dark'?'dark':'light';document.documentElement.dataset.theme=t;var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content',t==='dark'?'#0b0e0c':'#f4f3ee');}catch(e){}
 })();</script>
@@ -190,6 +190,7 @@
   /* One named gap for a row of interactive controls: the phone's 8px "bento" gap from
      docs/ui-contract.md §3.3. Wrapping is allowed so a third control drops to a second line at 320px. */
   .btn-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+  .gap-x-2{column-gap:.5rem}
 
   /* ============ FORM FIELDS ============ */
   .field{width:100%;border-radius:var(--hx-r-field);border:1px solid var(--hx-field-border);

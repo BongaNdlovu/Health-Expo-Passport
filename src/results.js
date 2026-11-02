@@ -516,8 +516,8 @@ export function viewCare(){
    <div class="flex items-start justify-between gap-3">
     <div><div class="microlabel">Ministry follow-up</div>
     <div class="display text-base font-extrabold">Tonight's care lists</div>
-    <p class="mt-1 text-[11px] leading-snug text-[#5c747a]">Sorted automatically — no more paper cards.</p><div class="mt-1.5 flex flex-wrap gap-1.5"><button data-action="exportCSVMin" class="btn btn-glass px-2.5 py-1.5 text-[11px]" style="min-height:44px">Minimal CSV</button><button data-action="exportPrayerCSV" class="btn btn-glass px-2.5 py-1.5 text-[11px]" style="min-height:44px">Prayer list</button></div></div>
-    <div class="flex flex-none flex-col gap-1.5"><button data-action="exportCSV" class="btn btn-primary px-3 py-2 text-[11px]" style="min-height:44px">Export CSV</button><button data-action="exportXLSX" class="btn btn-soft px-3 py-2 text-[11px]" style="min-height:44px">Excel</button></div>
+    <p class="mt-1 text-[11px] leading-snug text-[#5c747a]">Sorted automatically — no more paper cards.</p><div class="mt-1.5 flex flex-wrap gap-2"><button data-action="exportCSVMin" class="btn btn-glass px-2.5 py-1.5 text-[11px]" style="min-height:44px">Minimal CSV</button><button data-action="exportPrayerCSV" class="btn btn-glass px-2.5 py-1.5 text-[11px]" style="min-height:44px">Prayer list</button></div></div>
+    <div class="flex flex-none flex-col gap-2"><button data-action="exportCSV" class="btn btn-primary px-3 py-2 text-[11px]" style="min-height:44px">Export CSV</button><button data-action="exportXLSX" class="btn btn-soft px-3 py-2 text-[11px]" style="min-height:44px">Excel</button></div>
    </div>
    <div class="mt-3.5 grid grid-cols-3 gap-2">
     ${countTile(urgent.length,'Urgent','border-rose-200/70 bg-rose-50/70 text-rose-700')}

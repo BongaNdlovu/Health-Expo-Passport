@@ -59,17 +59,22 @@ ok('the APK is served as an attachment', /\/newstart\.apk[\s\S]{0,120}Content-Di
 ok('the page sends a CSP', /Content-Security-Policy:/.test(headers) && /http-equiv="Content-Security-Policy"/.test(html));
 {
   /* the browser matches a CSP host source with a path by exact path, or by prefix when it ends in "/" — a
-     shortened path once blocked the library and with it every sign-in on the hosted site */
+     shortened path once blocked the library and with it every sign-in on the hosted site. v1.6.2 vendors the
+     library (SB_LIB is same-origin): 'self' covers it; if it ever becomes an https address again, script-src
+     must name that exact path. */
   const sbLib = (/export const SB_LIB='([^']+)'/.exec(fs.readFileSync(path.join(__dirname, '..', 'src', 'cloud.js'), 'utf8')) || [])[1];
   const scriptSrc = ((/Content-Security-Policy: (.*)/.exec(headers) || [])[1] || '').split(';').map(s => s.trim()).find(s => s.startsWith('script-src ')) || '';
   const allows = src => src.startsWith('https://') && (src.endsWith('/') ? sbLib.startsWith(src) : sbLib === src);
-  ok('the CSP script-src allows the Supabase library URL the app loads', !!sbLib && scriptSrc.split(/\s+/).some(allows), sbLib + ' vs ' + scriptSrc);
+  const covered = sbLib.startsWith('https://')
+    ? scriptSrc.split(/\s+/).some(allows)
+    : scriptSrc.split(/\s+/).includes("'self'") || scriptSrc.split(/\s+/).some(s => s === sbLib || (s.endsWith('/') && !s.startsWith("'") && sbLib.startsWith(s)));
+  ok('the CSP script-src allows the Supabase library the app loads', !!sbLib && covered, sbLib + ' vs ' + scriptSrc);
 }
 
 console.log('\n5. the new UI is in the shipped page');
 ok('the update banner', /id="updateBar"/.test(html) && /data-action="updateNow"/.test(html));
 ok('the confirmation sheet', /id="confirmSheet"/.test(html) && /data-action="confirmYes"/.test(html));
-ok('the settings sheet', /id="setSheet"/.test(html) && /data-action="closeSettings"/.test(html));
+ok('the Profile/account sheet', /id="acctSheet"/.test(html) && /data-action="closeAcct"/.test(html));
 ok('the app bundle is inlined (no module script left)',
   /__NEWSTART/.test(html) && !/type="module" src="\.\/src\/main\.js"/.test(html));
 
