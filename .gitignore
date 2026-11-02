@@ -27,3 +27,6 @@ verification/shots/jdbg*.png
 verification/shots/jover*.png
 verification/shots/journey[1-3]-*.png
 verification/shots/home-(new|parity|v[2-4])*.png
+
+# Other coding tools' session scratch
+.zcode/
