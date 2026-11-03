@@ -61,6 +61,7 @@ export function confirmAsk(o) {
   const title = $('#cfTitle'), body = $('#cfBody'), go = $('#cfGo'), no = $('#cfNo'), sheet = $('#confirmSheet');
   if (!title || !body || !go || !sheet) return Promise.resolve(false);
   if (settle) answer(false);             /* one question at a time: a second ask replaces the first */
+  clearTimeout(timer);                   /* (P1) the new question must not be hidden 260 ms later by the replaced one's closing timer */
   title.textContent = o.title || 'Are you sure?';
   body.textContent = o.body || '';
   go.textContent = o.label || 'Confirm';
@@ -77,6 +78,5 @@ export function confirmAsk(o) {
   overlayOpened(SHEET, () => answer(false));
   return new Promise(res => { settle = res; });
 }
-
-/* Escape is a cancel, exactly as it is for every other sheet */
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && settle) answer(false); });
+/* Escape is a cancel like everywhere else: the sheet is overlayOpened-registered, so overlay.js's ONE global
+   Escape handler closes it when it is on top (P4) — this module keeps no keydown listener of its own. */

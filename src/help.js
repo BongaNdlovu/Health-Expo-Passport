@@ -55,7 +55,7 @@ export const HELP_START = [
       ['Visitor rights', 'Visitors may ask to see, correct or delete their data. Tell your church admin, who removes it from Visitor → Remove visitor. Complaints: the Information Regulator (inforegulator.org.za).'],
       ['Exports', 'A CSV export holds personal health data. Keep it private and delete it when you are done.'] ] } ] },
  { title: 'If a reading is red',
-   what: 'Red means a reading is in the danger range (blood pressure 160/100 or more, or blood sugar 15 or more). Stay calm and kind; the app does not diagnose.',
+   what: 'Red means a reading is in the danger range (blood pressure 160/100 or more, or blood sugar 15 or more, or blood sugar under 3). Stay calm and kind; the app does not diagnose.', /* (A12) */
    sections: [
     { name: 'What to do', items: [
       ['1. Tell the counselling desk', 'Let the counselling or health lead at the expo know now, so a trained person can talk with the visitor.'],

@@ -92,7 +92,7 @@ function qcfgWrite() {
   } else {
    localStorage.removeItem(QCAP_KEY);
   }
- } catch {}
+ } catch(e) { console.warn('queue:', e); }   /* (Q4) the places config could not be kept on this phone */
 }
 export function qCap(st) {
  let c = qcfg()[st];
@@ -319,7 +319,7 @@ function qDemoSave() {
     }))
    })
   );
- } catch {}
+ } catch(e) { console.warn('queue:', e); }   /* (Q4) the practice queue could not be kept on this phone */
 }
 /* Practice mode keeps its queue on this phone between openings, so the tour and a practice run can pick up again. */
 export function qDemoLoad() {
@@ -502,7 +502,8 @@ async function qMove(id,to,from,msg){
    if(!data.length){toast('Someone else just changed that one');queueSync();return;}
    qApply(data[0]);
   }
-  if(msg)toast(msg(e));
+  const fresh=queue.find(x=>x.id===id)||e;   /* (Q3) re-read before the words: another desk can change the entry while the update is in the air */
+  if(msg)toast(msg(fresh));
  });
  qAfter();
 }
@@ -625,14 +626,14 @@ export async function queueDoneNext(id){
 const LEAVE_KEY='newstart.queueLeave';           /* {churchId: [badge, …]}: lines still to leave once the queue can change again */
 const qOpenFor=att=>queue.filter(e=>e.attendeeId===att&&(e.status==='waiting'||e.status==='serving'));
 function leaveRead(){try{return JSON.parse(localStorage.getItem(LEAVE_KEY)||'{}')||{};}catch(e){return {};}}
-function leaveWrite(o){try{if(Object.keys(o).length)localStorage.setItem(LEAVE_KEY,JSON.stringify(o));else localStorage.removeItem(LEAVE_KEY);}catch(e){}}
+function leaveWrite(o){try{if(Object.keys(o).length)localStorage.setItem(LEAVE_KEY,JSON.stringify(o));else localStorage.removeItem(LEAVE_KEY);return true;}catch(e){console.warn('queue:',e);return false;}}   /* (Q4) says whether the note was kept */
 /* kept per church, because badge numbers repeat across churches; false when the church is not known */
 function leaveAdd(att){
  const c=cloud.churchId;if(!c)return false;
  const o=leaveRead(),l=o[c]||(o[c]=[]);
  if(!l.includes(att))l.push(att);
  if(l.length>200)l.splice(0,l.length-200);
- leaveWrite(o);return true;
+ return leaveWrite(o);   /* (Q4) a save that failed is not a success */
 }
 const qLabels=list=>{const n=list.map(e=>QUEUE_SHORT[e.station]||e.station).filter((x,i,a)=>a.indexOf(x)===i);return n.length>1?n.slice(0,-1).join(', ')+' and '+n[n.length-1]+' lines':n[0]+' line';};
 /* What to add to the "visit complete" message: '' when they were in no line. */
@@ -643,7 +644,9 @@ export async function queueFinishVisit(att){
   for(const e of open)await qMove(e.id,'left',['waiting','serving'],null);
   const gone=open.filter(e=>{const x=queue.find(y=>y.id===e.id);return !x||x.status==='left';});
   const stuck=open.filter(e=>!gone.includes(e));
-  if(stuck.length){leaveAdd(att);return gone.length?` · taken out of the ${qLabels(gone)}, the rest will be tried again`:' · the lines could not be updated yet, it will be tried again';}
+  if(stuck.length){const saved=leaveAdd(att);   /* (Q4) a note that could not be kept must not promise a retry */
+   return gone.length?(saved?` · taken out of the ${qLabels(gone)}, the rest will be tried again`:` · taken out of the ${qLabels(gone)}, but the rest could not be noted to try again`)
+    :(saved?' · the lines could not be updated yet, it will be tried again':' · the lines could not be updated, and a note to try again could not be kept');}
   qAfter();
   return ` · taken out of the ${qLabels(gone)}`;
  }
@@ -663,7 +666,10 @@ async function flushLeaves(){
    for(const e of qOpenFor(att))await qMove(e.id,'left',['waiting','serving'],null);
    if(qOpenFor(att).length)keep.push(att);
   }
-  const o=leaveRead();if(keep.length)o[cloud.churchId]=keep;else delete o[cloud.churchId];leaveWrite(o);
+  const o=leaveRead();                                            /* (Q2) re-read at write time and merge: a leave added mid-flush (a finish visit during the awaits below) is kept, not overwritten */
+  const out=keep.concat((o[cloud.churchId]||[]).filter(a=>!mine.includes(a)));
+  if(out.length)o[cloud.churchId]=out;else delete o[cloud.churchId];
+  leaveWrite(o);
  }finally{leaving=false;}
  qAfter();
 }
@@ -856,7 +862,7 @@ export function qSkipFilledToggle() {
  let on = !qSkipFilled();
  try {
   localStorage.setItem(QSF_KEY, on ? '1' : '0');
- } catch {}
+ } catch(e) { console.warn('queue:', e); }   /* (Q4) the skip setting could not be kept */
  toast(
   on ? 'After Done, lines whose readings are already in are skipped' : 'After Done, visitors go to every next line, as before'
  );
@@ -916,7 +922,13 @@ export const qOverCount=()=>queue.filter(qOver).length;
 export const qMayClear=()=>qMode()==='demo'||isAdminAcct();
 export async function queueClearHistory(){
  if(!qMayClear()){toast('Only a church admin can clear the queue');return;}
- const n=qOverCount();
+ let n=qOverCount();   /* the loaded page's count: the fallback while the server is silent */
+ if(cloud.user&&cloud.churchId&&cloud.client){
+  try{
+   const {count,error}=await cloud.client.from('queue_entries').select('id',{count:'exact',head:true}).eq('church_id',cloud.churchId).in('status',['done','left']);   /* (Q3) the server also knows entries older than this screen's load window */
+   if(!error&&typeof count==='number')n=count;
+  }catch(e){console.warn('queue:',e);}   /* (Q4) the server did not answer: count what is loaded instead */
+ }
  if(!n){toast('Nothing to clear');return;}
  if(!qGate())return;
  const yes=await confirmAsk({title:'Clear finished entries?',
@@ -1125,7 +1137,6 @@ export function closeBigScreen(){
 /* keep a TV from going to sleep */
 async function qWake(){try{if(navigator.wakeLock&&tvOpen()&&!qs.wake){qs.wake=await navigator.wakeLock.request('screen');qs.wake.addEventListener('release',()=>{qs.wake=null;});}}catch(e){}}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&tvOpen())qWake();});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&tvOpen())closeBigScreen();});
 function qCard(k,st,sel){
  if(st.tone==='loading'||qMode()==='loading')return `<button data-action="qSelect" data-args="${esc(k)}" class="q-card q-card-${st.tone} ${sel?'q-card-sel':''}" aria-pressed="${sel}">
   <span class="q-card-top"><span class="q-card-name">${esc(QUEUE_SHORT[k])}</span><span class="q-card-dot"></span></span>
@@ -1133,7 +1144,7 @@ function qCard(k,st,sel){
   <span class="q-card-n">—<small>waiting</small></span>
   <span class="q-card-line">Loading the line…</span></button>`;   /* no zeros that look like facts before the first read (Q5) */
  const first=st.serving[0],more=st.serving.length-1;
- const serve=st.cap>1&&first?`Serving <b>${st.serving.length} of ${st.cap}</b>`
+ const serve=st.cap>1&&first?`Serving <b>${st.serving.filter(e=>e.slot).length} of ${st.cap}</b>`   /* (Q1) only the places actually taken — the extra over cap is named in its row */
   :st.cap>1?(st.wait.length?`<b>Not called yet</b> · ${st.cap} places`:`Free — ${st.cap} places`)
   :first?`Serving <b>${esc(first.attendeeId)}</b>${more>0?` +${more}`:''}`:(st.wait.length?'<b>Not called yet</b>':'Free — nobody here');
  const eta=st.wait.length?(st.eta!=null?`About <b>${Math.max(1,Math.round(st.eta/60000))} min</b> · longest ${qMin(st.longest)}`:`Longest wait <b>${qMin(st.longest)}</b>`):'No wait';

@@ -268,10 +268,12 @@ function dirHTML(){
    ${c.status==='pending'?`<span class="${chipClass('watch')} flex-none">Waiting for approval</span>`
     :`<button class="btn btn-primary flex-none px-4 text-xs" data-action="join-church" data-args="${qSafe(c.id)}">Join</button>`}</div>`).join('');
 }
-let _dirT=null;
+let _dirT=null,_dirN=0;
 export function churchSearchSoon(q){clearTimeout(_dirT);_dirT=setTimeout(()=>churchSearch(q),250);}
 export async function churchSearch(q){
+ const ask=++_dirN;   /* (A20b) an older, slower search may not overtake a newer one: a stale answer is dropped silently */
  const r=await acctRpc('church_directory',{p_search:q||''});
+ if(ask!==_dirN)return;                  /* a newer search was started after this one — the newest answer stays */
  cloud.dir=r&&Array.isArray(r.data)?r.data:[];
  const el=$('#churchDir');if(el)el.innerHTML=dirHTML();
 }
@@ -373,7 +375,7 @@ export function healthHTML(){
     <span class="text-[12px] font-bold text-[#123033]">${r[0]}</span>
     <span class="flex items-center gap-2"><span class="text-[12px] text-[#33504f]">${esc(r[1])}</span><span class="${chipClass(r[2][0])}">${esc(r[2][1])}</span></span></div>`).join('')
    :emptyHealthNote(gone)}
-  ${red?`<p class="mt-2 text-[11px] font-bold leading-relaxed text-rose-700">${danger?'A reading was in the danger range (blood pressure 160/100 or more, or blood sugar 15 or more). Please see a clinic as soon as you can.'
+  ${red?`<p class="mt-2 text-[11px] font-bold leading-relaxed text-rose-700">${danger?'A reading was in the danger range (blood pressure 160/100 or more, or blood sugar 15 or more, or blood sugar under 3). Please see a clinic as soon as you can.' /* (A12) */
    :'A reading is in the red range. Please book a clinic visit this week.'}</p>`:''}
   ${acctNote(needs.length?'What to work on first: '+needs.map(n=>esc(PROTOCOLS[n.k].tag)).join(', ')+'.':'Your numbers looked fine at the expo.')}
   ${acctNote('Keep taking any medicine you were prescribed. Only your clinic should change it.')}`);
@@ -913,7 +915,7 @@ export function churchAdminHTML(){
   <div class="mt-1 text-[13px] font-bold text-[#123033]">${esc(c.name)}</div>
   ${acctBox('Health Expos',expoAdminHTML(cid))}
   ${acctBox('Members'+(waiting?` · ${waiting} waiting`:'')+(F?` · ${F.length} of ${FOLLOWUP_MAX} follow-up people`:''),
-   !L?acctSkel(3):cloud.members.err?retryNote('Could not load the members. Check your connection.','members'):!L.length?acctNote('Nobody has joined yet.'):L.map(u=>memberRow(u,F,admins,ranks,canPost)).join('')
+   !L?acctSkel(3):cloud.members.err?retryNote('Could not load the members. Check your connection.','members'):(!L.length?acctNote('Nobody has joined yet.'):'')+L.map(u=>memberRow(u,F,admins,ranks,canPost)).join('')   /* (A20b) an empty list still shows the notes below: before, only the row branch carried them */
    +acctNote('Members see only their own details and results. Staff and church admins see this church’s visitors and volunteers, so only give those roles to people you know.')
    +acctNote('Admins manage this church only: nobody here can open another church’s data. The two admin posts are the Health Department Leader and their Assistant: the Leader (or the Expo admin) gives, swaps and takes them; the Assistant approves and removes members, pledges and team leaders.')
    +acctNote(`Follow-up people (up to ${FOLLOWUP_MAX}) are given visitors to contact after the expo, and see only those visitors.`))}
@@ -1028,7 +1030,7 @@ function churchFormHTML(c){
 export async function saveChurch(e,cid){
  e.preventDefault();
  const v=id=>(($('#cf'+id)||{}).value||'').trim();
- gateBusy('cf','Saving…');
+ gateBusy('ch','Checking…');   /* (A20b) a double press cannot fire two submits; the button is restored below like the mf/gate forms */
  const r=await acctRpc('update_church',{p_church:cid,p_name:v('Name'),p_city:v('City'),p_phone:v('Phone'),p_email:v('Email')},'Church details saved ✓');
  const b=$("#chGo");if(b){b.disabled=false;b.removeAttribute('aria-busy');b.textContent="Save church details";}
  if(!r)return;
@@ -1174,19 +1176,19 @@ const stationTotal=n=>Object.values(n||{}).reduce((t,v)=>t+(Number(v)||0),0);
 export function newExpo(cid){
  const needs={};BOOTHS.forEach(b=>{needs[b.k]=b.cap;});
  cloud.expoEdit={id:'',church:cid,name:'',startsOn:'',startTime:'09:00',endTime:'14:00',venue:'',address:'',signupDeadline:'',
-  needs,total:stationTotal(needs),totalTouched:false,clinic:false,doctors:0,types:[],status:'draft'};
+  needs,total:Math.min(1000,stationTotal(needs)),totalTouched:false,clinic:false,doctors:0,types:[],status:'draft'};   /* (A20b) the total is clamped to 0-1000 before use or save */
  renderAcct();
 }
 export function editExpo(id){
  const x=((cloud.adminExpos&&cloud.adminExpos.list)||[]).find(e=>e.id===id);if(!x)return;
  cloud.expoEdit={id:x.id,church:cloud.adminExpos.cid,name:x.name,startsOn:String(x.starts_on||'').slice(0,10),startTime:x.start_time||'',endTime:x.end_time||'',
   venue:x.venue||'',address:x.address||'',signupDeadline:x.signup_deadline?String(x.signup_deadline).slice(0,10):'',needs:{...(x.station_needs||{})},
-  total:Number(x.volunteers_needed)||0,totalTouched:true,clinic:!!x.clinic,doctors:Number(x.doctors)||0,types:[...(x.doctor_types||[])],status:x.status};
+  total:Math.max(0,Math.min(1000,Number(x.volunteers_needed)||0)),totalTouched:true,clinic:!!x.clinic,doctors:Number(x.doctors)||0,types:[...(x.doctor_types||[])],status:x.status};   /* (A20b) a loaded total is clamped to 0-1000 too */
  renderAcct();
 }
 export function expoField(k,v){
  const d=cloud.expoEdit;if(!d)return;
- d[k]=v;
+ d[k]=k==='total'?Math.max(0,Math.min(1000,parseInt(v,10)||0)):v;   /* (A20b) a typed total is clamped to 0-1000 before use or save */
  if(k==='total')d.totalTouched=true;
  if(k==='clinic')renderAcct();            /* the clinic fields appear or go */
 }
@@ -1241,6 +1243,13 @@ export async function saveExpoForm(status){
    address:d.address||'',volunteersNeeded:d.total||0,stationNeeds:d.needs,clinic:!!d.clinic,doctors:d.doctors||0,doctorTypes:d.types,signupDeadline:d.signupDeadline||'',status:status||d.status}},
   status==='open'&&d.status!=='open'?'Saved — members can see it now ✓':'Saved ✓');
  cloud.expoSaving=false;
+ /* (A20b) edits typed while the save ran are kept: after the await the draft is re-read from the live form fields (the payload carried the pre-save snapshot), so it never resets post-save edits */
+ const xb=$('#acctBody');
+ if(xb){
+  'name startsOn signupDeadline startTime endTime venue address'.split(' ').forEach(k=>{const e=xb.querySelector('input[data-k="'+k+'"]');if(e)d[k]=e.value;});
+  const xt=$('#xpTotal');if(xt&&d.totalTouched)d.total=Math.max(0,Math.min(1000,parseInt(xt.value,10)||0));
+  const xd=xb.querySelector('input[data-k="doctors"]');if(xd)d.doctors=Math.max(0,Math.min(100,parseInt(xd.value,10)||0));
+ }
  const b=$('#xpGo');if(b){b.disabled=false;b.removeAttribute('aria-busy');b.textContent=was||'Save and open for members';}
  if(!r)return;
  cloud.expoEdit=null;reloadExpos();

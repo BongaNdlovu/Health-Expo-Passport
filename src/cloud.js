@@ -252,7 +252,8 @@ export function gateState(){
 /* Passwords: long enough to resist guessing, short enough for bcrypt (it ignores everything past 72 bytes). */
 export function passwordProblem(pw){
  if(pw.length<8)return 'Use at least 8 characters.';
- if(pw.length>72)return 'Use at most 72 characters.';
+ const bytes=new TextEncoder().encode(pw).length;   /* (A21) bcrypt ignores everything past 72 BYTES: the upper bound is measured in bytes, not characters */
+ if(bytes>72)return 'Use at most 72 characters.';
  if(!/[A-Za-z]/.test(pw)||!/\d/.test(pw))return 'Use at least one letter and one number.';
  return '';
 }

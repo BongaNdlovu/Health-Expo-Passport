@@ -28,7 +28,7 @@ import { queueFinishVisit } from './queue.js';
    brand-new pledge, so AV() must NOT fall back to volunteers[0] — otherwise
    saving would overwrite the first person on the roster. */
 export const AV=()=>state.volNew?null:(volunteers.find(v=>v.id===state.volId)||volunteers[0]||null);
-export const volHours=v=>(v.history||[]).reduce((t,h)=>t+(Number(h.hours)||0),0);
+export const volHours=v=>{const h=(v.history||[]).reduce((t,x)=>t+(Number(x.hours)||0),0);return Math.round(h*100)/100;};/* (V4) round the float sum to hundredths: 20×0.3 h must read 6, not 5.999999999999998 */
 export const volExpos=v=>(v.history||[]).length;
 /* The level counts expos served, one level per expo, and stops at the end of the
    programme (EXPO_TOTAL). A volunteer with 0 expos has no level — 0 must never
@@ -767,7 +767,7 @@ function viewVolRegister(){
 
   <div><div class="microlabel">${v&&!needsRegistration(v)?'Update registration':'Pledge & register'}</div>
    <div class="display mt-0.5 text-[18px] font-extrabold text-[#0f2a2c]">${v&&!needsRegistration(v)?'Keep your details current':'Volunteer for the expo'}</div>
-   <p class="mt-1 text-[11px] leading-relaxed text-[#6b8187]">${EXPO_UPCOMING.name} · ${expoLine()}</p>
+   <p class="mt-1 text-[11px] leading-relaxed text-[#6b8187]">${esc(EXPO_UPCOMING.name)} · ${expoLine()}</p>   <!-- (V9) esc, as on line 174 -->
    ${v&&!needsRegistration(v)?'':`<p class="mt-1.5 text-[11.5px] font-semibold leading-snug text-[#33504f]">Only a name and a mobile number or email are needed now. Tap <b>Submit pledge</b> any time; the rest can wait until closer to the day.</p>`}</div>
 
   ${pledgeFormParts(d,'vf',STAFF_PLEDGE_ACTS)}
@@ -874,8 +874,8 @@ export function removeExpoEntry(at){
  const v=AV(); if(!v)return;
  const i=typeof at==='number'?at:v.history.findIndex(x=>`${x.expo}-${x.date}`===at);
  if(!Number.isInteger(i)||i<0||i>=v.history.length)return;
- const gone=v.history.splice(i,1)[0];
- toast(`Removed ${fmtDate(gone.date)} entry`);
+ const gone=JSON.parse(JSON.stringify(v.history.splice(i,1)[0]));   /* (V9) deep copy: nothing later mutates the restored entry */
+ toastUndo('Entry removed',()=>{v.history.push(gone);render();});   /* (V9) restore re-inserts and saves as saveExpoEntry does (render persists) */
  render();
 }
 /* the volunteer sheet body is rebuilt by renderVolModal() when it is opened */

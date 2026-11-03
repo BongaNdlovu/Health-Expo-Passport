@@ -202,7 +202,7 @@ export function viewHome(){
      <div class="hx-eyebrow">Now serving visitor</div>
      <div class="hx-id">${esc(num)}</div>
      <div class="hx-name">${esc(a.name)} <span>· ${a.age}y ${esc(a.sex)}</span></div>
-     <div style="margin-top:10px">${capsuleHTML(a.done?'Completed · all checks recorded':`Step ${stepIdx+1} of 4 · ${JOURNEY_LABEL[step]}`)}</div>
+     <div style="margin-top:10px">${capsuleHTML(a.done&&doneCount(a)===8?'Completed · all checks recorded':a.done?`Finished · ${doneCount(a)} of 8 checks`:`Step ${stepIdx+1} of 4 · ${JOURNEY_LABEL[step]}`)}</div>   /* a visit can finish early: the header says how much of the 8 it has (V8a) */
      ${rulerHTML(pct)}
     </div>
    </div>
@@ -932,17 +932,18 @@ export function onStationInput(id,k,el,min,max){
  if(a.s[k]!=null||raw==='')readingWarn(k,'');
  updateScreenMeta();
 }
-/* on leaving the field: a wrong value is never changed into a different one. It is not saved, and the volunteer is
-   told why. A missed decimal point (72 for 7.2) is offered as a one-tap fix. */
+/* on leaving the field: a wrong value is never changed into a different one. It is not saved — the previous reading
+   stays whatever it was (V6) — and the volunteer is told why. A missed decimal point (72 for 7.2) is offered as a
+   one-tap fix. */
 export function onStationCommit(id,k,el,min,max,step){
  const a=attendees.find(x=>x.id===id); if(!a)return;
- const raw=el.value.trim(),v=parseReading(raw);
+ const raw=el.value.trim(),v=parseReading(raw),old=a.s[k];
+ const kept=old!=null?` Previous value ${disp(old)} kept.`:'';    /* (V6) only a refusal mentions what is kept */
  if(raw===''){a.s[k]=null;readingWarn(k,'');}
- else if(isNaN(v)){a.s[k]=null;readingWarn(k,`“${raw}” is not a number. Type digits only, for example ${disp(step<1?5.5:120)}.`);}
+ else if(isNaN(v))readingWarn(k,`“${raw}” is not a number. Type digits only, for example ${disp(step<1?5.5:120)}.${kept}`);
  else if(v<min||v>max){
-  a.s[k]=null;
   const d=Math.round(v)/10,fix=step<1&&d>=min&&d<=max?d:null;
-  readingWarn(k,`${disp(v)} cannot be right (possible: ${min}–${max}). Not saved: check and type it again.${fix!=null?` Did you mean ${disp(fix)}?`:''}`,fix);
+  readingWarn(k,`${disp(v)} cannot be right (possible: ${min}–${max}). Not saved: check and type it again.${fix!=null?` Did you mean ${disp(fix)}?`:''}${kept}`,fix);
  }else{a.s[k]=v;el.value=disp(v);readingWarn(k,'');}
  crossCheck(a);updateScreenMeta();
  if(a.s[k]!=null)qStartAsk(id,k);      /* still waiting in this line? offer to start them (queue.js) */

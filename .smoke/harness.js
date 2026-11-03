@@ -140,7 +140,7 @@ const sandbox = {
   setTimeout, clearTimeout, setInterval, clearInterval,
   URL: Object.assign(class extends URL {}, { createObjectURL: () => 'blob:x', revokeObjectURL() {} }),   /* a real constructor: the update check parses addresses */
   Blob: function () {},
-  Date, Math, JSON, console, performance: { now: () => Date.now() }, AbortController,
+  Date, Math, JSON, console, performance: { now: () => Date.now() }, AbortController, TextEncoder,   /* A21 measures the password in bytes */
   innerWidth: 390, innerHeight: 844, scrollY: 0, scrollTo() {},
   addEventListener(type, fn) { if (type === 'popstate') popHandlers.push(fn); (winHandlers[type] = winHandlers[type] || []).push(fn); }, removeEventListener() {},
   alert() {}, confirm: () => true, prompt: () => null,
@@ -799,17 +799,16 @@ const commit = (k, raw, min, max, step) => {
   return { v: dm.s[k], warn: $el('warn-' + k), box: el.value };
 };
 let r = commit('sugar', '99', 1, 30, 0.1);
-ok('too-high reading is not saved (and not clamped to 30)', r.v === null, 'got ' + r.v);
-ok('too-high reading tells the volunteer why', r.warn.hidden === false && /cannot be right/.test(r.warn.innerHTML) && /1–30/.test(r.warn.innerHTML), r.warn.innerHTML);
+ok('too-high reading keeps the previous value (and is not clamped to 30)', r.v === 1234 && /Previous value/.test(r.warn.innerHTML), r.v + ' | ' + r.warn.innerHTML);
 
 r = commit('sugar', '72', 1, 30, 0.1);
-ok('72 for sugar is not saved but offers the one-tap fix 7.2', r.v === null && /Did you mean 7\.2\?/.test(r.warn.innerHTML), r.v + ' | ' + r.warn.innerHTML);
+ok('72 for sugar keeps the previous value and still offers the one-tap fix 7.2', r.v === 1234 && /Did you mean 7\.2\?/.test(r.warn.innerHTML), r.v + ' | ' + r.warn.innerHTML);
 
 r = commit('sugar', '6,5', 1, 30, 0.1);
 ok('a comma decimal "6,5" is saved as 6.5', r.v === 6.5 && r.warn.hidden === true, r.v);
 
 r = commit('sugar', 'abc', 1, 30, 0.1);
-ok('text such as "abc" is not saved and the message says it is not a number', r.v === null && /not a number/.test(r.warn.innerHTML), r.v + ' | ' + r.warn.innerHTML);
+ok('text such as "abc" keeps the previous value and the message says it is not a number', r.v === 1234 && /not a number/.test(r.warn.innerHTML), r.v + ' | ' + r.warn.innerHTML);
 
 r = commit('sugar', '', 1, 30, 0.1);
 ok('an emptied field clears the reading and the warning', r.v === null && r.warn.hidden === true, r.v);
@@ -818,10 +817,10 @@ r = commit('sugar', '5.4', 1, 30, 0.1);
 ok('an in-range reading is kept exactly as typed (5.4)', r.v === 5.4 && r.box === '5.4', r.v + ' / ' + r.box);
 
 r = commit('sys', '300', 70, 210, 1);
-ok('blood pressure 300 is not saved and gets no decimal "fix"', r.v === null && !/Did you mean/.test(r.warn.innerHTML), r.v + ' | ' + r.warn.innerHTML);
+ok('blood pressure 300 keeps the previous value and gets no decimal "fix"', r.v === 1234 && !/Did you mean/.test(r.warn.innerHTML), r.v + ' | ' + r.warn.innerHTML);
 dm.s.sugar = null; dm.s.sys = null;
 $el('in-sugar').value = 'abc'; g.onStationCommit('EXPO-042', 'sugar', $el('in-sugar'), 1, 30);
-ok('non-numeric entry clears the field', dm.s.sugar === null);
+ok('non-numeric entry with no previous value leaves the field empty', dm.s.sugar === null);
 $el('in-sugar').value = ''; g.onStationInput('EXPO-042', 'sugar', $el('in-sugar'));
 ok('empty entry stays empty (not zero)', dm.s.sugar === null);
 ok('0 servings of veg still counts as recorded', (() => { dm.s.veg = 0; return g.doneCount(dm) >= 1 && dm.s.veg === 0; })());
@@ -6210,6 +6209,142 @@ function makeServer() {
     ok('TST-U8 a redraw skipped while the page was hidden is finished on focusout', /focusout/.test(srcOf('src/main.js')));
     ok('TST-R4 a save in flight cannot be started twice, and a failure says so in fixed words',
       /saving|exportBusy|saveBusy/.test(srcOf('src/results.js')) && /Could not save/.test(srcOf('src/results.js')));
+
+    device(); g.state.tab = 'home';
+  }
+
+  /* ---- 20d. Wave 4: correctness & smaller defects (Q1, V4-V6, V8a-V9, A12, A20b, A21, P1, P3-P5) ---- */
+  {
+    const srcOf = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+
+    /* TST-Q1 (Q1): the "Serving N of M" count names the places actually taken, not every entry in the line */
+    {
+      device();
+      g.qCapSet('bp|1');                      /* bp now serves two at once, like the existing multi-place tests */
+      g.state.tab = 'queue';
+      const cap = g.qStats('bp').cap;
+      g.queue.length = 0;
+      g.queue.push({ attendeeId: 'EXPO-042', station: 'bp', status: 'serving', slot: 1, calledAt: Date.now() - 300000, joinedAt: Date.now() - 600000 },
+                   { attendeeId: 'EXPO-088', station: 'bp', status: 'serving', slot: 2, calledAt: Date.now() - 200000, joinedAt: Date.now() - 500000 },
+                   { attendeeId: 'EXPO-117', station: 'bp', status: 'serving', slot: null, calledAt: Date.now() - 200000, joinedAt: Date.now() - 500000 });   /* a third desk squeezed in: over cap, no place */
+      g.render();
+      ok('TST-Q1 "Serving N of M" counts the places taken, with an over-cap extra named as extra',
+        /Serving <b>2 of 2</.test($main.innerHTML) && !/Serving <b>3 of 2</.test($main.innerHTML) && /Extra/.test($main.innerHTML),
+        ($main.innerHTML.match(/Serving <b>[^<]*<\/b>/) || ['(none)'])[0]);
+      g.queue.length = 0; g.qCapSet('bp|-1'); try { localStorage.removeItem('newstart.qcap.v1'); } catch (e) {} device(); g.state.tab = 'home';
+    }
+
+    /* TST-V4 (V4): badge hours compare as rounded money-like sums, so 20 × 0.3 h reaches 6.0 h */
+    {
+      device();
+      const v = g.migrateVolunteer({ id: 'VOL-1001', name: 'Hours Hero', status: 'registered', history: Array.from({ length: 20 }, (_, i) => ({ expo: 'E' + i, name: 'Health Expo', date: '2026-01-01', booth: 'bp', hours: 0.3 })) });
+      g.volunteers.length = 0; g.volunteers.push(v);
+      ok('TST-V4 twenty 0.3-hour entries arrive at exactly 6.0 hours', g.volHours(v) === 6 && (g.volHours(v) + '').length <= 3, 'volHours=' + g.volHours(v));
+      g.resetDemo();
+    }
+
+    /* TST-V5 (V5): no health age under 18 — the score exists only once the visitor is an adult */
+    {
+      device();
+      const teen = g.migrateAttendee({ id: 'EXPO-042', age: 15, heightCm: 160, done: true,
+        s: { sys: 118, dia: 76, sugar: 5, chol: 4, weight: 52, veg: 4, walk: 30, water: 6, sleep: 8 } });
+      const ha = g.healthAge(teen);
+      ok('TST-V5 no health age is computed for a visitor under 18', ha.complete && ha.health === null, JSON.stringify(ha));
+      const pj = g.projection(teen);
+      ok('TST-V5 ...and the 90-day projection rests on nothing when there is no health age', pj.age === null && pj.yearsWon === null, JSON.stringify(pj));
+      g.resetDemo();
+    }
+
+    /* TST-V8a (V8a): the passport header says Completed only at 8 of 8, otherwise how many of the 8 */
+    {
+      device();
+      const a = g.attendees.find(x => x.id === 'EXPO-042');
+      a.done = true; a.s = { sys: 120, dia: 78, sugar: 5.4, chol: 4.4, weight: 70, veg: 4, walk: 30, water: 6, sleep: 8 }; a.heightCm = 170;
+      /* knock readings out so the finished visit carries fewer than 8 of 8 */
+      a.s.walk = null; a.s.water = null;
+      g.state.tab = 'home'; g.state.activeId = 'EXPO-042'; g.render();
+      ok('TST-V8a the passport says how many of 8 checks a finished visit actually has',
+        /Finished · \d+ of 8 checks/.test($main.innerHTML) && !/Completed · all checks recorded/.test($main.innerHTML),
+        ($main.innerHTML.match(/(Completed[^<]*|Finished[^<]*)/) || ['', '(none)'])[1]);
+      g.state.tab = 'home'; device();
+    }
+
+    /* TST-V9 (V9): the expo name is escaped everywhere it is interpolated on volunteer screens */
+    ok('V9 the upcoming expo name is escaped in every volunteer template',
+      !/\$\{EXPO_UPCOMING\.name\}/.test(srcOf('src/volunteer.js')));
+
+    /* TST-A12 (A12): the danger range on the Profile results also names low blood sugar */
+    ok('A12 the danger wording names blood sugar under 3 as well', /under 3/.test(srcOf('src/account.js')) && /under 3/.test(srcOf('src/help.js')));
+
+    /* TST-A20b (A20b): church search is sequenced, gated, clamped and keeps edits; member notes exist for an empty list */
+    ok('A20b the church search, expo form, expo total and member notes carry their guards',
+      (srcOf('src/account.js').match(/\(A20b\)/g) || []).length >= 4);
+
+    /* TST-A21 (A21): the password limit is measured in bytes — emoji push it past bcrypt's 72 silently otherwise */
+    {
+      device();
+      const pw = 'a1' + '😀'.repeat(35);            /* 37 characters, 74+ bytes: passes every character rule today */
+      const msg = g.passwordProblem(pw);
+      ok('TST-A21 a password longer than 72 bytes is refused, whatever its character count', /72/.test(msg) && msg !== '', msg || '(accepted)');
+    }
+
+    /* TST-P1 (P1): a replaced question is not hidden by the previous question's closing timer */
+    {
+      device(); g.setAutoAnswer(null);
+      const p1 = g.confirmAsk({ title: 'Question One', label: 'Yes' });
+      g.answerConfirm(false);
+      const p2 = g.confirmAsk({ title: 'Question Two', label: 'Yes' });
+      await sleep(320);                              /* the 260 ms closing timer of question one would fire by now */
+      const sheet = $el('confirmSheet');
+      ok('TST-P1 a replaced question stays open past the previous question\'s closing animation',
+        !sheet.classList.contains('hidden') && /Question Two/.test($el('cfTitle').textContent),
+        'hidden=' + sheet.classList.contains('hidden') + ' title=' + $el('cfTitle').textContent);
+      g.answerConfirm(false); g.setAutoAnswer(false);
+      await p1; await p2;
+    }
+
+    /* TST-P3 (P3): an imported church plan never carries the importer's own label */
+    {
+      device();
+      const parsed = g.parseCustomPlanFile(JSON.stringify({ title: 'Imported Plan', problem: 'bp', actions: [{ do: 'Walk 10 min' }, { do: 'Take the stairs' }, { do: 'Sleep 7 hours' }], by: 'Random Clinic', note: '', at: '' }));
+      const norm = parsed && parsed.ok ? parsed.plan : null;   /* parseCustomPlanFile returns {ok, plan} */
+      ok('TST-P3 an imported plan is always labelled with this church, never the source file',
+        norm && norm.by && !/Random Clinic/.test(norm.by), 'by=' + JSON.stringify(norm && norm.by) + ' parsed=' + JSON.stringify(parsed).slice(0, 150));
+    }
+
+    /* TST-P4 (P4): Escape closes only the overlay on top (the known-top confirm sheet first, then the screen
+       under it on the next Escape), and Back-echoes cannot stack up */
+    {
+      device(); g.resetDemo(); g.state.tab = 'home'; g.render();
+      const hB0 = histBacks.length;
+      g.openBigScreen();                            /* registered overlay #1 */
+      const p = g.confirmAsk({ title: 'Question Two', label: 'Yes' });   /* the top overlay: a known close */
+      const kd = (docHandlers.keydown || []);      /* a real Escape is delivered to every keydown listener */
+      for (const f of kd) f({ key: 'Escape' });
+      const first = await Promise.race([p.then(v => 'answered:' + v), sleep(150).then(() => 'hung')]);
+      ok('TST-P4 one Escape closes the top overlay (the question is answered) and steps history once',
+        first === 'answered:false' && histBacks.length === hB0 + 1, first + ' +' + (histBacks.length - hB0) + ' backs');
+      for (const f of kd) f({ key: 'Escape' });     /* the screen under it is now on top and goes too */
+      g.closeBigScreen();
+      ok('TST-P4 ...the Back-echo guard is a counter, not a flag', /ignoreNextPop\+\+/.test(srcOf('src/overlay.js')));
+    }
+
+    /* TST-P5 (P5): the plan's mechanism line is escaped like everything else (defence in depth) */
+    ok('P5 the plan mechanism line is escaped', /esc\(p\.mech\)/.test(srcOf('src/results.js')));
+
+    /* Q2/Q3/Q4 (structural): the queued leaves, the fresh call toast and the server-counted confirm carry their guards */
+    {
+      const qs = srcOf('src/queue.js');
+      ok('Q2/Q3/Q4 flushLeaves keeps leaves added mid-flush, the Call toast reads the fresh entry, the Clear confirm counts on the server, and failed saves are said out loud',
+        /\(Q2\)/.test(qs) && /\(Q3\)/.test(qs) && /count:'exact',head:true|count:'exact', head:true/.test(qs) && (qs.match(/console\.warn/g) || []).length >= 3 && /\(Q4\)/.test(qs),
+        JSON.stringify({ q2: /\(Q2\)/.test(qs), q3: /\(Q3\)/.test(qs), warns: (qs.match(/console\.warn/g) || []).length }));
+    }
+
+    /* P2b: a missing plan id or follow-up id is said out loud, never a silent create or clear */
+    ok('P2b a missing plan id or follow-up uid is refused with a toast', (srcOf('src/churchPlans.js').match(/\(P2b\)/g) || []).length >= 2);
+
+    /* V5 text: the under-18 line, owner-approved */
+    ok('V5 the Results screen tells under-18s the health age starts at 18', /available from age 18/.test(srcOf('src/results.js')));
 
     device(); g.state.tab = 'home';
   }

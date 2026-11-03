@@ -199,6 +199,8 @@ export async function saveChurchPlan(e,cid){
  for(let i=0;i<8;i++){const d=v('cpDo'+i);if(d)actions.push({do:d,why:v('cpWhy'+i),how:v('cpHow'+i).split('\n').map(h=>h.trim()).filter(Boolean)});}
  if(!problem){toast('Choose the problem this plan is for.');return;}
  if(!actions.length){toast('Add at least one thing to do.');return;}
+ if(ed.id){const S=cloud[cid===myChurchId()?'plans':'adminPlans'];
+  if(!(S&&S.list.some(p=>p.id===ed.id))){toast('That plan is no longer on the list. Refresh and try again.');return;}}   /* an edit whose plan row is gone must not silently become a new plan (P2b) */
  planSaving=true;
  try{
   const r=await acctRpc('save_church_plan',{p_church:cid,p_id:ed.id||null,p_problem:problem,p_title:v('cpTitle'),p_actions:actions,p_note:v('cpNote')},'Plan saved ✓');
@@ -209,6 +211,7 @@ export async function saveChurchPlan(e,cid){
 }
 export async function deleteChurchPlan(cid,id){
  const S=cloud[cid===myChurchId()?'plans':'adminPlans'],cp=S&&S.list.find(p=>p.id===id);
+ if(!cp){toast('That plan is no longer on the list. Refresh and try again.');return;}   /* a row gone from the list must not reach the RPC (P2b) */
  const yes=await confirmAsk({title:'Delete this plan?',
   body:`“${cp?cp.title:''}” goes for good. Visitors it was sent to go back to the app’s plan.`,label:'Delete',danger:true});
  if(!yes)return;
@@ -256,6 +259,7 @@ export function followupsFor(cid){
  return S.list.map(p=>p.user_id);
 }
 export async function setFollowup(uid,on){
+ if(!on&&!uid){toast('Pick a follow-up person first.');return;}   /* an empty uid in a REMOVE must not silently clear (P2b) */
  const r=await acctRpc('set_followup',{p_user:uid,p_on:on},on?'Now a follow-up person ✓':'No longer a follow-up person');
  const cid=cloud.members&&cloud.members.cid;
  if(r&&cid)await loadFollowups(cid,cid===myChurchId()?'followups':'adminFollowups');

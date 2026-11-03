@@ -82,7 +82,11 @@ export function parseCustomPlanFile(text){
  if(s.length>CUSTOM_MAX_BYTES)return {ok:false,error:'That file is too big (the limit is 2 MB).'};
  let raw;
  try{raw=JSON.parse(s);}catch(e){return {ok:false,error:'That file is not valid JSON.'};}
- try{return {ok:true,plan:normaliseCustomPlan(raw)};}catch(e){return {ok:false,error:(e&&e.message)||'That file is not a plan template.'};}
+ try{
+  const plan=normaliseCustomPlan(raw);
+  plan.by=(cloud.acct&&cloud.acct.church&&cloud.acct.church.name)||'your church';   /* (P3) an imported plan is labelled with this church, never with the source file's by */
+  return {ok:true,plan};
+ }catch(e){return {ok:false,error:(e&&e.message)||'That file is not a plan template.'};}
 }
 
 /* The one example the template download writes; parseCustomPlanFile accepts it back unchanged. */

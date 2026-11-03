@@ -4,15 +4,15 @@ import { $ } from './helpers.js';
 import { journeyTop } from './visitor.js';
 import { attendees, hueOf, state, volunteers } from './data.js';
 import { withoutOldReadings } from './retention.js';   /* the Care badge counts only readings a screen may still show (E7) */
-import { AV, badgeTier, closeSwitcher, closeVolModal, closeWhatsApp, needsRegistration, renderServeSheet, renderServeView } from './volunteer.js';
+import { AV, badgeTier, needsRegistration, renderServeSheet, renderServeView } from './volunteer.js';
 import { persist } from './state.js';
 import { A, doneCount, esc, firstName, initials, redFlag } from './helpers.js';
-import { closeQueuePick, queue, viewQueue } from './queue.js';
-import { closeHelp } from './help.js';
+import { queue, viewQueue } from './queue.js';
 import { journeyBottom, viewHome, viewNoVisitor, viewScreen, viewSend } from './visitor.js';
 import { updateSimUI, viewCare, viewFood, viewPlan, viewResults } from './results.js';
 import { viewProfile } from './account.js';
-import { closeCloud } from './cloud.js';
+/* The shell keeps no Escape handler of its own: every sheet is overlayOpened-registered, and overlay.js's
+   ONE global Escape handler closes the top one (P4). */
 /* The app shell: rendering, toast, liquid interactions and the intro. Split from the original single-file app; bundled back into one file by tools/build.js. */
 /* ================= RENDER: SHELL ================= */
 /* hue for every tab, + which tabs use the shared "main" container */
@@ -106,7 +106,6 @@ export function toastUndo(m,fn){
  clearTimeout(toastTimer);
  toastTimer=setTimeout(()=>{undoFn=null;const b=$('#toastUndo');if(b)b.classList.add('hidden');$('#toast').classList.add('opacity-0','translate-y-3');},6000);   /* the message leaves with the offer: left up, it covered the buttons */
 }
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeHelp();closeQueuePick();closeSwitcher();closeWhatsApp();closeVolModal();closeCloud();}});
 
 /* ================= LIQUID INTERACTIONS ================= */
 export function syncRanges(){document.querySelectorAll('input[type=range]').forEach(/** @param {HTMLInputElement} r */(r)=>r.style.setProperty('--pct',((Number(r.value)-Number(r.min))/((Number(r.max)-Number(r.min))||1)*100)+'%'));}

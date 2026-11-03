@@ -13,10 +13,11 @@ import { customPlanBox } from './customPlan.js';
 import { GRACE_DAYS, hasReadings, readingsGone, visitIsOld, withoutOldReadings } from './retention.js';
 import { hasConsent, optedIn } from './visitor.js';
 let saveBusy='';   /* the file whose save is still handing off to the share sheet, '' when none (R4) */
-/* the three numbers at the top of Results: actual age, health age now, and the 90-day goal */
+/* the three numbers at the top of Results: actual age, health age now, and the 90-day goal.
+   An under-18 visitor reads the owner-approved neutral line instead of a number or an empty gap (V5). */
 function scoreTiles(tile,a,ha,proj,gone){
  return `${tile('Actual age',fmt1(a.age),'yrs old','border-sky-200/70 bg-sky-50/80 text-sky-800')}
-    ${tile('Now',gone?'—':ha.health!=null?fmt1(ha.health):'—',gone?'readings deleted':ha.complete?`${ha.total>0?'+':''}${fmt1(ha.total)} yrs`:ha.needsHeight?'add height':doneCount(a)+'/8 done',
+    ${tile('Now',gone?'—':a.age<18?'Health age is available from age 18.':ha.health!=null?fmt1(ha.health):'—',gone?'readings deleted':ha.complete?`${ha.total>0?'+':''}${fmt1(ha.total)} yrs`:ha.needsHeight?'add height':doneCount(a)+'/8 done',
       ha.total>0.4?'border-rose-200/70 bg-rose-50/70 text-rose-700':'border-sage-200/80 bg-sage-50/90 text-sage-800')}
     ${tile('90-day goal',gone||proj.age==null?'—':fmt1(proj.age),gone?'readings deleted':proj.age==null?'after all 8 checks':`win ${fmt1(proj.yearsWon)} yrs`,'border-lilac-200/80 bg-lilac-50/90 text-lilac-700','scoreGoal')}`;
 }
@@ -389,7 +390,7 @@ export function viewPlan(){
    <p class="mt-2.5 text-[10px] leading-relaxed text-[#8a9aa0]">${esc(DISCLAIMER)}</p>
   </div></details>`
   :`<details class="glass pl-det"><summary>What this plan is based on</summary><div>
-   <p class="text-[11.5px] leading-relaxed text-[#3d5c5e]">${p.mech}</p>
+   <p class="text-[11.5px] leading-relaxed text-[#3d5c5e]">${esc(p.mech)}</p>
    <ul class="mt-2.5 space-y-2">${p.facts.map(([txt,pg])=>`<li class="flex items-start gap-2.5">
      <span class="mt-1.5 h-1.5 w-1.5 flex-none rounded-full bg-brand-500"></span>
      <span class="min-w-0 flex-1 text-[11.5px] leading-snug text-[#3d5c5e]">${txt}${ref(pg)}</span></li>`).join('')}</ul>

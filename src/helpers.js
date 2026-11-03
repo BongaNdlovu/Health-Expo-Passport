@@ -123,8 +123,8 @@ export function healthAge(a){
     look younger, so without a height there is no health age yet */
  const needsHeight=doneCount(a)===8&&bmi(a)==null;
  const complete=doneCount(a)===8&&!needsHeight;
- /* a health age still has to be a plausible adult age, however good the readings are */
- return {f,total,complete,needsHeight,health:complete?adultAge(a.age,total):null};
+ /* a health age still has to be a plausible adult age, however good the readings are — never under 18 (V5) */
+ return {f,total,complete,needsHeight,health:complete&&a.age>=18?adultAge(a.age,total):null};
 }
 export const DROPS={kSys:[0,4,8,11],kDia:[0,2,4,6],hSys:[0,3,5],hDia:[0,2,3]};
 export function simBP(a){
@@ -141,7 +141,7 @@ export function simBP(a){
    what someone already does (more than 5 servings, 8 glasses or 9 hours stay as they are). */
 export function projection(a){
  const ha=healthAge(a);
- if(!ha.complete)return {age:null,yearsWon:null};
+ if(!ha.complete||ha.health==null)return {age:null,yearsWon:null}; /* (V5) an under-18 visitor has no goal either */
  const s=a.s,{sys,dia}=simBP(a),{kitchen,walk,hydro}=state.sim,b=bmi(a);
  const toward=(now,planned,floor)=>now<=floor?now:Math.max(floor,planned);
  const m={sys:toward(s.sys,sys,120),dia:toward(s.dia,dia,80),sugar:s.sugar,chol:s.chol,
