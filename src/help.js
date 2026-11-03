@@ -2,14 +2,30 @@
 import { $, esc } from './helpers.js';
 import { state } from './data.js';
 import { JOURNEY, toast } from './shell.js';
-import { hideModal, showModal } from './volunteer.js';
+import { hideModal, isAdminAcct, mayPlace, showModal } from './volunteer.js';
+import { cloud } from './state.js';
+import { roleTag } from './ui.js';
+
+/** @typedef {[string, string] | [string, string, string]} HelpRow  a third element names the only role that has it */
+
+/* Help for a control only some roles have is shown only to them, with the same tag the control carries; nobody else
+   reads about it. Practice mode shows everything, as everyone can do everything there. */
+const isOwner = () => !!(cloud.acct && cloud.acct.platform_admin);
+function helpSees(role) {
+ if (!role || !cloud.user) return true;
+ if (role === 'owner') return isOwner();
+ if (role === 'admin') return isAdminAcct() || isOwner();
+ if (role === 'lead') return mayPlace() || isOwner();
+ return true;
+}
+const helpKey = () => ['owner', 'admin', 'lead'].map(r => helpSees(r) ? 1 : 0).join('');
 
 /* The Help & tutorial sheet, opened from Profile. It is written from the app itself: each page, the sections on it, and
    what each control does. It is plain text, so it changes only when the app changes; update it with the app. Every
    claim was checked against the code (see the Help checks in .smoke/harness.js). */
 
 /* The opening pages of the guide: what the app is for, a visit, the roles, practice mode and privacy (v1.6.2). */
-/** @type {{title:string, what:string, sections:{name:string, items:[string,string][]}[]}[]} */
+/** @type {{title:string, what:string, sections:{name:string, role?:string, items:HelpRow[]}[]}[]} */
 export const HELP_START = [
  { title: 'Start here: what this app is for',
    what: 'Health Expo Passport helps your church run a health expo. Each visitor gets a passport. Volunteers record 8 quick checks at the stations. The app turns them into a health age and a 90-day plan, sends the plan home, and gives your follow-up team a list of who to call. It does not diagnose anyone.',
@@ -35,8 +51,8 @@ export const HELP_START = [
    sections: [
     { name: 'Roles', items: [
       ['Volunteer', 'Pledges on Team, then works a station. On Check, pick Your station and use Done · call next. If you are a volunteer, start on Team → Pledge.'],
-      ['Team leader', 'Leads one booth. Can place helpers and remove a visitor at their own station.'],
-      ['Church admin (Health Department Leader)', 'Approves people, sets up expos, writes plans, exports data and clears the queue.'],
+      ['Team leader', 'Leads one booth. Can place helpers and remove a visitor at their own station.', 'lead'],
+      ['Church admin (Health Department Leader)', 'Approves people, sets up expos, writes plans, exports data and clears the queue.', 'admin'],
       ['Staff account', 'A signed-in account. It needs a church admin’s approval before it can see the queue and church data.'] ] } ] },
  { title: 'Practice mode and live use',
    what: 'Practice mode is for learning; sign in to work a real expo.',
@@ -73,7 +89,7 @@ export const HELP_START = [
 ];
 
 /* [label, what it does] pairs inside a section */
-/** @type {{title:string, tab:string, what:string, sections:{name:string, items:[string,string][]}[]}[]} */
+/** @type {{title:string, tab:string, role?:string, what:string, sections:{name:string, role?:string, items:HelpRow[]}[]}[]} */
 export const HELP_PAGES = [
  { title: 'Home', tab: 'home',
    what: 'The start screen. It shows who is being screened right now, today’s visitors and how far the expo has got.',
@@ -84,7 +100,7 @@ export const HELP_PAGES = [
       ['Blood pressure, Blood sugar, Body BMI', 'The three headline readings. A dash means not measured yet.'] ] },
     { name: 'Visitors today', items: [
       ['Visitor rows', 'Everyone registered today, with how many of the 8 checks are done and which step they are on. Tap a row to open their passport; the line under the heading says “the bin removes them” where you may remove visitors.'],
-      ['Remove (the bin at the right of a row)', 'Deletes that visitor, after asking “Remove NAME?”. Signed in, only church admins and team leaders see it; in practice mode anyone does. It is the same as Remove visitor on the passport: it deletes their passport and readings for every desk and takes them out of every queue line, and it cannot be undone from the app.'] ] },
+      ['Remove (the bin at the right of a row)', 'Deletes that visitor, after asking “Remove NAME?”. Signed in, only church admins and team leaders see it; in practice mode anyone does. It is the same as Remove visitor on the passport: it deletes their passport and readings for every desk and takes them out of every queue line, and it cannot be undone from the app.', 'lead'] ] },
     { name: 'Screening Spectrum', items: [
       ['Emergency — attend quickly', 'A red reading, such as blood pressure 160/100 or more, blood sugar 15 or more, or blood sugar under 3.'],
       ['Watch — elevated', 'Something is raised, but no reading is in the red range.'],
@@ -119,7 +135,7 @@ export const HELP_PAGES = [
     { name: 'Visitor header', items: [
       ['Change', 'Opens the switcher to pick a different visitor.'],
       ['Where they stand in the queue', 'A small note under the name, for example “In line at Blood Pressure · 2 of 5” or “Being served at Blood Pressure”. It lists every line they are in, and it is empty when they are in no line or the queue cannot be read (no connection). It updates by itself as the lines move.'],
-      ['Remove visitor', 'Under the visitor’s name bar, on every step. It asks “Remove NAME?” first. Remove deletes their passport and readings for every desk in your church and takes them out of every queue line. It cannot be undone from the app. Signed in, only church admins and team leaders see it; a leader can remove only a visitor who is waiting or being served at their own station. It needs a connection when the visitor is already on the shared database. In practice mode, anyone can remove, and it only affects this device.'] ] },
+      ['Remove visitor', 'Under the visitor’s name bar, on every step. It asks “Remove NAME?” first. Remove deletes their passport and readings for every desk in your church and takes them out of every queue line. It cannot be undone from the app. Signed in, only church admins and team leaders see it; a leader can remove only a visitor who is waiting or being served at their own station. It needs a connection when the visitor is already on the shared database. In practice mode, anyone can remove, and it only affects this device.', 'lead'] ] },
     { name: 'Finding a visitor', items: [
       ['Where the lists are', 'Change (at the top of the visitor screens) opens a list of visitors, and Home has Visitors today. Tap a name to open that visitor where they left off.'],
       ['The latest 25', 'With more than 25 visitors, each list shows only the latest 25 (and the visitor who is open), with a search box above it. On Home a note says, for example, “Latest 25 of 140 — search to find anyone else.”'],
@@ -163,7 +179,7 @@ export const HELP_PAGES = [
     { name: 'Plan (step 3)', items: [
       ['Plan · 90 days', 'A 90-day plan built from the readings. “When these feel easy, add” suggests the next steps.'],
       ['Food plan', 'Opens from the plan: the food behind it.'],
-      ['Custom plan (church admins only)', 'Write a plan for this visitor, or start from the plan they were shown. You can also import a plan file (JSON) and download a blank template. Remove custom plan returns them to the generated plan.'] ] },
+      ['Custom plan', 'Write a plan for this visitor, or start from the plan they were shown. You can also import a plan file (JSON) and download a blank template. Remove custom plan returns them to the generated plan.', 'admin'] ] },
     { name: 'Send home (step 4)', items: [
       ['Send the plan on WhatsApp', 'Shows a preview, then sends it to their number. If no number is saved, you pick their contact.'],
       ['Email the plan', 'Shows a preview, then opens your email app with it. If no email is saved, you type one first. The email is sent from that app, not from here.'],
@@ -184,7 +200,7 @@ export const HELP_PAGES = [
       ['Waiting, Being served', 'Counts across all stations.'],
       ['Finished', 'Visits finished in the last 18 hours, the period the queue loads.'],
       ['Longest wait', 'The longest anyone has waited, across all stations.'],
-      ['Clear finished & removed · N', 'Church admins only. Appears when there are finished or removed entries. It asks first, then deletes them for every desk, including older ones this screen no longer loads. People still waiting or being served stay, but the Finished count and the average time per person start again from estimates. This phone keeps only the latest 150 finished or removed queue entries; older ones drop off on their own. That limit is only for the queue list: visitor records and care notes are kept for their own POPIA retention period.'] ] },
+      ['Clear finished & removed · N', 'Appears when there are finished or removed entries. It asks first, then deletes them for every desk, including older ones this screen no longer loads. People still waiting or being served stay, but the Finished count and the average time per person start again from estimates. This phone keeps only the latest 150 finished or removed queue entries; older ones drop off on their own. That limit is only for the queue list: visitor records and care notes are kept for their own POPIA retention period.', 'admin'] ] },
     { name: 'The queue and the passport', items: [
       ['Registering', 'A newly registered visitor joins the Blood Pressure line straight away (the first check), when the queue can take changes.'],
       ['The Start and Done row', 'On the Check screen, in the footer above the buttons. A volunteer who works one station sees one row for that station; a volunteer doing every check sees a row for each line the visitor is in. It is not shown on the other steps, or for the paper-record extras, which have no line.'],
@@ -200,7 +216,7 @@ export const HELP_PAGES = [
       ['Finish visit', 'Takes the visitor out of every line they are in. With no connection the visit still finishes, and the lines are left as soon as the queue can change again, in the same church.'],
       ['Open passport', 'On the person with you: opens their passport. The passport’s header shows their place in line.'],
       ['Results and Send home', 'Confirming the results and sending the plan do not change the queue.'],
-      ['Remove visitor', 'Takes them out of every line, and deletes the visitor.'],
+      ['Remove visitor', 'Takes them out of every line, and deletes the visitor.', 'lead'],
       ['Still needs a tap', 'Calling the next person, finishing Counselling, Kitchen Pharmacy or Prayer from the Queue screen, and ↩ Put back.'] ] },
     { name: 'Station cards', items: [
       ['Ten lines', 'Vitals & BMI, Blood Pressure, Sugar & Chol., Fruit & Veg, Exercise, Water, Sleep, Kitchen Pharmacy, Counselling and Prayer. Each of the 8 health-age checks has its own line (Sugar & Chol. covers blood sugar and cholesterol together); Kitchen Pharmacy, Counselling and Prayer are the others.'],
@@ -255,11 +271,11 @@ export const HELP_PAGES = [
       ['Availability and skills', 'Where the form asks for them.'] ] },
     { name: 'Record: Log an expo', items: [
       ['Log an expo', 'Adds a past expo for a helper: name, date, booth worked and hours. Remove deletes an entry.'] ] },
-    { name: 'Placement board (admins and station leaders)', items: [
+    { name: 'Placement board', role: 'lead', items: [
       ['Opening it', 'With placement mode on, tap a volunteer in the Team list to open the placement board.'],
       ['Move, Swap, Release', 'Move a helper to another booth, swap two helpers, or release a helper from a booth.'],
-      ['Lead', 'Makes you the leader of a booth.'] ] },
-    { name: 'A team leader’s team', items: [
+      ['Lead', 'Makes you the leader of a booth.', 'admin'] ] },
+    { name: 'A team leader’s team', role: 'lead', items: [
       ['Add, release, shift', 'A leader can add a helper to their team, release one, and set their shift.'] ] } ] },
 
  { title: 'Profile', tab: 'me',
@@ -267,8 +283,8 @@ export const HELP_PAGES = [
    sections: [
     { name: 'Who you are', items: [
       ['Name, email and roles', 'Your roles (for example Health Department Leader) and your church.'],
-      ['My church', 'For church admins: members, invitations, expos, church plans and follow-up people.'],
-      ['All churches', 'For platform admins only: every church.'] ] },
+      ['My church', 'Members, invitations, expos, church plans and follow-up people.', 'admin'],
+      ['All churches', 'Every church.', 'owner'] ] },
     { name: 'Sync', items: [
       ['Status', 'For example “Up to date · synced just now”.'],
       ['Visitors, Volunteers, To upload', 'Counts held on this device. To upload is what is still waiting to be sent.'],
@@ -280,14 +296,14 @@ export const HELP_PAGES = [
       ['My details & results', 'Your details form and your screening results.'],
       ['Account & security', 'Password, installing the app, Help & tutorial, the guided tour, Sign out and Delete my account. In practice mode, Settings & help at the top of Profile has Help & tutorial and the guided tour.'] ] },
     { name: 'Pledge & registration', items: [
-      ['What you can do now', 'A line at the top says where you stand: not committed yet; pledged (you can edit or unpledge); registered (you can edit or deregister); or checked in (only your church’s admin can change it).'],
+      ['What you can do now', 'A line at the top says where you stand: not committed yet; pledged (you can edit or unpledge); registered (you can edit or deregister); or checked in (it can’t be changed here).'],
       ['My pledge', 'Your status, your name, the station and shift you were given, which expo, how many expos you pledged to out of the programme, when you pledged and, once registered, when you were registered.'],
       ['Edit my pledge', 'Changes what you pledged.'],
       ['Unpledge', 'Only while you are pledged and not yet registered. It asks “Unpledge from the expo?”, then your name comes off the team list and your pledge is removed. You can pledge again at any time.'],
-      ['Deregister', 'Only once your church’s admin has registered you. It asks “Deregister from the expo?”, then takes you off the expo plan and releases your station; a station leader hands the station back. Your pledge stays on the team list, so you can be registered again later, and the app says “Deregistered — your pledge still stands”.'],
-      ['Checked in', 'There is no button: once you are checked in for an expo, only your church’s admin can change it.'],
+      ['Deregister', 'Only once you are registered. It asks “Deregister from the expo?”, then takes you off the expo plan and releases your station; a station leader hands the station back. Your pledge stays on the team list, so you can be registered again later, and the app says “Deregistered — your pledge still stands”.'],
+      ['Checked in', 'There is no button: once you are checked in for an expo, it is changed for you if needed.'],
       ['Health expos', 'The open expos, each with “Pledge to help at this expo”.'],
-      ['My team', 'For station leaders: add people who asked for your station, take your own people off it and set their shifts.'] ] },
+      ['My team', 'Add people who asked for your station, take your own people off it and set their shifts.', 'lead'] ] },
     { name: 'My details & results', items: [
       ['Full name, phone, area, date of birth', 'Only you and your church’s admins see these. Save my details keeps them.'],
       ['My screening results', 'Appear once a church admin links your expo badge to this account.'] ] },
@@ -300,7 +316,7 @@ export const HELP_PAGES = [
     { name: 'Notifications (the bell)', items: [
       ['Bell', 'In the header, when signed in (practice mode has no notifications). Shows new notifications for your account, such as a change to the roster. Open it to read them, and mark them read.'] ] } ] },
 
- { title: 'My church (church admins)', tab: 'me',
+ { title: 'My church', tab: 'me', role: 'admin',
    what: 'Reached from Profile → My church. The places where a church is run.',
    sections: [
     { name: 'Members', items: [
@@ -320,11 +336,11 @@ export const HELP_PAGES = [
     { name: 'Church plans and follow-up people', items: [
       ['Church plans', 'Write, edit or delete the church’s plans. Each visitor’s plan can be set to follow one of them.'],
       ['Follow-up people', 'The members who receive the follow-up lists.'] ] },
-    { name: 'All churches (platform admins)', items: [
+    { name: 'All churches', role: 'owner', items: [
       ['Search and status', 'Finds a church and changes its status.'] ] } ] }
 ];
 
-/** @type {{title:string, steps:string[]}[]} */
+/** @type {{title:string, steps:(string|[string,string])[]}[]} */
 export const HELP_TUTORIALS = [
  { title: 'Your first time', steps: [
     'Sign in with your email. If you are new, sign up, then wait for a church admin to approve you.',
@@ -343,12 +359,12 @@ export const HELP_TUTORIALS = [
     'If several volunteers serve at one station (blood pressure with 3 nurses, 2 prayer partners), set People served at once with + so each gets a place and Call next fills the next free place.',
     'When they finish, tap the big Done · call next → button. They move to the next station on their route and the next person in your line is called. On their passport (Open passport) the footer has Done at your station instead, which also moves them on without calling anyone.',
     'If someone steps out, ↩ Put back returns them to the line. ✕ Remove and then Remove? takes them out.',
-    'A church admin can tap Clear finished & removed at the top of Queue, at the end of the day or after practice, to empty the history.',
+    ['Tap Clear finished & removed at the top of Queue, at the end of the day or after practice, to empty the history.', 'admin'],
     'For Kitchen Pharmacy or Prayer, use + Add visitor.',
     'Use Big screen on a TV to show the lines to the room.' ] },
  { title: 'Remove a visitor', steps: [
     'Visitor → open the visitor (Change, or tap them in Visitors today).',
-    'Tap Remove visitor under their name bar. Only church admins and team leaders see it.',
+    'Tap Remove visitor under their name bar.',
     'Read the question, then tap Remove. Tap Cancel to keep them.',
     'The visitor disappears from every desk and from every queue line.' ] },
  { title: 'A visitor stops part-way', steps: [
@@ -364,11 +380,11 @@ export const HELP_TUTORIALS = [
     'Read “What you can do now” at the top.',
     'Pledged, not yet registered: tap Unpledge and confirm. Your name leaves the team list and you can pledge again at any time.',
     'Registered: tap Deregister and confirm. You come off the expo plan and your station is released; your pledge stays, so you can be registered again.',
-    'Checked in: ask your church’s admin; there is no button for it.' ] },
+    'Checked in: there is no button for it; it is changed for you if needed.' ] },
  { title: 'Register a volunteer and place them', steps: [
     'Home → tap the Pledge & Booth Registration banner. Start a new volunteer and fill in the details, booth choices and availability.',
     'In Team → Muster, tap a name under “Pledged — registration pending” to register them.',
-    'Use the placement board (admins and station leaders) to fill booths.' ] },
+    ['Use the placement board to fill booths.', 'lead'] ] },
  { title: 'After the expo', steps: [
     'Care: review Urgent, 48-hour follow-up calls and Seminar & co-op interests.',
     'Care → Export CSV for the records. Keep the file private.',
@@ -376,7 +392,7 @@ export const HELP_TUTORIALS = [
 ];
 
 /** topics that cut across the pages; each has the same shape as a page */
-/** @type {{title:string, what:string, sections:{name:string, items:[string,string][]}[]}[]} */
+/** @type {{title:string, what:string, sections:{name:string, role?:string, items:HelpRow[]}[]}[]} */
 export const HELP_TOPICS = [
  { title: 'Working offline and keeping in sync',
    what: 'What the app does when the connection drops, and how the desks stay in step.',
@@ -419,11 +435,11 @@ export const HELP_TOPICS = [
       ['Readings and prayer requests', 'Cleared 7 days after the visit. The app does the same on the device, judged on the database’s clock, so a phone with a wrong date does not clear anything early.'],
       ['Visitors who did not agree to follow-up', 'Deleted, with their readings, after 7 days.'],
       ['Visitors who agreed to follow-up', 'Only the name and contact details stay, for up to 2 years after the last visit. Then the whole record goes.'],
-      ['Queue entries', 'They hold only a badge number and times. A church admin can clear finished and removed ones at any time; the daily clean-up deletes any that are older than 30 days.'],
+      ['Queue entries', 'They hold only a badge number and times. Finished and removed ones can be cleared at any time; the daily clean-up deletes any that are older than 30 days.'],
       ['The daily clean-up', 'Runs on the server at 03:00 each day. If it is not switched on for your church, the app’s support team runs it by hand.'] ] },
     { name: 'Deleted by a person', items: [
-      ['Remove visitor', 'Church admins, and team leaders for a visitor at their own station. See Visitor.'],
-      ['Clear finished & removed', 'Church admins, on the Queue page.'],
+      ['Remove visitor', 'A team leader only for a visitor at their own station. See Visitor.', 'lead'],
+      ['Clear finished & removed', 'On the Queue page.', 'admin'],
       ['Sign out', 'Clears the visitor and volunteer data on this device. The shared database keeps it.'],
       ['Delete my account', 'Deletes your login and your details. Visitor and volunteer records stay with your church.'] ] },
     { name: 'Behind the scenes', items: [
@@ -432,7 +448,7 @@ export const HELP_TOPICS = [
       ['The visitor’s rights', 'The consent notice tells the visitor they may see, correct or ask for deletion of their information at any time, and gives the Information Regulator for complaints.'] ] } ] }
 ];
 
-/** @type {[string, string][]} */
+/** @type {HelpRow[]} */
 export const HELP_MESSAGES = [
  ['The live queue isn’t switched on for your church yet', 'Your church’s queue has not been set up on the shared database. Ask your church admin to contact the app’s support. Meanwhile you can still register and check visitors.'],
  ['This sign-in is not approved for the queue', 'Ask a church admin to approve your staff account.'],
@@ -454,17 +470,18 @@ export const HELP_MESSAGES = [
  ['Done at Blood Pressure?', 'Some of that station’s readings are missing, and the question names them. Done anyway goes on; Keep going stays.'],
  ['… is back with you at Blood Pressure', 'Undo put the visitor back with you.'],
  ['… finished ✓ · now in the … line · Next: …', 'Done · call next finished the person, put them in their next line (say where to go) and called the next one.'],
- ['Only a church admin can clear the queue', 'Clearing deletes entries for good, so it is limited to church admins. Ask one to do it.'],
- ['Nothing was cleared — only a church admin can clear the queue', 'The database refused the delete for this sign-in. Ask a church admin.'],
- ['Only your church’s admins and team leaders can remove a visitor', 'Remove visitor is limited to those roles.'],
+ ['This can’t be done from this account.', 'The action is not open to this sign-in, so nothing was changed.'],
+ ['Nothing was cleared. This can’t be done from this account.', 'The database refused the delete for this sign-in.'],
+ ['This visitor can’t be removed from this account.', 'Nothing was removed.'],
  ['Removing a visitor needs a connection — try again when you are online.', 'The visitor is on the shared database, so it has to be removed there first. Reconnect and try again.'],
- ['The database did not remove them: only your church’s admins and team leaders can', 'The database refused. A team leader can remove only a visitor waiting or being served at their own station.'],
+ ['The database did not remove them. This visitor can’t be removed from this account.', 'The database refused, so nothing was removed.'],
+ ['Custom plans are not available on this account.', 'Nothing was changed.'],
  ['Saved copy is nearly full — sync now and remove old visitors', 'This device holds about 10,000 visitors. Sync, then remove visitors you no longer need.'],
  ['That email address does not look right', 'Check the address, for example name@example.com. Leave it empty where it is optional.'],
  ['Could not reach the server yet — retrying', 'Wait. The app retries when the connection returns.']
 ];
 
-/** @type {[string, string][]} */
+/** @type {HelpRow[]} */
 export const HELP_TERMS = [
  ['Badge number (EXPO-123)', 'The visitor’s number, printed on their lanyard.'],
  ['Station', 'One place in the expo, and its line in the queue: Vitals & BMI, Blood Pressure, Sugar & Chol., Fruit & Veg, Exercise, Water, Sleep, Kitchen Pharmacy, Counselling, Prayer.'],
@@ -475,7 +492,7 @@ export const HELP_TERMS = [
  ['Pledge', 'A volunteer’s commitment to help at an expo.'],
  ['Booth', 'The team and station a volunteer works at.'],
  ['Leader', 'The person in charge of a booth.'],
- ['Church admin', 'A member who can approve people, change roles and manage expos. Only a church admin can write custom plans and clear the queue; admins and team leaders can remove a visitor.'],
+ ['Church admin', 'A member who approves people, changes roles, manages expos, writes custom plans and clears the queue.', 'admin'],
  ['Practice mode', 'Not signed in. Three made-up visitors and a queue on this device only. Nothing is sent to the shared database and other phones cannot see it; it stays on this phone until you tap Reset demo. Never enter real visitors in practice mode.'],
  ['Sync', 'Sending this device’s changes to the shared database and fetching other desks’ changes. See “Working offline and keeping in sync”.'],
  ['Team leader', 'A volunteer who leads a booth.']
@@ -488,7 +505,7 @@ export const HELP_QUEUE_PHASES = [
  ['3. Finished (done)', 'Done · call next → (or Done ✓ when nobody else is waiting) marks them finished at this station. If their route has another station left, they join it automatically. Done on the passport’s footer does the same.'],
  ['4. Put back (waiting again)', '↩ Put back, or Cancel then Put back in line on the passport, returns them to their old place in the line, keeping their join time.'],
  ['5. Left (removed)', '✕ Remove, then Remove? within three seconds, takes them out of the line; Cancel then They left on the passport takes them out of every line. Finish visit on the passport takes them out of every line they are in.'],
- ['Clearing history', 'Finished and removed entries stay on record until a church admin uses Clear finished & removed to delete them (the database’s daily clean-up also removes entries older than 30 days, where it is switched on).'],
+ ['Clearing history', 'Finished and removed entries stay on record until they are cleared (the database’s daily clean-up also removes entries older than 30 days, where it is switched on).'],
  ['Optional stops', 'Kitchen Pharmacy and Prayer are not on the automatic route. Add people to them by hand.'],
  ['The wait estimate', 'The app invents no times. Until 3 visits have finished at a line there is no estimate: cards show only how long the longest waiter has waited, and the big screen only how many wait. From then on the estimate is the average minutes per person (from the last 15 finished visits) times the people ahead, plus the time left on visits in progress, divided by the number of people being served there.']
 ];
@@ -498,28 +515,29 @@ const helpCache = window.NSMem ? new window.NSMem.Cache('help', { max: 4, ttl: 3
 
 /** the page as text */
 export function helpHTML() {
- return helpCache ? helpCache.memo('all', helpPageHTML) : helpPageHTML();
+ return helpCache ? helpCache.memo('all' + helpKey(), helpPageHTML) : helpPageHTML();   /* one copy per set of roles */
 }
 
 function helpPageHTML() {
- const list = (rows) => `<dl class="help-list">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
- const pages = HELP_PAGES.map(p => `<section class="help-page" data-tab="${esc(p.tab)}">
-  <h3 class="display text-base font-extrabold">${esc(p.title)}</h3>
+ const list = (rows) => `<dl class="help-list">${rows.filter(r => helpSees(r[2])).map(([k, v, r]) => `<dt>${esc(k)}${r ? roleTag(r) : ''}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
+ const secs = (ss) => ss.filter(x => helpSees(x.role)).map(x => `<h4 class="microlabel mt-3">${esc(x.name)}${x.role ? roleTag(x.role) : ''}</h4>${list(x.items)}`).join('');
+ const pages = HELP_PAGES.filter(p => helpSees(p.role)).map(p => `<section class="help-page" data-tab="${esc(p.tab)}">
+  <h3 class="display text-base font-extrabold">${esc(p.title)}${p.role ? roleTag(p.role) : ''}</h3>
   <p class="help-what">${esc(p.what)}</p>
-  ${p.sections.map(s => `<h4 class="microlabel mt-3">${esc(s.name)}</h4>${list(s.items)}`).join('')}
+  ${secs(p.sections)}
  </section>`).join('');
  const start = HELP_START.map(p => `<section class="help-page help-start"><h3 class="display text-base font-extrabold">${esc(p.title)}</h3>
   <p class="help-what">${esc(p.what)}</p>
-  ${p.sections.map(s => `<h4 class="microlabel mt-3">${esc(s.name)}</h4>${list(s.items)}`).join('')}
+  ${secs(p.sections)}
  </section>`).join('');
  const phases = `<section class="help-page"><h3 class="display text-base font-extrabold">How the queue works</h3>
   <p class="help-what">Each visit moves through the queue in these phases.</p>${list(HELP_QUEUE_PHASES)}</section>`;
  const topics = HELP_TOPICS.map(p => `<section class="help-page"><h3 class="display text-base font-extrabold">${esc(p.title)}</h3>
   <p class="help-what">${esc(p.what)}</p>
-  ${p.sections.map(s => `<h4 class="microlabel mt-3">${esc(s.name)}</h4>${list(s.items)}`).join('')}
+  ${secs(p.sections)}
  </section>`).join('');
  const tutorials = `<section class="help-page"><h3 class="display text-base font-extrabold">Step by step</h3>
-  ${HELP_TUTORIALS.map(t => `<h4 class="microlabel mt-3">${esc(t.title)}</h4><ol class="help-steps">${t.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>`).join('')}</section>`;
+  ${HELP_TUTORIALS.map(t => `<h4 class="microlabel mt-3">${esc(t.title)}</h4><ol class="help-steps">${t.steps.filter(x => typeof x === 'string' || helpSees(x[1])).map(x => typeof x === 'string' ? `<li>${esc(x)}</li>` : `<li>${esc(x[0])}${roleTag(x[1])}</li>`).join('')}</ol>`).join('')}</section>`;
  const messages = `<section class="help-page"><h3 class="display text-base font-extrabold">Messages you may see</h3>${list(HELP_MESSAGES)}</section>`;
  const terms = `<section class="help-page"><h3 class="display text-base font-extrabold">Words used in the app</h3>${list(HELP_TERMS)}</section>`;
  return `<div class="help-intro"><div class="display text-base font-extrabold">Help &amp; tutorial</div>

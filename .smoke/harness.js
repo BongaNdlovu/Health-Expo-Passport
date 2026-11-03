@@ -1360,7 +1360,7 @@ function makeServer() {
     /not committed to an expo yet/.test(settingsFor(approved, null)) && /What you can do now/.test(settingsFor(approved, null))
     && /You are pledged\. You can edit your pledge, or unpledge/.test(settingsFor(approved, { id: 'VOL-1', name: 'T', status: 'prospect', pledge_expos: 1 }))
     && /You are registered\. You can edit your pledge, or deregister: that releases your station and keeps your pledge on the team list/.test(settingsFor(approved, { id: 'VOL-1', name: 'T', status: 'registered', pledge_expos: 1 }))
-    && /You are checked in for this expo\. Only your church/.test(settingsFor(approved, { id: 'VOL-1', name: 'T', status: 'checkedin', pledge_expos: 1 })));
+    && /You are checked in for this expo\. It can’t be changed here/.test(settingsFor(approved, { id: 'VOL-1', name: 'T', status: 'checkedin', pledge_expos: 1 })));
   ok('…and says nothing while the pledge is still loading', !/What you can do now/.test(settingsFor(approved, undefined)));
   ok('a registered member sees the registration date', /Registered on/.test(settingsFor(approved, { id: 'VOL-1', name: 'T', status: 'registered', pledge_expos: 1, registered_on: '2026-02-20' })) && /2026-02-20/.test(settingsFor(approved, { id: 'VOL-1', name: 'T', status: 'registered', pledge_expos: 1, registered_on: '2026-02-20' })));
 
@@ -5851,7 +5851,7 @@ function makeServer() {
         C2.acct = { membership: { role, status: 'approved' } }; g.render();
         const before = qdb.length; await g.queueClearHistory();
         ok(`queue (live): a ${role} does not see the Clear button, and the action itself refuses`,
-          !$main.innerHTML.includes('Clear finished') && /Only a church admin can clear the queue/.test($el('toastMsg').textContent) && qdb.length === before && g.qOverCount() === 1, $el('toastMsg').textContent);
+          !$main.innerHTML.includes('Clear finished') && /This can’t be done from this account/.test($el('toastMsg').textContent) && qdb.length === before && g.qOverCount() === 1, $el('toastMsg').textContent);
       }
       C2.acct = { membership: { role: 'admin', status: 'pending' } }; g.render();
       ok('queue (live): an admin whose approval is still pending is not an admin', !$main.innerHTML.includes('Clear finished'));
@@ -5859,8 +5859,8 @@ function makeServer() {
       ok('queue (live): an approved church admin sees the Clear button', $main.innerHTML.includes('Clear finished &amp; removed · 1'));
       /* the database says no without an error (row level security): the screen must not claim it cleared anything */
       quietDelete = true; await g.queueClearHistory(); quietDelete = false;
-      ok('queue (live): if the database quietly deletes nothing, the screen says only a church admin can, and shows the entry again',
-        /Nothing was cleared — only a church admin can clear the queue/.test($el('toastMsg').textContent) && g.qOverCount() === 1 && qdb.some(isOver), $el('toastMsg').textContent);
+      ok('queue (live): if the database quietly deletes nothing, the screen says it can’t be done from this account, and shows the entry again',
+        /Nothing was cleared\. This can’t be done from this account/.test($el('toastMsg').textContent) && g.qOverCount() === 1 && qdb.some(isOver), $el('toastMsg').textContent);
     }
     {
       /* Finish visit while the queue cannot change: the passport finishes, the lines are left once the queue is back, in the right church only */
@@ -6585,6 +6585,58 @@ function makeServer() {
       g.setAutoAnswer(false); g.state.tab = 'home';
     }
 
+    /* FUP-ROLE: role-only controls carry a tag for the people who have them; nobody else reads about them */
+    {
+      device();
+      const helpPractice = g.helpHTML();
+      ok('FUP-ROLE-1 practice mode shows every help entry and no role tags', /Placement board/.test(helpPractice) && /Custom plan/.test(helpPractice) && !/sc-role/.test(helpPractice));
+      await signIn();
+      C.acct = { church: { id: 'ch-a', name: 'Grace', status: 'active' }, membership: { role: 'staff', status: 'approved' } };
+      const helpStaff = g.helpHTML();
+      ok('FUP-ROLE-2 a staff member\'s help leaves out the admin and leader features', !/Placement board/.test(helpStaff) && !/>Custom plan</.test(helpStaff)
+        && !/<h3[^>]*>My church/.test(helpStaff) && !/Clear finished &amp; removed · N/.test(helpStaff) && !/Admin only|Leader &amp; admin|App owner/.test(helpStaff), '');
+      ok('FUP-ROLE-3 ...and never says only an admin can do something', !/only (a )?church admins?|church admins only|admins only/i.test(helpStaff),
+        (helpStaff.match(/.{0,60}(only (a )?church admins?|church admins only|admins only).{0,40}/i) || [''])[0]);
+      C.acct.membership.role = 'admin';
+      const helpAdmin = g.helpHTML();
+      ok('FUP-ROLE-4 an admin\'s help has those entries, each tagged Admin only or Leader & admin',
+        /Custom plan<span class="servechip sc-role">Admin only/.test(helpAdmin) && /Placement board<span class="servechip sc-role">Leader &amp; admin/.test(helpAdmin)
+        && /My church<span class="servechip sc-role">Admin only/.test(helpAdmin), '');
+      g.queue.length = 0; g.qs.ready = true;
+      g.queue.push({ id: 'q-r1', attendeeId: 'EXPO-042', station: 'bp', status: 'done', t: Date.now(), done_at: Date.now() });
+      const qa = g.viewQueue();
+      ok('FUP-ROLE-5 the admin\'s Clear button carries the Admin only tag', /Clear finished &amp; removed · \d+<span class="servechip sc-role">Admin only/.test(qa),
+        (qa.match(/Clear finished[^<]*<[^>]*>[^<]*/) || [''])[0]);
+      C.acct.membership.role = 'staff';
+      ok('FUP-ROLE-6 a staff member sees no Clear button and no tag on the queue', !/Clear finished/.test(g.viewQueue()) && !/sc-role/.test(g.viewQueue()));
+      g.queue.length = 0; C.acct = null; g.state.tab = 'home';
+    }
+
+    /* FUP-EXPO: signed in to a church, the Home banner never passes the built-in sample off as a real expo */
+    {
+      const sampleName = g.EXPO_UPCOMING.name;
+      device();
+      ok('FUP-EXPO-1 practice mode keeps the built-in sample expo on Home', g.viewHome().includes(g.esc(sampleName)));
+      await signIn();
+      let list = [], asked = 0;
+      srv.rpcs = { church_expos: () => { asked++; return { data: JSON.parse(JSON.stringify(list)), error: null }; } };
+      C.acct = { church: { id: 'ch-a', name: 'Grace', status: 'active' }, membership: { role: 'staff', status: 'approved' } };
+      C.expos = undefined;
+      const h0 = g.viewHome();
+      ok('FUP-EXPO-2 the church\'s expos are asked for from Home itself, with a checking line meanwhile', asked === 1 && /Checking for your church/.test(h0), h0.slice(h0.indexOf('hx-banner-top'), h0.indexOf('hx-banner-top') + 120));
+      await sleep(60);
+      const h1 = g.viewHome();
+      ok('FUP-EXPO-3 a church with no expo sees "No Health Expo yet", not the sample', asked >= 1 && /No Health Expo yet/.test(h1) && !h1.includes(g.esc(sampleName)) && /once it is announced/.test(h1) && !/admin/i.test(h1.slice(h1.indexOf('hx-banner'), h1.indexOf('hx-banner') + 600)),
+        'asked=' + asked + ' ' + h1.slice(h1.indexOf('hx-banner-top'), h1.indexOf('hx-banner-top') + 160));
+      C.acct.membership.role = 'admin';
+      ok('FUP-EXPO-4 an admin is told how to create one', /Manage Health Expos to create one/.test(g.viewHome()));
+      list = [{ id: 'x1', name: 'Grace Health Expo 2027', status: 'open', starts_on: '2099-05-01', venue: 'Hall', volunteers_needed: 30 }];
+      C.expos = undefined; g.viewHome(); await sleep(60);
+      const h2 = g.viewHome();
+      ok('FUP-EXPO-5 once an expo is open, Home shows it', h2.includes('Grace Health Expo 2027') && !/No Health Expo yet/.test(h2), h2.slice(h2.indexOf('hx-banner-top'), h2.indexOf('hx-banner-top') + 160));
+      srv.rpcs = null; C.acct = null; C.expos = undefined; g.syncExpoHeadline();
+    }
+
     /* TST-P3 (P3): an imported church plan never carries the importer's own label */
     {
       device();
@@ -7137,7 +7189,7 @@ function makeServer() {
     ok('help: the Seminar & co-op list is the code\'s three interests', JSON.stringify(g.HELP_PAGES).includes('Cooking school, Stress & peace or the R25 pouch') && /interests\.cook\|\|x\.interests\.stress\|\|x\.interests\.pouch/.test(srcText));
     ok('help: the health age needs all 8 checks and a height, as the code does', help.includes('do not change it') && /needsHeight=doneCount\(a\)===8&&bmi\(a\)==null/.test(srcText));
     ok('help: sign-out clears the device data, as the confirmation says', /clears the visitor and volunteer data/i.test(help) && /The visitor and volunteer data stored on this device will be cleared/.test(srcText));
-    ok('help: custom plans are for church admins only, as the code allows', help.includes('church admins only') && /canCustomPlan=\(\)=>!!\(cloud\.acct&&\(cloud\.acct\.platform_admin\|\|isAdminAcct\(\)\)\)/.test(srcText));
+    ok('help: custom plans are tagged for admins only, as the code allows', /\['Custom plan', '[^']*', 'admin'\]/.test(require('fs').readFileSync(require('path').join(__dirname, '..', 'src', 'help.js'), 'utf8')) && /canCustomPlan=\(\)=>!!\(cloud\.acct&&\(cloud\.acct\.platform_admin\|\|isAdminAcct\(\)\)\)/.test(srcText));
     /* the topics added later: every number and wording is tied to the code or the schema that sets it */
     const schemaText = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'schema.sql'), 'utf8');
     const topics = JSON.stringify(g.HELP_TOPICS);
@@ -7162,8 +7214,8 @@ function makeServer() {
     ok('help: the install words are the code\'s', help.includes('Install the app on this phone') && help.includes('Installed on this phone ✓') && help.includes('Add to Home Screen') && /Install the app on this phone/.test(srcText) && /Installed on this phone ✓/.test(srcText) && /if\(IS_APP\)return ''/.test(srcText));
     ok('help: Remove visitor is for admins and team leaders and asks first, as removeVisitorAsk does', help.includes('Remove NAME?') && /title:`Remove \$\{visitor\.name\|\|id\}\?`/.test(srcText) && /!cloud\.user\|\|mayPlace\(\)/.test(srcText)
       && /not \(v_is_admin or v_lead\)/.test(schemaText) && /q\.station = v_booth and q\.status in \('waiting', 'serving'\)/.test(schemaText));
-    ok('help: the Remove visitor messages are the code\'s', ['Only your church’s admins and team leaders can remove a visitor', 'Removing a visitor needs a connection — try again when you are online.', 'The database did not remove them: only your church’s admins and team leaders can'].every(m => help.includes(m) && srcText.includes(m)));
-    ok('help: clearing the queue is for church admins, in the screen and in the database', help.includes('Only a church admin can clear the queue') && /qMayClear=\(\)=>qMode\(\)==='demo'\|\|isAdminAcct\(\)/.test(srcText)
+    ok('help: the Remove visitor messages are the code\'s', ['This visitor can’t be removed from this account.', 'Removing a visitor needs a connection — try again when you are online.', 'The database did not remove them. This visitor can’t be removed from this account.'].every(m => help.includes(m) && srcText.includes(m)));
+    ok('help: clearing the queue is for church admins, in the screen and in the database', help.includes('Nothing was cleared. This can’t be done from this account.') && /qMayClear=\(\)=>qMode\(\)==='demo'\|\|isAdminAcct\(\)/.test(srcText)
       && /create policy "church admins queue delete" on public\.queue_entries\s+for delete to authenticated using \(church_id = \(select public\.staff_church\(\)\) and \(select public\.is_admin\(\)\)\)/.test(schemaText));
     /* confirming the results leaves the queue alone, as the help says; Finish visit takes the visitor out of their lines */
     g.resetDemo(); g.queue.length = 0; g.cloud.user = null; g.qs.busy = false;

@@ -11,8 +11,9 @@ import { followupPicker } from './churchPlans.js';
 import { cloud, migrateAttendee, persist, seedDemo } from './state.js';
 import { GRACE_DAYS, RETENTION_YEARS, visitIsOld } from './retention.js';
 import { homeHealthHTML, installEvt, validEmail } from './cloud.js';
-import { hiredCountLabel, mayPlace, pendingLabel, todayStr } from './volunteer.js';
-import { bannerHTML, capsuleHTML, ctaHTML, ecgHTML, journeyRailHTML, rulerHTML, spectrumHTML, splitBtnHTML, tileHTML } from './ui.js';
+import { hiredCountLabel, isAdminAcct, mayPlace, pendingLabel, todayStr } from './volunteer.js';
+import { homeExpoState } from './account.js';
+import { bannerHTML, capsuleHTML, ctaHTML, ecgHTML, journeyRailHTML, roleTag, rulerHTML, spectrumHTML, splitBtnHTML, tileHTML } from './ui.js';
 import { confirmAsk } from './feedback.js';
 import { qAskClear, qDemoClear, qLeaveServing, qStartAsk, queue, seedDemoQueue } from './queue.js';
 import { QUEUE_OF_READING, queueConfirmGaps, queueFinishVisit, queueFlowStart, queueLineText, queueStripHTML, queueStripRefresh } from './queue.js';
@@ -34,7 +35,7 @@ export function journeyTop(){
    <span class="jr-change">Change</span>
   </button>
   <div id="jrLine" class="jr-line"${queueLineText(a.id)?'':' hidden'}>${esc(queueLineText(a.id))}</div>
-  ${a.id&&(!cloud.user||mayPlace())?`<div class="jr-tools"><button class="jr-remove" data-action="visitor-remove" data-args="${esc(a.id)}">Remove visitor</button></div>`:''}
+  ${a.id&&(!cloud.user||mayPlace())?`<div class="jr-tools"><button class="jr-remove" data-action="visitor-remove" data-args="${esc(a.id)}">Remove visitor${roleTag('lead')}</button></div>`:''}
   <ol class="jr-steps">${JOURNEY.map((k,j)=>`<li><button class="jr-step ${j===i?'is-on':j<i?'is-past':''}" ${k==='results'&&state.tab==='screen'?'data-action="confirmResults"':`data-action="switchTab" data-args="${esc(k)}"`} ${j===i?'aria-current="step"':''}>
    <span class="jr-dot">${done(k)&&j!==i?'✓':j+1}</span><span class="jr-lbl">${JOURNEY_LABEL[k]}${k==='screen'?` <small id="jrCount">${d<8?d+'/8':''}</small>`:''}</span></button></li>`).join('')}</ol>
  </div>`;
@@ -258,7 +259,7 @@ export function viewHome(){
 
   <div class="hx-ivory">
    <div class="hx-ivory-head">
-    <div><h3>Visitors today</h3><p class="hx-ivory-sub">Tap a visitor to open their passport${(!cloud.user||mayPlace())&&attendees.length?' · the bin removes them':''}</p></div>
+    <div><h3>Visitors today</h3><p class="hx-ivory-sub">Tap a visitor to open their passport${(!cloud.user||mayPlace())&&attendees.length?' · the bin removes them'+roleTag('lead'):''}</p></div>
     <div style="display:flex;gap:6px;flex:none">
      <button data-action="toggleReg" class="hx-round hx-round-ivory" aria-label="Register a new visitor" aria-expanded="${!!state.regOpen}">${I.plus}</button>
      <button data-action="openSwitcher" class="hx-round hx-round-ivory" aria-label="Find or switch visitor">${I.chevD}</button>
@@ -279,11 +280,27 @@ export function viewHome(){
   </div>
 
   <button data-action="openVolModal" class="hx-banner" style="width:100%;text-align:left;font:inherit;cursor:pointer">
-   <span class="hx-banner-top"><span>${esc(EXPO_UPCOMING.name)}</span><em>${esc(hiredCountLabel())}</em></span>
+   ${expoBannerTop()}
    <span class="hx-banner-bottom"><strong>Pledge &amp; Booth Registration</strong>${splitBtnHTML({label:'Details',variant:'mint'})}</span>
-   <span class="hx-banner-note">Pledge to help · pick your booth${esc(pendingLabel())}</span>
+   <span class="hx-banner-note">${expoBannerNote()}${esc(pendingLabel())}</span>
   </button>
  </section>`;
+}
+
+/* The Home banner's expo line. Signed in to a church, it never shows the built-in sample as if it were real: it says
+   when the church has no expo yet, or that it is still checking. */
+function expoBannerTop(){
+ const st=homeExpoState();
+ if(st==='loading')return '<span class="hx-banner-top"><span>Checking for your church’s Health Expo…</span></span>';
+ if(st==='err')return '<span class="hx-banner-top"><span>Could not check for your church’s Health Expo</span></span>';
+ if(st==='none')return '<span class="hx-banner-top"><span>No Health Expo yet</span></span>';
+ return `<span class="hx-banner-top"><span>${esc(EXPO_UPCOMING.name)}</span><em>${esc(hiredCountLabel())}</em></span>`;
+}
+function expoBannerNote(){
+ const st=homeExpoState();
+ if(st==='none')return isAdminAcct()?'Tap Details, then Manage Health Expos to create one'+roleTag('admin'):'The next Health Expo will show here once it is announced';
+ if(st==='err')return 'It is checked again when you are back online';
+ return 'Pledge to help · pick your booth';
 }
 
 /* With hundreds of visitors, drawing everyone on every tap would make the phone crawl, so long lists show the

@@ -1,5 +1,6 @@
 // @ts-check
 import { $ } from './helpers.js';
+import { roleTag } from './ui.js';
 import { cloud, persist } from './state.js';
 import { BOOTH, attendees, hueOf, state } from './data.js';
 import { renderMain, renderNav, toast, toastUndo } from './shell.js';
@@ -923,7 +924,7 @@ export const qOverCount=()=>queue.filter(qOver).length;
    this device has no database, so anyone may clear it. */
 export const qMayClear=()=>qMode()==='demo'||isAdminAcct();
 export async function queueClearHistory(){
- if(!qMayClear()){toast('Only a church admin can clear the queue');return;}
+ if(!qMayClear()){toast('This can’t be done from this account.');return;}
  let n=qOverCount();   /* the loaded page's count: the fallback while the server is silent */
  if(cloud.user&&cloud.churchId&&cloud.client){
   try{
@@ -953,7 +954,7 @@ export async function queueClearHistory(){
  });
  /* the database deletes nothing for someone who is not a church admin, and says nothing about it: read the line
     again to tell "another desk already cleared them" from "not allowed" */
- if(refused){await queueSync(true);toast(qOverCount()?'Nothing was cleared — only a church admin can clear the queue':'Nothing to clear');}
+ if(refused){await queueSync(true);toast(qOverCount()?'Nothing was cleared. This can’t be done from this account.':'Nothing to clear');}
  qAfter();
 }
 /* Tapping a station card opens its panel — who is being served and who is waiting, by name — which sits under the
@@ -1210,7 +1211,7 @@ export function viewQueue(){
     <button class="btn btn-soft q-tvbtn" data-action="openBigScreen">Big screen</button></div>
    ${qStateBar(mode)}
    <div class="q-totals">${tile(loading?'—':tot.w,'Waiting')}${tile(loading?'—':tot.s,'Being served')}${tile(loading?'—':tot.d,'Finished')}${tile(loading?'—':(tot.w?qMin(tot.l).replace(' min','m'):'—'),'Longest wait')}</div>
-   ${!loading&&over&&qMayClear()?`<button class="btn btn-soft q-clear" data-action="queueClearHistory"${can?'':' disabled'}>Clear finished &amp; removed · ${over}</button>`:''}
+   ${!loading&&over&&qMayClear()?`<button class="btn btn-soft q-clear" data-action="queueClearHistory"${can?'':' disabled'}>Clear finished &amp; removed · ${over}${roleTag('admin')}</button>`:''}
   </div>
   <div class="q-board">${QUEUE_STATIONS.map(k=>qCard(k,S[k],k===sel)).join('')}</div>
   ${qDetail(sel,S[sel],can)}

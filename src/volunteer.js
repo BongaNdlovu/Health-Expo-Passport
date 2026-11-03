@@ -10,6 +10,7 @@ import { migrateVolunteer, persist, cloud } from './state.js';
 import { isOfflineErr, validEmail } from './cloud.js';
 import { overlayClosed, overlayOpened } from './overlay.js';
 import { confirmAsk } from './feedback.js';
+import { roleTag } from './ui.js';
 /* a lazy cycle: account.js imports this module's modal helpers; the sync call happens only at runtime */
 import { canManageExpos, cloudSync } from './account.js';
 import { downloadCSV, foodKeyOf, planFor, shortFood } from './results.js';
@@ -387,7 +388,7 @@ function placeSheetHTML(){
     <div class="text-[10.5px] text-[#4f6870]">${v.booth?'At '+esc(boothLabel(v.booth)):'Not placed yet'}${(v.pref||[]).length?' · asked for '+esc((v.pref||[]).map(boothLabel).join(', ')):''}${v.pref2?' or '+esc(boothLabel(v.pref2)):''}</div></div>
    <span class="servechip ${STATUS_UI[v.status].cls}">${STATUS_UI[v.status].label}</span></div>
   ${linked&&!linked.has(v.id)&&isAdm&&v.lead?'<p class="mt-2 rounded-xl bg-amber-50/80 p-2 text-[10.5px] font-semibold leading-snug text-[#8a5a12]">This team leader has no account linked — link them under My church so they can manage their team.</p>':''}
-  <div class="microlabel mt-3">Move to…</div>
+  <div class="microlabel mt-3">Move to…${roleTag('lead')}</div>
   <div class="mt-1.5 grid grid-cols-2 gap-1.5">
    ${stations.map(({b,n})=>`<button data-action="place-move" data-args="${esc(b.k)}" class="boothpick hue-${b.hue} ${v.booth===b.k?'boothpick-sel':''}">
      <span class="flex items-center gap-2"><span class="boothpick-glyph">${b.letter}</span>
@@ -403,7 +404,7 @@ function placeSheetHTML(){
    </div>
    <div class="mt-3 flex gap-2">
     <button data-action="place-release" class="btn btn-glass flex-1 py-2 text-xs text-rose-700">Take off this station</button>
-    ${isAdm?`<button data-action="place-lead" class="btn btn-soft flex-1 py-2 text-xs">${v.lead?'Remove ★ leader':'Make ★ team leader'}</button>`:''}
+    ${isAdm?`<button data-action="place-lead" class="btn btn-soft flex-1 py-2 text-xs">${v.lead?'Remove ★ leader':'Make ★ team leader'}${roleTag('admin')}</button>`:''}
    </div>`:`<p class="mt-3 text-[11px] leading-relaxed text-[#6b8187]">Pick a station above to place ${esc(firstName(v.name))}. Their choices are listed first, but the choice is yours.</p>`}`;
 }
 const rerenderPlace=()=>{const el=$('#placeBody');if(el)el.innerHTML=placeSheetHTML();};
@@ -1005,8 +1006,8 @@ const expoManageHTML=()=>{
  const can=canManageExpos();
  if(!EXPO_UPCOMING.sample&&!can)return '';
  return `<div class="mt-3 rounded-[14px] bg-[#123033]/[.05] p-3 text-[11px] leading-relaxed text-[#33504f]">
-  ${EXPO_UPCOMING.sample?`<b>This is a built-in sample expo</b>, so it cannot be deleted. ${can?'Create your church’s own Health Expo and it replaces this one.':'Your church’s admins create the real Health Expos; yours appears here once one is open.'}`:''}
-  ${can?`<button data-action="expo-manage" class="btn btn-soft mt-2 w-full py-2.5 text-xs">Manage Health Expos · create, edit, delete</button>`:''}</div>`;
+  ${EXPO_UPCOMING.sample?(can?'<b>This is a built-in sample expo</b>, so it cannot be deleted. Create your church’s own Health Expo and it replaces this one.':'<b>This is a built-in sample expo.</b> Your church’s Health Expo will show here once it is announced.'):''}
+  ${can?`<button data-action="expo-manage" class="btn btn-soft mt-2 w-full py-2.5 text-xs">Manage Health Expos · create, edit, delete${roleTag('admin')}</button>`:''}</div>`;
 };
 function renderVolModal(){
  const hired=staffedCount(),need=EXPO_UPCOMING.need;

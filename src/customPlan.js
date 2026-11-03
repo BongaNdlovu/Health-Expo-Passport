@@ -12,6 +12,7 @@
    Imported JSON is untrusted input (R-06): every field is type-checked, length-capped and escaped at render,
    and a file over 2 MB is refused before JSON.parse. */
 import { A, $, esc, firstName } from './helpers.js';
+import { roleTag } from './ui.js';
 import { PROTOCOLS, attendees, state } from './data.js';
 import { cloud, persist } from './state.js';
 import { renderMain, toast } from './shell.js';
@@ -142,9 +143,9 @@ export function customPlanBox(a){
  const cp=a.interests&&a.interests.customPlan;
  if(state.customEdit)return customPlanHTML(a);
  if(cp)return `<div class="btn-row mt-2">
-  <button class="btn btn-glass py-2 text-[11px]" data-action="customPlanEdit">Edit custom plan</button>
+  <button class="btn btn-glass py-2 text-[11px]" data-action="customPlanEdit">Edit custom plan${roleTag('admin')}</button>
   <button class="btn btn-glass py-2 text-[11px] text-rose-700" data-action="customPlanClear">Remove custom plan</button></div>`;
- return `<button class="btn btn-glass mt-2 w-full py-2 text-[11px]" data-action="customPlanEdit">+ Write a custom plan for this visitor</button>`;
+ return `<button class="btn btn-glass mt-2 w-full py-2 text-[11px]" data-action="customPlanEdit">+ Write a custom plan for this visitor${roleTag('admin')}</button>`;
 }
 
 const churchLabel=()=>cloud.acct&&cloud.acct.church&&cloud.acct.church.name?cloud.acct.church.name:'your church';
@@ -170,7 +171,7 @@ export function customPlanFromCurrent(){
 }
 
 export function customPlanEdit(){
- if(!canCustomPlan()){toast('Only a church admin or the app owner can write a custom plan.');return;}
+ if(!canCustomPlan()){toast('Custom plans are not available on this account.');return;}
  state.customDraft=null;
  state.customEdit=!state.customEdit;renderMain();
 }
@@ -178,7 +179,7 @@ export function customPlanEdit(){
 /** Saves the structured editor. The form's fields are read from the page, normalised, then stored on the record. */
 export function customPlanSave(e){
  if(e)e.preventDefault();
- if(!canCustomPlan()){toast('Only a church admin or the app owner can write a custom plan.');return;}
+ if(!canCustomPlan()){toast('Custom plans are not available on this account.');return;}
  const a=holder();if(!a){renderMain();return;}
  const v=id=>{const el=/** @type {HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement|null} */ ($('#'+id));return el?String(el.value||'').trim():'';};
  const chosen=v('cpxProblem'),own=v('cpxOwn');

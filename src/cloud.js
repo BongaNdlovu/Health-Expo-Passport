@@ -1,5 +1,6 @@
 // @ts-check
 import { APP_SITE, IS_APP } from './platform.js';
+import { roleTag } from './ui.js';
 import { $ } from './helpers.js';
 import { cloud, migrateAttendee, migrateVolunteer, storageFull } from './state.js';
 import { SEED, SEED_VOL, attendees, state, volunteers } from './data.js';
@@ -542,7 +543,7 @@ export async function approveStaff(uid,btn){
 function approvalsHTML(){
  const list=cloud.pendingUsers;
  return `<div class="mt-4 rounded-[18px] border border-[#123033]/[.07] bg-white/60 p-3.5">
-  <div class="flex items-center justify-between"><div class="microlabel">Waiting for approval</div>
+  <div class="flex items-center justify-between"><div class="microlabel">Waiting for approval${roleTag('admin')}</div>
    <button class="tap-link" data-action="approvals-clear">Refresh</button></div>
   ${cloud.apprErr?`<p class="text-[11.5px] text-rose-700">${esc(cloud.apprErr)}</p>`:''}
   ${!list?(cloud.apprErr?'':'<p class="text-[11.5px] text-[#4f6870]">Loading…</p>'):!list.length&&!cloud.apprErr?'<p class="text-[11.5px] text-[#4f6870]">Nobody is waiting ✓</p>'   /* never "nobody" while the check itself failed (A19) */

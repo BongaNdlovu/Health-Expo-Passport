@@ -9,6 +9,7 @@ import { acctBox, acctNote, acctRpc, acctSkel, nOf, renderAcct, retryNote } from
 import { planNeeds, problemOf, urgentOf } from './results.js';
 import { qSafe } from './queue.js';
 import { optedIn } from './visitor.js';
+import { isAdminAcct } from './volunteer.js';
 import { confirmAsk } from './feedback.js';
 /* A church's own home plans, follow-up people and invite links (with the account hub's boxes). Split from the original single-file app; bundled back into one file by tools/build.js. */
 /* ================= CHURCH PLANS =================
@@ -21,7 +22,7 @@ export const CHURCH_PLANS_KEY='newstart.churchplans.v1';
 let planSaving=false;   /* one plan save in flight; a second submit is dropped (E10) */
 export const DEMO_CHURCH_PLANS=[
  {id:'demo-joints',church_id:'demo',problem:'Joint pain',title:'Easing stiff, painful joints',
-  note:'This is an example from a practice church. Real plans are written by your church’s admin.',
+  note:'This is an example plan from a practice church.',
   actions:[{do:'Move every joint gently each morning',why:'Gentle movement keeps joints from stiffening.',how:['5 minutes of slow stretches after you get up','Stop if a joint is hot or swollen']},
    {do:'Use a warm, never hot, compress on stiff joints',why:'Warmth eases stiffness.',how:['A warm, wet towel on the joint for 10 minutes','Test the heat on your wrist first']},
    {do:'Walk a little every day',why:'Walking keeps the muscles round the joints strong.',how:['Start with 10 minutes on flat ground']},
@@ -283,7 +284,7 @@ export function followupPicker(a){
  if(!L.length&&fe&&fe.cid===myChurchId())return `<div class="glass p-4"><div class="microlabel">Follow-up person</div>
   ${retryNote('Could not load the follow-up people. Check your connection.','followups')}</div>`;   /* a failed load is not "nobody named" (M7) */
  if(!L.length)return myChurchId()?`<div class="glass p-4"><div class="microlabel">Follow-up person</div>
-  ${acctNote(`Your church has not named any follow-up people yet. A church admin can name up to ${FOLLOWUP_MAX} on the Church screen.`)}</div>`:'';
+  ${acctNote(isAdminAcct()?`Your church has not named any follow-up people yet. You can name up to ${FOLLOWUP_MAX} under My church.`:'No follow-up people are named yet.')}</div>`:'';
  return `<div class="glass p-4"><div class="microlabel">Follow-up person</div>
   <p class="mt-1 text-[11.5px] leading-snug text-[#5c747a]">Who from the church will contact ${esc(firstName(a.name))} after the expo.</p>
   <div class="mt-2 flex flex-wrap items-center gap-1.5">${L.map(p=>`<button data-action="chooseFollowup" data-args="${qSafe(p.user_id)}" class="availpill hue-sage ${cur===p.user_id?'availpill-on':''}" aria-pressed="${cur===p.user_id}">${cur===p.user_id?'✓ ':''}${esc(p.full_name||'(no name)')}</button>`).join('')}

@@ -3,6 +3,12 @@
    Everything visual is a class in the "HX COMPONENTS" CSS section; these helpers only structure markup. */
 import { I } from './icons.js';
 import { esc } from './helpers.js';
+import { cloud } from './state.js';
+
+/* The tag on a control only some roles have, so the person who has it knows others do not see it. Drawn only for a
+   signed-in account: in practice mode everyone can do everything, so nothing is tagged. */
+export const ROLE_TAGS = { admin: 'Admin only', lead: 'Leader & admin', hdl: 'Leader of the Health Department', owner: 'App owner' };
+export const roleTag = k => (cloud.user && ROLE_TAGS[k] ? `<span class="servechip sc-role">${esc(ROLE_TAGS[k])}</span>` : '');
 
 /* Authentic P-Q-R-S-T trace used by the reference (viewBox 0 0 340 70). */
 export const ECG_PATH = 'M 0 35 L 50 35 L 64 35 L 72 31 Q 78 28 84 35 L 96 35 L 102 41 L 114 8 L 126 62 L 136 31 Q 148 24 162 35 L 195 35 L 210 35 L 218 31 Q 224 28 230 35 L 242 35 L 248 41 L 260 8 L 272 62 L 282 31 Q 294 24 308 35 L 340 35';

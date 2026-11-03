@@ -1,6 +1,7 @@
 // @ts-check
 import { KINDS, acctHealthHTML, isNet, renderGate } from './cloud.js';
 import { $ } from './helpers.js';
+import { roleTag } from './ui.js';
 import { cloud, persist, persistNow, seedDemo } from './state.js';
 import { CLOUD_UI, SB_KEY, SB_LIB, SB_URL, SYNC_KEY, closeCloud, resetLedgerSig, cloudDirtyList, cloudPending, gateBusy, gateView, healthFromError, healthLive, healthReset, healthUpload, installBlock, isDirty, isMissingErr, isOfflineErr, isSeedRow, noteHealth, passwordCheck, pwField, renderCloudBody, rowToAtt, savePassword, saveSynced, saveSyncedSoon, setCloud, sigOf, syncChrome, syncStatusText, syncTilesHTML, syncedLabel, timedFetch, isTimeoutErr, validEmail } from './cloud.js';
 import { CHURCH_PLANS_KEY, FOLLOWUP_MAX, churchPlansBox, clearInvite, followupsFor, inviteBox, inviteOwner, myFollowupsHTML, pendingInvite, setInviteOwner } from './churchPlans.js';
@@ -206,7 +207,7 @@ export function acctGateHTML(st){
  const out=`<div class="mt-4 flex gap-2"><button data-action="cloudSignOut" class="btn btn-glass flex-1 py-2.5 text-xs text-[#5b7178]">Sign out</button>
    <button data-action="sync-now" class="btn btn-primary flex-1 py-2.5 text-xs">Check again</button></div>`;
  const leave=c?`<button data-action="leaveChurch" class="mt-3 w-full text-center text-[11px] font-bold text-rose-700">Leave ${esc(c.name)}</button>`:'';
- const admin=a.platform_admin?`<button data-action="openAcct" data-args="admin" class="btn btn-soft mt-3 w-full py-2.5 text-xs">Open all churches (platform admin)</button>`:'';
+ const admin=a.platform_admin?`<button data-action="openAcct" data-args="admin" class="btn btn-soft mt-3 w-full py-2.5 text-xs">Open all churches${roleTag('owner')}</button>`:'';
  if(st==='church')return `${title('Choose your church')}
   ${acctNote('Signed in as <b class="text-[#33504f]">'+esc(a.email||'')+'</b>. Join the church you belong to. Its admins approve you, and then you can see your own expo results here.')}
   ${churchPickHTML()}
@@ -416,7 +417,7 @@ export function pledgeHTML(){
  if(cloud.pledge===undefined){loadPledge();return acctBox('My pledge',acctSkel(2));}
  if(cloud.pledgeNetErr)return acctBox('My pledge',retryNote(cloud.pledgeNetErr==='net'?'Could not load your pledge. Check your connection.':'Could not load your pledge right now. Try again in a moment.','pledge'));   /* a network drop gets a retry, not the switched-on wording (A20a) */
  if(cloud.pledgeErr)return acctBox('My pledge',acctNote('Pledging is not switched on for your church yet. Ask your church admin to contact the app’s support.'));
- if(!cloud.pledge)return acctBox('My pledge',acctNote('Pledge to help at the next expo and your name goes onto the team list straight away. Your church’s admin registers you and chooses your station. Your pledge details stay on the roster until you unpledge or your church’s admin removes them.')+myPledgeFormHTML());
+ if(!cloud.pledge)return acctBox('My pledge',acctNote('Pledge to help at the next expo and your name goes onto the team list straight away. You’ll be registered and given a station before the expo. Your pledge details stay on the roster until you unpledge.')+myPledgeFormHTML());
  if(cloud.pledgeEdit)return acctBox('My pledge',myPledgeFormHTML());
  const p=cloud.pledge,st=STATUS_UI[p.status];
  const row=(k,v)=>`<div class="flex items-baseline justify-between gap-3 border-b border-[#123033]/[.06] py-1.5 last:border-0"><span class="text-[11px] font-bold text-[#5c747a]">${k}</span><span class="text-right text-[11.5px] font-bold text-[#123033]">${v}</span></div>`;
@@ -429,7 +430,7 @@ export function pledgeHTML(){
    ${p.lead?'<span class="servechip sc-warn">★ Team leader</span>':p.role?`<span class="servechip sc-off">${esc(p.role)}</span>`:''}
   </div>
   <div class="mt-2 text-[12px] font-bold text-[#123033]">${esc(p.name)}</div>
-  <div class="mt-0.5 text-[11px] text-[#4f6870]">${p.booth?'Placed at '+esc(boothLabel(p.booth)):'Not placed yet — the admin chooses your station'}${p.shift?' · '+esc(p.shift):''}</div>
+  <div class="mt-0.5 text-[11px] text-[#4f6870]">${p.booth?'Placed at '+esc(boothLabel(p.booth)):'Not placed yet — you’ll be given a station before the expo'}${p.shift?' · '+esc(p.shift):''}</div>
   ${(()=>{const e=((cloud.expos&&cloud.expos.list)||[]).find(x=>x.id===p.expo_id);return e?`<div class="mt-0.5 text-[11px] font-bold text-brand-700">For ${esc(e.name)} · ${esc(expoDate(e))}</div>`:'';})()}
   <div class="mono mt-1 text-[10px] text-[#6b8187]">${esc(p.id)}</div>
   <div class="mt-2">${rows.join('')}</div>
@@ -438,7 +439,7 @@ export function pledgeHTML(){
    ${p.status==='prospect'?'<button data-action="my-pledge-withdraw" class="btn btn-glass flex-1 py-2 text-xs text-rose-700">Unpledge</button>'
      :p.status==='registered'?'<button data-action="my-pledge-deregister" class="btn btn-glass flex-1 py-2 text-xs text-rose-700">Deregister</button>':''}
   </div>
-  ${p.status==='checkedin'?acctNote('You are checked in for this expo: only your church’s admin can change that now.'):acctNote('Your pledge details (name and contacts) stay on your church’s roster until you unpledge or your church’s admin removes them.')}`);
+  ${p.status==='checkedin'?acctNote('You are checked in for this expo. It can’t be changed here.'):acctNote('Your pledge details (name and contacts) stay on your church’s roster until you unpledge.')}`);
 }
 async function loadPledge(force){
  const uid=cloud.user&&cloud.user.id;   /* a slow personal answer must not land on the next account (E2) */
@@ -471,7 +472,7 @@ function myPledgeFormHTML(){
   ${expoPickHTML()}
   ${pledgeFormParts(d,'mf',MY_PLEDGE_ACTS)}
   <button id="mfGo" data-label="${cloud.pledge?'Save my pledge':'Send my pledge'}" class="btn btn-primary w-full py-3 text-sm">${cloud.pledge?'Save my pledge':'Send my pledge →'}</button>
-  <p class="text-[10px] leading-relaxed text-[#8a9aa0]">Your pledge counts straight away — no approval step. Your church’s admin places you at a station.</p></form>`;
+  <p class="text-[10px] leading-relaxed text-[#8a9aa0]">Your pledge counts straight away — no approval step. You’ll be given a station before the expo.</p></form>`;
 }
 export function myPledgeEdit(){cloud.pledgeEdit=true;if(state.mf)delete state.mf._init;acctRedraw();}
 /* the member form's field and chip handlers write state.mf; chips redraw, text fields only store (a redraw while
@@ -529,10 +530,10 @@ function pledgeNowHTML(){
  const m=cloud.acct&&cloud.acct.membership;
  if(!m||m.status!=='approved'||cloud.pledge===undefined||cloud.pledgeErr||cloud.pledgeNetErr)return '';   /* a failed pledge load says so in its own box (A20a) */
  const p=cloud.pledge;
- const t=!p?'You are not committed to an expo yet. Pledge below and your name goes on the team list; your church’s admin registers you and chooses your station.'
-  :p.status==='prospect'?'You are pledged. You can edit your pledge, or unpledge. Your church’s admin registers you and chooses your station.'
+ const t=!p?'You are not committed to an expo yet. Pledge below and your name goes on the team list; you’ll be registered and given a station before the expo.'
+  :p.status==='prospect'?'You are pledged. You can edit your pledge, or unpledge. You’ll be registered and given a station before the expo.'
   :p.status==='registered'?'You are registered. You can edit your pledge, or deregister: that releases your station and keeps your pledge on the team list.'
-  :p.status==='checkedin'?'You are checked in for this expo. Only your church’s admin can change that now.':'';
+  :p.status==='checkedin'?'You are checked in for this expo. It can’t be changed here.':'';
  return t?`<div class="pf-now"><b>What you can do now</b><span>${esc(t)}</span></div>`:'';
 }
 export function pledgeSectionHTML(){
@@ -579,10 +580,10 @@ export function myTeamHTML(){
        placeholder="Shift, e.g. 09:00–13:00" class="field flex-1 py-1.5 text-xs">
      ${x.lead?'':`<button class="tap-link flex-none text-rose-700" data-action="team-release" data-args="${qSafe(x.id)}">Take off my station</button>`}</div>`
     :`<button class="btn btn-primary mt-1.5 w-full py-2 text-xs" data-action="team-add" data-args="${qSafe(x.id)}">Add to my team</button>`}</div>`;
- return acctBox('My team · '+esc(boothLabel(p.booth)),
+ return acctBox('My team · '+esc(boothLabel(p.booth))+roleTag('lead'),
   (placed.length?placed.map(row).join(''):'<p class="mt-1 text-[11px] text-[#4f6870]">Nobody is placed at your station yet.</p>')
   +(wait.length?`<div class="microlabel mt-3">Waiting for a place · ${wait.length}</div>${wait.map(row).join('')}`:'')
-  +acctNote('You can add people who asked for your station, take your own people off it and set their shifts. Moving between stations is the admin’s job.'));
+  +acctNote('You can add people who asked for your station, take your own people off it and set their shifts.'));
 }
 async function loadMyTeam(){
  const uid=cloud.user&&cloud.user.id;   /* a slow personal answer must not land on the next account (E2) */
@@ -737,7 +738,7 @@ export function acctButtons(){
  const a=cloud.acct;if(!a)return '';
  const m=a.membership,b=(t,l)=>`<button data-action="hub-open" data-args="${esc(t)}" class="btn btn-soft flex-1 py-2.5 text-xs">${l}</button>`;
  return acctBox(esc(a.church?a.church.name:'No church')+(m?' · '+roleLabel(m):''),
-  `<div class="mt-2 flex gap-2">${b('me','My account')}${isChurchAdmin()?b('church','My church'):''}${a.platform_admin?b('admin','All churches'):''}</div>`);
+  `<div class="mt-2 flex gap-2">${b('me','My account')}${isChurchAdmin()?b('church','My church'+roleTag('admin')):''}${a.platform_admin?b('admin','All churches'+roleTag('owner')):''}</div>`);
 }
 
 /* --- the Profile page (bottom tab) ---
@@ -841,7 +842,7 @@ function profShortcuts(){
  const a=cloud.acct;
  if(!a)return '';
  const go=(t,l)=>`<button data-action="openAcct" data-args="${esc(t)}" class="btn btn-soft flex-1 py-2.5 text-xs">${l}</button>`;
- const row=(isChurchAdmin()?go('church','My church'):'')+(a.platform_admin?go('admin','All churches'):'');
+ const row=(isChurchAdmin()?go('church','My church'+roleTag('admin')):'')+(a.platform_admin?go('admin','All churches'+roleTag('owner')):'');
  return row?`<div class="mt-3 flex gap-2">${row}</div>`:'';
 }
 function profSync(){
@@ -932,7 +933,8 @@ export function churchAdminHTML(){
  const F=followupsFor(cid);
  const selfAdmin=!viaAdmin&&a.membership&&a.membership.church_id===cid&&a.membership.role==='admin'&&a.membership.status==='approved';
  return `${viaAdmin?`<button data-action="back-to-churches" class="tap-link">← All churches</button>`:''}
-  <div class="mt-1 text-[13px] font-bold text-[#123033]">${esc(c.name)}</div>
+  <div class="mt-1 text-[13px] font-bold text-[#123033]">${esc(c.name)}${roleTag(viaAdmin?'owner':'admin')}</div>
+  <p class="mt-0.5 text-[10.5px] text-[#6b8187]">Everything on this screen is seen only by ${viaAdmin?'the app owner':'this church’s admins'}.</p>
   ${acctBox('Health Expos',expoAdminHTML(cid))}
   ${acctBox('Members'+(waiting?` · ${waiting} waiting`:'')+(F?` · ${F.length} of ${FOLLOWUP_MAX} follow-up people`:''),
    !L?acctSkel(3):cloud.members.err?retryNote('Could not load the members. Check your connection.','members'):(!L.length?acctNote('Nobody has joined yet.'):'')+L.map(u=>memberRow(u,F,admins,ranks,canPost)).join('')   /* (A20b) an empty list still shows the notes below: before, only the row branch carried them */
@@ -959,7 +961,7 @@ export function memberRow(u,F,admins,ranks,canPost){
   ${u.status==='pending'&&u.wants==='assistant'&&!canPost?acctNote('Only the Health Department Leader or the Expo admin can make someone the Assistant. Approve them as a member now, and they can appoint them.'):''}
   <div class="mt-1.5 flex flex-wrap items-center gap-2">
    ${isAdmin?'':`<select data-on-change="member-role" data-user="${esc(id)}" data-status="${qSafe(u.status)}" aria-label="Role" class="field py-1.5 text-xs" style="width:auto">${['member','staff'].map(r=>`<option value="${esc(r)}" ${r===u.role?'selected':''}>${ROLE_L[r]}</option>`).join('')}</select>`}
-   ${canPost&&u.status==='approved'?`<select data-on-change="member-post" data-user="${esc(id)}" aria-label="Admin post" class="field py-1.5 text-xs" style="width:auto">${[['none','No admin post'],['leader',ADMIN_TITLES[0]],['assistant','Assistant']].map(o=>`<option value="${o[0]}" ${o[0]===post?'selected':''}>${o[1]}</option>`).join('')}</select>`:''}
+   ${canPost&&u.status==='approved'?`${roleTag('hdl')}<select data-on-change="member-post" data-user="${esc(id)}" aria-label="Admin post" class="field py-1.5 text-xs" style="width:auto">${[['none','No admin post'],['leader',ADMIN_TITLES[0]],['assistant','Assistant']].map(o=>`<option value="${o[0]}" ${o[0]===post?'selected':''}>${o[1]}</option>`).join('')}</select>`:''}
    <button class="tap-link" data-action="member-link" data-user="${esc(id)}" data-cur="${qSafe(u.attendee_id||'')}">${u.attendee_id?'Badge '+esc(u.attendee_id):'Link badge'}</button>
    <button class="tap-link" data-action="member-vol-link" data-user="${esc(id)}" data-cur="${qSafe(u.volunteer_id||'')}">${u.volunteer_id?'Vol '+esc(u.volunteer_id):'Link volunteer'}</button>
    ${F&&u.status==='approved'?`<button class="tap-link" aria-pressed="${fu}" data-action="followup-toggle" data-user="${esc(id)}" data-on="${fu?0:1}">${fu?'✓ Follow-up person':'Make follow-up person'}</button>`:''}
@@ -1091,6 +1093,18 @@ export function manageExpos(){
  if(!cloud.acct)return;
  openAcct(isAdminAcct()?'church':'admin');
 }
+/* What the Home banner shows while signed in to a church: 'loading' (the church's expos are asked for now, not only
+   when Profile opens), 'none' (no open expo coming up), 'err' (the check failed; asked again after 30 s) or 'real'.
+   Practice mode, no church yet, or a database without expos keeps the built-in sample ('sample'). */
+export function homeExpoState(){
+ const m=cloud.acct&&cloud.acct.membership;
+ if(!cloud.user||!cloud.acct||!cloud.acct.church||!m||m.status!=='approved')return 'sample';
+ const E=cloud.expos;
+ if(E===undefined||(E.err==='net'&&Date.now()-(E.at||0)>30000)){loadExpos();return E&&E.err?'err':'loading';}
+ if(E.err==='schema')return 'sample';
+ if(E.err)return 'err';
+ return EXPO_UPCOMING.sample?'none':'real';
+}
 export function syncExpoHeadline(){
  const L=openExpos().filter(x=>String(x.starts_on).slice(0,10)>=todayStr()).sort((a,b)=>String(a.starts_on).localeCompare(String(b.starts_on)));
  const x=L[0];
@@ -1103,7 +1117,7 @@ async function loadExpos(){
  cloud.expoBusy=true;
  const r=await fetchExpos('');
  cloud.expoBusy=false;
- cloud.expos=r;syncExpoHeadline();
+ r.at=Date.now();cloud.expos=r;syncExpoHeadline();
  cloud.acctV++;renderGate();
  renderAcct();render();
 }
@@ -1297,7 +1311,8 @@ export function platformHTML(){
  const L=cloud.plat,n=s=>L.filter(c=>c.status===s).length,sum=k=>L.reduce((t,c)=>t+(Number(c[k])||0),0);
  const tile=(l,v)=>`<div class="tile"><span class="tile-l">${l}</span><span class="tile-v">${v}</span></div>`;
  if(cloud.audit===null)loadAudit();
- return `<div class="grid grid-cols-3 gap-2">${tile('Churches',L.length)}${tile('Waiting',n('pending'))}${tile('Members',sum('members'))}</div>
+ return `<p class="text-[10.5px] text-[#6b8187]">${roleTag('owner')} Everything on this screen is seen only by the app owner.</p>
+  <div class="mt-2 grid grid-cols-3 gap-2">${tile('Churches',L.length)}${tile('Waiting',n('pending'))}${tile('Members',sum('members'))}</div>
   ${acctBox('Churches',!L.length?acctNote('No church has registered yet.'):L.map(churchRow).join(''))}
   ${platformAdminsHTML()}
   ${acctBox('Recent changes',!cloud.audit?acctSkel(3):cloud.auditErr?retryNote('Could not load the recent changes. Check your connection.','audit'):!cloud.audit.length?acctNote('Nothing changed yet.')
@@ -1850,7 +1865,7 @@ export async function removeVisitorAsk(id){
  if(!visitor)return;
  if(cloud.removing===id)return;                       /* a second tap while the first is still in flight */
  const isShared=!!cloud.user;
- if(isShared&&!mayPlace()){toast('Only your church’s admins and team leaders can remove a visitor');return;}
+ if(isShared&&!mayPlace()){toast('This visitor can’t be removed from this account.');return;}
  cloud.removing=id;
  try{
   const yes=await confirmAsk({title:`Remove ${visitor.name||id}?`,
@@ -1868,7 +1883,7 @@ export async function removeVisitorAsk(id){
    const {data,error}=res;
    if(error){toast(isNet(error.message)?'Removing a visitor needs a connection — try again when you are online.':(error.message||'That did not work.'));return;}
    const wasDeleted=data===true;
-   if(!wasDeleted){toast('The database did not remove them: only your church’s admins and team leaders can');return;}
+   if(!wasDeleted){toast('The database did not remove them. This visitor can’t be removed from this account.');return;}
   }
   // 2. Their open places in the station lines
   await queueLeaveFor(id);
