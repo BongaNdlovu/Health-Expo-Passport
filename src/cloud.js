@@ -182,6 +182,7 @@ export function syncChrome(){
   const badge=$('#cloudBadge'),show=!!(cloud.user&&n&&!cloud.busy);
   if(badge){badge.style.display=show?'grid':'none';if(show)badge.textContent=n>9?'9+':String(n);}
   btn.title=cloud.user?`${syncStatusText()}${n?` · ${n} to upload`:''}`:'Cloud sync';
+  btn.setAttribute('aria-label',cloud.user?`Cloud sync: ${syncStatusText()}${n?` · ${n} to upload`:''}`:'Cloud sync');   /* the badge count must reach a screen reader too (U7) */
  }
  /* the status line and tiles, wherever they are on screen (the sheet behind the logo, the Profile card) */
  const line=$('#cloudSyncLine');if(line)line.innerHTML=esc(syncStatusText())+syncedLabel();
@@ -287,7 +288,7 @@ export function gateTouched(){
 }
 document.addEventListener('input',e=>{if(inGateForm(e.target))gateTouched();});
 document.addEventListener('invalid',e=>{if(inGateForm(e.target))gateTouched();},true);
-export function gateBusy(pre,label){const b=$('#'+pre+'Go');if(b){b.disabled=true;const l=b.querySelector('.hx-cta-main');if(l)l.textContent=label;else b.textContent=label;}}
+export function gateBusy(pre,label){const b=$('#'+pre+'Go');if(b){b.disabled=true;b.setAttribute('aria-busy','true');const l=b.querySelector('.hx-cta-main');if(l)l.textContent=label;else b.textContent=label;}}
 export const isNet=m=>/fetch|network|load failed/i.test(String(m||''))||!navigator.onLine;
 
 /* the signed-in hero's status line for each signed-in gate; an approved member's says their role instead */
@@ -468,10 +469,11 @@ export async function cloudResend(){
  const em=cloud.viewEmail;
  if(!cloud.client||!em)return;
  if(Date.now()<(cloud.resendAt||0)){const s=Math.ceil((cloud.resendAt-Date.now())/1000);gateFail(`Please wait ${s} second${s===1?'':'s'} before asking again.`);return;}
+ cloud.resendAt=Date.now()+60000;      /* the countdown starts with the request, so a hanging request still holds the button (A18) */
  let res;
  try{res=await cloud.client.auth.resend({type:'signup',email:em,options:{emailRedirectTo:authRedirect()}});}catch(err){res={error:err};}
- if(res.error){gateFail(isNet(res.error.message)?'No connection — try again when you are online.':/rate limit/i.test(res.error.message||'')?'Too many emails were sent just now. Wait a few minutes.':(res.error.message||'Could not resend.'));return;}
- cloud.resendAt=Date.now()+60000;cloud.formErr='';cloud.gateKey='';renderGate();toast('Confirmation email sent again');
+ if(res.error){cloud.resendAt=0;gateFail(isNet(res.error.message)?'No connection — try again when you are online.':/rate limit/i.test(res.error.message||'')?'Too many emails were sent just now. Wait a few minutes.':(res.error.message||'Could not resend.'));return;}
+ cloud.formErr='';cloud.gateKey='';renderGate();toast('Confirmation email sent again');
 }
 export async function cloudForgot(e){
  e.preventDefault();
@@ -486,6 +488,7 @@ export async function cloudForgot(e){
  if(res.error&&(isNet(res.error.message)||res.error.status===429||/rate limit/i.test(res.error.message||''))){
   gateFail(isNet(res.error.message)?'No connection — try again when you are online.':'Too many emails were sent just now. Wait a few minutes and try again.');return;
  }
+ if(res.error){gateFail('Could not send the email right now. Try again in a few minutes.');return;}   /* a server failure says so plainly and reveals nothing (A17, owner-approved copy) */
  /* the answer is the same whether or not the address has an account, so this cannot be used to find out who does */
  cloud.view='forgotSent';cloud.formErr='';cloud.gateKey='';renderGate();
 }
@@ -514,14 +517,21 @@ async function loadApprovals(){
  cloud.apprBusy=true;
  try{
   const r=await cloud.client.rpc('is_admin');
-  cloud.isAdmin=!r.error&&r.data===true;          /* functions not installed yet → simply not an admin */
-  if(cloud.isAdmin){const p=await cloud.client.rpc('staff_pending');cloud.pendingUsers=p.error?[]:p.data||[];cloud.apprErr=p.error?p.error.message:'';}
+  if(r.error&&!isMissingErr(r.error)){    /* a failed check is not a "no": nobody decided, so isAdmin stands and the box explains (A19) */
+   cloud.approvalUnknown=true;
+   cloud.apprErr='Could not confirm your admin rights. Check your connection and Refresh.';
+  }else{
+   cloud.approvalUnknown=false;
+   cloud.isAdmin=!r.error&&r.data===true;          /* functions not installed yet → simply not an admin */
+   if(cloud.isAdmin){const p=await cloud.client.rpc('staff_pending');cloud.pendingUsers=p.error?[]:p.data||[];cloud.apprErr=p.error?p.error.message:'';}
+  }
  }catch(e){cloud.isAdmin=false;}
  finally{cloud.apprBusy=false;const m=$('#cloudModal');if(m&&!m.classList.contains('hidden'))renderCloudBody();}
 }
 export async function approveStaff(uid,btn){
  if(btn){btn.disabled=true;btn.textContent='…';}
- const r=await cloud.client.rpc('staff_approve',{p_user:uid});
+ let r;
+ try{r=await cloud.client.rpc('staff_approve',{p_user:uid});}catch(e){toast('Could not reach the server — try again when you are online.');if(btn){btn.disabled=false;btn.textContent='Approve';}return;}   /* a thrown network error gets the same plain answer and the button back (A19) */
  if(r.error){toast(r.error.message);if(btn){btn.disabled=false;btn.textContent='Approve';}return;}
  toast('Approved ✓ They can sign in and use the app now');
  cloud.pendingUsers=(cloud.pendingUsers||[]).filter(u=>u.user_id!==uid);renderCloudBody();
@@ -532,7 +542,7 @@ function approvalsHTML(){
   <div class="flex items-center justify-between"><div class="microlabel">Waiting for approval</div>
    <button class="tap-link" data-action="approvals-clear">Refresh</button></div>
   ${cloud.apprErr?`<p class="text-[11.5px] text-rose-700">${esc(cloud.apprErr)}</p>`:''}
-  ${!list?'<p class="text-[11.5px] text-[#4f6870]">Loading…</p>':!list.length?'<p class="text-[11.5px] text-[#4f6870]">Nobody is waiting ✓</p>'
+  ${!list?'<p class="text-[11.5px] text-[#4f6870]">Loading…</p>':!list.length&&!cloud.apprErr?'<p class="text-[11.5px] text-[#4f6870]">Nobody is waiting ✓</p>'   /* never "nobody" while the check itself failed (A19) */
    :list.map(u=>`<div class="flex items-center gap-2 border-t border-[#123033]/[.07] py-2">
      <div class="min-w-0 flex-1"><div class="truncate text-[13px] font-bold text-[#123033]">${esc(u.full_name||'(no name given)')}</div>
       <div class="truncate text-[11px] text-[#4f6870]">${esc(u.email||'')}${u.confirmed?'':' · has not confirmed the email yet'}</div></div>
@@ -553,8 +563,8 @@ export function renderCloudBody(){
    <div class="mt-4 flex gap-2">
     <button data-action="cloudSignOut" class="btn btn-glass flex-1 py-2.5 text-xs text-[#5b7178]"${cloud.signingOut?' disabled':''}>Sign out</button>
      <button data-action="sync-now" class="btn btn-primary flex-1 py-2.5 text-xs"${cloud.busy?' disabled':''}>Sync now</button>
-    </div>${statusPanelHTML()}${quarantineNote()}${acctButtons()}${cloud.isAdmin&&!cloud.acct?approvalsHTML():''}${installBlock()}`;
-  if(cloud.isAdmin===undefined&&!cloud.acct)loadApprovals();
+    </div>${statusPanelHTML()}${quarantineNote()}${acctButtons()}${(cloud.isAdmin||cloud.approvalUnknown)&&!cloud.acct?approvalsHTML():''}${installBlock()}`;
+  if(cloud.isAdmin===undefined&&!cloud.approvalUnknown&&!cloud.acct)loadApprovals();   /* a failed check (approvalUnknown) is re-asked only by Refresh: auto re-asking here would refetch for ever (A19) */
   return;
  }
  body.innerHTML=`<div class="display text-base font-extrabold">${cloud.demo?"Sync &amp; sign-in":"Staff sign-in"}</div>
@@ -650,7 +660,7 @@ export function healthUpload(){
 export function healthLive(key,st){
  if(st==='SUBSCRIBED')return noteHealth(key,'ok',key==='queue'?'Live: every desk sees the same line.':'Connected: changes from other desks arrive straight away.',st);
  if(!st)return noteHealth(key,'warn','Connecting the live updates…','no status reported yet');
- noteHealth(key,'warn',key==='queue'?'Reconnecting… numbers may be a few seconds behind.':'Reconnecting… other desks’ changes still arrive at the next sync (within 10 minutes).',st||'connecting');
+ noteHealth(key,'warn',key==='queue'?'Reconnecting… numbers may be a few seconds behind.':'Reconnecting… other desks’ changes still arrive at the next sync (within 20 seconds).',st||'connecting');   /* 20 s is the real fall-back poll (A16) */
 }
 function healthRefresh(){
  const m=$('#cloudModal');if(m&&!m.classList.contains('hidden'))renderCloudBody();

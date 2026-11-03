@@ -37,7 +37,7 @@ export const QUEUE_FLOW=['bp','sugar','vitals','veg','walk','water','sleep','pla
 const QUEUE_WARN=10,QUEUE_ALERT=20;      /* minutes the longest-waiting person has stood in line: amber, then red */
 const QUEUE_WINDOW_H=18;                 /* only today's queue is loaded */
 export const queue=[];                          /* {id,attendeeId,station,status,joinedAt,calledAt,finishedAt,slot}; times in ms; slot: the place (1..N) at a station serving several at once, kept on this device */
-export const qs={ready:false,err:'',ch:null,rt:'',church:'',subbed:false,skew:0,since:'',busy:false,syncing:false,seq:1,confirm:'',pick:'',pickQ:'',renderT:null,names:''};
+export const qs={ready:false,err:'',ch:null,rt:'',church:'',subbed:false,skew:0,since:'',busy:false,syncing:false,seq:1,confirm:'',pick:'',pickQ:'',renderT:null,retryT:null,names:''};
 
 export const qSafe=s=>String(s==null?'':s).replace(/[^A-Za-z0-9-]/g,'');           /* ids end up inside data-* attributes */
 const qT=v=>v?(Date.parse(String(v).replace(/(\.\d{3})\d+/,'$1'))||0):0;
@@ -380,7 +380,7 @@ function qNamesForm(k, cap) {
 }
 function qServeBlock(k, st, can) {
  let cb = (attr, lab) =>
-  `<button class="btn btn-primary q-big" ${attr}${can && st.wait.length ? '' : ' disabled'}>${lab}</button>`;
+  `<button class="btn btn-primary q-big" ${attr}${can && !qs.busy && st.wait.length ? '' : ' disabled'}>${lab}</button>`;
  if (st.cap < 2) {
   return `<div class="q-label">With you now${st.serving.length ? ` \xB7 ${st.serving.length}` : ''}</div>${qPlacesBar(k, st)}${st.serving.length ? st.serving.map((e, i) => qRow(e, i, st)).join('') : cb(`data-action="queueCallNext" data-args="${esc(k)}"`, 'Call next →')}`;
  }
@@ -798,7 +798,7 @@ export function queueStripHTML(a,scope){
  stripScope=scope;
  const mode=qMode();
  if(!a||scope===null||!(mode==='demo'||mode==='live'))return '';
- const dis=qCan()?'':' disabled';
+ const dis=qCan()&&!qs.busy?'':' disabled';   /* not while a queue change is still saving (Q6) */
  const lines=scope?[scope]:qOpenFor(a.id).map(e=>e.station).filter((x,i,l)=>l.indexOf(x)===i);
  return lines.map(st=>{
   const label=esc(QUEUE_SHORT[st]||st),e=qActive(a.id,st),arg=`${esc(a.id)}|${st}`,chk=qChkSpan(a,st,'jr-q-chk');
@@ -972,18 +972,18 @@ export async function queueSync(manual){
   if(first){queue.length=0;qs.since='';}
   rows.forEach(qApply);
   if(!qs.since)qs.since=from;
-  qs.ready=true;qs.err='';
+  qs.ready=true;qs.err='';clearTimeout(qs.retryT);qs.retryT=null;   /* a retry that is still due is not wanted now (Q6) */
   startQueueRealtime();healthLive('queue',qs.rt);
   setTimeout(flushLeaves,0);                 /* visits finished while the queue could not change: leave their lines now */
  }catch(err){
   console.warn('queue sync:',err);
   const msg=String((err&&err.message)||err||'');
   if(err&&(err.code==='PGRST205'||err.code==='PGRST202'||err.code==='42P01'||err.code==='42883'||/schema cache|could not find the (table|function)/i.test(msg)))
-   {qs.ready=false;qs.err='The live queue isn’t switched on for your church yet. Ask your church admin to contact the app’s support.';}
-  else if(!navigator.onLine||/failed to fetch|networkerror|load failed|network request/i.test(msg)){if(!qs.ready)qs.err='Could not reach the server yet — retrying.';}
+   {qs.ready=false;qs.err='The live queue isn’t switched on for your church yet. Ask your church admin to contact the app’s support.';clearTimeout(qs.retryT);qs.retryT=null;}
+  else if(!navigator.onLine||/failed to fetch|networkerror|load failed|network request/i.test(msg)){if(!qs.ready){qs.err='Could not reach the server yet — retrying.';clearTimeout(qs.retryT);qs.retryT=setTimeout(queueSync,15000);}}   /* a failed first load retries by itself (Q6) */
   else if(err&&(err.code==='42501'||/row-level security|permission denied/i.test(msg)))
-   {qs.ready=false;qs.err='This sign-in is not approved for the queue.';}
-  else if(!qs.ready)qs.err=msg||'The queue could not load.';
+   {qs.ready=false;qs.err='This sign-in is not approved for the queue.';clearTimeout(qs.retryT);qs.retryT=null;}
+  else if(!qs.ready){qs.err='The queue could not load.';clearTimeout(qs.retryT);qs.retryT=setTimeout(queueSync,15000);}   /* a failed first load retries by itself (Q6) */
   healthFromError('queue',err,isMissingErr(err)?(missingName(err)||'queue_entries'):'');
  }finally{qs.syncing=false;qAfter();}
 }
@@ -1039,7 +1039,7 @@ export function seedDemoQueue() {
 }
 export function queueReset(){
  if(qs.ch&&cloud.client){try{cloud.client.removeChannel(qs.ch);}catch(e){}}
- qs.ch=null;qs.rt='';qs.church='';qs.subbed=false;qs.ready=false;qs.err='';qs.since='';qs.skew=0;qs.confirm='';
+ qs.ch=null;qs.rt='';qs.church='';qs.subbed=false;qs.ready=false;qs.err='';qs.retryT=null;qs.since='';qs.skew=0;qs.confirm='';
  queue.length=0;
 }
 function qRefresh(){clearTimeout(qs.renderT);qs.renderT=setTimeout(qAfter,150);}
@@ -1082,7 +1082,7 @@ function qStateInfo(mode){
   return qs.rt==='SUBSCRIBED'?['live','Live — every desk sees this same line','Live']:['warn','Reconnecting… numbers may be a few seconds behind','Reconnecting…'];
  }
  if(mode==='loading')return ['info','Connecting to the live queue…','Connecting…'];
- if(mode==='error')return ['bad',esc(qs.err),'Queue not available'];
+ if(mode==='error')return /Could not reach the server/.test(qs.err)?['warn',esc(qs.err),'Queue not available']:['bad',esc(qs.err),'Queue not available'];   /* retrying through a bad connection is a warning, not a fault (Q6) */
  if(mode==='offline')return ['warn','No connection. The queue needs one so every desk sees the same line.','No connection — numbers may be out of date'];
  return ['info','Practice mode — nothing is sent to the shared database. Demo data stays on this phone until you reset it.','Practice mode'];
 }
@@ -1127,6 +1127,11 @@ async function qWake(){try{if(navigator.wakeLock&&tvOpen()&&!qs.wake){qs.wake=aw
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&tvOpen())qWake();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&tvOpen())closeBigScreen();});
 function qCard(k,st,sel){
+ if(st.tone==='loading'||qMode()==='loading')return `<button data-action="qSelect" data-args="${esc(k)}" class="q-card q-card-${st.tone} ${sel?'q-card-sel':''}" aria-pressed="${sel}">
+  <span class="q-card-top"><span class="q-card-name">${esc(QUEUE_SHORT[k])}</span><span class="q-card-dot"></span></span>
+  <span class="q-card-line q-card-checks">${esc(qChecksText(k))}</span>
+  <span class="q-card-n">—<small>waiting</small></span>
+  <span class="q-card-line">Loading the line…</span></button>`;   /* no zeros that look like facts before the first read (Q5) */
  const first=st.serving[0],more=st.serving.length-1;
  const serve=st.cap>1&&first?`Serving <b>${st.serving.length} of ${st.cap}</b>`
   :st.cap>1?(st.wait.length?`<b>Not called yet</b> · ${st.cap} places`:`Free — ${st.cap} places`)
@@ -1153,7 +1158,7 @@ function qRow(e,i,st){
    if(t)mv=`<button class="q-mini q-mini-soft q-ms" data-action="qSlotMove" data-args="${esc(e.id)}" aria-label="Move ${esc(name)} to ${esc(qSlotName(e.station,t))}">⇄ ${esc(qSlotName(e.station,t))}</button>`;
   }
   return `<div class="q-row q-row-serving q-now" data-slot="${e.slot|0}">${tag}<div class="q-now-who">${av}<div class="q-who"><b>${esc(name)}</b><span class="mono">${esc(e.attendeeId)} · with you for ${qMin(now-e.calledAt)}</span>${qChkSpan(attendees.find(x=>x.id===e.attendeeId),e.station,'q-chk')}</div></div>
-   <button class="btn btn-primary q-big" data-action="${last?'queueDone':'queueDoneNext'}" data-args="${esc(e.id)}">${last?'Done ✓':'Done · call next →'}</button>
+   <button class="btn btn-primary q-big" data-action="${last?'queueDone':'queueDoneNext'}" data-args="${esc(e.id)}"${qs.busy?' disabled':''}>${last?'Done ✓':'Done · call next →'}</button>
    <div class="q-sub">${attendees.some(a=>a.id===e.attendeeId)?`<button class="q-mini q-mini-soft" data-action="switchTo" data-args="${esc(e.attendeeId)}">Open passport</button>`:''}${mv}<button class="q-mini q-mini-soft" data-action="queueBack" data-args="${esc(e.id)}" aria-label="Put ${esc(name)} back in line">↩ Put back</button>${x('✕ Remove')}</div></div>`;
  }
  const w=now-e.joinedAt,cls=w/60000>=QUEUE_ALERT?'q-late':w/60000>=QUEUE_WARN?'q-slow':'';
@@ -1162,7 +1167,7 @@ function qRow(e,i,st){
    <div class="q-btns"><button class="q-mini q-mini-soft" data-action="queueServe" data-args="${esc(e.id)}">Call</button>${x('✕')}</div></div>`;
 }
 function qDetail(k,st,can){
- const dis=can?'':' disabled',m=Math.max(1,Math.round(st.avg/60000));
+ const dis=can&&!qs.busy?'':' disabled',m=Math.max(1,Math.round(st.avg/60000));
  let gaps=0,conf=0;
  for(const x of queue)if(x.station===k&&x.status==='done'){const c=qCheckState(attendees.find(y=>y.id===x.attendeeId),k).state;if(c==='skipped'){gaps++;conf++;}else if(c==='empty'||c==='partial')gaps++;}
  const gapNote=gaps?` ${gaps} of them with checks not filled in${conf?` (${conf} confirmed)`:''}.`:'';
@@ -1174,12 +1179,12 @@ function qDetail(k,st,can){
    <button class="btn btn-soft q-tvbtn" data-action="openQueuePick" data-args="${esc(k)}"${dis}>+ Add visitor</button></div>
   ${qServeBlock(k,st,can)}
   <div class="q-label">Next up · ${st.wait.length}</div>
-  ${st.wait.length?st.wait.map((e,i)=>qRow(e,i,st)).join(''):'<div class="q-empty">Nobody waiting — nice and quiet ✓</div>'}
+  ${qMode()==='loading'?'<div class="q-empty">Loading the line…</div>':st.wait.length?st.wait.map((e,i)=>qRow(e,i,st)).join(''):'<div class="q-empty">Nobody waiting — nice and quiet ✓</div>'}
   <p class="q-note">${note}</p>
  </div>`;
 }
 export function viewQueue(){
- const mode=qMode(),can=qCan();
+ const mode=qMode(),can=qCan(),loading=mode==='loading';
  const sel=QUEUE_STATIONS.includes(state.qStation)?state.qStation:QUEUE_STATIONS[0];
  const S={};QUEUE_STATIONS.forEach(k=>S[k]=qStats(k));
  const tot=QUEUE_STATIONS.reduce((t,k)=>({w:t.w+S[k].wait.length,s:t.s+S[k].serving.length,d:t.d+S[k].done,l:Math.max(t.l,S[k].longest)}),{w:0,s:0,d:0,l:0});
@@ -1191,8 +1196,8 @@ export function viewQueue(){
     <div class="display text-base font-extrabold">Who is waiting where</div></div>
     <button class="btn btn-soft q-tvbtn" data-action="openBigScreen">Big screen</button></div>
    ${qStateBar(mode)}
-   <div class="q-totals">${tile(tot.w,'Waiting')}${tile(tot.s,'Being served')}${tile(tot.d,'Finished')}${tile(tot.w?qMin(tot.l).replace(' min','m'):'—','Longest wait')}</div>
-   ${over&&qMayClear()?`<button class="btn btn-soft q-clear" data-action="queueClearHistory"${can?'':' disabled'}>Clear finished &amp; removed · ${over}</button>`:''}
+   <div class="q-totals">${tile(loading?'—':tot.w,'Waiting')}${tile(loading?'—':tot.s,'Being served')}${tile(loading?'—':tot.d,'Finished')}${tile(loading?'—':(tot.w?qMin(tot.l).replace(' min','m'):'—'),'Longest wait')}</div>
+   ${!loading&&over&&qMayClear()?`<button class="btn btn-soft q-clear" data-action="queueClearHistory"${can?'':' disabled'}>Clear finished &amp; removed · ${over}</button>`:''}
   </div>
   <div class="q-board">${QUEUE_STATIONS.map(k=>qCard(k,S[k],k===sel)).join('')}</div>
   ${qDetail(sel,S[sel],can)}

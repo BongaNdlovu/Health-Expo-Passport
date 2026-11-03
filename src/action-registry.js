@@ -1,7 +1,7 @@
 // @ts-check
 import { acctRetry, manageExpos, removeVisitorAsk, closeAcct, cloudInit, cloudSignIn, cloudSignOut, cloudSync, gateBack, joinChurch, leaveChurch, linkMember, linkVolunteer, manageChurch, markNotifsRead, myField, myPickPledge, myPledgeEdit, myPledgeSave, mySecondBooth, myToggleBooth, myToggleList, notifClose, notifOpen, openAcct, openNotifs, profDeleteAsk, profDeleteGo, profDeleteTyped, profGate, profPassword, quarantineDiscard, quarantineExport, registerChurch, removeMember, renderAcct, saveChurch, saveMyDetails, setChurchStatus, setMember, teamAdd, teamRelease, teamShift, withdrawMyPledge } from './account.js';
 import { addPlatformAdmin, approveAssistant, cancelExpo, churchSearchSoon, deleteExpoAsk, editExpo, expoField, expoStation, expoType, newExpo, openChurchData, pickExpo, pickWant, pickWantBooth, pledgeToExpo, saveExpoForm, setAdminPost, setExpoStatus, stepDown } from './account.js';
-import { deregisterMyPledge, setProfSection } from './account.js';
+import { cloudPush, deregisterMyPledge, setProfSection } from './account.js';
 import { answer } from './feedback.js';
 import { updateLater, updateNow } from './update.js';
 import { cancelInvites, chooseChurchPlan, chooseFollowup, deleteChurchPlan, editChurchPlan, makeInvite, saveChurchPlan, setFollowup } from './churchPlans.js';
@@ -122,6 +122,7 @@ export const ACTION_MAP = {
   cloudSignOut: () => cloudSignOut(),   /* adapter: the real function reads its first argument as `force`; dispatch passes the button (BUG-B) */
   'quarantine-export': () => quarantineExport(),
   'quarantine-discard': () => quarantineDiscard(),
+  'retry-refused': () => { cloud.rejected = {}; cloud.rejectedNote = null; cloudPush(); },   /* one tap: send the refused changes again — pushed at once, not through the 700 ms damper (A15) */
   'church-search': el => churchSearchSoon(el.value),
   'join-church': el => joinChurch(el.dataset.args, el),
   'hub-open': el => { closeCloud(); openAcct(el.dataset.args); },
@@ -175,7 +176,7 @@ export const ACTION_MAP = {
   'expo-cancel': () => cancelExpo(),
   'expo-status': el => setExpoStatus(el.dataset.args, el.dataset.status),
   'expo-delete': el => deleteExpoAsk(el.dataset.args),
-  'acct-retry': el => { if (el.dataset.args === 'plans') { cloud.plans = null; cloud.plansErr = null; } acctRetry(el.dataset.args); },   /* acctRetry (account.js) has no plans branch: clear the failed state so the redraw pulls again (E11) */
+  'acct-retry': el => { if (el.dataset.args === 'plans') { cloud.plans = null; cloud.plansErr = null; } else if (el.dataset.args === 'pledge') { cloud.pledge = undefined; cloud.pledgeErr = false; cloud.pledgeNetErr = false; } acctRetry(el.dataset.args); },   /* acctRetry (account.js) has no plans branch: clear the failed state so the redraw pulls again (E11); pledge ditto for its network error (A20a) */
   'vq-clear': () => clearVisitorSearch(),
   'visitor-remove': el => removeVisitorAsk(el.dataset.args),
   'expo-manage': () => manageExpos(),
@@ -187,7 +188,7 @@ export const ACTION_MAP = {
   'member-approve-assistant': el => approveAssistant(el.dataset.user),
   'all-churches-back': el => { cloud.adminData = ''; renderAcct(); },
   'staff-approve': el => approveStaff(el.dataset.args, el),
-  'approvals-clear': el => { cloud.isAdmin = undefined; renderCloudBody(); },
+  'approvals-clear': el => { cloud.isAdmin = undefined; cloud.approvalUnknown = false; renderCloudBody(); },   /* Refresh accepts the failed check away, so the admin question is asked again (A19) */
   'reg-church-list': el => { cloud.regChurch = false; cloud.acctV++; renderGate(); },
   'reg-church-form': el => { cloud.regChurch = true; cloud.acctV++; renderGate(); },
 

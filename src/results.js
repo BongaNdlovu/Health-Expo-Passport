@@ -12,6 +12,7 @@ import { chosenChurchPlan, churchPlanFor, churchPlanPicker, customPlanFor, viewC
 import { customPlanBox } from './customPlan.js';
 import { GRACE_DAYS, hasReadings, readingsGone, visitIsOld, withoutOldReadings } from './retention.js';
 import { hasConsent, optedIn } from './visitor.js';
+let saveBusy='';   /* the file whose save is still handing off to the share sheet, '' when none (R4) */
 /* the three numbers at the top of Results: actual age, health age now, and the 90-day goal */
 function scoreTiles(tile,a,ha,proj,gone){
  return `${tile('Actual age',fmt1(a.age),'yrs old','border-sky-200/70 bg-sky-50/80 text-sky-800')}
@@ -720,6 +721,7 @@ export function downloadCSV(rows,filename,okMsg){
    @param {string} filename @param {string} mime @param {string|Blob} data */
 function saveExport(filename,mime,data,okMsg){
  if(IS_APP){
+  if(saveBusy===filename){toast('One save is already in progress');return;}   /* a second save of THIS file while it is still handing off (R4); a different file may queue behind */
   const P=window.Capacitor.Plugins.CardPrinter;
   if(!P||!P.saveDownload){toast('Saving files needs the latest version of the app');return;}
   /* the plugin takes text; binary files go as base64 behind a b64: marker */
@@ -728,9 +730,11 @@ function saveExport(filename,mime,data,okMsg){
    for(let i=0;i<u.length;i+=32768)b+=String.fromCharCode.apply(null,u.subarray(i,i+32768));
    return 'b64:'+btoa(b);
   });
+  saveBusy=filename;
   text.then(t=>P.saveDownload({name:filename,text:t,mime}))
    .then(()=>toast(`${okMsg} Choose where to send ${filename} (it is not kept in Downloads).`))
-   .catch(e=>toast('Could not save the file: '+(e&&e.message||e)));
+   .catch(e=>toast('Could not save the file. Try again.'))   /* fixed words: the raw plugin error names nothing useful (R4) */
+   .finally(()=>{saveBusy='';});
   return;
  }
  toast(okMsg);

@@ -19,6 +19,7 @@
    Split from the original single-file app; bundled back into one file by tools/build.js. */
 import { $ } from './helpers.js';
 import { APP_SITE, IS_APP } from './platform.js';
+import { toast } from './shell.js';
 
 const SNOOZE = 'newstart.updSnooze';        /* the server version this person said "not now" to */
 
@@ -132,21 +133,27 @@ export async function updateNow() {
   hide();
   if (IS_APP) {
     if (server && server.apk && server.apk.url) {
-      snoozed = server.version || '';
-      if (snoozed) write(SNOOZE, snoozed);
+      const ver = server.version || '';         /* (U3) the snooze is only written once a hand-off really happened */
       /* A WebView cannot install an APK, and navigating it to one usually just fails. Hand the address to the
          phone: the AppLauncher plugin (already in the app) opens it in the phone's own browser, which downloads
          the file for the installer. Capacitor's Browser plugin and a new window are the fallbacks. This is the one
          path that needs a real phone to verify. */
       const href = apkHref(server.apk.url, true, location.href);
-      if (!href) return;
+      if (!href) { show(true); toast('Could not start the download. Try again.'); return; }   /* (U3) nothing could hand off: say so instead of going quiet */
       const cap = /** @type {any} */ (window).Capacitor;
       const plugins = (cap && cap.Plugins) || {};
       if (plugins.AppLauncher && typeof plugins.AppLauncher.openUrl === 'function') {
-        try { await plugins.AppLauncher.openUrl({ url: href }); return; } catch (e) { /* fall through */ }
+        try {
+          await plugins.AppLauncher.openUrl({ url: href });
+          snoozed = ver; if (ver) write(SNOOZE, ver); return;   /* (U3) snooze only a hand-off that succeeded */
+        } catch (e) { /* fall through */ }
       }
-      if (plugins.Browser && typeof plugins.Browser.open === 'function') plugins.Browser.open({ url: href });
-      else if (!window.open(href, '_blank')) location.href = href;
+      if (plugins.Browser && typeof plugins.Browser.open === 'function') {
+        try { plugins.Browser.open({ url: href }); snoozed = ver; if (ver) write(SNOOZE, ver); return; } catch (e) { /* fall through */ }
+      }
+      if (window.open(href, '_blank')) { snoozed = ver; if (ver) write(SNOOZE, ver); return; }
+      location.href = href;                     /* (U3) last resort: the same as success once it fires */
+      snoozed = ver; if (ver) write(SNOOZE, ver);
     }
     return;
   }

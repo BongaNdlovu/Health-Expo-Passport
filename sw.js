@@ -73,6 +73,10 @@ async function page(request) {
 }
 /* own files: answer from the saved copy at once, refresh it in the background */
 async function ownFile(request) {
+  if (new URL(request.url).pathname === '/version.json') {   /* (U5) the update check must never be answered from the saved shell (ignoreSearch keeps the first copy alive forever); straight to the network, never stored */
+    const res = await fetch(request).catch(() => null);
+    return res || Response.error();
+  }
   const cache = await caches.open(SHELL);
   const saved = await cache.match(request, { ignoreSearch: true });
   const fresh = fetch(request).then(res => { if (res && res.ok) cache.put(request, res.clone()); return res; }).catch(() => null);

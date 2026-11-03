@@ -293,7 +293,7 @@ export async function registerChurch(e){
  if(v('rcName').length<2){toast('Enter the church’s name.');return;}
  gateBusy('rc','Registering…');
  const r=await acctRpc('register_church',{p_name:v('rcName'),p_city:v('rcCity'),p_phone:v('rcPhone'),p_email:v('rcEmail')},'Church registered — waiting for the Health Expo admin');
- if(!r){const b=$('#rcGo');if(b){b.disabled=false;b.textContent='Register the church';}return;}
+ if(!r){const b=$('#rcGo');if(b){b.disabled=false;b.removeAttribute('aria-busy');b.textContent='Register the church';}return;}
  cloud.regChurch=false;await cloudSync(true);
 }
 export async function leaveChurch(){
@@ -325,7 +325,7 @@ export async function saveMyDetails(e){
  if(!v('Name')){toast('Enter your name.');return;}
  gateBusy(p,'Saving…');
  const r=await acctRpc('update_my_details',{p_full_name:v('Name'),p_phone:v('Phone'),p_area:v('Area'),p_birth_date:v('Birth')||null},'Your details are saved ✓');
- const b=$('#'+p+'Go');if(b){b.disabled=false;b.textContent='Save my details';}
+ const b=$('#'+p+'Go');if(b){b.disabled=false;b.removeAttribute('aria-busy');b.textContent='Save my details';}
  if(r)await acctReload();
 }
 async function loadHealth(){
@@ -392,6 +392,7 @@ export function pledgeHTML(){
  const m=cloud.acct&&cloud.acct.membership;
  if(!m||m.status!=='approved')return '';
  if(cloud.pledge===undefined){loadPledge();return acctBox('My pledge',acctSkel(2));}
+ if(cloud.pledgeNetErr)return acctBox('My pledge',retryNote('Could not load your pledge. Check your connection.','pledge'));   /* a network drop gets a retry, not the switched-on wording (A20a) */
  if(cloud.pledgeErr)return acctBox('My pledge',acctNote('Pledging is not switched on for your church yet. Ask your church admin to contact the app’s support.'));
  if(!cloud.pledge)return acctBox('My pledge',acctNote('Pledge to help at the next expo and your name goes onto the team list straight away. Your church’s admin registers you and chooses your station. Your pledge details stay on the roster until you unpledge or your church’s admin removes them.')+myPledgeFormHTML());
  if(cloud.pledgeEdit)return acctBox('My pledge',myPledgeFormHTML());
@@ -421,12 +422,11 @@ async function loadPledge(force){
  if(cloud.pledgeBusy&&!force)return;
  const uid=cloud.user&&cloud.user.id;   /* a slow personal answer must not land on the next account (E2) */
  cloud.pledgeBusy=true;
- const r=await acctRpc('my_pledge');
+ let r;try{r=await cloud.client.rpc('my_pledge');}catch(e){r={error:e};}   /* direct call: a network drop must read as retry, not "not switched on" (A20a) */
  cloud.pledgeBusy=false;
  if((cloud.user&&cloud.user.id)!==uid)return;
- cloud.pledgeErr=false;
- if(r===null){cloud.pledge=null;cloud.pledgeErr=true;}
- else cloud.pledge=r&&r.data&&typeof r.data==='object'?r.data:null;
+ if(r&&r.error){cloud.pledge=null;cloud.pledgeErr=isMissingErr(r.error);cloud.pledgeNetErr=!isMissingErr(r.error);}
+ else{cloud.pledge=r&&r.data&&typeof r.data==='object'?r.data:null;cloud.pledgeErr=false;cloud.pledgeNetErr=false;}
  cloud.acctV++;renderGate();     /* the member screen keys its redraw on acctV: without this it stays on Loading… */
  renderAcct();render();
 }
@@ -480,7 +480,7 @@ export async function myPledgeSave(e){
  const r=await acctRpc('save_my_pledge',{p:{name,phone,email,pledgeExpos:d.pledgeExpos||1,skills:d.skills||[],
    pref:d.pref||[],pref2:d.pref2||'',availability:d.avail||[],shirt:d.shirt||'',emergency:d.emergency||'',notes:d.notes||'',expoId:chosenExpo()}},
    cloud.pledge?'Your pledge is saved ✓':'Pledge received — you are on the team list ✓');
- const b=$('#mfGo');if(b){b.disabled=false;b.textContent=cloud.pledge?'Save my pledge':'Send my pledge →';}
+ const b=$('#mfGo');if(b){b.disabled=false;b.removeAttribute('aria-busy');b.textContent=cloud.pledge?'Save my pledge':'Send my pledge →';}
  if(!r)return;
  cloud.pledgeEdit=false;state.mf=null;cloud.expos=undefined;cloud.adminExpos=undefined;
  await loadPledge(true);
@@ -505,7 +505,7 @@ export async function withdrawMyPledge(){
    functions, and the server decides (checked-in and unregistered states are refused there, not here). */
 function pledgeNowHTML(){
  const m=cloud.acct&&cloud.acct.membership;
- if(!m||m.status!=='approved'||cloud.pledge===undefined||cloud.pledgeErr)return '';
+ if(!m||m.status!=='approved'||cloud.pledge===undefined||cloud.pledgeErr||cloud.pledgeNetErr)return '';   /* a failed pledge load says so in its own box (A20a) */
  const p=cloud.pledge;
  const t=!p?'You are not committed to an expo yet. Pledge below and your name goes on the team list; your church’s admin registers you and chooses your station.'
   :p.status==='prospect'?'You are pledged. You can edit your pledge, or unpledge. Your church’s admin registers you and chooses your station.'
@@ -733,7 +733,7 @@ function profMsg(id,msg){
 /* gateBusy changed a button's label while its request ran: put the label back */
 function profIdle(id){
  const b=$('#'+id);
- if(b&&b.dataset&&b.dataset.label){b.disabled=false;b.textContent=b.dataset.label;}
+ if(b&&b.dataset&&b.dataset.label){b.disabled=false;b.removeAttribute('aria-busy');b.textContent=b.dataset.label;}
 }
 const profFail=()=>{profMsg('pfErr',cloud.formErr);profIdle('pfGo');};
 /* The page follows sign-in, sign-out and account changes. cloudRefresh leaves a box that is being typed in alone; right
@@ -1030,7 +1030,7 @@ export async function saveChurch(e,cid){
  const v=id=>(($('#cf'+id)||{}).value||'').trim();
  gateBusy('cf','Saving…');
  const r=await acctRpc('update_church',{p_church:cid,p_name:v('Name'),p_city:v('City'),p_phone:v('Phone'),p_email:v('Email')},'Church details saved ✓');
- const b=$("#chGo");if(b){b.disabled=false;b.textContent="Save church details";}
+ const b=$("#chGo");if(b){b.disabled=false;b.removeAttribute('aria-busy');b.textContent="Save church details";}
  if(!r)return;
  if(cloud.acct.platform_admin)await loadPlatform();
  await acctReload();
@@ -1241,7 +1241,7 @@ export async function saveExpoForm(status){
    address:d.address||'',volunteersNeeded:d.total||0,stationNeeds:d.needs,clinic:!!d.clinic,doctors:d.doctors||0,doctorTypes:d.types,signupDeadline:d.signupDeadline||'',status:status||d.status}},
   status==='open'&&d.status!=='open'?'Saved — members can see it now ✓':'Saved ✓');
  cloud.expoSaving=false;
- const b=$('#xpGo');if(b){b.disabled=false;b.textContent=was||'Save and open for members';}
+ const b=$('#xpGo');if(b){b.disabled=false;b.removeAttribute('aria-busy');b.textContent=was||'Save and open for members';}
  if(!r)return;
  cloud.expoEdit=null;reloadExpos();
 }
@@ -1440,6 +1440,7 @@ export function cloudAuthEvent(ev,session){
   if(wasIn){cloud.user=null;stopRealtime();notifStop();cloudRefresh();
    applyRetention();afterMerge();persistNow();      /* the server may already have purged these readings; the saved copy follows */
    cloud.ready=false;}
+  if(wasIn)cloud.formErr='Your session ended. Sign in again to keep syncing.';   /* one glanceable reason at the gate (A14) */
   healthReset();noteHealth('auth','off','Not signed in.');
   if(ev==='SIGNED_OUT'&&wasIn&&!cloud.signingOut)toast('Signed out — tap the logo to sign in again');
   setCloud('signedout');
@@ -1450,6 +1451,7 @@ export async function cloudSignIn(e){
  if(!cloud.client)return;
  /* the same handler serves the full-screen gate (data-pre="gate") and the sheet behind the logo */
  const pre=(e.target&&e.target.dataset&&e.target.dataset.pre)||'cloud';
+ if(Date.now()<(cloud.signInWaitUntil||0)){cloud.formErr='Too many sign-ins from this network just now. Wait 5 minutes, then try again.';const p=$('#'+pre+'Pass');if(p)p.value='';renderCloudBody();renderGate();return;}   /* a 429 put the sign-in on ice: refuse locally, no server call (A13) */
  const em=($('#'+pre+'Email').value||'').trim(),pw=$('#'+pre+'Pass').value;
  const fail=m=>{cloud.formErr=m;cloud.gateKey='';renderCloudBody();renderGate();profFail();};
  if(!em||!pw){fail('Enter your staff email and password.');return;}
@@ -1463,6 +1465,7 @@ export async function cloudSignIn(e){
    cloud.viewEmail=em;cloud.view='verify';cloud.formErr='Your email is not confirmed yet. Open the link we emailed you, then sign in.';cloud.gateKey='';if(pre==='pf'){cloud.gateForce=true;profIdle('pfGo');}renderGate();return;
   }
   /* Supabase allows 30 sign-ins per 5 minutes from one network (its default): a hall of desks on one wifi can hit it */
+  if(res.error.status===429||/rate limit|too many requests/i.test(msg))cloud.signInWaitUntil=Date.now()+300000;   /* the gate refuses the next attempt locally for five minutes (A13) */
   fail(/invalid login/i.test(msg)?'Wrong email or password.'
    :res.error.status===429||/rate limit|too many requests/i.test(msg)?'Too many sign-ins from this network just now. Wait 5 minutes, then try again.'
    :isTimeoutErr(msg)?'The server is taking too long — try again in a moment.'
@@ -1720,7 +1723,7 @@ async function pushDirty(){
     if(chunk.length>1){
      const rows=chunk.map(o=>k.toRow(o)),sigs=rows.map(sigOf);
      const {error}=await (isFresh?cloud.client.from(k.table).insert(rows.map(inChurch)):cloud.client.from(k.table).upsert(rows.map(inChurch),{onConflict:conflictOn()}));
-     if(!error){chunk.forEach((o,j)=>{sy[o.id]=sigs[j];});cloud.prog.done+=chunk.length;syncChrome();continue;}
+     if(!error){chunk.forEach((o,j)=>{sy[o.id]=sigs[j];delete cloud.rejected[o.id];if(cloud.rejectedNote&&cloud.rejectedNote.id===o.id)cloud.rejectedNote=null;});cloud.prog.done+=chunk.length;syncChrome();continue;}   /* a batch that landed takes its rows' stale refusals with it (A15) */
     }
     for(const o of chunk){await pushOne(kind,o);cloud.prog.done++;}   /* refused rows count as handled */
     syncChrome();                                                     /* once per chunk, never once per row */
@@ -1748,7 +1751,7 @@ async function pushOne(kind,o,again){
  if(placeRefused&&!again&&kind==='vol'&&await resolvePlacement(o))return;
  if(/^2[23]/.test(error.code||'')||placeRefused){           /* data the database refuses: skip this row, keep syncing the rest */
   cloud.rejected[o.id]=s;cloud.rejectedNote={id:o.id,msg:String(error.message||'')};
-  toast(`${o.id} was not uploaded: ${error.message}`);return;
+  toast(`${o.id} was not uploaded. See Cloud status for the reason.`);   /* the raw message is already in Details via rejectedNote (A15) */return;
  }
  throw error;
 }
@@ -1889,7 +1892,7 @@ export function startRealtime(){
  cloud.liveChurch=cloud.churchId;
  /* the bell rides the same channel: a notification for this account arrives without any polling */
  if(cloud.user)ch.on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:'user_id=eq.'+cloud.user.id},p=>onNotifRow(p.new));
- ch.subscribe(st=>{cloud.liveSt=st;healthLive('live',st);});cloud.channel=ch;
+ ch.subscribe(st=>{cloud.liveSt=st;healthLive('live',st);if(st==='SUBSCRIBED')cloudSync();   /* live updates are back: fetch what was missed now, not at the next poll (A16) */});cloud.channel=ch;
 }
 export function stopRealtime(){
  if(cloud.channel)noteHealth('live','off','Not connected.');

@@ -3,7 +3,7 @@
    tour and the vendored sign-in library and fonts. v1.6.2: nothing is loaded from a CDN any more. It NEVER stores anything from Supabase — visitor health data, volunteer details and sign-in
    tokens travel only between the app and the database (the app keeps its own saved copy on the device).
    VERSION is stamped by tools/build.js so every release replaces the old cache. */
-const VERSION = '5294f722ef';
+const VERSION = 'f8f20e7695';
 const SHELL = 'newstart-shell-' + VERSION;
 const LIBS = 'newstart-libs-v4';              /* v4: the CDN copies (supabase-js 2.45.4, Google Fonts) are dropped; everything is same-origin */
 
@@ -73,6 +73,10 @@ async function page(request) {
 }
 /* own files: answer from the saved copy at once, refresh it in the background */
 async function ownFile(request) {
+  if (new URL(request.url).pathname === '/version.json') {   /* (U5) the update check must never be answered from the saved shell (ignoreSearch keeps the first copy alive forever); straight to the network, never stored */
+    const res = await fetch(request).catch(() => null);
+    return res || Response.error();
+  }
   const cache = await caches.open(SHELL);
   const saved = await cache.match(request, { ignoreSearch: true });
   const fresh = fetch(request).then(res => { if (res && res.ok) cache.put(request, res.clone()); return res; }).catch(() => null);

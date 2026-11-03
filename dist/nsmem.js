@@ -49,7 +49,7 @@
     return c;
   }
   function trim(){ bump("trim"); release("tab"); release("overlay"); return true; }
-  addEventListener("pagehide", function(){ for (var s in reg) release(s); clearAll(); });
+  addEventListener("pagehide", function(e){ if(e&&e.persisted)/* kept: a bfcache restore resumes these (U6) */; else { for (var s in reg) release(s); clearAll(); } });
   document.addEventListener("visibilitychange", function(){ if (document.hidden && low) trim(); });
 
   function stats(){

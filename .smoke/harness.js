@@ -125,6 +125,7 @@ const localStorage = {
 let rafQueue = [];
 /* the app's popstate listeners, and what it does with history (the big screen closes on Android Back) */
 const popHandlers = [], histPushed = [], histBacks = [];
+const winHandlers = {};                                    /* window events the app registers (offline/online) — tests fire them */
 const sandbox = {
   document, localStorage,
   NEWSTART_NO_CLOUD: true,    /* the cloud tests start it explicitly, against a fake server */
@@ -141,7 +142,7 @@ const sandbox = {
   Blob: function () {},
   Date, Math, JSON, console, performance: { now: () => Date.now() }, AbortController,
   innerWidth: 390, innerHeight: 844, scrollY: 0, scrollTo() {},
-  addEventListener(type, fn) { if (type === 'popstate') popHandlers.push(fn); }, removeEventListener() {},
+  addEventListener(type, fn) { if (type === 'popstate') popHandlers.push(fn); (winHandlers[type] = winHandlers[type] || []).push(fn); }, removeEventListener() {},
   alert() {}, confirm: () => true, prompt: () => null,
   getComputedStyle: () => ({ getPropertyValue: () => '' }),
   BarcodeDetector: undefined,
@@ -1031,6 +1032,7 @@ function makeServer() {
       onAuthStateChange(cb) { srv.authCb = cb; return { data: { subscription: {} } }; },
       async signInWithPassword({ email, password }) {
         if (srv.offline) return { error: { message: 'TypeError: Failed to fetch' } };
+        if (srv.signInMode === 'ratelimit') return { error: { code: 'over_request_rate_limit', status: 429, message: 'Too many requests' } };
         const acct = srv.users.get(email);
         if (acct) {                                              /* an account created through signUp() */
           if (acct.password !== password) return { error: { message: 'Invalid login credentials' } };
@@ -1053,8 +1055,14 @@ function makeServer() {
         if (srv.signupMode === 'auto') { const s = { user }; srv.authCb('SIGNED_IN', s); return { data: { user, session: s }, error: null }; }
         return { data: { user, session: null }, error: null };
       },
-      async resend({ type, email, options }) { srv.calls.push('resend:' + type + ':' + email); return srv.offline ? { error: { message: 'Failed to fetch' } } : { error: null }; },
-      async resetPasswordForEmail(email, opts) { srv.calls.push('reset:' + email); srv.lastReset = { email, opts }; return srv.offline ? { error: { message: 'Failed to fetch' } } : { data: {}, error: null }; },
+      async resend({ type, email, options }) {
+        srv.calls.push('resend:' + type + ':' + email);
+        if (srv.holdResend) return srv.holdResend();     /* a test-held resend never settles until release */
+        return srv.offline ? { error: { message: 'Failed to fetch' } } : { error: null };
+      },
+      async resetPasswordForEmail(email, opts) { srv.calls.push('reset:' + email); srv.lastReset = { email, opts };
+        if (srv.forgotErr) return { error: srv.forgotErr };   /* a server-side failure of forgot-password */
+        return srv.offline ? { error: { message: 'Failed to fetch' } } : { data: {}, error: null }; },
       async updateUser({ password }) {
         if (password === 'SamePass1') return { error: { code: 'same_password', message: 'New password should be different from the old password.' } };
         srv.calls.push('updateUser'); srv.newPassword = password; return { data: {}, error: null };
@@ -1314,7 +1322,7 @@ function makeServer() {
   console.log('\n16e. Member commitments, confirmations & updates');
   const keep = { client: g.cloud.client, acct: g.cloud.acct, pledge: g.cloud.pledge, user: g.cloud.user, notifs: g.cloud.notifs };
   const approved = { membership: { role: 'member', status: 'approved' }, church: { name: 'Grace', city: 'Durban' } };
-  const settingsFor = (acct, pledge) => { g.cloud.acct = acct; g.cloud.pledge = pledge; g.cloud.expos = { list: [] }; g.cloud.myTeam = []; return g.pledgeSectionHTML(); };   /* the Pledge & registration section, which replaced the Settings sheet */
+  const settingsFor = (acct, pledge) => { g.cloud.acct = acct; g.cloud.pledge = pledge; g.cloud.pledgeErr = false; g.cloud.pledgeNetErr = false; g.cloud.expos = { list: [] }; g.cloud.myTeam = []; return g.pledgeSectionHTML(); };   /* the Pledge & registration section, which replaced the Settings sheet (A20a flags do not follow a fresh fixture) */
 
   ok('the page carries the confirm sheet and the update banner, and no separate Settings sheet',
     /id="confirmSheet"/.test(html) && /id="updateBar"/.test(html) && !/id="setSheet"/.test(html) && !/data-action="openSettings"/.test(html) && !g.hasAction('openSettings'));
@@ -3240,7 +3248,7 @@ function makeServer() {
     const freshDevice = async () => {
       device(); install(); rc.length = 0; store.delete('newstart.church.v1');
       sandbox.NEWSTART_NO_CLOUD = false;
-      Object.assign(C, { ready: false, demo: false, pending: false, gateKey: '', acct: null, churchId: '', health: undefined, gateForce: false, gateHide: false, delOpen: false, view: 'login', formErr: '', client: null, status: 'off' });
+      Object.assign(C, { ready: false, demo: false, pending: false, gateKey: '', acct: null, churchId: '', health: undefined, gateForce: false, gateHide: false, delOpen: false, view: 'login', formErr: '', client: null, status: 'off', signInWaitUntil: 0 });   /* the A13 cooldown of an earlier scenario does not follow this device (18f tests the form, not the throttle) */
       await g.cloudInit(); srv.authCb('INITIAL_SESSION', null); await sleep(30);
     };
 
@@ -5980,6 +5988,230 @@ function makeServer() {
     }
 
     device(); g.state.tab = 'home';          /* back to a signed-out demo desk: later blocks reset their own state */
+  }
+
+  /* ---- 20b2. Wave 3: UI & async states (U1-U8, Q5/Q6, A13-A20a, R4, V8b) ---- */
+  {
+    const srcOf = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+
+    /* TST-U1 (U1): a sign-in library that never answers must not hang the gate — the load times out, and Try again works */
+    {
+      const keepMs = g.scriptTimes ? g.scriptTimes.ms : undefined;
+      if (g.scriptTimes) g.scriptTimes.ms = 50;
+      const p1 = g.loadScript('vendor/supabase.min.js').then(() => 'loaded').catch(() => 'refused');
+      const out1 = await Promise.race([p1, sleep(400).then(() => 'still hanging')]);
+      const p2 = g.loadScript('vendor/supabase.min.js').then(() => 'loaded').catch(() => 'refused');
+      await sleep(20);
+      const sc = (sandbox.document.head.children || []).filter(c => (c.src || '').includes('supabase.min.js'));
+      const el = sc[sc.length - 1];
+      if (el && typeof el.onload === 'function') el.onload();          /* the library arrives the second time */
+      const out2 = await Promise.race([p2, sleep(400).then(() => 'still hanging')]);
+      if (g.scriptTimes) g.scriptTimes.ms = keepMs;
+      ok('TST-U1 a stalled sign-in library load times out instead of hanging the gate', out1 === 'refused', 'first=' + out1);
+      ok('TST-U1 ...and Try again can load it for real', out2 === 'loaded', 'retry=' + out2);
+    }
+
+    /* TST-U2 (U2): losing the network moves a signed-in desk to Offline at once, and the poll stays quiet while off-line */
+    {
+      device(); await signIn();
+      sandbox.navigator.onLine = false;
+      const offs = winHandlers.offline || [];
+      if (offs.length) offs[offs.length - 1]();
+      await sleep(40);
+      ok('TST-U2 the network dropping moves the desk to Offline straight away', offs.length && C.status === 'offline',
+        'handler=' + offs.length + ' status=' + C.status);
+      ok('TST-U2 ...and nothing sets the desk back online while navigator.onLine is false',
+        /navigator\.onLine===false/.test(srcOf('src/main.js')) && /addEventListener\('offline'/.test(srcOf('src/main.js')));
+      sandbox.navigator.onLine = true;
+      const ons = winHandlers.online || [];
+      if (ons.length) ons[ons.length - 1]();
+      await sleep(40);
+    }
+
+    /* TST-Q5 (Q5): the queue before its first sync shows Loading, not an empty-looking board */
+    {
+      device();
+      C.user = { id: 'user-1', email: 'staff@example.org' }; C.mode = true;
+      g.qs.ready = false; g.qs.err = '';
+      const q = g.viewQueue();
+      ok('TST-Q5 the queue before its first sync says Loading the line, never Free — nobody here',
+        /Loading the line/.test(q) && !/Free — nobody here/.test(q),
+        q.slice(q.indexOf('q-card'), q.indexOf('q-card') + 180));
+      C.user = null; C.mode = false;
+    }
+
+    /* TST-Q6 (Q6): a failed first queue load retries by itself */
+    {
+      device(); await signIn(); srv.offline = true;
+      g.qs.ready = false; g.qs.err = '';
+      await g.queueSync(true).catch(() => {}); await sleep(30);
+      ok('TST-Q6 a failed first queue load carries a plain error and retries by itself',
+        !g.qs.ready && !!g.qs.err && !!g.qs.retryT, 'err=' + g.qs.err + ' retryT=' + String(g.qs.retryT));
+      srv.offline = false; clearTimeout(g.qs.retryT); g.qs.retryT = null; g.qs.err = '';
+    }
+
+    /* TST-A15 (A15): refusals point at Cloud status and can be retried; a landed batch clears its stale refusals */
+    {
+      device(); await signIn();
+      registerLocal('Refused Once', 'EXPO-350');
+      srv.refuseAlways = new Set(['EXPO-350']);
+      await sleep(1600);
+      const t1 = $el('toastMsg').textContent;
+      ok('TST-A15 a refused upload points at Cloud status instead of database jargon',
+        /was not uploaded/.test(t1) && /See Cloud status/.test(t1), t1);
+      srv.refuseAlways = null;
+      const rEl = { dataset: { action: 'retry-refused' }, tagName: 'BUTTON', hasAttribute: () => false, closest() { return this; } };
+      g.dispatch(rEl, { type: 'click', target: rEl });
+      await sleep(250);
+      ok('TST-A15 Try the refused changes again clears the refusal and uploads the row',
+        C.rejected['EXPO-350'] === undefined && C.synced.att['EXPO-350'] !== undefined && srv.tables.attendees.has('EXPO-350'),
+        'rejected=' + Object.keys(C.rejected).join(','));
+      registerLocal('Batch One', 'EXPO-360'); registerLocal('Batch Two', 'EXPO-361');
+      C.rejected['EXPO-360'] = { id: 'EXPO-360', msg: 'stale' }; C.rejected['EXPO-361'] = { id: 'EXPO-361', msg: 'stale' };
+      await sleep(1600);
+      ok('TST-A15 a batch that lands clears the stale refusals for its rows',
+        C.rejected['EXPO-360'] === undefined && C.rejected['EXPO-361'] === undefined
+          && C.synced.att['EXPO-360'] !== undefined && C.synced.att['EXPO-361'] !== undefined,
+        'rejected=' + Object.keys(C.rejected).join(','));
+    }
+
+    /* TST-U3 (U3): the app-download snooze is written only after a successful hand-off */
+    {
+      const up = srcOf('src/update.js');
+      const i0 = up.indexOf('export async function updateNow');
+      const fn = up.slice(i0, up.indexOf('export', i0 + 10));
+      ok('TST-U3 the app-download snooze is written only after a successful hand-off, and a failure says so',
+        fn.indexOf('write(SNOOZE') > fn.indexOf('AppLauncher') && /Could not start the download/.test(fn),
+        'write@' + fn.indexOf('write(SNOOZE') + ' launcher@' + fn.indexOf('AppLauncher'));
+    }
+
+    /* TST-A13 (A13): a 429 starts a 5-minute local cooldown that refuses without ringing the server */
+    {
+      device(); srv.signInMode = 'ratelimit';
+      $el('gateEmail').value = 'staff@example.org'; $el('gatePass').value = 'right';
+      let sp = srv.client.auth.signInWithPassword, n = 0;
+      srv.client.auth.signInWithPassword = async a => { n++; return sp(a); };
+      await g.cloudSignIn({ preventDefault() {}, target: { dataset: { pre: 'gate' } } }); await sleep(30);
+      const w1 = C.signInWaitUntil;
+      await g.cloudSignIn({ preventDefault() {}, target: { dataset: { pre: 'gate' } } }); await sleep(30);
+      srv.client.auth.signInWithPassword = sp; srv.signInMode = null;
+      ok('TST-A13 a 429 starts a five-minute local sign-in cooldown', typeof w1 === 'number' && w1 > Date.now() + 240000, 'wait=' + String(w1));
+      ok('TST-A13 ...and while it runs the gate refuses again without ringing the server',
+        n === 1 && /Too many sign-ins|Wait 5 minutes/.test(C.formErr), 'calls=' + n + ' err=' + C.formErr);
+      C.formErr = '';
+    }
+
+    /* TST-A14 (A14): a session ended elsewhere says so at the gate */
+    {
+      device(); await signIn();
+      srv.authCb('SIGNED_OUT', null); await sleep(40);
+      ok('TST-A14 a session that ends elsewhere says so at the gate', /session ended/i.test(C.formErr), C.formErr || '(empty)');
+      C.formErr = '';
+    }
+
+    /* TST-A16 (A16): the live channel returning syncs straight away, and the wording matches the real poll */
+    {
+      device(); await signIn(); srv.rtState = 'SUBSCRIBED';
+      g.stopRealtime(); g.startRealtime();
+      await sleep(300);
+      const pulls = srv.calls.filter(c => c === 'select:attendees:range0').length;   /* the first sync's full-shaped pull is 1; the SUBSCRIBED sync (empty cursor still fetches all) adds one more */
+      srv.rtState = ''; g.stopRealtime();
+      ok('TST-A16 the live channel coming back syncs straight away instead of waiting for the poll', pulls >= 2, 'full-pulls=' + pulls);
+      ok('TST-A16 the reconnect wording says 20 seconds, as the fall-back poll actually runs', /within 20 seconds/.test(srcOf('src/cloud.js')), '');
+    }
+
+    /* TST-U4 (U4): busy buttons are marked and greyed in the stylesheet */
+    {
+      ok('TST-U4 the stylesheet greys disabled and busy buttons',
+        /\.btn:disabled/.test(html) && /\[aria-busy="true"\]/.test(html));
+      device();
+      g.gateBusy('zz', 'Busy…');
+      const zb = $el('zzGo');
+      ok('TST-U4 ...and gateBusy marks the button aria-busy',
+        zb.getAttribute && zb.getAttribute('aria-busy') === 'true', 'aria=' + ((zb.getAttribute && zb.getAttribute('aria-busy')) || 'none'));
+    }
+
+    /* TST-A17 (A17): a server error on forgot-password answers plainly and reveals nothing */
+    {
+      device(); srv.forgotErr = { status: 500, message: 'Internal error' };
+      $el('gateEmail').value = 'staff@example.org';
+      await g.cloudForgot({ preventDefault() {} }); await sleep(30);
+      ok('TST-A17 a server error on forgot-password answers plainly and reveals nothing',
+        /Could not send the email/.test(C.formErr) && C.view !== 'forgotSent', C.formErr + ' view=' + C.view);
+      srv.forgotErr = null; C.formErr = '';
+    }
+
+    /* TST-A18 (A18): the resend cooldown starts before the request and is cleared when it fails */
+    {
+      device(); C.viewEmail = 'staff@example.org';
+      let rel = null; srv.holdResend = () => new Promise(r => { rel = r; });
+      const p = g.cloudResend();
+      await sleep(20);
+      const during = C.resendAt > Date.now();
+      rel({ error: { message: 'TypeError: Failed to fetch' } });
+      await p; await sleep(20); srv.holdResend = null;
+      ok('TST-A18 the resend cooldown starts before the request and is cleared when it fails',
+        during && !C.resendAt, 'during=' + during + ' after=' + C.resendAt);
+   }
+
+    /* TST-A19 (A19): a failed admin check keeps the approvals box with its error; a thrown approve restores the button */
+    {
+      device();
+      C.user = { id: 'user-1', email: 'staff@example.org' }; C.acct = null; C.isAdmin = undefined; C.approvalUnknown = false; C.pendingUsers = null; C.apprErr = '';
+      srv.rpcs = { is_admin: () => ({ data: null, error: { message: 'TypeError: Failed to fetch' } }) };
+      g.renderCloudBody(); await g.approveStaff(' nobody ', null).catch(() => {});   /* no-op: just lets the microtasks land */
+      await sleep(60);
+      const b1 = $el('cloudBody').innerHTML;
+      ok('TST-A19 a failed admin check keeps the approvals box with its error and a Refresh',
+        /Waiting for approval/.test(b1) && !/Nobody is waiting/.test(b1), b1.slice(b1.indexOf('Waiting'), b1.indexOf('Waiting') + 180));
+      srv.rpcs = { staff_approve: () => { throw new TypeError('boom'); } };
+      C.isAdmin = true; C.approvalUnknown = false; C.pendingUsers = [{ user_id: 'u9', full_name: 'Pending P', confirmed: true }]; C.apprErr = '';
+      g.renderCloudBody();
+      const btn = { disabled: false, textContent: 'Approve' };
+      await g.approveStaff('u9', btn).catch(() => {});
+      ok('TST-A19 an approve that throws restores the Approve button',
+        btn.textContent === 'Approve' && btn.disabled === false, btn.textContent + ' disabled=' + btn.disabled);
+      srv.rpcs = null; C.isAdmin = undefined; C.approvalUnknown = false; C.pendingUsers = null; C.user = null; C.apprErr = '';
+    }
+
+    /* TST-A20a (A20a): a network failure on My pledge offers a retry, not the switched-on wording */
+    {
+      device(); await signIn();
+      C.acct = { church: { id: 'ch-1', name: 'T', status: 'active' }, membership: { role: 'member', status: 'approved' } };
+      srv.rpcs = { my_pledge: () => ({ data: null, error: { message: 'TypeError: Failed to fetch' } }) };
+      C.pledge = undefined; C.pledgeErr = false; C.pledgeNetErr = false;
+      g.pledgeHTML(); await sleep(50);
+      const p1 = g.pledgeHTML();
+      ok('TST-A20a a network failure on My pledge offers a retry, not the switched-on wording',
+        /Check your connection|Try again/.test(p1) && !/not switched on/.test(p1), p1.slice(0, 140));
+      srv.rpcs = null; C.acct = null; C.pledge = undefined; C.pledgeErr = false; C.pledgeNetErr = false;
+    }
+
+    /* V8b: a search that hits the 25-match cap says how to narrow it */
+    {
+      device(); g.resetDemo();
+      for (let i = 0; i < 27; i++) g.attendees.push(g.migrateAttendee({ id: 'EXPO-7' + String(10 + i).padStart(2, '0'), name: 'Match Maker ' + i }));
+      g.filterVisitors('Match');
+      const lh = $el('visitorList').innerHTML;
+      ok('V8b a search at the 25-match cap says how to narrow it',
+        lh.includes('First 25 matches') && !lh.includes('search to find anyone else'), lh.slice(-170));
+      g.resetDemo(); g.state.vq = '';
+    }
+
+    /* TST-U5 (U5): the worker never answers version.json from its saved copy */
+    {
+      const swText = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
+      const ownBlock = swText.slice(swText.indexOf('async function ownFile'), swText.indexOf('/* CDN libraries'));
+      ok('TST-U5 the update check (version.json) is never answered from the saved shell', /version\.json/.test(ownBlock), ownBlock.slice(0, 80));
+    }
+
+    /* TST-U6 / U8 / R4 (structural: the small gaps get their source-level guards this wave) */
+    ok('TST-U6 a page held in the back/forward cache keeps its page timers across the pagehide', /persisted/.test(srcOf('nsmem.js')));
+    ok('TST-U8 a redraw skipped while the page was hidden is finished on focusout', /focusout/.test(srcOf('src/main.js')));
+    ok('TST-R4 a save in flight cannot be started twice, and a failure says so in fixed words',
+      /saving|exportBusy|saveBusy/.test(srcOf('src/results.js')) && /Could not save/.test(srcOf('src/results.js')));
+
+    device(); g.state.tab = 'home';
   }
 
   /* ---- 20c. Android Back closes the big screen instead of leaving the app ---- */

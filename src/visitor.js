@@ -324,7 +324,8 @@ function visitorListHTML(query){
  const rows=visitorsToShow(query),q=String(query||'').trim();
  if(!rows.length)return `<p class="px-1 py-3 text-center text-[11px] text-[#6b8187]">${q?'Nobody matches “'+esc(q)+'”.':'No visitors yet.'}</p>${q?'<button data-action="vq-clear" class="btn btn-glass mx-auto block px-4 py-2 text-[11px]">Clear search</button>':''}`;
  const more=(q?0:attendees.length-rows.length);
- return rows.map(visitorRowHTML).join('')+(more>0?`<p class="px-1 pt-2 text-center text-[10px] font-semibold text-[#6b8187]">Latest ${rows.length} of ${attendees.length} — search to find anyone else.</p>`:'');
+ const capped=q&&rows.length>=LIST_CAP;   /* search hit the cap: say how to narrow (V8b) */
+ return rows.map(visitorRowHTML).join('')+(capped?`<p class="px-1 pt-2 text-center text-[10px] font-semibold text-[#6b8187]">First 25 matches: type more of the name or phone.</p>`:(more>0?`<p class="px-1 pt-2 text-center text-[10px] font-semibold text-[#6b8187]">Latest ${rows.length} of ${attendees.length} — search to find anyone else.</p>`:''));
 }
 export function filterVisitors(v){state.vq=v;const el=$('#visitorList');if(el)el.innerHTML=visitorListHTML(v);}
 /* the one-tap way out of a search that matched nobody */

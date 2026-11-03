@@ -339,6 +339,7 @@
   /* transform/opacity only: transitioning box-shadow, background and colour repainted every button on
      hover, focus and theme change. .45s also outlasted the tap, so a quick press felt loose. */
   .btn{position:relative;overflow:hidden;transition:transform .18s cubic-bezier(.34,1.56,.64,1),opacity .18s}
+  .btn:disabled,.btn[aria-busy="true"]{opacity:.45;pointer-events:none}
   .btn:active{transform:scale(.95);transition-duration:.08s}
   .step-btn{position:relative;overflow:hidden}
   .rip{position:absolute;border-radius:50%;pointer-events:none;transform:scale(0);
