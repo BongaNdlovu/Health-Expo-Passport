@@ -588,7 +588,7 @@ export function followUpRows(mode){
  const yn=v=>v===1?'Yes':v===0?'No':'';
  const flag=c=>c&&c[1]&&c[0]!=='ok'?`${c[0]==='flag'?'FLAG':'Watch'}: ${c[1]}`:c&&c[1]?'In range':'';
  const ticked=(a,set)=>Object.keys(set).filter(k=>a.interests[k]).map(k=>set[k]).join('; ');
- const head=['Badge',...(min?[]:['Name','Phone','Email']),'Age','Sex','Height (cm)','Weight (kg)','Waist (cm)','BMI (kg/m²)','BMI flag',
+ const head=['Badge',...(min?[]:['Name','Phone','Email']),'Age','Sex','Height (cm)','Weight (kg)','Waist (cm)',...(min?[]:['Body fat %','Body water %','PEF (L/min)','Recovery pulse (bpm)']),'BMI (kg/m²)','BMI flag',
   'BP systolic (mmHg)','BP diastolic (mmHg)','BP flag','BP medication','Blood sugar (mmol/L)','Sugar flag','Cholesterol (mmol/L)','Cholesterol flag',
   'Fruit & veg (servings/day)','Exercise (min/day)','Water (glasses/day)','Sleep (hours/night)','Checks done (of 8)',
   ...(min?[]:['Pregnant','Major operations','Chronic illnesses',...SURVEY.map(x=>x.q),'Also talk about','Interests','Seminars','Heard via']),
@@ -603,7 +603,7 @@ export function followUpRows(mode){
   const cb=s.sys&&s.dia?cat('bp',{sys:s.sys,dia:s.dia}):null,cs=s.sugar!=null?cat('sugar',s.sugar):null,cc=s.chol!=null?cat('chol',s.chol):null,cm=b?cat('bmi',b):null;
   const fl=[['BP',cb],['Sugar',cs],['Cholesterol',cc],['BMI',cm]].filter(([,c])=>c&&(c[0]==='flag'||c[0]==='watch')).map(([l,c])=>`${l}: ${c[1]}`).join('; ');
   const done=[s.weight!=null&&a.heightCm,s.sys&&s.dia,s.sugar!=null,s.chol!=null,s.veg!=null,s.walk!=null,s.water!=null,s.sleep!=null].filter(Boolean).length;
-  rows.push([a.id,...(min?[]:[a.name||'',ok&&a.phone||'',ok&&a.email||'']),n(a.age),a.sex||'',n(a.heightCm),n(s.weight),n(s.waist),b?fmt1(b):'',flag(cm),
+  rows.push([a.id,...(min?[]:[a.name||'',ok&&a.phone||'',ok&&a.email||'']),n(a.age),a.sex||'',n(a.heightCm),n(s.weight),n(s.waist),...(min?[]:[n(s.fat),n(s.tbw),n(s.pef),n(s.pulseRec)]),b?fmt1(b):'',flag(cm),
    n(s.sys),n(s.dia),flag(cb),yn(s.bpMed),n(s.sugar),flag(cs),n(s.chol),flag(cc),n(s.veg),n(s.walk),n(s.water),n(s.sleep),String(done),
    ...(min?[]:[yn(s.preg),yn(s.ops),s.chronic===1?'Yes'+(a.chronicList?': '+a.chronicList:''):yn(s.chronic),
     ...SURVEY.map(x=>s[x.k]?x.a[s[x.k]-1]:''),careNotes(a).join(' '),ticked(a,INT),ticked(a,SEMINARS),ticked(a,HEARD)]),

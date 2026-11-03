@@ -121,7 +121,7 @@ export const ACTION_MAP = {
   'sync-now': () => cloudSync(true),
   cloudSignOut: () => cloudSignOut(),   /* adapter: the real function reads its first argument as `force`; dispatch passes the button (BUG-B) */
   'quarantine-export': () => quarantineExport(),
-  'quarantine-discard': () => quarantineDiscard(),
+  'quarantine-discard': el => quarantineDiscard(el.dataset.args),
   'retry-refused': () => { cloud.rejected = {}; cloud.rejectedNote = null; cloudPush(); },   /* one tap: send the refused changes again — pushed at once, not through the 700 ms damper (A15) */
   'church-search': el => churchSearchSoon(el.value),
   'join-church': el => joinChurch(el.dataset.args, el),

@@ -100,50 +100,67 @@ export function acctGate(){
 }
 /* forget the church data saved on this device (another church's account, or no longer staff). Unsent and refused
    rows are never silently lost: they are kept aside and restored if the same church comes back (D1). */
-export function quarantineDiscard(){
+export function quarantineDiscard(id){
  confirmAsk({title:'Discard the kept records?',
   body:'The records saved when this device left another church are deleted for good. Rows already uploaded are not touched.',
   label:'Discard',danger:true}).then(yes=>{
   if(!yes)return;
-  try{localStorage.removeItem(QUAR_KEY);}catch(e){}
+  try{
+   const q=JSON.parse(localStorage.getItem(QUAR_KEY)||'null'),rest={};
+   for(const k in q)if(q[k]&&k!==id)rest[k]=q[k];
+   if(Object.keys(rest).length)localStorage.setItem(QUAR_KEY,JSON.stringify(rest));else localStorage.removeItem(QUAR_KEY);
+  }catch(e){}
   renderCloudBody();toast('Kept records discarded');
  });
 }
 export function quarantineExport(){
  let q;try{q=JSON.parse(localStorage.getItem(QUAR_KEY)||'null');}catch(e){q=null;}
- if(!q||!Array.isArray(q.att)||!Array.isArray(q.vol))return;
- const rows=[['Kind','Id','Name','Email','Phone'],
-  ...q.att.map(r=>['Visitor',r.id||'',r.name||'',r.email||'',r.phone||'']),
-  ...q.vol.map(r=>['Volunteer',r.id||'',r.name||'',r.email||'',r.phone||''])];
+ if(!q)return;
+ const rows=[['Kind','Church','Id','Name','Email','Phone']];
+ for(const church in q){
+  const s=q[church];if(!s||!Array.isArray(s.att)||!Array.isArray(s.vol))continue;
+  const who=s.name||church;      /* the name read when the desk left, or the church id the slot is filed under */
+  for(const r of s.att)rows.push(['Visitor',who,r.id||'',r.name||'',r.email||'',r.phone||'']);
+  for(const r of s.vol)rows.push(['Volunteer',who,r.id||'',r.name||'',r.email||'',r.phone||'']);
+ }
+ if(rows.length===1)return;
  downloadCSV(rows,'newstart-kept-records.csv','The kept records are exported (CSV) ✓ Delete the file when you are done.');
 }
-function quarantineKeep(church){
+function quarantineKeep(church,name){
  let rows;
  try{rows=['att','vol'].map(k=>KINDS[k].list.filter(o=>isDirty(k,o)||cloud.rejected[o.id]!==undefined).map(o=>JSON.parse(JSON.stringify(o))));}catch(e){return;}
  const n=rows[0].length+rows[1].length;
  if(!n)return;
- try{localStorage.setItem(QUAR_KEY,JSON.stringify({church,at:Date.now(),att:rows[0],vol:rows[1]}));}catch(e){}
+ let q;try{q=JSON.parse(localStorage.getItem(QUAR_KEY)||'null');}catch(e){q=null;}
+ if(!q||typeof q!=='object')q={};
+ const had=q[church];   /* this church left with unsent rows before: they are added to its slot, never wiped (H1) */
+ const merge=(old,fresh)=>{const m=new Map();for(const r of old||[])m.set(r.id,r);for(const r of fresh)m.set(r.id,r);return [...m.values()];};   /* the newer copy wins */
+ q[church]={at:Date.now(),name:name||had&&had.name||'',att:merge(had&&had.att,rows[0]),vol:merge(had&&had.vol,rows[1])};
+ try{localStorage.setItem(QUAR_KEY,JSON.stringify(q));}catch(e){}
  renderCloudBody();
  toast(`${n} not-yet-uploaded ${n===1?'record':'records'} from this church kept on this phone`);
 }
-/* the same church came back: its unsent rows go back into the lists as never-uploaded, so they upload normally */
+/* the same church came back: its unsent rows go back into the lists as never-uploaded, so they upload normally.
+   The other churches' slots stay untouched (H1). */
 function quarantineRestore(id){
  let q;try{q=JSON.parse(localStorage.getItem(QUAR_KEY)||'null');}catch(e){q=null;}
- if(!q||q.church!==id)return;
+ const slot=q&&q[id];
+ if(!slot)return;
  let n=0;
  for(const kind of ['att','vol']){
   const k=KINDS[kind];
-  for(const o of (Array.isArray(q[kind])?q[kind]:[])){
+  for(const o of (Array.isArray(slot[kind])?slot[kind]:[])){
    let row;try{row=k.migrate(JSON.parse(JSON.stringify(o)));}catch(e){continue;}
    if(row&&row.id&&!k.list.some(x=>x.id===row.id)){k.list.push(row);n++;}
   }
  }
- try{localStorage.removeItem(QUAR_KEY);}catch(e){}
+ delete q[id];
+ try{if(Object.keys(q).length)localStorage.setItem(QUAR_KEY,JSON.stringify(q));else localStorage.removeItem(QUAR_KEY);}catch(e){}
  if(n){afterMerge();persistNow();toast(`${n} unsent ${n===1?'record':'records'} from before are back — they will upload now`);}
 }
 export function dropChurchData(){
  let had='';try{had=localStorage.getItem(CHURCH_KEY)||'';}catch(e){}
- quarantineKeep(had||cloud.churchId||'');
+ quarantineKeep(had||cloud.churchId||'',cloud.acct&&cloud.acct.church&&cloud.acct.church.name||'');
  attendees.length=0;volunteers.length=0;
  cloud.synced={att:{},vol:{}};cloud.rejected={};freshCursor();cloud.lastFull=0;
  queueReset();
@@ -1433,6 +1450,9 @@ export function cloudAuthEvent(ev,session){
   cloud.user=u;cloud.gateForce=false;noteHealth('auth','ok','Signed in as '+(u.email||''));
   if(!same){
    cloud.gen=(cloud.gen||0)+1;   /* an account switch orphans the previous account's in-flight pass (E1) */
+   /* that parked pass can no longer run its finally (its generation is gone too), so the hand-off is reset here:
+      without it the next pass never starts and the status line hangs at Syncing… for the whole session (H3) */
+   cloud.busy=false;cloud.again=false;cloud.againManual=false;
    /* An invite link a previous account was offered (it was bound to them when their approved account declined
       it) must not join this one automatically: drop it before the sync below would spend it. A code still
       waiting for its anonymous arrival (owner '') is the normal sign-up round trip and is kept. */
@@ -1447,6 +1467,9 @@ export function cloudAuthEvent(ev,session){
      without a session was never open for anyone, so the boot path (saved copy, no gate) is untouched. */
   const wasIn=!!cloud.user;
   if(wasIn){cloud.user=null;stopRealtime();notifStop();cloudRefresh();
+   /* an in-flight pass may still be parked on a fetch: orphan it here so its return touches nothing —
+      no "Up to date", no gate lift on a signed-out desk (H4) */
+   cloud.gen=(cloud.gen||0)+1;cloud.busy=false;cloud.again=false;cloud.againManual=false;
    applyRetention();afterMerge();persistNow();      /* the server may already have purged these readings; the saved copy follows */
    cloud.ready=false;}
   if(wasIn)cloud.formErr='Your session ended. Sign in again to keep syncing.';   /* one glanceable reason at the gate (A14) */
@@ -1588,7 +1611,7 @@ export async function cloudSync(manual){
   const pruned=applyRetention();
   if(pruned&&!attendees.some(a=>a.id===state.activeId))state.activeId=(attendees[0]||{}).id||'';
   cloud.phase='push';
-  await pushDirty();
+  await pushDirty(gen);
   if(gen!==cloud.gen)return;
   afterMerge();saveSynced();persistNow();
   startRealtime();
@@ -1717,7 +1740,7 @@ export function pruneRemote(kind,idRows){
    refuses a batch for any reason, the rows are sent one at a time so a bad row, or an id already taken, is handled exactly
    as before. */
 const PUSH_BATCH=100;
-async function pushDirty(){
+async function pushDirty(gen){
  /* the progress the status line shows: a fixed total taken now, ticked up as batches land (observe-only —
     the upload order and requests are exactly as before) */
  const lists={att:cloudDirtyList('att'),vol:cloudDirtyList('vol')};   /* one snapshot, same rows and order as before */
@@ -1728,13 +1751,14 @@ async function pushDirty(){
   const groups=[[list.filter(o=>sy[o.id]!==undefined),false],[list.filter(o=>sy[o.id]===undefined),true]];
   for(const [group,isFresh] of groups){
    for(let i=0;i<group.length;i+=PUSH_BATCH){
+    if(gen!==cloud.gen)return;   /* signed out mid-pass: no batch and no row is written after the session is gone (H5) */
     const chunk=group.slice(i,i+PUSH_BATCH);
     if(chunk.length>1){
      const rows=chunk.map(o=>k.toRow(o)),sigs=rows.map(sigOf);
      const {error}=await (isFresh?cloud.client.from(k.table).insert(rows.map(inChurch)):cloud.client.from(k.table).upsert(rows.map(inChurch),{onConflict:conflictOn()}));
      if(!error){chunk.forEach((o,j)=>{sy[o.id]=sigs[j];delete cloud.rejected[o.id];if(cloud.rejectedNote&&cloud.rejectedNote.id===o.id)cloud.rejectedNote=null;});cloud.prog.done+=chunk.length;syncChrome();continue;}   /* a batch that landed takes its rows' stale refusals with it (A15) */
     }
-    for(const o of chunk){await pushOne(kind,o);cloud.prog.done++;}   /* refused rows count as handled */
+    for(const o of chunk){if(gen!==cloud.gen)return;await pushOne(kind,o);cloud.prog.done++;}   /* refused rows count as handled */
     syncChrome();                                                     /* once per chunk, never once per row */
    }
   }
@@ -1875,10 +1899,15 @@ export async function cloudPush(){
  if(!cloud.user||!cloud.client||cloud.blocked)return;
  if(cloud.busy){cloud.again=true;return;}
  if(!cloudPending()){if(cloud.status==='syncing')setCloud('online');return;}
+ const gen=cloud.gen;   /* a sign-out orphans this pass: its return must not put the gate back on "Connecting…" (H5) */
  cloud.busy=true;cloud.phase='push';cloud.prog={done:0,total:0};setCloud('syncing');
- try{await pushDirty();saveSynced();setCloud('online');healthUpload();}
- catch(err){cloudError(err,'upload');}
- finally{cloud.busy=false;cloud.phase='';syncChrome();if(cloud.again){cloud.again=false;cloudQueuePush();}}
+ try{await pushDirty(gen);
+  if(gen!==cloud.gen)return;
+  saveSynced();
+  if(gen!==cloud.gen)return;
+  setCloud('online');healthUpload();}
+ catch(err){if(gen===cloud.gen)cloudError(err,'upload');}
+ finally{if(gen===cloud.gen){cloud.busy=false;cloud.phase='';syncChrome();if(cloud.again){cloud.again=false;cloudQueuePush();}}}
 }
 
 /* ---------- live updates from other desks ---------- */

@@ -960,8 +960,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function makeServer() {
   const srv = { tables: { attendees: new Map(), volunteers: new Map() }, offline: false, staff: true, goodPassword: 'right',
-    calls: [], handlers: [], authCb: null, seq: 0, maxRows: 1000, users: new Map(), signupMode: 'confirm' };
-  srv.reset = () => { srv.tables.attendees.clear(); srv.tables.volunteers.clear(); srv.offline = false; srv.staff = true; srv.calls.length = 0; srv.users.clear(); srv.signupMode = 'confirm'; srv.rpcs = null; srv.rtState = ''; };
+    calls: [], handlers: [], authCb: null, seq: 0, maxRows: 1000, users: new Map(), signupMode: 'confirm',
+    holdQ: null, canPlace: null, guardHits: [] };
+  srv.reset = () => { srv.tables.attendees.clear(); srv.tables.volunteers.clear(); srv.offline = false; srv.staff = true; srv.calls.length = 0; srv.users.clear(); srv.signupMode = 'confirm'; srv.rpcs = null; srv.rtState = '';
+    srv.holdQ = null; srv.canPlace = null; srv.guardHits = []; };
   /* a handler hears its own event type ('*' hears all), like Realtime; the server-side church filter is recorded
      (srv.handlers[].filter) for the tests to read, not applied: the fake's rows carry no church */
   srv.emit = (table, payload) => srv.handlers.filter(h => h.table === table && (!h.event || h.event === '*' || h.event === payload.eventType)).forEach(h => h.cb(payload));
@@ -982,7 +984,9 @@ function makeServer() {
     maybeSingle() { this.one = true; return this; }
     then(res, rej) { return this.run().then(res, rej); }
     async run() {
-      srv.calls.push(this.op + ':' + this.t + (this.cols ? ':' + this.cols : '') + (this.row ? ':' + this.row.id : '') + (this.rng ? ':range' + this.rng[0] : '') + (this.gte_.length ? ':since' : '') + (this.in_.length ? ':in' + this.in_[0][1].length : ''));      if (srv.offline) return { data: null, error: { message: 'TypeError: Failed to fetch' } };
+      srv.calls.push(this.op + ':' + this.t + (this.cols ? ':' + this.cols : '') + (this.row ? ':' + this.row.id : '') + (this.rng ? ':range' + this.rng[0] : '') + (this.gte_.length ? ':since' : '') + (this.in_.length ? ':in' + this.in_[0][1].length : ''));
+      if (srv.holdQ) { const h = srv.holdQ(this.op, this.t, Array.isArray(this.row) ? this.row.map(r => r.id).join(',') : this.row && this.row.id); if (h) return h; }   /* a test-held request never settles until release */
+      if (srv.offline) return { data: null, error: { message: 'TypeError: Failed to fetch' } };
       const tbl = srv.tables[this.t];
       if (!tbl) return { data: null, error: { code: 'PGRST205', message: 'Could not find the table in the schema cache' } };
       if (this.op === 'select') {
@@ -1012,6 +1016,12 @@ function makeServer() {
         return guardError();
       }
       if (srv.refuseAlways && srv.refuseAlways.has(this.row.id)) return guardError();
+      /* the real can_place trigger (FUP-H2): a volunteer write that carries a booth must come from a desk allowed to
+         place it. srv.canPlace is set per test; srv.guardHits counts every write it refuses. */
+      if (this.t === 'volunteers' && srv.canPlace) {
+        const rows = Array.isArray(this.row) ? this.row : [this.row], bad = rows.filter(r => r && r.booth && !srv.canPlace(r));
+        if (bad.length) { srv.guardHits.push(...bad.map(r => r.id)); return guardError(); }
+      }
       if (this.op === 'insert') {
         if (tbl.has(this.row.id)) return { data: null, error: { code: '23505', message: 'duplicate key value' } };
         const ts = created();
@@ -1885,18 +1895,51 @@ function makeServer() {
   const tB3 = $el('cfTitle').textContent, bB3 = $el('cfBody').textContent; g.answerConfirm(false); await prB3; g.setAutoAnswer(true);
   ok('TST-BUG-B3 the sign-out warning counts the refused row', /unsaved changes/.test(tB3) && /will be lost/.test(bB3) && !!C.user, tB3 + ' | ' + bB3);
 
-  /* D1: a church switch keeps a safe copy of unsent rows and hands them back when that church returns */
+  /* D1 + H1: each church's unsent rows keep their own slot in the quarantine, and coming back hands out only that
+     church's copy. FAILS on the old one-slot code: the second keep, or the second church, wiped the first. */
   device(); await signIn();
-  const churchId = C.churchId || 'ch-a';   /* loadAccount sets this on a real sign-in; the fixture names it directly */
+  const churchId = 'ch-a', churchB = 'ch-b';
   C.churchId = churchId;
   registerLocal('Quarantine Row', 'EXPO-370');
   g.dropChurchData();
   let q1 = null; try { q1 = JSON.parse(store.get('newstart.quarantine.v1') || 'null'); } catch (e) { }
-  ok('TST-QUAR-1 dropping the church keeps the unsent visitor in the quarantine instead of losing it', !!q1 && (q1.att || []).some(r => r.id === 'EXPO-370') && q1.church === churchId && !g.attendees.some(a => a.id === 'EXPO-370'),
-    JSON.stringify(q1 && { church: q1.church, att: (q1.att || []).map(r => r.id) }));
-  g.adoptChurch(churchId);
-  ok('TST-QUAR-2 signing back into that church restores the row so it uploads', g.attendees.some(a => a.id === 'EXPO-370') && g.cloudDirtyList('att').some(a => a.id === 'EXPO-370'),
-    JSON.stringify(g.attendees.map(a => a.id)) + ' pending=' + g.cloudPending());
+  ok('FUP-H1-1 dropping the church keeps the unsent visitor under that church instead of losing it',
+    !!q1 && !!q1[churchId] && (q1[churchId].att || []).some(r => r.id === 'EXPO-370') && !g.attendees.some(a => a.id === 'EXPO-370'),
+    JSON.stringify(q1));
+  registerLocal('Quarantine Row Two', 'EXPO-372');
+  g.dropChurchData();
+  let q2 = null; try { q2 = JSON.parse(store.get('newstart.quarantine.v1') || 'null'); } catch (e) { }
+  ok('FUP-H1-2 leaving the same church again adds to its slot instead of wiping it',
+    !!q2 && !!q2[churchId] && (q2[churchId].att || []).map(r => r.id).join() === 'EXPO-370,EXPO-372',
+    JSON.stringify(q2 && q2[churchId]));
+  C.churchId = churchB; g.adoptChurch(churchB);                 /* the desk moves to another church */
+  registerLocal('Quarantine Row Other', 'EXPO-380');
+  C.churchId = churchId; g.adoptChurch(churchId);               /* the two-switch round trip the plan asks for */
+  { const savedQ = (() => { try { return JSON.parse(store.get('newstart.quarantine.v1') || '{}'); } catch (e) { return {}; } })();
+    ok('FUP-H1-3 church a\'s rows come back and church b\'s stay kept',
+      ['EXPO-370', 'EXPO-372'].every(id => g.attendees.some(a => a.id === id)) && !g.attendees.some(a => a.id === 'EXPO-380')
+        && !!savedQ[churchB] && (savedQ[churchB].att || []).some(r => r.id === 'EXPO-380'),
+      JSON.stringify(g.attendees.map(a => a.id)) + ' keys=' + Object.keys(savedQ).join('|')); }
+  ok('FUP-H1-4 …and both restored rows are on the upload list',
+    g.cloudDirtyList('att').map(a => a.id).join() === 'EXPO-370,EXPO-372', g.cloudDirtyList('att').map(a => a.id).join());
+  registerLocal('Quarantine Row Three', 'EXPO-390');
+  g.dropChurchData();                                   /* a new kept slot for ch-a: the discard below must leave it alone */
+  { g.renderCloudBody(); const note = $el('cloudBody').innerHTML;
+    ok('FUP-H1-5 the cloud status names the kept church and offers both ways out',
+      /kept on this phone/.test(note) && /data-action="quarantine-discard" data-args="ch-b"/.test(note) && /data-action="quarantine-export"/.test(note),
+      note.slice(0, 160)); }
+  { let out = ''; const keepB = sandbox.Blob; sandbox.Blob = function (p) { out = p.join(''); };
+    const expBtn = { dataset: { action: 'quarantine-export', args: '' }, closest: () => expBtn, hasAttribute: () => false };
+    g.dispatch(expBtn, { type: 'click', target: expBtn }); sandbox.Blob = keepB;
+    ok('FUP-H1-8 the kept-records CSV carries a Church column naming every church',
+      out.split('\n')[0].includes('"Church"') && out.includes('"EXPO-380"') && out.split('\n')[0].includes('"Kind","Church","Id"'), out.split('\n')[0].slice(0, 120)); }
+  g.setAutoAnswer(null);
+  const disBtn = { dataset: { action: 'quarantine-discard', args: 'ch-b' }, closest: () => disBtn, hasAttribute: () => false };
+  const pd = g.dispatch(disBtn, { type: 'click', target: disBtn }); await sleep(20);
+  ok('FUP-H1-6 Discard asks before it deletes', /Discard the kept records/.test($el('cfTitle').textContent), $el('cfTitle').textContent);
+  g.answerConfirm(true); await pd; g.setAutoAnswer(true);
+  let q3 = null; try { q3 = JSON.parse(store.get('newstart.quarantine.v1') || 'null'); } catch (e) { }
+  ok('FUP-H1-7 …and takes only that church\'s rows', !!(q3 && !q3[churchB]), JSON.stringify(q3));
 
   /* TST-BUG-A3 (A3): a full pull that carries another desk's copy of a refused id does not overwrite the local row */
   device(); await signIn();
@@ -1906,6 +1949,102 @@ function makeServer() {
   await g.mergeRemote('att', [{ id: 'EXPO-1', name: 'Other Desk', age: 60, sex: 'Male', phone: '', height_cm: 170, s: {}, interests: {}, prayer: '', done: false, church_id: 'ch-a', created_at: new Date().toISOString(), updated_at: new Date().toISOString() }], true);
   ok('TST-BUG-A3 a refused row keeps its content when the same id arrives from a full pull', g.attendees.some(a => a.id === 'EXPO-1' && a.name === 'Still Refused'),
     JSON.stringify(g.attendees.filter(a => a.id === 'EXPO-1').map(a => a.name)));
+
+  /* ==== H2: the edit gate must not hand a plain staff member a booth the database refuses ==== */
+  device(); await signIn();
+  srv.tables.volunteers.set('VOL-9002', { id: 'VOL-9002', name: 'Unplaced Crew', phone: '082 1', email: '', status: 'prospect', pledge_expos: 1, skills: [], pref: ['bp'], pref2: '', booth: null, availability: [], shirt: '', emergency: '', since: '2026-01-01', notes: '', pledged_on: null, registered_on: null, checked_in: false, role: '', shift: '', lead: false, history: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+  srv.rpcs = { my_account: () => ({ data: { membership: { role: 'staff', status: 'approved' }, church: { id: 'ch-a', status: 'active' }, server_now: new Date().toISOString() }, error: null }) };
+  await g.cloudSync(true);
+  ok('FUP-H2-1 setup: the unplaced pledge is pulled with no booth', g.volunteers.some(v => v.id === 'VOL-9002' && v.booth === null));
+  srv.canPlace = row => { const m = C.acct && C.acct.membership; return !!m && (m.role === 'admin' || (m.volunteer_id && row.id === m.volunteer_id)); };
+  srv.guardStyle = 'message'; srv.refuseOnce = null;
+  const pat = g.volunteers.find(v => v.id === 'VOL-9002');
+  g.setVol(pat.id); g.state.volNew = false; g.openVolReg();
+  g.state.vf.pref = ['bp', 'vitals'];                      /* a plain staff member who asked for a booth they may not place */
+  g.saveVolunteer();
+  ok('FUP-H2-2 a plain staff edit of an unplaced pledge writes no booth', pat.booth === null && pat.status === 'prospect', 'booth=' + pat.booth + ' status=' + pat.status);
+  g.persistNow();
+  for (let i = 0; i < 80 && (g.cloudPending() > 0 || C.busy); i++) await sleep(50); await sleep(60);
+  ok('FUP-H2-3 so the row uploads instead of ending up refused', C.rejected[pat.id] === undefined && g.cloudPending() === 0, 'rejected=' + Object.keys(C.rejected).join('|') + ' pending=' + g.cloudPending());
+  ok('FUP-H2-4 and the database never saw a booth write it would refuse', srv.guardHits.length === 0, JSON.stringify(srv.guardHits));
+  /* the same for a team leader whose crew member asked for another station */
+  srv.tables.volunteers.set('VOL-9001', { id: 'VOL-9001', name: 'Leader Boni', phone: '082 2', email: '', status: 'registered', pledge_expos: 1, skills: [], pref: ['bp'], pref2: '', booth: 'bp', availability: [], shirt: '', emergency: '', since: '2026-01-01', notes: '', pledged_on: null, registered_on: '2026-01-01', checked_in: false, role: '', shift: '', lead: true, history: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+  srv.rpcs = { my_account: () => ({ data: { membership: { role: 'team_leader', status: 'approved', volunteer_id: 'VOL-9001' }, church: { id: 'ch-a', status: 'active' }, server_now: new Date().toISOString() }, error: null }) };
+  srv.canPlace = row => { const m = C.acct && C.acct.membership; if (!m) return true; const me = g.volunteers.find(x => x.id === m.volunteer_id); return !!(me && me.lead && me.booth === row.booth); };
+  await g.cloudSync(true);
+  const kid = g.volunteers.find(v => v.id === 'VOL-9002');
+  g.setVol(kid.id); g.state.volNew = false; g.openVolReg();
+  g.state.vf.pref = ['kids', 'vitals'];                    /* the crew member wants a booth that is not the leader's own */
+  g.saveVolunteer();
+  ok('FUP-H2-5 a leader editing someone unplaced for another station writes no booth', kid.booth === null, 'booth=' + kid.booth);
+  g.persistNow();
+  for (let i = 0; i < 80 && (g.cloudPending() > 0 || C.busy); i++) await sleep(50); await sleep(60);
+  ok('FUP-H2-6 the row still uploads clean', C.rejected[kid.id] === undefined && g.cloudPending() === 0, 'rejected=' + Object.keys(C.rejected).join('|') + ' pending=' + g.cloudPending());
+  ok('FUP-H2-7 with no refused booth write either', srv.guardHits.length === 0, JSON.stringify(srv.guardHits));
+  srv.rpcs = null; srv.canPlace = null; srv.guardStyle = null; srv.guardHits = [];
+
+  /* ==== H3: switching account mid-pass leaves sync alive for the next pass ==== */
+  device(); await signIn();
+  let release3 = null;
+  srv.holdRpc = n => { if (n !== 'my_account') return null; srv.holdRpc = null; return new Promise(r => { release3 = r; }); };
+  const pass3 = g.cloudSync(true);
+  await sleep(40);
+  ok('FUP-H3-1 setup: the pass is held at the account read', C.busy && C.status === 'syncing', C.status);
+  srv.authCb('SIGNED_IN', { user: { id: 'user-2', email: 'admin@example.org' } });   /* another person signs in on this desk */
+  await sleep(60);
+  release3({ data: srv.staff, error: null });              /* the held answer, exactly what the fake would give */
+  for (let i = 0; i < 60 && (C.busy || C.status !== 'online'); i++) await sleep(25);
+  await pass3.catch(() => {});
+  ok('FUP-H3-2 the orphaned pass stood down and the new account synced', !C.busy && C.status === 'online' && C.user && C.user.id === 'user-2', 'busy=' + C.busy + ' status=' + C.status + ' user=' + (C.user && C.user.id));
+
+  /* ==== H4: a session that ends on the server mid-pass keeps the desk signed out ==== */
+  device(); await signIn();
+  let release4 = null;
+  srv.holdRpc = n => { if (n !== 'my_account') return null; srv.holdRpc = null; return new Promise(r => { release4 = r; }); };
+  const pass4 = g.cloudSync(true);
+  await sleep(40);
+  srv.authCb('SIGNED_OUT', null);                          /* revoked elsewhere, not this desk's own sign-out */
+  await sleep(30);
+  release4({ data: srv.staff, error: null });              /* the held answer, exactly what the fake would give */ await pass4.catch(() => {});
+  ok('FUP-H4 a revocation mid-pass keeps the desk signed out; the dead pass does not lift the gate',
+    !C.user && C.status === 'signedout' && C.ready === false, 'user=' + !!C.user + ' status=' + C.status + ' ready=' + C.ready);
+
+  /* ==== H5: a sign-out mid-upload stops the push and never says “Up to date” ==== */
+  device(); await signIn();
+  registerLocal('Push Row One', 'EXPO-321');
+  g.persistNow();
+  for (let i = 0; i < 80 && (g.cloudPending() > 0 || C.busy); i++) await sleep(50);   /* the debounce uploads and ledgers row one */
+  await sleep(60);
+  ok('FUP-H5-0 setup: row one uploaded clean', g.cloudPending() === 0 && srv.tables.attendees.get('EXPO-321'), 'pending=' + g.cloudPending());
+  g.attendees.find(a => a.id === 'EXPO-321').s.sys = 140; g.persistNow();            /* its edit becomes the stale-copy upsert */
+  registerLocal('Push Row Two', 'EXPO-322');                                         /* the fresh insert waits behind it */
+  let release5 = null;
+  srv.holdQ = (op, t, id) => { if (t === 'attendees' && id === 'EXPO-321') { srv.holdQ = null; return new Promise(r => { release5 = r; }); } return null; };
+  clearTimeout(C.pushT);
+  const pass5 = g.cloudPush();
+  await sleep(40);
+  ok('FUP-H5-1 setup: the upload is parked on the stale copy', C.busy && C.prog && C.prog.total === 2, JSON.stringify(C.prog));
+  const sp5 = g.cloudSignOut();                            /* the desk itself signs out while the push is parked */
+  await sleep(40);
+  release5({ data: null, error: null });                   /* the held write lands */
+  await Promise.all([pass5.catch(() => {}), sp5]);
+  ok('FUP-H5-2 the orphaned push wrote nothing after the sign-out and the gate stays signed out',
+    C.status === 'signedout' && !C.user && !srv.tables.attendees.has('EXPO-322') && C.synced.att['EXPO-322'] === undefined,
+    'status=' + C.status + ' row2=' + srv.tables.attendees.has('EXPO-322'));
+  ok('FUP-H5-3 what was already on the wire still landed (the row itself uploaded)', srv.tables.attendees.get('EXPO-321') && srv.tables.attendees.get('EXPO-321').s.sys === 140, JSON.stringify(srv.tables.attendees.get('EXPO-321') && srv.tables.attendees.get('EXPO-321').s.sys));
+
+  /* ==== H6: the slow-connection notice stands down on the headers, even with a body that never arrives ==== */
+  { const keepT = { ...g.netTimes }, keepFetch = sandbox.fetch;
+    g.netTimes.slow = 30; g.netTimes.hard = 9000;
+    sandbox.fetch = () => new Promise(res => setTimeout(() => res({ ok: true, status: 200, text() { return new Promise(() => {}); } }), 60));
+    g.timedFetch('https://db.example/rest/v1/x', {});
+    await sleep(35);
+    ok('FUP-H6-1 setup: past the slow mark the notice is up', g.netSlowCount() === 1 && $el('netSlow').classList.contains('is-on'),
+      'count=' + g.netSlowCount());
+    await sleep(120);                                      /* headers arrive; the body keeps hanging */
+    ok('FUP-H6-2 the notice stands down on the headers while the body is still stalled',
+      g.netSlowCount() === 0 && !$el('netSlow').classList.contains('is-on'), 'count=' + g.netSlowCount());
+    Object.assign(g.netTimes, keepT); sandbox.fetch = keepFetch; }
 
   /* a placement refusal (42501 from the place guard) is one row, not a bad sign-in */
   device(); await signIn();
@@ -6545,8 +6684,12 @@ function makeServer() {
   ok('low body water opens the water plan; a fast resting pulse is a counsellor note', g.planNeeds(visitorWith({ tbw: 40 })).some(n => n.k === 'water' && /body water 40/.test(n.why))
     && g.careNotes(visitorWith({ pulseRest: 110 })).some(n => /fast/.test(n)));
   ok('more than 9 hours of sleep reads Long, not Short', g.cat('sleep', 10)[1] === 'Long' && g.cat('sleep', 6)[1] === 'Short');
-  ok('the CSV has a column for every recorded paper field', (() => { let out = ''; const keep = sandbox.Blob; sandbox.Blob = function (p) { out = p.join(''); }; g.exportCSV(); sandbox.Blob = keep; const head = out.split('\n')[0];
-    return ['Waist (cm)', 'BP medication', 'Pregnant', 'Chronic illnesses', 'Seminars', 'Heard via'].every(h => head.includes('"' + h + '"')); })());
+  /* the four body-measure columns the 3d9c872 port dropped (follow-up 2026-11-03 F-HIGH H7) are back:
+     body fat, body water, PEF and recovery pulse, read straight out of the migrated paper record */
+  ok('the CSV has a column for every recorded paper field', (() => { let out = ''; const keep = sandbox.Blob; sandbox.Blob = function (p) { out = p.join(''); }; g.attendees.push(kh); g.exportCSV(); g.attendees.pop(); sandbox.Blob = keep; const head = out.split('\n')[0];
+    const all = ['Waist (cm)', 'BP medication', 'Pregnant', 'Chronic illnesses', 'Seminars', 'Heard via', 'Body fat %', 'Body water %', 'PEF (L/min)', 'Recovery pulse (bpm)'];
+    const row = out.split('\n').find(l => l.startsWith('"EXPO-901"'));
+    return all.every(h => head.includes('"' + h + '"')) && /,"18\.9",/.test(row) && /,"58\.5",/.test(row) && /,"430",/.test(row) && /,"84",/.test(row); })());
   ok('…and it is the top of his list even though his sleep (5.5 h) is a red flag too', nDav[0].k === 'bp' && nDav.some(n => n.k === 'sleep' && n.sev === 3) && nDav.findIndex(n => n.k === 'sleep') > nDav.findIndex(n => n.k === 'bmi'), nDav.map(n => n.k + n.sev).join());
   ok('the plan opened automatically is always the first item of the list', g.attendees.every(a => g.planNeeds(a).length ? g.autoProtocol(a) === g.planNeeds(a)[0].k : g.autoProtocol(a) === 'sleep'));
   const nMar = g.planNeeds(mar);

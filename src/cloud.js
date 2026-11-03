@@ -622,7 +622,8 @@ export function timedFetch(input,init){
  const hardT=setTimeout(()=>{timedOut=true;ctl.abort();},netTimes.hard);
  const done=()=>{clearTimeout(slowT);clearTimeout(hardT);if(slow){slow=false;netSlow--;slowNote();}};
  return fetch(input,{...(init||{}),signal:ctl.signal}).then(res=>{
-  clearTimeout(slowT);                       /* headers arrived: only the slow notice stands down — a stalled body still hits the hard deadline (E5) */
+  if(slow){slow=false;netSlow--;slowNote();}  /* headers arrived: the slow notice stands down even though a stalled body may still hit the deadline (H6) */
+  clearTimeout(slowT);                       /* a stalled body still hits the hard deadline (E5) */
   for(const m of ['text','json','arrayBuffer','blob']){
    const read=res[m];
    if(typeof read==='function')res[m]=()=>read.call(res).catch(err=>{throw timedOut?new TypeError(TIMEOUT_MSG):err;}).finally(done);
@@ -668,13 +669,19 @@ function healthRefresh(){
  const h=$('#homeHealth');if(h)h.innerHTML=homeHealthHTML();
  for(const id of ['acctHealth','gateHealth']){const e=$('#'+id);if(e)e.innerHTML=acctHealthHTML();}
 }
-/* D1: unsent records kept when the device left another church, shown with a way out either way */
+/* D1/H1: unsent records kept when the device left a church, filed per church, shown with a way out either way */
 export function quarantineNote(){
  let q;try{q=JSON.parse(localStorage.getItem('newstart.quarantine.v1')||'null');}catch(e){q=null;}
- if(!q||!Array.isArray(q.att)||!Array.isArray(q.vol))return '';
- const n=q.att.length+q.vol.length;
- if(!n)return '';
- return `<div class="q-state q-state-warn mt-3"><span class="q-dot"></span><span style="flex:1">${n} unsent ${n===1?'record':'records'} from another church are kept on this phone. <button type="button" class="tap-link" data-action="quarantine-export">Export CSV</button> · <button type="button" class="tap-link" data-action="quarantine-discard">Discard</button></span></div>`;
+ if(!q)return '';
+ let out='';
+ for(const church in q){
+  const s=q[church];
+  if(!s||!Array.isArray(s.att)||!Array.isArray(s.vol))continue;
+  const n=s.att.length+s.vol.length;
+  if(!n)continue;
+  out+=`<div class="q-state q-state-warn mt-3"><span class="q-dot"></span><span style="flex:1">${n} unsent ${n===1?'record':'records'} from ${esc(s.name||'another church')} are kept on this phone.${out?'':' <button type="button" class="tap-link" data-action="quarantine-export">Export CSV</button>'} · <button type="button" class="tap-link" data-action="quarantine-discard" data-args="${esc(church)}">Discard</button></span></div>`;
+ }
+ return out;
 }
 /* the panel behind the logo */
 export function statusPanelHTML(){
