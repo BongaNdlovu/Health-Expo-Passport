@@ -191,8 +191,9 @@ export function syncChrome(){
  for(const id of ['cloudSyncTiles','profSyncTiles']){const t=$('#'+id);if(t)t.innerHTML=tiles;}
 }
 export function setCloud(status,err){
- cloud.status=status;cloud.err=err||'';
  if(status==='online')cloud.syncedAt=Date.now();      /* anything that reaches the server counts as "last synced" */
+ if(status==='online'&&navigator.onLine===false)status='offline';   /* a pass that lands after the network dropped never says Online (U2/M4) */
+ cloud.status=status;cloud.err=err||'';
  syncChrome();
  const m=$('#cloudModal');if(m&&!m.classList.contains('hidden'))renderCloudBody();
  renderGate();profileChanged();
@@ -253,7 +254,7 @@ export function gateState(){
 export function passwordProblem(pw){
  if(pw.length<8)return 'Use at least 8 characters.';
  const bytes=new TextEncoder().encode(pw).length;   /* (A21) bcrypt ignores everything past 72 BYTES: the upper bound is measured in bytes, not characters */
- if(bytes>72)return 'Use at most 72 characters.';
+ if(bytes>72)return 'That password is too long. Use at most 72 letters and numbers (accented letters and symbols count double).';
  if(!/[A-Za-z]/.test(pw)||!/\d/.test(pw))return 'Use at least one letter and one number.';
  return '';
 }
@@ -489,7 +490,7 @@ export async function cloudForgot(e){
  if(res.error&&(isNet(res.error.message)||res.error.status===429||/rate limit/i.test(res.error.message||''))){
   gateFail(isNet(res.error.message)?'No connection — try again when you are online.':'Too many emails were sent just now. Wait a few minutes and try again.');return;
  }
- if(res.error){gateFail('Could not send the email right now. Try again in a few minutes.');return;}   /* a server failure says so plainly and reveals nothing (A17, owner-approved copy) */
+ if(res.error){gateFail('We could not send the reset email just now. Please try again in a few minutes.');return;}   /* any other failure says so plainly and never reveals whether the address has an account (A17) */
  /* the answer is the same whether or not the address has an account, so this cannot be used to find out who does */
  cloud.view='forgotSent';cloud.formErr='';cloud.gateKey='';renderGate();
 }
@@ -518,12 +519,13 @@ async function loadApprovals(){
  cloud.apprBusy=true;
  try{
   const r=await cloud.client.rpc('is_admin');
-  if(r.error&&!isMissingErr(r.error)){    /* a failed check is not a "no": nobody decided, so isAdmin stands and the box explains (A19) */
-   cloud.approvalUnknown=true;
-   cloud.apprErr='Could not confirm your admin rights. Check your connection and Refresh.';
+  if(r.error&&!isMissingErr(r.error)){    /* a failed check is not a "no": nobody decided, so isAdmin stands (A19) */
+   if(cloud.knownAdmin){cloud.approvalUnknown=true;cloud.apprErr='Could not confirm your admin rights. Check your connection and Refresh.';}
+   else cloud.apprRetryAt=Date.now()+30000;   /* never known as an admin: no box on this desk, asked again later (M3) */
   }else{
    cloud.approvalUnknown=false;
    cloud.isAdmin=!r.error&&r.data===true;          /* functions not installed yet → simply not an admin */
+   cloud.knownAdmin=cloud.isAdmin;   /* remembered across Refresh, so a later failed check keeps the admin's box (M3) */
    if(cloud.isAdmin){const p=await cloud.client.rpc('staff_pending');cloud.pendingUsers=p.error?[]:p.data||[];cloud.apprErr=p.error?p.error.message:'';}
   }
  }catch(e){cloud.isAdmin=false;}
@@ -543,7 +545,7 @@ function approvalsHTML(){
   <div class="flex items-center justify-between"><div class="microlabel">Waiting for approval</div>
    <button class="tap-link" data-action="approvals-clear">Refresh</button></div>
   ${cloud.apprErr?`<p class="text-[11.5px] text-rose-700">${esc(cloud.apprErr)}</p>`:''}
-  ${!list?'<p class="text-[11.5px] text-[#4f6870]">Loading…</p>':!list.length&&!cloud.apprErr?'<p class="text-[11.5px] text-[#4f6870]">Nobody is waiting ✓</p>'   /* never "nobody" while the check itself failed (A19) */
+  ${!list?(cloud.apprErr?'':'<p class="text-[11.5px] text-[#4f6870]">Loading…</p>'):!list.length&&!cloud.apprErr?'<p class="text-[11.5px] text-[#4f6870]">Nobody is waiting ✓</p>'   /* never "nobody" while the check itself failed (A19) */
    :list.map(u=>`<div class="flex items-center gap-2 border-t border-[#123033]/[.07] py-2">
      <div class="min-w-0 flex-1"><div class="truncate text-[13px] font-bold text-[#123033]">${esc(u.full_name||'(no name given)')}</div>
       <div class="truncate text-[11px] text-[#4f6870]">${esc(u.email||'')}${u.confirmed?'':' · has not confirmed the email yet'}</div></div>
@@ -565,7 +567,7 @@ export function renderCloudBody(){
     <button data-action="cloudSignOut" class="btn btn-glass flex-1 py-2.5 text-xs text-[#5b7178]"${cloud.signingOut?' disabled':''}>Sign out</button>
      <button data-action="sync-now" class="btn btn-primary flex-1 py-2.5 text-xs"${cloud.busy?' disabled':''}>Sync now</button>
     </div>${statusPanelHTML()}${quarantineNote()}${acctButtons()}${(cloud.isAdmin||cloud.approvalUnknown)&&!cloud.acct?approvalsHTML():''}${installBlock()}`;
-  if(cloud.isAdmin===undefined&&!cloud.approvalUnknown&&!cloud.acct)loadApprovals();   /* a failed check (approvalUnknown) is re-asked only by Refresh: auto re-asking here would refetch for ever (A19) */
+  if(cloud.isAdmin===undefined&&!cloud.approvalUnknown&&!cloud.acct&&Date.now()>=(cloud.apprRetryAt||0))loadApprovals();   /* a failed check (approvalUnknown) is re-asked only by Refresh: auto re-asking here would refetch for ever (A19) */
   return;
  }
  body.innerHTML=`<div class="display text-base font-extrabold">${cloud.demo?"Sync &amp; sign-in":"Staff sign-in"}</div>
@@ -690,6 +692,7 @@ export function statusPanelHTML(){
    <button class="tap-link" data-action="healthTest" ${cloud.testing?'disabled':''}>${cloud.testing?'Testing…':'Test now'}</button></div>
   ${HEALTH_ROWS.map(([k,l])=>{const h=health[k];
    return `<div class="q-state q-state-${h?H_TONE[h.st]:'info'} mt-2"><span class="q-dot"></span><span style="flex:1"><b>${l}</b> · ${h?esc(h.msg):'Not checked yet.'}${h&&h.detail&&h.st!=='ok'?`<span class="mono mt-0.5 block text-[10px]">${esc(h.detail)}</span>`:''}</span><span class="text-[10px]">${h?hhmm(h.at):''}</span></div>`;}).join('')}
+  ${Object.keys(cloud.rejected).length?'<button type="button" class="tap-link mt-2" data-action="retry-refused">Try the refused changes again</button>':''}
   <p class="mt-2 text-[10px] leading-relaxed text-[#8a9aa0]">${cloud.testedAt?`Test now ran at ${hhmm(cloud.testedAt)}. `:''}Test now only reads (one row of each table, and read-only functions); it never changes data.</p>
  </div>`;
 }

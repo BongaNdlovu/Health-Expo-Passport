@@ -8,7 +8,7 @@ import { toast } from './shell.js';
 /* ================= PERSISTENCE ================= */
 const LS_KEY='newstart.passport.v2';
 /* Cloud state lives up here because persistence reads it. The sync code itself is further down. */
-export const cloud={client:null,user:null,mode:false,status:'off',err:'',busy:false,again:false,againManual:false,gen:0,starting:false,blocked:false,
+export const cloud={client:null,user:null,mode:false,status:'off',err:'',busy:false,again:false,againManual:false,againPull:false,signOutAsk:false,gen:0,starting:false,blocked:false,
   /* againManual = a "Sync now" queued behind a running pass re-runs the pull (E3); gen orphans every pass whose session ended (E1) */
   synced:{att:{},vol:{}},rejected:{},rejectedNote:null,channel:null,pushT:null,retryT:null,renderT:null,formErr:'',
   since:{att:'',vol:''},seen:{att:new Map(),vol:new Map()},savedSince:null,liveSt:'',liveChurch:'',lastFull:0,ready:false,demo:false,gateKey:'',gateHide:false,
@@ -20,7 +20,7 @@ export const cloud={client:null,user:null,mode:false,status:'off',err:'',busy:fa
   plansErr:null,adminPlansErr:null,followupsErr:null,adminFollowupsErr:null,   /* a failed church-plans/follow-ups load is not an empty list (E11) */
   swapBusy:false,                                          /* one place-swap in flight at a time (E9) */
   signInWaitUntil:0,                                       /* a 429 starts a local sign-in cooldown (A13) */
-  pledgeNetErr:false,                                      /* a network failure loading My pledge, vs not-switched-on (A20a) */
+  pledgeNetErr:/** @type {false|'net'|'other'} */(false),                                      /* a network failure loading My pledge, vs not-switched-on (A20a) */
   notifN:0,notifT:null,notifLive:false,notifChannel:null,notifWatched:'',notifs:undefined,notifsOffline:false,notifOpen:false};
 /* Every screen change calls this, but the data rarely changes: compare a fingerprint first and only write (and only
    look for rows to upload) when something really changed. Writing ~1 MB to storage on every tap is what drained phones. */
@@ -128,6 +128,8 @@ export function loadPersisted(){
   return true;
  }catch(e){return false;}
 }
+/* any saved copy at all, even one that did not load: the demo never writes over it (D2/M10) */
+export function hasSavedCopy(){try{return localStorage.getItem(LS_KEY)!=null;}catch(e){return false;}}
 export function seedDemo(){
  attendees.length=0; JSON.parse(JSON.stringify(SEED)).forEach(a=>attendees.push(a));
  volunteers.length=0; JSON.parse(JSON.stringify(SEED_VOL)).forEach(v=>volunteers.push(v));

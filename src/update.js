@@ -149,11 +149,10 @@ export async function updateNow() {
         } catch (e) { /* fall through */ }
       }
       if (plugins.Browser && typeof plugins.Browser.open === 'function') {
-        try { plugins.Browser.open({ url: href }); snoozed = ver; if (ver) write(SNOOZE, ver); return; } catch (e) { /* fall through */ }
+        try { await plugins.Browser.open({ url: href }); snoozed = ver; if (ver) write(SNOOZE, ver); return; } catch (e) { /* fall through */ }   /* (M6) snooze only once the open resolved */
       }
       if (window.open(href, '_blank')) { snoozed = ver; if (ver) write(SNOOZE, ver); return; }
-      location.href = href;                     /* (U3) last resort: the same as success once it fires */
-      snoozed = ver; if (ver) write(SNOOZE, ver);
+      location.href = href;                     /* (M6) last resort: nothing says it worked, so no snooze — the bar comes back next check */
     }
     return;
   }

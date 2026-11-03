@@ -54,13 +54,15 @@ const isChurchAdmin=()=>{const m=cloud.acct&&cloud.acct.membership;return !!m&&m
 export const canCustomPlan=()=>!!(cloud.acct&&(cloud.acct.platform_admin||isAdminAcct()));
 /* who is signed in; true when they are staff of an active church (the expo app opens) */
 export async function loadAccount(){
- const sentAt=Date.now(),r=await cloud.client.rpc('my_account');
+ const gen=cloud.gen,sentAt=Date.now(),r=await cloud.client.rpc('my_account');
+ if(gen!==cloud.gen)return false;   /* the account changed while asking: write nothing of the old one (M9) */
  if(r.data&&typeof r.data==='object')noteServerTime(r.data.server_now,sentAt,Date.now());
  if(r.error||!r.data||typeof r.data!=='object'){         /* no churches in this database yet: the old staff check decides */
   cloud.acct=null;cloud.churchId='';
    if(!r.error||!isOfflineErr(r.error.message))noteHealth('account','warn','Church accounts are not switched on for this database yet, so the old staff list decides who gets in. Ask the app’s support to update the database.',r.error?String(r.error.message||''):'my_account gave no account');
    notifWatch();
    const chk=await cloud.client.rpc('is_staff');
+  if(gen!==cloud.gen)return false;
   if(chk.error)throw chk.error;
   return chk.data===true;
  }
@@ -79,6 +81,7 @@ export async function loadAccount(){
  if(inv&&!(m&&m.status==='approved'&&m.role!=='member')){
   clearInvite();
   const j=await cloud.client.rpc('join_with_invite',{p_code:inv,p_full_name:'',p_phone:''});
+  if(gen!==cloud.gen)return false;
   if(j.error)toast(isOfflineErr(j.error.message)?'No connection: open the invite link again when you are online.':(j.error.message||'That invite link did not work.'));
   else{toast('You have joined the church ✓');return loadAccount();}
  }else if(inv&&cloud.user){
@@ -348,12 +351,12 @@ export async function saveMyDetails(e){
  if(r)await acctReload();
 }
 async function loadHealth(){
- if(cloud.healthBusy)return;
  const uid=cloud.user&&cloud.user.id;   /* a slow personal answer must not land on the next account (E2) */
- cloud.healthBusy=true;
+ if(cloud.healthBusy===uid)return;              /* busy holds whose load it is: the next account's own load is never blocked (M8) */
+ cloud.healthBusy=uid;
  const r=await acctRpc('my_health');
- cloud.healthBusy=false;
- if((cloud.user&&cloud.user.id)!==uid)return;
+ if(cloud.healthBusy===uid)cloud.healthBusy=false;
+ if((cloud.user&&cloud.user.id)!==uid){renderAcct();return;}   /* dropped: redraw so the card asks for the new account's own answer */
  cloud.healthErr=r===null;
  cloud.health=r&&r.data&&typeof r.data==='object'?r.data:null;
  cloud.acctV++;renderGate();renderAcct();profileChanged();
@@ -411,7 +414,7 @@ export function pledgeHTML(){
  const m=cloud.acct&&cloud.acct.membership;
  if(!m||m.status!=='approved')return '';
  if(cloud.pledge===undefined){loadPledge();return acctBox('My pledge',acctSkel(2));}
- if(cloud.pledgeNetErr)return acctBox('My pledge',retryNote('Could not load your pledge. Check your connection.','pledge'));   /* a network drop gets a retry, not the switched-on wording (A20a) */
+ if(cloud.pledgeNetErr)return acctBox('My pledge',retryNote(cloud.pledgeNetErr==='net'?'Could not load your pledge. Check your connection.':'Could not load your pledge right now. Try again in a moment.','pledge'));   /* a network drop gets a retry, not the switched-on wording (A20a) */
  if(cloud.pledgeErr)return acctBox('My pledge',acctNote('Pledging is not switched on for your church yet. Ask your church admin to contact the app’s support.'));
  if(!cloud.pledge)return acctBox('My pledge',acctNote('Pledge to help at the next expo and your name goes onto the team list straight away. Your church’s admin registers you and chooses your station. Your pledge details stay on the roster until you unpledge or your church’s admin removes them.')+myPledgeFormHTML());
  if(cloud.pledgeEdit)return acctBox('My pledge',myPledgeFormHTML());
@@ -438,13 +441,13 @@ export function pledgeHTML(){
   ${p.status==='checkedin'?acctNote('You are checked in for this expo: only your church’s admin can change that now.'):acctNote('Your pledge details (name and contacts) stay on your church’s roster until you unpledge or your church’s admin removes them.')}`);
 }
 async function loadPledge(force){
- if(cloud.pledgeBusy&&!force)return;
  const uid=cloud.user&&cloud.user.id;   /* a slow personal answer must not land on the next account (E2) */
- cloud.pledgeBusy=true;
+ if(cloud.pledgeBusy===uid&&!force)return;   /* busy holds whose load it is (M8) */
+ cloud.pledgeBusy=uid;
  let r;try{r=await cloud.client.rpc('my_pledge');}catch(e){r={error:e};}   /* direct call: a network drop must read as retry, not "not switched on" (A20a) */
- cloud.pledgeBusy=false;
- if((cloud.user&&cloud.user.id)!==uid)return;
- if(r&&r.error){cloud.pledge=null;cloud.pledgeErr=isMissingErr(r.error);cloud.pledgeNetErr=!isMissingErr(r.error);}
+ if(cloud.pledgeBusy===uid)cloud.pledgeBusy=false;
+ if((cloud.user&&cloud.user.id)!==uid){renderAcct();return;}
+ if(r&&r.error){cloud.pledge=null;cloud.pledgeErr=isMissingErr(r.error);cloud.pledgeNetErr=isMissingErr(r.error)?false:isOfflineErr(String(r.error.message||''))||isTimeoutErr(String(r.error.message||''))?'net':'other';}   /* the retry's words follow the cause */
  else{cloud.pledge=r&&r.data&&typeof r.data==='object'?r.data:null;cloud.pledgeErr=false;cloud.pledgeNetErr=false;}
  cloud.acctV++;renderGate();     /* the member screen keys its redraw on acctV: without this it stays on Loading… */
  renderAcct();render();
@@ -582,12 +585,12 @@ export function myTeamHTML(){
   +acctNote('You can add people who asked for your station, take your own people off it and set their shifts. Moving between stations is the admin’s job.'));
 }
 async function loadMyTeam(){
- if(cloud.myTeamBusy)return;
  const uid=cloud.user&&cloud.user.id;   /* a slow personal answer must not land on the next account (E2) */
- cloud.myTeamBusy=true;
+ if(cloud.myTeamBusy===uid)return;              /* busy holds whose load it is: the next account's own load is never blocked (M8) */
+ cloud.myTeamBusy=uid;
  const r=await acctRpc('my_team');
- cloud.myTeamBusy=false;
- if((cloud.user&&cloud.user.id)!==uid)return;
+ if(cloud.myTeamBusy===uid)cloud.myTeamBusy=false;
+ if((cloud.user&&cloud.user.id)!==uid){renderAcct();return;}   /* dropped: redraw so the card asks for the new account's own answer */
  cloud.myTeamErr=!(r&&Array.isArray(r.data));
  cloud.myTeam=r&&Array.isArray(r.data)?r.data:[];
  cloud.acctV++;renderGate();
@@ -1452,7 +1455,8 @@ export function cloudAuthEvent(ev,session){
    cloud.gen=(cloud.gen||0)+1;   /* an account switch orphans the previous account's in-flight pass (E1) */
    /* that parked pass can no longer run its finally (its generation is gone too), so the hand-off is reset here:
       without it the next pass never starts and the status line hangs at Syncing… for the whole session (H3) */
-   cloud.busy=false;cloud.again=false;cloud.againManual=false;
+   cloud.busy=false;cloud.again=false;cloud.againManual=false;cloud.againPull=false;
+   cloud.isAdmin=undefined;cloud.knownAdmin=false;cloud.approvalUnknown=false;cloud.apprRetryAt=0;cloud.pendingUsers=null;   /* the admin answer was the previous account's */
    /* An invite link a previous account was offered (it was bound to them when their approved account declined
       it) must not join this one automatically: drop it before the sync below would spend it. A code still
       waiting for its anonymous arrival (owner '') is the normal sign-up round trip and is kept. */
@@ -1469,7 +1473,7 @@ export function cloudAuthEvent(ev,session){
   if(wasIn){cloud.user=null;stopRealtime();notifStop();cloudRefresh();
    /* an in-flight pass may still be parked on a fetch: orphan it here so its return touches nothing —
       no "Up to date", no gate lift on a signed-out desk (H4) */
-   cloud.gen=(cloud.gen||0)+1;cloud.busy=false;cloud.again=false;cloud.againManual=false;
+   cloud.gen=(cloud.gen||0)+1;cloud.busy=false;cloud.again=false;cloud.againManual=false;cloud.againPull=false;
    applyRetention();afterMerge();persistNow();      /* the server may already have purged these readings; the saved copy follows */
    cloud.ready=false;}
   if(wasIn)cloud.formErr='Your session ended. Sign in again to keep syncing.';   /* one glanceable reason at the gate (A14) */
@@ -1507,20 +1511,22 @@ export async function cloudSignIn(e){
  cloud.formErr='';closeCloud();
 }
 export async function cloudSignOut(force){
- if(cloud.signingOut)return;       /* one sign-out at a time */
+ if(cloud.signingOut||(!force&&cloud.signOutAsk))return;       /* one sign-out at a time, and one question */
  const refused=['att','vol'].reduce((n,k)=>n+KINDS[k].list.filter(o=>cloud.rejected[o.id]!==undefined&&!isDirty(k,o)).length,0);
  const n=cloudPending()+refused;   /* the warning names every record that will be lost: pending edits AND refused rows (B2) */
  if(!force){
+  cloud.signOutAsk=true;
   const yes=await confirmAsk(n
    ?{title:'Sign out with unsaved changes?',body:`${n} change${n>1?'s':''} on this device ${n>1?'have':'has'} not been uploaded yet and will be lost.`,label:'Sign out',danger:true}
    :{title:'Sign out?',body:'The visitor and volunteer data stored on this device will be cleared.',label:'Sign out',danger:true});
-  if(!yes)return;
+  cloud.signOutAsk=false;
+  if(!yes||cloud.signingOut||!cloud.user)return;   /* answered after another sign-out (a forced one) already ran */
  }
- cloud.gen=(cloud.gen||0)+1;cloud.busy=false;cloud.again=false;cloud.againManual=false;   /* the running pass is orphaned the moment the session ends (E1) */
+ cloud.gen=(cloud.gen||0)+1;cloud.busy=false;cloud.again=false;cloud.againManual=false;cloud.againPull=false;   /* the running pass is orphaned the moment the session ends (E1) */
  clearTimeout(cloud.pushT);clearTimeout(cloud.retryT);stopRealtime();
  cloud.signingOut=true;
  try{await cloud.client.auth.signOut({scope:'local'});}catch(e){}
- cloud.signingOut=false;cloud.ready=false;cloud.demo=false;cloud.gateHide=false;cloud.gateKey='';cloud.isAdmin=undefined;cloud.pendingUsers=null;
+ cloud.signingOut=false;cloud.ready=false;cloud.demo=false;cloud.gateHide=false;cloud.gateKey='';cloud.isAdmin=undefined;cloud.knownAdmin=false;cloud.apprRetryAt=0;cloud.pendingUsers=null;
  Object.assign(EXPO_UPCOMING,EXPO_DEFAULT);
  cloud.acct=null;cloud.churchId='';cloud.health=undefined;cloud.dir=null;cloud.regChurch=false;cloud.members=null;cloud.plat=null;cloud.audit=null;cloud.pAdmins=null;cloud.expos=undefined;cloud.adminExpos=undefined;cloud.expoEdit=null;cloud.pledgeExpo='';cloud.adminChurch='';cloud.adminData='';cloud.adminRows=null;closeAcct();
  cloud.view='login';cloud.viewEmail='';cloud.pending=false;cloud.recovery=false;cloud.formErr='';cloud.gateForce=false;cloud.delOpen=false;
@@ -1555,9 +1561,9 @@ function cloudError(err,where){
  setCloud('error','Sync hit a problem. It retries by itself — Details has the technical bit.');
  clearTimeout(cloud.retryT);cloud.retryT=setTimeout(()=>cloudSync(),60000);
 }
-export async function cloudSync(manual){
- if(!cloud.client||!cloud.user)return;
- if(cloud.busy){if(manual)cloud.againManual=true;else cloud.again=true;return;}   /* a queued "Sync now" re-runs the full pull when the running pass ends (E3) */
+export async function cloudSync(manual,pull){
+ if(!cloud.client||!cloud.user||cloud.signingOut)return;   /* nothing starts while the session is being closed */
+ if(cloud.busy){if(manual)cloud.againManual=true;else if(pull)cloud.againPull=true;else cloud.again=true;return;}   /* `pull`: a catch-up that must still pull when queued, not push only */   /* a queued "Sync now" re-runs the full pull when the running pass ends (E3) */
  if(manual)cloud.blocked=false;
  const gen=cloud.gen;   /* E1: every await below is followed by a generation check — a sign-out or account switch ends this pass */
  cloud.busy=true;cloud.phase='pull';cloud.prog={done:0,total:0};setCloud('syncing');
@@ -1626,6 +1632,7 @@ export async function cloudSync(manual){
    if(cloud.status==='online')cloud.ready=true;      /* the first successful sync lifts the sign-in gate */
    renderGate();
    if(cloud.againManual){cloud.againManual=false;cloudSync(true);}   /* a queued "Sync now" still gets its pull, not a push-only pass (E3) */
+   else if(cloud.againPull){cloud.againPull=false;cloud.again=false;cloudSync();}
    else if(cloud.again){cloud.again=false;cloudQueuePush();}
   }
  }
@@ -1731,8 +1738,8 @@ export function pruneRemote(kind,idRows){
   const o=k.list[i];
   if(remote.has(o.id))continue;
   if(sy[o.id]===undefined&&!isSeedRow(kind,o))continue;   /* refused on its first upload: never on the server, so not "deleted on another desk" (BUG-A) */
-  if(!pending.has(o.id)){k.list.splice(i,1);delete sy[o.id];changed=1;}   /* demo leftovers, or deleted on another desk */
-  else delete sy[o.id];                                                    /* edited here but gone there: upload it again */
+  if(!pending.has(o.id)&&cloud.rejected[o.id]===undefined){k.list.splice(i,1);delete sy[o.id];changed=1;}   /* demo leftovers, or deleted on another desk */
+  else delete sy[o.id];                                                    /* edited (or refused) here but gone there: upload it again (A3/M5) */
  }
  return changed;
 }
@@ -1819,7 +1826,7 @@ async function resolveConflict(kind,o,s){
  const k=KINDS[kind];
  const {data,error}=await cloud.client.from(k.table).select('*').eq('id',o.id).maybeSingle();
  if(error)throw error;
- if(data&&sigOf(k.toRow({...k.fromRow(data),created_at:undefined}))===s){cloud.synced[kind][o.id]=s;return;}   /* an earlier upload of this very row: the lost first response left only the server's created_at different (E4) */
+ if(data&&sigOf(k.toRow({...k.fromRow(data),created_at:o.created_at}))===s){cloud.synced[kind][o.id]=s;return;}   /* an earlier upload of this very row: the lost first response left only the server's created_at different (E4) */
  if(kind==='att')return renumberVisitor(o);
  /* two desks pledged at the same moment: take the next free volunteer number */
  const ids=await cloud.client.from('volunteers').select('id');
@@ -1930,7 +1937,7 @@ export function startRealtime(){
  cloud.liveChurch=cloud.churchId;
  /* the bell rides the same channel: a notification for this account arrives without any polling */
  if(cloud.user)ch.on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:'user_id=eq.'+cloud.user.id},p=>onNotifRow(p.new));
- ch.subscribe(st=>{cloud.liveSt=st;healthLive('live',st);if(st==='SUBSCRIBED')cloudSync();   /* live updates are back: fetch what was missed now, not at the next poll (A16) */});cloud.channel=ch;
+ ch.subscribe(st=>{cloud.liveSt=st;healthLive('live',st);if(st==='SUBSCRIBED')cloudSync(false,true);   /* live updates are back: fetch what was missed now, not at the next poll (A16) */});cloud.channel=ch;
 }
 export function stopRealtime(){
  if(cloud.channel)noteHealth('live','off','Not connected.');

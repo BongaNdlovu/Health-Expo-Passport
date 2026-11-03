@@ -9,6 +9,7 @@ import { LIST_CAP, switchTab, visitorsToShow } from './visitor.js';
 import { migrateVolunteer, persist, cloud } from './state.js';
 import { isOfflineErr, validEmail } from './cloud.js';
 import { overlayClosed, overlayOpened } from './overlay.js';
+import { confirmAsk } from './feedback.js';
 /* a lazy cycle: account.js imports this module's modal helpers; the sync call happens only at runtime */
 import { canManageExpos, cloudSync } from './account.js';
 import { downloadCSV, foodKeyOf, planFor, shortFood } from './results.js';
@@ -121,8 +122,20 @@ function discardVolDraft(){
  if(state.volNew){state.volNew=false;state.volId=(volunteers[0]||{}).id||null;}
 }
 export function closeVolReg(){discardVolDraft();render();}
-export function setVolTab(t){gotoServe();if(state.volRegOpen)discardVolDraft();state.volTab=t;render();}
-export function setVol(id){gotoServe();state.volId=id;state.volNew=false;state.volRegOpen=false;state.vf=emptyDraft();render();}
+/* typed changes in the open pledge form, against what it opened with (the volunteer's saved details, or empty) */
+const DRAFT_KEYS=['name','phone','email','pledgeExpos','skills','pref','pref2','avail','shirt','emergency','notes'];
+const draftSig=d=>JSON.stringify(DRAFT_KEYS.map(k=>d[k]==null?'':d[k]));
+const draftDirty=()=>state.volRegOpen&&draftSig(state.vf)!==(state.vf._base||draftSig(emptyDraft()));
+/* switching volunteer or tab with unsaved changes asks first; true means "asked: stop here, `again` runs on a yes" */
+let leaveOk=false;
+function askLeave(again){
+ if(leaveOk||!draftDirty())return false;
+ confirmAsk({title:'Discard your changes?',body:'The changes in this pledge form are not saved yet. They are lost if you leave now.',label:'Discard',danger:true})
+  .then(yes=>{if(!yes)return;leaveOk=true;try{again();}finally{leaveOk=false;}});
+ return true;
+}
+export function setVolTab(t){if(askLeave(()=>setVolTab(t)))return;gotoServe();if(state.volRegOpen)discardVolDraft();state.volTab=t;render();}
+export function setVol(id){if(askLeave(()=>setVol(id)))return;gotoServe();state.volId=id;state.volNew=false;state.volRegOpen=false;state.vf=emptyDraft();render();}
 
 /* ---------- the Serve shell ---------- */
 export function renderServeView(){
@@ -413,7 +426,11 @@ export async function placeSwap(otherId){
   const r=await volRpc('swap_volunteers',{p_a:v.id,p_b:o.id});
   if(!r)return;
   await afterPlace();rerenderPlace();
-  toastUndo(`Swapped ${firstName(v.name)} ↔ ${firstName(o.name)} ✓`,()=>volRpc('swap_volunteers',{p_a:v.id,p_b:o.id}).then(async r2=>{if(r2){await afterPlace();rerenderPlace();}}));
+  toastUndo(`Swapped ${firstName(v.name)} ↔ ${firstName(o.name)} ✓`,async()=>{   /* the Undo is a swap too: same in-flight guard */
+   if(cloud.swapBusy)return;
+   cloud.swapBusy=true;
+   try{if(await volRpc('swap_volunteers',{p_a:v.id,p_b:o.id})){await afterPlace();rerenderPlace();}}finally{cloud.swapBusy=false;}
+  });
  }finally{cloud.swapBusy=false;}
 }
 export async function placeRelease(){
@@ -759,7 +776,7 @@ function viewVolRegister(){
  /* when editing an existing profile, prefill the draft once */
  if(!d._init&&v){d.name=v.name||'';d.phone=v.phone||'';d.email=v.email||'';d.pledgeExpos=v.pledgeExpos||1;
   d.skills=[...(v.skills||[])];d.pref=[...(v.pref||[])];d.avail=[...(v.availability||[])];d.pref2=v.pref2||'';
-  d.shirt=v.shirt||'';d.emergency=v.emergency||'';d.notes=v.notes||'';d._init=true;}
+  d.shirt=v.shirt||'';d.emergency=v.emergency||'';d.notes=v.notes||'';d._init=true;d._base=draftSig(d);}
  const set=(k,val)=>{state.vf[k]=val;};
  return `<section class="stagger space-y-3.5 pb-2">
   <button data-action="closeVolReg" class="btn btn-glass w-fit gap-1.5 rounded-full px-3 py-1.5 text-[11px] text-[#5b7178]">
@@ -839,7 +856,8 @@ export function saveVolunteer(){
   /* the placement is the admin's (or the reader's own-station) call — the same rule as a new row (H2): a plain staff
      member, or a leader whose ask is another station, leaves a boothless volunteer as the volunteer's pledge stands,
      so the place guard never sees a write it would refuse; only hands that own it rewrite booth */
-  if(mayPlaceHere&&(isAdminAcct()||!cloudStaff||!v.booth||v.booth===myLeadBooth())){
+  const ownStation=!!myLeadBooth()&&v.booth===myLeadBooth();   /* a leader's own station: keep it or clear it, both allowed */
+  if(isAdminAcct()||!cloudStaff||ownStation||(!v.booth&&mayPlaceHere)){
    if(registered){v.status=v.status==='checkedin'?'checkedin':'registered';v.booth=v.booth||d.pref[0];v.registeredOn=v.registeredOn||today;}
    else if(v.status!=='checkedin'){v.status='prospect';v.booth=null;}   /* status and station agree */
   }
@@ -971,6 +989,7 @@ export function filterVolSwitcher(v){const el=$('#switcherList');if(el)el.innerH
 export function closeSwitcher(){hideModal('#switcherModal');}
 export function pickVolunteer(id){
  closeSwitcher();
+ if(askLeave(()=>pickVolunteer(id)))return;
  state.volId=id;state.volNew=false;state.volRegOpen=false;state.vf={name:'',phone:'',email:'',pledgeExpos:1,skills:[],pref:[],avail:[]};
  if(state.tab!=='serve'){state.tab='serve';}
  render();

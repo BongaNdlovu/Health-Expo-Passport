@@ -202,7 +202,7 @@ export function viewHome(){
      <div class="hx-eyebrow">Now serving visitor</div>
      <div class="hx-id">${esc(num)}</div>
      <div class="hx-name">${esc(a.name)} <span>· ${a.age}y ${esc(a.sex)}</span></div>
-     <div style="margin-top:10px">${capsuleHTML(a.done&&doneCount(a)===8?'Completed · all checks recorded':a.done?`Finished · ${doneCount(a)} of 8 checks`:`Step ${stepIdx+1} of 4 · ${JOURNEY_LABEL[step]}`)}</div>   /* a visit can finish early: the header says how much of the 8 it has (V8a) */
+     <div style="margin-top:10px">${capsuleHTML(a.done&&doneCount(a)===8?'Completed · all checks recorded':a.done?`Finished · ${doneCount(a)} of 8 checks`:`Step ${stepIdx+1} of 4 · ${JOURNEY_LABEL[step]}`)}</div>   <!-- a visit can finish early: the header says how much of the 8 it has (V8a) -->
      ${rulerHTML(pct)}
     </div>
    </div>
@@ -248,7 +248,7 @@ export function viewHome(){
     </div>
     <div><label class="microlabel" for="rgEmail">Email (optional)</label><input id="rgEmail" type="email" inputmode="email" autocomplete="off" placeholder="for sending the plan by email" class="field mt-1"></div>
     <div><span class="microlabel">Visitor number</span>
-     <div id="rgNumber" class="field mono mt-1 font-bold text-brand-900" style="background:rgba(58,165,151,.09);border-color:rgba(58,165,151,.3)">${nextBadge()}</div>
+     <div id="rgNumber" class="field mono mt-1 font-bold text-brand-900" style="background:rgba(58,165,151,.09);border-color:rgba(58,165,151,.3)">${nextBadge()||'—'}</div>
      <p class="mt-1 text-[10.5px] text-[#6b8187]">Given automatically. Find them later by name or number.</p></div>
     ${consentFields('rg',false)}
     <div id="rgErr" class="st-warn" role="alert" hidden></div>
@@ -325,7 +325,7 @@ function visitorListHTML(query){
  if(!rows.length)return `<p class="px-1 py-3 text-center text-[11px] text-[#6b8187]">${q?'Nobody matches “'+esc(q)+'”.':'No visitors yet.'}</p>${q?'<button data-action="vq-clear" class="btn btn-glass mx-auto block px-4 py-2 text-[11px]">Clear search</button>':''}`;
  const more=(q?0:attendees.length-rows.length);
  const capped=q&&rows.length>=LIST_CAP;   /* search hit the cap: say how to narrow (V8b) */
- return rows.map(visitorRowHTML).join('')+(capped?`<p class="px-1 pt-2 text-center text-[10px] font-semibold text-[#6b8187]">First 25 matches: type more of the name or phone.</p>`:(more>0?`<p class="px-1 pt-2 text-center text-[10px] font-semibold text-[#6b8187]">Latest ${rows.length} of ${attendees.length} — search to find anyone else.</p>`:''));
+ return rows.map(visitorRowHTML).join('')+(capped?`<p class="px-1 pt-2 text-center text-[10px] font-semibold text-[#6b8187]">First ${LIST_CAP} matches: type more of the name or phone.</p>`:(more>0?`<p class="px-1 pt-2 text-center text-[10px] font-semibold text-[#6b8187]">Latest ${rows.length} of ${attendees.length} — search to find anyone else.</p>`:''));
 }
 export function filterVisitors(v){state.vq=v;const el=$('#visitorList');if(el)el.innerHTML=visitorListHTML(v);}
 /* the one-tap way out of a search that matched nobody */
@@ -336,7 +336,8 @@ export function nextBadge(){
  let max=0;
  /* only ids the database's own check allows feed the next number, so the badge it generates is never one that
     would be refused (EXPO-10000 is five digits — D3) */
- for(const a of attendees){const m=/^EXPO-(\d+)$/.exec(a.id);if(m&&+m[1]>max&&+m[1]<9999)max=+m[1];}
+ for(const a of attendees){const m=/^EXPO-(\d+)$/.exec(a.id);if(m&&+m[1]>max&&+m[1]<=9999)max=+m[1];}
+ if(max>=9999)return '';   /* every number up to EXPO-9999 is taken: registration says so instead of reusing one (D3) */
  return 'EXPO-'+String(max+1).padStart(3,'0');
 }
 export function toggleReg(){state.regOpen=!state.regOpen;renderMain();if(state.regOpen){const n=$('#rgName');if(n)n.focus();}}
@@ -471,6 +472,7 @@ export function registerSubmit(e,force){
  if(cons.err)return regError(cons.err);
  /* the number is given here, not typed; another desk taking the same one at the same moment is settled on upload */
  const id=nextBadge();
+ if(!id)return regError('No badge numbers are left on this phone (EXPO-9999 is taken). Ask your church admin before registering more visitors.');
  /* the same person twice gives two half-filled passports: ask first (name, last 9 phone digits, or email) */
  const digits=phone.replace(/\D/g,'').slice(-9);
  /* a new visit of a past visitor is the same person on purpose, so their old passport is not a duplicate */

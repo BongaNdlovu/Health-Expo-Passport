@@ -15,7 +15,7 @@ import { closeBigScreen, closeQueuePick, openBigScreen, openQueuePick, qFilterPi
 import { closeFood, exportCSV, exportPrayerCSV, exportXLSX, openFood, showAllCare } from './results.js';
 import { closeHelp, openHelp, openHelpHere, startTour } from './help.js';
 import { onSim, setFoodPlan, toggleFood } from './results.js';
-import { isServe, render, toggleTheme } from './shell.js';
+import { isServe, render, toast, toggleTheme } from './shell.js';
 import { cloud } from './state.js';
 import { tfBack, tfGo, tfMode, tfNext, tfSkip } from './visitor.js';
 import { clearVisitorSearch, filterVisitors, onPrayer, onStationCommit, onStationInput, onStep, registerSubmit, reservePouch, resetDemo, resetDemoAsk, switchTab, toggleInterest, toggleReg } from './visitor.js';
@@ -122,7 +122,7 @@ export const ACTION_MAP = {
   cloudSignOut: () => cloudSignOut(),   /* adapter: the real function reads its first argument as `force`; dispatch passes the button (BUG-B) */
   'quarantine-export': () => quarantineExport(),
   'quarantine-discard': el => quarantineDiscard(el.dataset.args),
-  'retry-refused': () => { cloud.rejected = {}; cloud.rejectedNote = null; cloudPush(); },   /* one tap: send the refused changes again — pushed at once, not through the 700 ms damper (A15) */
+  'retry-refused': () => { if (cloud.blocked) { toast('Sync is stopped: see the message at the top of Cloud status.'); return; } cloud.rejected = {}; cloud.rejectedNote = null; cloudPush(); },   /* one tap: send the refused changes again — pushed at once, not through the 700 ms damper (A15) */
   'church-search': el => churchSearchSoon(el.value),
   'join-church': el => joinChurch(el.dataset.args, el),
   'hub-open': el => { closeCloud(); openAcct(el.dataset.args); },
@@ -176,7 +176,7 @@ export const ACTION_MAP = {
   'expo-cancel': () => cancelExpo(),
   'expo-status': el => setExpoStatus(el.dataset.args, el.dataset.status),
   'expo-delete': el => deleteExpoAsk(el.dataset.args),
-  'acct-retry': el => { if (el.dataset.args === 'plans') { cloud.plans = null; cloud.plansErr = null; } else if (el.dataset.args === 'pledge') { cloud.pledge = undefined; cloud.pledgeErr = false; cloud.pledgeNetErr = false; } acctRetry(el.dataset.args); },   /* acctRetry (account.js) has no plans branch: clear the failed state so the redraw pulls again (E11); pledge ditto for its network error (A20a) */
+  'acct-retry': el => { if (el.dataset.args === 'plans') { cloud.plans = null; cloud.plansErr = null; } else if (el.dataset.args === 'adminPlans') { cloud.adminPlans = null; cloud.adminPlansErr = null; } else if (el.dataset.args === 'followups') { cloud.followupsErr = null; render(); } else if (el.dataset.args === 'pledge') { cloud.pledge = undefined; cloud.pledgeErr = false; cloud.pledgeNetErr = false; } acctRetry(el.dataset.args); },   /* acctRetry (account.js) has no plans branch: clear the failed state so the redraw pulls again (E11); pledge ditto for its network error (A20a) */
   'vq-clear': () => clearVisitorSearch(),
   'visitor-remove': el => removeVisitorAsk(el.dataset.args),
   'expo-manage': () => manageExpos(),
@@ -188,7 +188,7 @@ export const ACTION_MAP = {
   'member-approve-assistant': el => approveAssistant(el.dataset.user),
   'all-churches-back': el => { cloud.adminData = ''; renderAcct(); },
   'staff-approve': el => approveStaff(el.dataset.args, el),
-  'approvals-clear': el => { cloud.isAdmin = undefined; cloud.approvalUnknown = false; renderCloudBody(); },   /* Refresh accepts the failed check away, so the admin question is asked again (A19) */
+  'approvals-clear': el => { cloud.isAdmin = undefined; cloud.approvalUnknown = false; cloud.apprRetryAt = 0; renderCloudBody(); },   /* Refresh accepts the failed check away, so the admin question is asked again (A19) */
   'reg-church-list': el => { cloud.regChurch = false; cloud.acctV++; renderGate(); },
   'reg-church-form': el => { cloud.regChurch = true; cloud.acctV++; renderGate(); },
 

@@ -1177,6 +1177,8 @@ function makeServer() {
     ok('app: both CSV exports are saved through the native plugin (a blob download does nothing in the WebView)', saved.length === 2
       && saved[0].name === 'newstart-followup.csv' && saved[1].name === 'newstart-volunteers.csv' && saved.every(o => o.mime === 'text/csv' && /^﻿"/.test(o.text)),
       saved.map(o => o.name).join(','));
+    { const s0 = saved.length; A.exportCSV(); A.exportCSV(); await tick(); await tick();
+      ok('app: a second tap on the same export while it hands off saves once (R4, M12: behaviour)', saved.length === s0 + 1, (saved.length - s0) + ' saves'); }
     ok('app: the native plugin saves through SecureExport — this app\'s private cache + the share sheet, never public Downloads', /public void saveDownload\(PluginCall call\)/.test(javaSrc)
       && /SecureExport\.save\(/.test(javaSrc) && !/MediaStore\.Downloads\.EXTERNAL_CONTENT_URI/.test(javaSrc));
     ok('app: printing refuses a second card while one is being prepared, and answers once with a timeout', /if \(printView != null\)/.test(javaSrc)
@@ -1981,6 +1983,11 @@ function makeServer() {
   for (let i = 0; i < 80 && (g.cloudPending() > 0 || C.busy); i++) await sleep(50); await sleep(60);
   ok('FUP-H2-6 the row still uploads clean', C.rejected[kid.id] === undefined && g.cloudPending() === 0, 'rejected=' + Object.keys(C.rejected).join('|') + ' pending=' + g.cloudPending());
   ok('FUP-H2-7 with no refused booth write either', srv.guardHits.length === 0, JSON.stringify(srv.guardHits));
+  { const own = g.volunteers.find(v => v.id === 'VOL-9002'); own.booth = 'bp'; own.status = 'registered';
+    g.setVol(own.id); g.state.volNew = false; g.openVolReg();
+    g.state.vf.pref = [];                                  /* the pledge no longer asks for a station */
+    g.saveVolunteer();
+    ok('FUP-H2-8 a leader can still take someone off their own station', own.booth === null && own.status === 'prospect', 'booth=' + own.booth + ' status=' + own.status); }
   srv.rpcs = null; srv.canPlace = null; srv.guardStyle = null; srv.guardHits = [];
 
   /* ==== H3: switching account mid-pass leaves sync alive for the next pass ==== */
@@ -2372,7 +2379,7 @@ function makeServer() {
     ok('an Undo toast leaves with its offer (it stayed up and covered the buttons)',
       /setTimeout\([^\n]*toastUndo[^\n]*opacity-0/.test(bodyOf(sh, 'export function toastUndo')));
     ok('every placement Undo redraws the open sheet (it kept showing the old station)',
-      vol.split('afterPlace();rerenderPlace();}})').length - 1 === 3 && !vol.includes('then(r2=>{if(r2)afterPlace();})'));
+      vol.split('afterPlace();rerenderPlace();}').length - 1 === 3 && !vol.includes('then(r2=>{if(r2)afterPlace();})'));
   }
   { /* a chip inside the member's pledge <form> was a submit button: the first tap sent a half-filled pledge */
     const vs = require('fs').readFileSync(require('path').join(__dirname, '..', 'src', 'volunteer.js'), 'utf8').replace(/\r/g, '');
@@ -2677,7 +2684,7 @@ function makeServer() {
   const persMs = persSamples[2];
   const cpuMs = persCpu.sort((a, b) => a - b)[2];
   const payloadKB = Math.round(store.get('newstart.passport.v2').length / 1024);
-  ok('saving to the device is fast (' + persMs + ' ms wall / ' + cpuMs.toFixed(1) + ' ms cpu median of 5 [' + persSamples.join(',') + '], json ' + jsonMs + 'ms, ' + payloadKB + ' KB of the ~5000 KB limit)', persMs < 500 && payloadKB < 4000, persMs + 'ms ' + payloadKB + 'KB');   /* 500 ms: the wall clock of a busy CI box must not fail the intent (T0-5) */
+  ok('saving to the device is fast (' + persMs + ' ms wall / ' + cpuMs.toFixed(1) + ' ms cpu median of 5 [' + persSamples.join(',') + '], json ' + jsonMs + 'ms, ' + payloadKB + ' KB of the ~5000 KB limit)', persMs < 500 && payloadKB < 4000, persMs + 'ms ' + payloadKB + 'KB');   /* 500 ms: measured median 257 ms (samples 255-280) on the dev box, 2026-11-03, so 300 would sit within 15 % of the median; 500 keeps a busy machine from failing the intent (T0-5, M11) */
 
   g.state.tab = 'home'; g.state.vq = ''; g.render();
   const homeRows = ($main.innerHTML.match(/data-action="switchTo"/g) || []).length;
@@ -4246,11 +4253,12 @@ function makeServer() {
         const n0 = srv.calls.length;
         back(); await sleep(600);
         const n1 = srv.calls.length;
-        /* stop the 20 s poll tick for the second burst (page marked hidden): its tick must not be able to
-           land inside the measured window — back()s 2-4 must add nothing all by themselves (T0-5) */
-        document.hidden = true;
+        /* stop the 20 s poll tick for the second burst (navigator.onLine=false: the poll returns, the visibility
+           path does not look at it), so back()s 2-4 reach the 15 s throttle itself — a hidden page would return
+           before the throttle and pass with it removed (M11) */
+        sandbox.navigator.onLine = false;
         back(); back(); back(); await sleep(600);
-        document.hidden = false;   /* the next back() must see the front again */
+        sandbox.navigator.onLine = true;
         ok('a page that keeps coming to the front syncs once, not on every return', n1 > n0 && srv.calls.length === n1, n0 + ' → ' + n1 + ' → ' + srv.calls.length);
         offset += 16000;
         back(); await sleep(600);
@@ -5093,7 +5101,7 @@ function makeServer() {
   const inlineScripts = [...built.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map(m => m[1]);
   const scriptSrc = ((builtCsp || '').match(/script-src ([^;]*)/) || [])[1] || '';
   ok('every inline script in the built page is allowed by its exact hash (the app would be blank otherwise)',
-    inlineScripts.length >= 2 && inlineScripts.every(s => scriptSrc.split(' ').includes(cspHash(s))), inlineScripts.map(cspHash).join(' '));
+    inlineScripts.length === 3 && inlineScripts.every(s => scriptSrc.split(' ').includes(cspHash(s))), inlineScripts.map(cspHash).join(' '));
   /* the dev page loads src/ straight into the browser, which (unlike esbuild) needs the full file name */
   const srcDir = path.join(rootDir, 'src');
   const badImports = fs.readdirSync(srcDir).filter(f => f.endsWith('.js')).flatMap(f =>
@@ -5194,7 +5202,7 @@ function makeServer() {
   console.log('\n20b. The queue (demo mode)');
   g.resetDemo();
   g.queue.length = 0;   /* v1.6.2: registrations seed the lines, so resetDemo no longer empties them */
-  ok('queue: empty at boot, and demo mode allows changes', g.queue.length === 0 && g.qMode() === 'demo' && g.qCan(),
+  ok('queue: demo mode allows changes (the lines were emptied above for this section)', g.qMode() === 'demo' && g.qCan(),   /* M11: "empty" right after emptying it proved nothing */
     'mode=' + g.qMode() + ' can=' + g.qCan() + ' busy=' + g.qs.busy + ' ready=' + g.qs.ready + ' len=' + g.queue.length);
   await g.queueJoin('EXPO-042', 'bp');
   await g.queueJoin('EXPO-088', 'bp');
@@ -5254,9 +5262,14 @@ function makeServer() {
     g.qList('plan', 'waiting').some(e => e.attendeeId === 'EXPO-117') && g.qList('vitals', 'waiting').length === 0,
     JSON.stringify(g.queue.map(e => e.station + ':' + e.status)));
   ok('…and the toast says where they went (the skips are named on the Done · call next path)', /now in the Counselling line/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
-  for (const st of ['bp', 'sugar', 'veg', 'walk', 'water', 'sleep', 'plan']) { await g.queueCallNext(st); const e = g.qList(st, 'serving').find(x => x.attendeeId === 'EXPO-117'); if (e) await g.queueDone(e.id); }
+  const routeSt = ['vitals', 'bp', 'sugar', 'veg', 'walk', 'water', 'sleep', 'plan'], served = [];
+  for (const st of routeSt.slice(1)) { await g.queueCallNext(st); const e = g.qList(st, 'serving').find(x => x.attendeeId === 'EXPO-117'); if (e) { served.push(st); await g.queueDone(e.id); } }
+  const a117 = g.attendees.find(a => a.id === 'EXPO-117');
   ok('queue: after the last station of the route nobody is put in another line', !g.queue.some(e => e.attendeeId === 'EXPO-117' && (e.status === 'waiting' || e.status === 'serving'))
     && g.queue.some(e => e.attendeeId === 'EXPO-117' && e.station === 'plan' && e.status === 'done'));
+  ok('queue: every route station is done, or was skipped because its readings were already in (M11)',
+    routeSt.every(st => g.queue.some(e => e.attendeeId === 'EXPO-117' && e.station === st && e.status === 'done') || (!served.includes(st) && g.qCheckState(a117, st).state === 'filled')),
+    routeSt.map(st => st + ':' + (g.queue.some(e => e.attendeeId === 'EXPO-117' && e.station === st && e.status === 'done') ? 'done' : g.qCheckState(a117, st).state)).join(' '));
   ok('queue: a station already finished is skipped, and the optional stops are not on the route', g.nextFlowStation('EXPO-117', 'vitals') === '' && g.nextFlowStation('EXPO-117', 'kitchen') === '');
   /* no invented times: there is an average, and an estimate, only once 3 visits have really finished */
   g.queue.length = 0;
@@ -6046,7 +6059,7 @@ function makeServer() {
       C.acct = { church: { id: 'ch-1', name: 'Test', status: 'active' }, membership: { role: 'member', status: 'approved', attendee_id: 'EXPO-400' } };
       C.health = undefined;
       g.healthHTML(); await sleep(30);
-      const parked = !!drop && C.healthBusy === true;
+      const parked = !!drop && !!C.healthBusy && C.healthBusy !== false;
       srv.authCb('SIGNED_IN', { user: { id: 'user-2', email: 'next@example.org' } }); await sleep(250);
       drop({ data: { id: 'EXPO-400', name: 'Old Desk Sally', s: { sys: 210, dia: 130 }, interests: {} }, error: null });
       await sleep(60); srv.holdRpc = null; C.acct = null; C.health = undefined;
@@ -6158,8 +6171,8 @@ function makeServer() {
       await sleep(40);
       ok('TST-U2 the network dropping moves the desk to Offline straight away', offs.length && C.status === 'offline',
         'handler=' + offs.length + ' status=' + C.status);
-      ok('TST-U2 ...and nothing sets the desk back online while navigator.onLine is false',
-        /navigator\.onLine===false/.test(srcOf('src/main.js')) && /addEventListener\('offline'/.test(srcOf('src/main.js')));
+      g.setCloud('online');                           /* a pass landing now (M12: behaviour, not the source text) */
+      ok('TST-U2 ...and nothing sets the desk back online while navigator.onLine is false', C.status === 'offline', 'status=' + C.status);
       sandbox.navigator.onLine = true;
       const ons = winHandlers.online || [];
       if (ons.length) ons[ons.length - 1]();
@@ -6275,7 +6288,7 @@ function makeServer() {
       $el('gateEmail').value = 'staff@example.org';
       await g.cloudForgot({ preventDefault() {} }); await sleep(30);
       ok('TST-A17 a server error on forgot-password answers plainly and reveals nothing',
-        /Could not send the email/.test(C.formErr) && C.view !== 'forgotSent', C.formErr + ' view=' + C.view);
+        /could not send the reset email/.test(C.formErr) && !/account/i.test(C.formErr) && C.view !== 'forgotSent', C.formErr + ' view=' + C.view);
       srv.forgotErr = null; C.formErr = '';
     }
 
@@ -6295,13 +6308,17 @@ function makeServer() {
     /* TST-A19 (A19): a failed admin check keeps the approvals box with its error; a thrown approve restores the button */
     {
       device();
-      C.user = { id: 'user-1', email: 'staff@example.org' }; C.acct = null; C.isAdmin = undefined; C.approvalUnknown = false; C.pendingUsers = null; C.apprErr = '';
+      C.user = { id: 'user-1', email: 'staff@example.org' }; C.acct = null; C.isAdmin = undefined; C.knownAdmin = false; C.apprRetryAt = 0; C.approvalUnknown = false; C.pendingUsers = null; C.apprErr = '';
       srv.rpcs = { is_admin: () => ({ data: null, error: { message: 'TypeError: Failed to fetch' } }) };
-      g.renderCloudBody(); await g.approveStaff(' nobody ', null).catch(() => {});   /* no-op: just lets the microtasks land */
-      await sleep(60);
+      g.renderCloudBody(); await sleep(60); g.renderCloudBody();   /* the box is drawn by the redraw after the check */
+      const b0 = $el('cloudBody').innerHTML;
+      ok('FUP-M3-1 a desk never known as an admin shows no approvals box when the check fails',
+        !/Waiting for approval/.test(b0) && !/admin rights/.test(b0), b0.slice(0, 160));
+      C.isAdmin = undefined; C.knownAdmin = true; C.apprRetryAt = 0;
+      g.renderCloudBody(); await sleep(60); g.renderCloudBody();
       const b1 = $el('cloudBody').innerHTML;
       ok('TST-A19 a failed admin check keeps the approvals box with its error and a Refresh',
-        /Waiting for approval/.test(b1) && !/Nobody is waiting/.test(b1), b1.slice(b1.indexOf('Waiting'), b1.indexOf('Waiting') + 180));
+        /Waiting for approval/.test(b1) && !/Nobody is waiting/.test(b1) && !/Loading…/.test(b1.slice(b1.indexOf('Waiting'), b1.indexOf('Only approve people'))), b1.slice(b1.indexOf('Waiting'), b1.indexOf('Waiting') + 180));
       srv.rpcs = { staff_approve: () => { throw new TypeError('boom'); } };
       C.isAdmin = true; C.approvalUnknown = false; C.pendingUsers = [{ user_id: 'u9', full_name: 'Pending P', confirmed: true }]; C.apprErr = '';
       g.renderCloudBody();
@@ -6309,7 +6326,7 @@ function makeServer() {
       await g.approveStaff('u9', btn).catch(() => {});
       ok('TST-A19 an approve that throws restores the Approve button',
         btn.textContent === 'Approve' && btn.disabled === false, btn.textContent + ' disabled=' + btn.disabled);
-      srv.rpcs = null; C.isAdmin = undefined; C.approvalUnknown = false; C.pendingUsers = null; C.user = null; C.apprErr = '';
+      srv.rpcs = null; C.isAdmin = undefined; C.knownAdmin = false; C.apprRetryAt = 0; C.approvalUnknown = false; C.pendingUsers = null; C.user = null; C.apprErr = '';
     }
 
     /* TST-A20a (A20a): a network failure on My pledge offers a retry, not the switched-on wording */
@@ -6344,8 +6361,20 @@ function makeServer() {
     }
 
     /* TST-U6 / U8 / R4 (structural: the small gaps get their source-level guards this wave) */
-    ok('TST-U6 a page held in the back/forward cache keeps its page timers across the pagehide', /persisted/.test(srcOf('nsmem.js')));
-    ok('TST-U8 a redraw skipped while the page was hidden is finished on focusout', /focusout/.test(srcOf('src/main.js')));
+    { const NS = sandbox.NSMem; document.getElementsByTagName = document.getElementsByTagName || (() => []);   /* stats() counts DOM nodes */
+      const pageN = () => (NS.stats().registry || {}).intervals;   /* every live interval; only the 'page' scope's go on a real pagehide */
+      const id = NS.every('page', () => {}, 60000), n0 = pageN();
+      for (const f of (winHandlers.pagehide || [])) f({ persisted: true });
+      ok('TST-U6 a page held in the back/forward cache keeps its page timers across the pagehide (M12: fired, not grepped)',
+        n0 > 0 && pageN() === n0, n0 + ' → ' + pageN());
+      clearInterval(id); }
+    { device(); await signIn();
+      const vis = docHandlers.visibilitychange || [];
+      document.hidden = false; for (const f of vis) f(); for (const f of vis) f();   /* the second return is inside 15 s: its redraw is skipped */
+      await sleep(300); g.state.tab = 'home'; $main.innerHTML = 'STALE-U8';
+      for (const f of (winHandlers.focusout || [])) f({});
+      await sleep(320);
+      ok('TST-U8 a redraw skipped by the 15 s throttle is finished on focusout (M12: fired, not grepped)', $main.innerHTML !== 'STALE-U8', $main.innerHTML.slice(0, 60)); }
     ok('TST-R4 a save in flight cannot be started twice, and a failure says so in fixed words',
       /saving|exportBusy|saveBusy/.test(srcOf('src/results.js')) && /Could not save/.test(srcOf('src/results.js')));
 
@@ -6394,6 +6423,87 @@ function makeServer() {
       g.resetDemo();
     }
 
+    /* ==== follow-up M and LOW fixes (2026-11-03): behavioural checks, each fails on the code before its fix ==== */
+    {
+      device();
+      const teen = g.migrateAttendee({ id: 'EXPO-043', name: 'Teen Tester', age: 15, sex: 'Female', heightCm: 160, done: true,
+        s: { sys: 150, dia: 95, sugar: 9, chol: 7, weight: 90, veg: 0, walk: 0, water: 1, sleep: 4 }, interests: {} });
+      g.attendees.push(teen); g.state.activeId = teen.id;
+      const html = g.viewResults(), now = html.slice(html.indexOf('>Now<'), html.indexOf('90-day goal'));
+      ok('FUP-M1-1 under 18, the Now tile shows no years delta and no warning tint',
+        /from age 18/.test(now) && /adults only \(18 and over\)/.test(html) && !/\d yrs/.test(now) && !/bg-rose-50\/70/.test(now), now.slice(0, 400));
+      ok('FUP-M1-2 ...and the 90-day tile does not ask for all 8 checks', !/after all 8 checks/.test(html));
+      const row = g.followUpRows('full').find(r => r[0] === teen.id);
+      ok('FUP-M1-3 the follow-up CSV says under 18, not incomplete', !!row && row.includes('under 18') && !row.includes('incomplete'), JSON.stringify(row && row.slice(-14)));
+      g.resetDemo();
+    }
+    {
+      device(); await signIn();
+      C.rejected = { 'EXPO-351': { id: 'EXPO-351', msg: 'refused' } };
+      g.renderCloudBody();
+      ok('FUP-M2-1 a refused change shows a Try the refused changes again button', /data-action="retry-refused"/.test($el('cloudBody').innerHTML));
+      C.blocked = true;
+      const rEl = { dataset: { action: 'retry-refused' }, tagName: 'BUTTON', hasAttribute: () => false, closest() { return this; } };
+      g.dispatch(rEl, { type: 'click', target: rEl }); await sleep(30);
+      ok('FUP-M2-2 while sync is stopped the retry says why and keeps the refusal', /Sync is stopped/.test($el('toastMsg').textContent) && C.rejected['EXPO-351'] !== undefined,
+        $el('toastMsg').textContent);
+      C.blocked = false; C.rejected = {};
+    }
+    {
+      device(); await signIn();
+      sandbox.navigator.onLine = false;
+      const t0 = Date.now(); g.setCloud('online');
+      ok('FUP-M4-1 a pass that lands after the network dropped never says Online', C.status === 'offline' && C.syncedAt >= t0, 'status=' + C.status);
+      sandbox.navigator.onLine = true; g.setCloud('online');
+      ok('FUP-M4-2 ...and online again it does', C.status === 'online');
+    }
+    {
+      device(); await signIn(); await sleep(200);
+      g.attendees.push(g.migrateAttendee({ id: 'EXPO-777', name: 'Refused Edit', age: 40, sex: 'Male', heightCm: 170, s: {}, interests: {} }));
+      const r777 = g.attendees.find(a => a.id === 'EXPO-777');
+      C.synced.att['EXPO-777'] = g.sigOf(g.attToRow(r777)); C.rejected['EXPO-777'] = { id: 'EXPO-777', msg: 'refused' };   /* uploaded once, its later edit refused: not dirty */
+      g.pruneRemote('att', []);
+      ok('FUP-M5-1 a full pull does not delete a refused edit whose row went on the server', g.attendees.some(a => a.id === 'EXPO-777') && C.synced.att['EXPO-777'] === undefined,
+        'kept=' + g.attendees.some(a => a.id === 'EXPO-777'));
+      C.rejected = {};
+    }
+    {
+      device(); await signIn();
+      C.user = { id: 'user-2', email: 'next@example.org' }; C.healthBusy = 'user-1'; C.health = undefined;
+      C.acct = { church: { id: 'ch-1', name: 'Test', status: 'active' }, membership: { role: 'member', status: 'approved', attendee_id: 'EXPO-400' } };
+      g.healthHTML(); await sleep(80);
+      ok('FUP-M8-1 the previous account\'s load in flight does not block the next account\'s own', C.health !== undefined && C.healthBusy === false, 'health=' + JSON.stringify(C.health) + ' busy=' + C.healthBusy);
+      C.acct = null; C.health = undefined; C.healthBusy = false;
+    }
+    {
+      store.set('newstart.passport.v2', '{"attendees":[{"id":"EXPO-5"');      /* a copy cut short mid-write */
+      ok('FUP-M10-1 a saved copy that does not load is still a saved copy: the demo does not write over it', g.loadPersisted() === false && g.hasSavedCopy() === true);
+      store.delete('newstart.passport.v2');
+      ok('FUP-M10-2 ...and with nothing saved the demo may seed', g.hasSavedCopy() === false);
+      g.resetDemo();
+    }
+    {
+      device();
+      g.attendees.push(g.migrateAttendee({ id: 'EXPO-9999', name: 'Last Number', age: 40, sex: 'Male', heightCm: 170, s: {}, interests: {} }));
+      ok('FUP-D3-1 with EXPO-9999 taken there is no next badge', g.nextBadge() === '', g.nextBadge());
+      const n0 = g.attendees.length; submitReg({ name: 'One Too Many' });
+      ok('FUP-D3-2 ...and registering says so instead of reusing a number', g.attendees.length === n0 && !g.attendees.some(a => a.name === 'One Too Many'));
+      g.resetDemo();
+    }
+    {
+      device(); await signIn();
+      let calls = 0;
+      srv.rpcs = { my_account: () => { calls++; return { data: { membership: { role: 'staff', status: 'approved' }, church: { id: 'ch-a', status: 'active' }, server_now: new Date().toISOString() }, error: null }; } };
+      const pass = g.cloudSync(true);
+      g.cloudSync(false, true);                               /* the live channel came back while this pass runs */
+      ok('FUP-L1-1 a live-channel catch-up queued behind a pass is kept as a pull', C.againPull === true);
+      await pass; for (let i = 0; i < 60 && C.busy; i++) await sleep(50);
+      C.signingOut = true; const c0 = calls;
+      await g.cloudSync(true);
+      ok('FUP-L1-3 nothing starts a pass while the sign-out is closing the session', calls === c0, 'passes=' + calls);
+      C.signingOut = false; srv.rpcs = null;
+    }
+
     /* TST-V8a (V8a): the passport header says Completed only at 8 of 8, otherwise how many of the 8 */
     {
       device();
@@ -6405,19 +6515,32 @@ function makeServer() {
       ok('TST-V8a the passport says how many of 8 checks a finished visit actually has',
         /Finished · \d+ of 8 checks/.test($main.innerHTML) && !/Completed · all checks recorded/.test($main.innerHTML),
         ($main.innerHTML.match(/(Completed[^<]*|Finished[^<]*)/) || ['', '(none)'])[1]);
+      ok('FUP-V8a no source comment leaks into the passport header as text (a JS comment inside the template showed on Home)',
+        !/\/\*|\*\/|\(V8a\)/.test($main.textContent), ($main.textContent.match(/.{0,40}(\/\*|\(V8a\)).{0,40}/) || [''])[0]);
       g.state.tab = 'home'; device();
     }
 
     /* TST-V9 (V9): the expo name is escaped everywhere it is interpolated on volunteer screens */
-    ok('V9 the upcoming expo name is escaped in every volunteer template',
-      !/\$\{EXPO_UPCOMING\.name\}/.test(srcOf('src/volunteer.js')));
+    { const keepName = g.EXPO_UPCOMING.name; device();
+      g.EXPO_UPCOMING.name = '<i id="xn">Expo</i>';
+      g.state.tab = 'serve'; g.state.volTab = 'pledge'; g.render();
+      ok('V9 the upcoming expo name is escaped where the volunteer screen shows it (M12: rendered, not grepped)',
+        !$main.innerHTML.includes('<i id="xn">') && $main.innerHTML.includes('&lt;i id='), '');
+      g.EXPO_UPCOMING.name = keepName; g.state.tab = 'home'; g.render(); }
 
     /* TST-A12 (A12): the danger range on the Profile results also names low blood sugar */
-    ok('A12 the danger wording names blood sugar under 3 as well', /under 3/.test(srcOf('src/account.js')) && /under 3/.test(srcOf('src/help.js')));
+    { device(); await signIn();
+      C.acct = { church: { id: 'ch-1', name: 'Test', status: 'active' }, membership: { role: 'member', status: 'approved', attendee_id: 'EXPO-401' } };
+      C.health = g.migrateAttendee({ id: 'EXPO-401', name: 'Low Sugar', age: 40, sex: 'Male', heightCm: 170, s: { sugar: 2.4 }, interests: {} });
+      const hh = g.healthHTML();
+      ok('A12 a low blood sugar alone gives the danger wording, which names blood sugar under 3 (M12: rendered)', /danger range/.test(hh) && /under 3/.test(hh), hh.slice(hh.indexOf('danger') - 40, hh.indexOf('danger') + 200));
+      C.acct = null; C.health = undefined; }
 
     /* TST-A20b (A20b): church search is sequenced, gated, clamped and keeps edits; member notes exist for an empty list */
-    ok('A20b the church search, expo form, expo total and member notes carry their guards',
-      (srcOf('src/account.js').match(/\(A20b\)/g) || []).length >= 4);
+    { C.expoEdit = { name: 'X' };
+      g.expoField('total', '5000'); const hi = C.expoEdit.total; g.expoField('total', '-4'); const lo = C.expoEdit.total;
+      ok('A20b a typed expo total is clamped to 0-1000 (M12: behaviour)', hi === 1000 && lo === 0, hi + ' / ' + lo);
+      C.expoEdit = null; }
 
     /* TST-A21 (A21): the password limit is measured in bytes — emoji push it past bcrypt's 72 silently otherwise */
     {
@@ -6440,6 +6563,26 @@ function makeServer() {
         'hidden=' + sheet.classList.contains('hidden') + ' title=' + $el('cfTitle').textContent);
       g.answerConfirm(false); g.setAutoAnswer(false);
       await p1; await p2;
+    }
+
+    /* FUP-L4: leaving a pledge form with unsaved changes asks first; a form with no changes switches at once */
+    {
+      device(); g.state.tab = 'serve'; g.state.volTab = 'pledge';
+      const vid = g.volunteers[0].id;
+      g.setVol(vid); g.openVolReg();
+      ok('FUP-L4-1 an unchanged form switches tab without a question', (g.setVolTab('muster'), g.state.volTab === 'muster' && !g.state.volRegOpen));
+      g.setVol(vid); g.openVolReg(); g.state.vf.name = 'Changed Name';
+      g.setAutoAnswer(null);
+      g.setVolTab('booth'); await sleep(20);
+      ok('FUP-L4-2 a changed form asks before the tab switch throws the changes away',
+        g.state.volRegOpen && g.state.vf.name === 'Changed Name' && /Discard your changes/.test($el('cfTitle').textContent), $el('cfTitle').textContent);
+      g.answerConfirm(false); await sleep(20);
+      ok('FUP-L4-3 ...No keeps the form and the typing', g.state.volRegOpen && g.state.vf.name === 'Changed Name' && g.state.volTab !== 'booth');
+      g.pickVolunteer(g.volunteers[1].id); await sleep(20);
+      ok('FUP-L4-4 picking another volunteer asks too', g.state.volId === vid && /Discard your changes/.test($el('cfTitle').textContent));
+      g.answerConfirm(true); await sleep(20);
+      ok('FUP-L4-5 ...and Discard goes ahead', g.state.volId === g.volunteers[1].id && !g.state.volRegOpen, g.state.volId);
+      g.setAutoAnswer(false); g.state.tab = 'home';
     }
 
     /* TST-P3 (P3): an imported church plan never carries the importer's own label */
@@ -6469,7 +6612,36 @@ function makeServer() {
     }
 
     /* TST-P5 (P5): the plan's mechanism line is escaped like everything else (defence in depth) */
-    ok('P5 the plan mechanism line is escaped', /esc\(p\.mech\)/.test(srcOf('src/results.js')));
+    { device(); const keep = {}; for (const k in g.PROTOCOLS) { keep[k] = g.PROTOCOLS[k].mech; g.PROTOCOLS[k].mech = '<i id="pm">x</i>'; }
+      g.state.activeId = 'EXPO-042'; const html = g.viewPlan();
+      ok('P5 the plan mechanism line is escaped (M12: rendered, not grepped)', !html.includes('<i id="pm">') && html.includes('&lt;i id='), '');
+      for (const k in keep) g.PROTOCOLS[k].mech = keep[k]; }
+
+    /* U7: the header cloud button tells a screen reader the sync state */
+    { device(); await signIn(); g.syncChrome();
+      const lab = $el('cloudBtn').getAttribute('aria-label') || '';
+      ok('U7 the header cloud button names the sync state for a screen reader', /^Cloud sync: \S/.test(lab), lab); }
+
+    /* P4: the press ripple goes even when no animation runs (reduced motion: animationend never fires) */
+    { const keepEl = sandbox.Element; sandbox.Element = function () {};
+      const kids = []; const b = Object.assign(Object.create(sandbox.Element.prototype), {
+        closest: () => b, getBoundingClientRect: () => ({ left: 0, top: 0, width: 40, height: 20 }),
+        appendChild(d) { kids.push(d); d.remove = () => { d.gone = true; }; return d; } });
+      for (const f of (docHandlers.pointerdown || [])) { try { f({ target: b, clientX: 5, clientY: 5 }); } catch (e) { } }
+      await sleep(1100);
+      ok('P4 the press ripple is removed by its timer when no animation ends', kids.length === 1 && kids[0].gone === true, kids.length + ' gone=' + (kids[0] && kids[0].gone));
+      sandbox.Element = keepEl; }
+
+    /* Q4: a leave note that could not be saved does not promise a retry */
+    { device(); await signIn(); C.churchId = 'ch-a';
+      g.queue.push({ id: 'q-q4', attendeeId: 'EXPO-042', station: 'bp', status: 'waiting', t: Date.now() });
+      sandbox.navigator.onLine = false;
+      const set0 = localStorage.setItem; localStorage.setItem = function (k, v) { if (k === 'newstart.queueLeave') throw new Error('quota'); return set0.call(this, k, v); };
+      const say = await g.queueFinishVisit('EXPO-042');
+      localStorage.setItem = set0; sandbox.navigator.onLine = true;
+      ok('Q4 when the note to try again cannot be kept, the message does not promise a retry (M12: behaviour)',
+        /could not be updated/.test(say) && !/they will be|tried again/.test(say), say);
+      g.queue.length = 0; C.churchId = ''; }
 
     /* Q2/Q3/Q4 (structural): the queued leaves, the fresh call toast and the server-counted confirm carry their guards */
     {
@@ -6480,10 +6652,13 @@ function makeServer() {
     }
 
     /* P2b: a missing plan id or follow-up id is said out loud, never a silent create or clear */
-    ok('P2b a missing plan id or follow-up uid is refused with a toast', (srcOf('src/churchPlans.js').match(/\(P2b\)/g) || []).length >= 2);
+    { device(); await signIn(); let rpcs = 0; srv.rpcs = { set_followup: () => { rpcs++; return { data: null, error: null }; } };
+      await g.setFollowup('', false);
+      ok('P2b removing a follow-up person with no id is refused with a toast and never reaches the server (M12: behaviour)',
+        rpcs === 0 && /Pick a follow-up person first/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+      srv.rpcs = null; }
 
-    /* V5 text: the under-18 line, owner-approved */
-    ok('V5 the Results screen tells under-18s the health age starts at 18', /available from age 18/.test(srcOf('src/results.js')));
+    /* V5 text: the under-18 line is checked on the rendered Results screen by FUP-M1-1 (M12) */
 
     device(); g.state.tab = 'home';
   }

@@ -84,7 +84,7 @@ export function parseCustomPlanFile(text){
  try{raw=JSON.parse(s);}catch(e){return {ok:false,error:'That file is not valid JSON.'};}
  try{
   const plan=normaliseCustomPlan(raw);
-  plan.by=(cloud.acct&&cloud.acct.church&&cloud.acct.church.name)||'your church';   /* (P3) an imported plan is labelled with this church, never with the source file's by */
+  plan.by=churchLabel();   /* (P3) an imported plan is labelled with this church, never with the source file's by */
   return {ok:true,plan};
  }catch(e){return {ok:false,error:(e&&e.message)||'That file is not a plan template.'};}
 }
@@ -228,6 +228,8 @@ export async function customPlanClear(){
   body:'The visitor goes back to their church’s plan, or to the app’s generated one. This cannot be undone from here.',
   label:'Remove',danger:true});
  if(!yes)return;
+ const b=holder();   /* (P3) read again after the question: the desk may have switched visitor while it was open */
+ if(b!==a||!(b.interests&&b.interests.customPlan))return;
  delete a.interests.customPlan;
  persist();renderMain();
  toast('Custom plan removed — back to the usual plan');

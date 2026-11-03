@@ -631,6 +631,7 @@ function leaveWrite(o){try{if(Object.keys(o).length)localStorage.setItem(LEAVE_K
 function leaveAdd(att){
  const c=cloud.churchId;if(!c)return false;
  const o=leaveRead(),l=o[c]||(o[c]=[]);
+ if(leaving)leaveAgain.add(att);   /* added while a flush runs: the flush's merge must keep it even if it was in its snapshot */
  if(!l.includes(att))l.push(att);
  if(l.length>200)l.splice(0,l.length-200);
  return leaveWrite(o);   /* (Q4) a save that failed is not a success */
@@ -655,11 +656,12 @@ export async function queueFinishVisit(att){
  return saved?' · the lines could not be updated (no connection), they will be when you are back online':' · the lines could not be updated (no connection)';
 }
 let leaving=false;
+const leaveAgain=new Set();
 async function flushLeaves(){
  if(leaving||!qLive()||!qCan()||!cloud.churchId)return;
  const mine=leaveRead()[cloud.churchId];
  if(!mine||!mine.length)return;
- leaving=true;
+ leaving=true;leaveAgain.clear();
  try{
   const keep=[];
   for(const att of mine){
@@ -667,7 +669,7 @@ async function flushLeaves(){
    if(qOpenFor(att).length)keep.push(att);
   }
   const o=leaveRead();                                            /* (Q2) re-read at write time and merge: a leave added mid-flush (a finish visit during the awaits below) is kept, not overwritten */
-  const out=keep.concat((o[cloud.churchId]||[]).filter(a=>!mine.includes(a)));
+  const out=keep.concat((o[cloud.churchId]||[]).filter(a=>!mine.includes(a)||leaveAgain.has(a)&&!keep.includes(a)));   /* a visitor re-added mid-flush stays too */
   if(out.length)o[cloud.churchId]=out;else delete o[cloud.churchId];
   leaveWrite(o);
  }finally{leaving=false;}
@@ -1051,7 +1053,7 @@ export function seedDemoQueue() {
 }
 export function queueReset(){
  if(qs.ch&&cloud.client){try{cloud.client.removeChannel(qs.ch);}catch(e){}}
- qs.ch=null;qs.rt='';qs.church='';qs.subbed=false;qs.ready=false;qs.err='';qs.retryT=null;qs.since='';qs.skew=0;qs.confirm='';
+ qs.ch=null;qs.rt='';qs.church='';qs.subbed=false;qs.ready=false;qs.err='';clearTimeout(qs.retryT);qs.retryT=null;qs.since='';qs.skew=0;qs.confirm='';
  queue.length=0;
 }
 function qRefresh(){clearTimeout(qs.renderT);qs.renderT=setTimeout(qAfter,150);}

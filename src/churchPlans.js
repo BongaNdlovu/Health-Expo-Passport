@@ -154,7 +154,7 @@ export function churchPlansBox(cid){
  const own=cid===myChurchId(),key=own?'plans':'adminPlans',S=cloud[key];
  if(!S||S.cid!==cid){
   const err=cloud[key+'Err'];
-  if(err&&err.cid===cid)return retryNote('Could not load the church plans. Check your connection.','plans');   /* a failed load is not an empty list: say so and offer a retry (E11) */
+  if(err&&err.cid===cid)return retryNote('Could not load the church plans. Check your connection.',key);   /* key: the admin view's Try again clears its own error (M7) */   /* a failed load is not an empty list: say so and offer a retry (E11) */
   if(!(own&&cloud.plansBusy===cid))loadChurchPlans(cid,key);
   return acctSkel(2);
  }
@@ -279,6 +279,9 @@ export function followupPicker(a){
  const L=followupList(),cur=a.interests&&a.interests.followUp;
  if(!optedIn(a))return `<div class="glass p-4"><div class="microlabel">Follow-up person</div>
   ${acctNote(`${esc(firstName(a.name))} did not agree to be contacted after the expo, so no follow-up person is given.`)}</div>`;
+ const fe=cloud.followupsErr;
+ if(!L.length&&fe&&fe.cid===myChurchId())return `<div class="glass p-4"><div class="microlabel">Follow-up person</div>
+  ${retryNote('Could not load the follow-up people. Check your connection.','followups')}</div>`;   /* a failed load is not "nobody named" (M7) */
  if(!L.length)return myChurchId()?`<div class="glass p-4"><div class="microlabel">Follow-up person</div>
   ${acctNote(`Your church has not named any follow-up people yet. A church admin can name up to ${FOLLOWUP_MAX} on the Church screen.`)}</div>`:'';
  return `<div class="glass p-4"><div class="microlabel">Follow-up person</div>

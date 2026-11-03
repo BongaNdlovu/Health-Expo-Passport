@@ -155,7 +155,7 @@ document.addEventListener('pointerdown',e=>{
  const b=e.target instanceof Element?e.target.closest('.btn,.step-btn'):null;if(!b)return;
  const r=b.getBoundingClientRect(),s=Math.max(r.width,r.height)*2,d=document.createElement('span');
  d.className='rip';d.style.cssText=`width:${s}px;height:${s}px;left:${e.clientX-r.left-s/2}px;top:${e.clientY-r.top-s/2}px`;
- b.appendChild(d);d.addEventListener('animationend',()=>d.remove());
+ b.appendChild(d);d.addEventListener('animationend',()=>d.remove());setTimeout(()=>d.remove(),1000);   /* no animation runs under reduced motion, so animationend never fires (P4) */
 },{passive:true});
 
 /* ===== more liquid ===== */

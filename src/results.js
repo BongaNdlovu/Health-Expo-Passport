@@ -12,14 +12,15 @@ import { chosenChurchPlan, churchPlanFor, churchPlanPicker, customPlanFor, viewC
 import { customPlanBox } from './customPlan.js';
 import { GRACE_DAYS, hasReadings, readingsGone, visitIsOld, withoutOldReadings } from './retention.js';
 import { hasConsent, optedIn } from './visitor.js';
-let saveBusy='';   /* the file whose save is still handing off to the share sheet, '' when none (R4) */
+const saveBusy=new Set();   /* the files whose save is still handing off to the share sheet (R4) */
 /* the three numbers at the top of Results: actual age, health age now, and the 90-day goal.
-   An under-18 visitor reads the owner-approved neutral line instead of a number or an empty gap (V5). */
+   An under-18 visitor gets a dash and "from age 18" in the tiles; the line above them says why (V5). */
 function scoreTiles(tile,a,ha,proj,gone){
+ const minor=a.age!=null&&a.age<18;   /* no health age, no years delta and no warning tint under 18 (V5/M1) */
  return `${tile('Actual age',fmt1(a.age),'yrs old','border-sky-200/70 bg-sky-50/80 text-sky-800')}
-    ${tile('Now',gone?'—':a.age<18?'Health age is available from age 18.':ha.health!=null?fmt1(ha.health):'—',gone?'readings deleted':ha.complete?`${ha.total>0?'+':''}${fmt1(ha.total)} yrs`:ha.needsHeight?'add height':doneCount(a)+'/8 done',
-      ha.total>0.4?'border-rose-200/70 bg-rose-50/70 text-rose-700':'border-sage-200/80 bg-sage-50/90 text-sage-800')}
-    ${tile('90-day goal',gone||proj.age==null?'—':fmt1(proj.age),gone?'readings deleted':proj.age==null?'after all 8 checks':`win ${fmt1(proj.yearsWon)} yrs`,'border-lilac-200/80 bg-lilac-50/90 text-lilac-700','scoreGoal')}`;
+    ${tile('Now',gone?'—':ha.health!=null?fmt1(ha.health):'—',gone?'readings deleted':minor?'from age 18':ha.complete?`${ha.total>0?'+':''}${fmt1(ha.total)} yrs`:ha.needsHeight?'add height':doneCount(a)+'/8 done',
+      !minor&&ha.total>0.4?'border-rose-200/70 bg-rose-50/70 text-rose-700':'border-sage-200/80 bg-sage-50/90 text-sage-800')}
+    ${tile('90-day goal',gone||proj.age==null?'—':fmt1(proj.age),gone?'readings deleted':minor?'from age 18':proj.age==null?'after all 8 checks':`win ${fmt1(proj.yearsWon)} yrs`,'border-lilac-200/80 bg-lilac-50/90 text-lilac-700','scoreGoal')}`;
 }
 /* the "What adds the most years" list, longest first, with the rest behind a tap */
 function yearsHTML(byYears,row){
@@ -63,7 +64,7 @@ export function viewResults(){
     <div class="display text-base font-extrabold">${first}’s health age</div></div>
     ${!gone&&hasReadings(a)?`<button class="btn btn-glass flex-none px-3 py-2 text-[11px]" data-action="editReadings">Edit readings</button>`:''}
    </div>
-   <p class="mt-1 text-[11px] leading-snug text-[#5c747a]">Worked out from the 8 checks, no maths needed.</p>
+   <p class="mt-1 text-[11px] leading-snug text-[#5c747a]">${a.age!=null&&a.age<18?`A health age is worked out for adults only (18 and over). ${first}’s readings and plan below still apply.`:'Worked out from the 8 checks, no maths needed.'}</p>
    ${gone?goneNote('mt-2 rounded-2xl border border-sky-200/70 bg-sky-50/70 px-3 py-2 text-[10.5px] font-semibold leading-snug text-sky-800'):''}
    <div class="mt-3.5 grid grid-cols-3 gap-2">${scoreTiles(tile,a,ha,proj,gone)}</div>
    ${gone||ha.complete?'':`<div class="mt-3 rounded-2xl border border-amber-200/70 bg-amber-50/70 px-3 py-2 text-[10px] font-semibold leading-snug text-amber-800">
@@ -557,7 +558,7 @@ function careCard(a){
   <div class="flex items-center gap-2.5">
    <span class="flex h-9 w-9 flex-none items-center justify-center rounded-[13px] text-[11px] font-extrabold tint hue-${hueOf(a.id)}">${initials(a.name)}</span>
    <div class="min-w-0 flex-1"><div class="truncate text-[13px] font-bold">${esc(a.name)}</div>
-   <div class="mono truncate text-[10px] text-[#6b8187]">${esc(a.id)}${optedIn(a)&&a.phone?' · '+esc(a.phone):' · no follow-up'}</div></div>
+   <div class="mono truncate text-[10px] text-[#6b8187]">${esc(a.id)}${!optedIn(a)?' · no follow-up':a.phone?' · '+esc(a.phone):' · no phone recorded'}</div></div>
    ${optedIn(a)?`<button data-action="openWAFor" data-args="${esc(a.id)}" aria-label="WhatsApp ${esc(a.name)}"
      class="btn flex-none rounded-[14px] text-[#128C4B] transition active:scale-95"
      style="width:44px;height:44px;background:rgba(37,211,102,.14)">${I.wa}</button>`
@@ -607,7 +608,7 @@ export function followUpRows(mode){
    n(s.sys),n(s.dia),flag(cb),yn(s.bpMed),n(s.sugar),flag(cs),n(s.chol),flag(cc),n(s.veg),n(s.walk),n(s.water),n(s.sleep),String(done),
    ...(min?[]:[yn(s.preg),yn(s.ops),s.chronic===1?'Yes'+(a.chronicList?': '+a.chronicList:''):yn(s.chronic),
     ...SURVEY.map(x=>s[x.k]?x.a[s[x.k]-1]:''),careNotes(a).join(' '),ticked(a,INT),ticked(a,SEMINARS),ticked(a,HEARD)]),
-   ha.health!=null&&isFinite(ha.health)?fmt1(ha.health):'incomplete',fl,...(min?[]:[a.prayer?'Yes (see prayer list)':'No']),
+   ha.health!=null&&isFinite(ha.health)?fmt1(ha.health):a.age!=null&&a.age<18?'under 18':'incomplete',fl,...(min?[]:[a.prayer?'Yes (see prayer list)':'No']),
    hasConsent(a)?'Yes':'Not recorded',a.interests.consentOn||'',a.interests.consentV||'',...(min?[]:[a.interests.guardianName||'']),ok?'Yes':'No',expo,by,stamp]);
  });
  return rows;
@@ -722,7 +723,7 @@ export function downloadCSV(rows,filename,okMsg){
    @param {string} filename @param {string} mime @param {string|Blob} data */
 function saveExport(filename,mime,data,okMsg){
  if(IS_APP){
-  if(saveBusy===filename){toast('One save is already in progress');return;}   /* a second save of THIS file while it is still handing off (R4); a different file may queue behind */
+  if(saveBusy.has(filename)){toast('One save is already in progress');return;}   /* a second save of THIS file while it is still handing off (R4); a different file may queue behind */
   const P=window.Capacitor.Plugins.CardPrinter;
   if(!P||!P.saveDownload){toast('Saving files needs the latest version of the app');return;}
   /* the plugin takes text; binary files go as base64 behind a b64: marker */
@@ -731,11 +732,11 @@ function saveExport(filename,mime,data,okMsg){
    for(let i=0;i<u.length;i+=32768)b+=String.fromCharCode.apply(null,u.subarray(i,i+32768));
    return 'b64:'+btoa(b);
   });
-  saveBusy=filename;
+  saveBusy.add(filename);
   text.then(t=>P.saveDownload({name:filename,text:t,mime}))
    .then(()=>toast(`${okMsg} Choose where to send ${filename} (it is not kept in Downloads).`))
    .catch(e=>toast('Could not save the file. Try again.'))   /* fixed words: the raw plugin error names nothing useful (R4) */
-   .finally(()=>{saveBusy='';});
+   .finally(()=>{saveBusy.delete(filename);});   /* only this file's own guard: another file's finishing save no longer clears it */
   return;
  }
  toast(okMsg);
