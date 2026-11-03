@@ -175,7 +175,7 @@ export const ACTION_MAP = {
   'expo-cancel': () => cancelExpo(),
   'expo-status': el => setExpoStatus(el.dataset.args, el.dataset.status),
   'expo-delete': el => deleteExpoAsk(el.dataset.args),
-  'acct-retry': el => acctRetry(el.dataset.args),
+  'acct-retry': el => { if (el.dataset.args === 'plans') { cloud.plans = null; cloud.plansErr = null; } acctRetry(el.dataset.args); },   /* acctRetry (account.js) has no plans branch: clear the failed state so the redraw pulls again (E11) */
   'vq-clear': () => clearVisitorSearch(),
   'visitor-remove': el => removeVisitorAsk(el.dataset.args),
   'expo-manage': () => manageExpos(),

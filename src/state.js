@@ -8,7 +8,8 @@ import { toast } from './shell.js';
 /* ================= PERSISTENCE ================= */
 const LS_KEY='newstart.passport.v2';
 /* Cloud state lives up here because persistence reads it. The sync code itself is further down. */
-export const cloud={client:null,user:null,mode:false,status:'off',err:'',busy:false,again:false,starting:false,blocked:false,
+export const cloud={client:null,user:null,mode:false,status:'off',err:'',busy:false,again:false,againManual:false,gen:0,starting:false,blocked:false,
+  /* againManual = a "Sync now" queued behind a running pass re-runs the pull (E3); gen orphans every pass whose session ended (E1) */
   synced:{att:{},vol:{}},rejected:{},rejectedNote:null,channel:null,pushT:null,retryT:null,renderT:null,formErr:'',
   since:{att:'',vol:''},seen:{att:new Map(),vol:new Map()},savedSince:null,liveSt:'',liveChurch:'',lastFull:0,ready:false,demo:false,gateKey:'',gateHide:false,
   phase:'',prog:{done:0,total:0},syncedAt:0,   /* what the sync chrome shows: pull/push, upload progress, last success */
@@ -16,6 +17,8 @@ export const cloud={client:null,user:null,mode:false,status:'off',err:'',busy:fa
   acct:null,acctV:0,churchId:'',acctTab:'me',health:undefined,dir:null,regChurch:false,members:null,plat:null,audit:null,pAdmins:null,wants:'member',wantsBooths:[],expos:undefined,adminExpos:undefined,expoEdit:null,expoSaving:false,removing:'',expoBusy:false,pledgeExpo:'',adminChurch:'',gateForce:false,delOpen:false,
   pledge:undefined,pledgeErr:false,pledgeBusy:false,   /* the member's own pledge (src/account.js pledgeHTML) */
   myTeam:undefined,myTeamBusy:false,                    /* a team leader's people (src/account.js myTeamHTML) */
+  plansErr:null,adminPlansErr:null,followupsErr:null,adminFollowupsErr:null,   /* a failed church-plans/follow-ups load is not an empty list (E11) */
+  swapBusy:false,                                          /* one place-swap in flight at a time (E9) */
   notifN:0,notifT:null,notifLive:false,notifChannel:null,notifWatched:'',notifs:undefined,notifsOffline:false,notifOpen:false};
 /* Every screen change calls this, but the data rarely changes: compare a fingerprint first and only write (and only
    look for rows to upload) when something really changed. Writing ~1 MB to storage on every tap is what drained phones. */

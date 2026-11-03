@@ -406,11 +406,15 @@ export async function placeMove(booth){
  toastUndo(`${firstName(v.name)} → ${boothLabel(booth)} ✓`,back);
 }
 export async function placeSwap(otherId){
+ if(cloud.swapBusy)return;                     /* a second tap while the first swap is still in flight (E9) */
  const v=placedVol(),o=volunteers.find(x=>x.id===otherId);if(!v||!o)return;
- const r=await volRpc('swap_volunteers',{p_a:v.id,p_b:o.id});
- if(!r)return;
- await afterPlace();rerenderPlace();
- toastUndo(`Swapped ${firstName(v.name)} ↔ ${firstName(o.name)} ✓`,()=>volRpc('swap_volunteers',{p_a:v.id,p_b:o.id}).then(async r2=>{if(r2){await afterPlace();rerenderPlace();}}));
+ cloud.swapBusy=true;
+ try{
+  const r=await volRpc('swap_volunteers',{p_a:v.id,p_b:o.id});
+  if(!r)return;
+  await afterPlace();rerenderPlace();
+  toastUndo(`Swapped ${firstName(v.name)} ↔ ${firstName(o.name)} ✓`,()=>volRpc('swap_volunteers',{p_a:v.id,p_b:o.id}).then(async r2=>{if(r2){await afterPlace();rerenderPlace();}}));
+ }finally{cloud.swapBusy=false;}
 }
 export async function placeRelease(){
  const v=placedVol();if(!v)return;

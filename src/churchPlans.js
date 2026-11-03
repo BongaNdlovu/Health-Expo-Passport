@@ -18,6 +18,7 @@ import { confirmAsk } from './feedback.js';
    church's own, never as the app's, and the app's safety rules (red-range warning, keep taking your pills, the help
    line for sleep and stress) always come with it. In practice mode DEMO_CHURCH_PLANS stand in. */
 export const CHURCH_PLANS_KEY='newstart.churchplans.v1';
+let planSaving=false;   /* one plan save in flight; a second submit is dropped (E10) */
 export const DEMO_CHURCH_PLANS=[
  {id:'demo-joints',church_id:'demo',problem:'Joint pain',title:'Easing stiff, painful joints',
   note:'This is an example from a practice church. Real plans are written by your church’s admin.',
@@ -46,14 +47,21 @@ export function churchPlanList(){
 /* `key` keeps the platform admin's view of another church apart from this device's own church */
 async function loadChurchPlans(cid,key){
  key=key||'plans';
+ const errKey=key+'Err';
+ if(cloud[errKey]&&cloud[errKey].cid===cid&&Date.now()-cloud[errKey].at<30000)return;   /* offline renders re-fire the load; hold 30 s between tries (E11) */
  if(!cid||!cloud.client)return;
  if(key==='plans')cloud.plansBusy=cid;
  let r;try{r=await cloud.client.rpc('church_plans',{p_church:cid});}catch(e){r={error:e};}
  if(key==='plans')cloud.plansBusy='';
  const list=!r.error&&Array.isArray(r.data)?r.data:null;
- if(!list&&cloud[key]&&cloud[key].cid===cid)return;      /* offline or an older database: keep what we have */
- cloud[key]={cid,list:list||[]};
- if(key==='plans'&&list){try{localStorage.setItem(CHURCH_PLANS_KEY,JSON.stringify(cloud.plans));}catch(e){}}
+ if(!list){
+  if(cloud[key]&&cloud[key].cid===cid)return;        /* offline or an older database: keep what we have */
+  cloud[errKey]={cid,at:Date.now()};                 /* a failed first load is not an empty list: leave cloud[key] unset and say so (E11) */
+ }else{
+  delete cloud[errKey];
+  cloud[key]={cid,list};
+  if(key==='plans'){try{localStorage.setItem(CHURCH_PLANS_KEY,JSON.stringify(cloud.plans));}catch(e){}}
+ }
  if(state.tab==='plan'&&A())renderMain();
  renderAcct();
 }
@@ -144,7 +152,12 @@ export function viewChurchPlan(a,cp){
 const CP_SLOTS=5;            /* things to do shown in the form; a plan may hold up to 8 */
 export function churchPlansBox(cid){
  const own=cid===myChurchId(),key=own?'plans':'adminPlans',S=cloud[key];
- if(!S||S.cid!==cid){if(!(own&&cloud.plansBusy===cid))loadChurchPlans(cid,key);return acctSkel(2);}
+ if(!S||S.cid!==cid){
+  const err=cloud[key+'Err'];
+  if(err&&err.cid===cid)return retryNote('Could not load the church plans. Check your connection.','plans');   /* a failed load is not an empty list: say so and offer a retry (E11) */
+  if(!(own&&cloud.plansBusy===cid))loadChurchPlans(cid,key);
+  return acctSkel(2);
+ }
  const ed=cloud.planEdit&&cloud.planEdit.cid===cid?cloud.planEdit:null;
  return (S.list.length?S.list.map(cp=>`<div class="border-t border-[#123033]/[.07] py-2.5"><div class="flex items-center gap-2">
    <div class="min-w-0 flex-1"><div class="truncate text-[13px] font-bold text-[#123033]">${esc(cp.title)}</div>
@@ -178,6 +191,7 @@ export function editChurchPlan(cid,id){
  renderAcct();
 }
 export async function saveChurchPlan(e,cid){
+ if(planSaving)return;   /* a second submit while the first save is in flight (E10) */
  e.preventDefault();
  const v=id=>(($('#'+id)||{}).value||'').trim(),ed=cloud.planEdit||{};
  const problem=v('cpProblem')==='own'?v('cpOwn'):v('cpProblem');
@@ -185,10 +199,13 @@ export async function saveChurchPlan(e,cid){
  for(let i=0;i<8;i++){const d=v('cpDo'+i);if(d)actions.push({do:d,why:v('cpWhy'+i),how:v('cpHow'+i).split('\n').map(h=>h.trim()).filter(Boolean)});}
  if(!problem){toast('Choose the problem this plan is for.');return;}
  if(!actions.length){toast('Add at least one thing to do.');return;}
- const r=await acctRpc('save_church_plan',{p_church:cid,p_id:ed.id||null,p_problem:problem,p_title:v('cpTitle'),p_actions:actions,p_note:v('cpNote')},'Plan saved ✓');
- if(!r)return;
- cloud.planEdit=null;
- await loadChurchPlans(cid,cid===myChurchId()?'plans':'adminPlans');
+ planSaving=true;
+ try{
+  const r=await acctRpc('save_church_plan',{p_church:cid,p_id:ed.id||null,p_problem:problem,p_title:v('cpTitle'),p_actions:actions,p_note:v('cpNote')},'Plan saved ✓');
+  if(!r)return;
+  cloud.planEdit=null;
+  await loadChurchPlans(cid,cid===myChurchId()?'plans':'adminPlans');
+ }finally{planSaving=false;}
 }
 export async function deleteChurchPlan(cid,id){
  const S=cloud[cid===myChurchId()?'plans':'adminPlans'],cp=S&&S.list.find(p=>p.id===id);
@@ -215,13 +232,20 @@ export function followupList(){
 /* `key` keeps the platform admin's view of another church apart from this device's own church */
 async function loadFollowups(cid,key){
  key=key||'followups';
+ const errKey=key+'Err';
+ if(cloud[errKey]&&cloud[errKey].cid===cid&&Date.now()-cloud[errKey].at<30000)return;   /* offline renders re-fire the load; hold 30 s between tries (E11) */
  if(!cid||!cloud.client)return;
  if(key==='followups')cloud.followupsBusy=cid;
  let r;try{r=await cloud.client.rpc('church_followups',{p_church:cid});}catch(e){r={error:e};}
  if(key==='followups')cloud.followupsBusy='';
  const list=!r.error&&Array.isArray(r.data)?r.data:null;
- if(!list&&cloud[key]&&cloud[key].cid===cid)return;      /* offline or an older database: keep what we have */
- cloud[key]={cid,list:list||[]};
+ if(!list){
+  if(cloud[key]&&cloud[key].cid===cid)return;        /* offline or an older database: keep what we have */
+  cloud[errKey]={cid,at:Date.now()};                 /* a failed first load is not an empty list: leave cloud[key] unset and say so (E11) */
+ }else{
+  delete cloud[errKey];
+  cloud[key]={cid,list};
+ }
  if(state.tab==='send'&&A())renderMain();
  renderAcct();
 }

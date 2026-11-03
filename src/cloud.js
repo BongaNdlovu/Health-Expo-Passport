@@ -585,7 +585,8 @@ export const isOfflineErr=m=>!navigator.onLine||/failed to fetch|networkerror|lo
    connection is slow (nothing is blocked), past netTimes.hard the request is abandoned with a "Network request timed
    out" error. That wording is deliberate: isNet/isOfflineErr already treat it as a connection problem, so every
    caller's existing retry path (sync retries itself, account screens offer Try again) handles it unchanged.
-   Realtime runs on its own socket and is not affected. */
+   Realtime runs on its own socket and is not affected.
+   The body readers now clear both timers in their finally, so cloud.busy / the queue lock can never hang on a stalled body. */
 export const netTimes={slow:4000,hard:20000};   /* ms; an object so the tests can shorten them */
 export const TIMEOUT_MSG='Network request timed out: the server took too long to answer';
 export const isTimeoutErr=m=>/timed out/i.test(String(m||''));
@@ -609,9 +610,14 @@ export function timedFetch(input,init){
  const slowT=setTimeout(()=>{slow=true;netSlow++;slowNote();},netTimes.slow);
  const hardT=setTimeout(()=>{timedOut=true;ctl.abort();},netTimes.hard);
  const done=()=>{clearTimeout(slowT);clearTimeout(hardT);if(slow){slow=false;netSlow--;slowNote();}};
- return fetch(input,{...(init||{}),signal:ctl.signal}).then(
-  res=>{done();return res;},
-  err=>{done();throw timedOut?new TypeError(TIMEOUT_MSG):err;});
+ return fetch(input,{...(init||{}),signal:ctl.signal}).then(res=>{
+  clearTimeout(slowT);                       /* headers arrived: only the slow notice stands down — a stalled body still hits the hard deadline (E5) */
+  for(const m of ['text','json','arrayBuffer','blob']){
+   const read=res[m];
+   if(typeof read==='function')res[m]=()=>read.call(res).catch(err=>{throw timedOut?new TypeError(TIMEOUT_MSG):err;}).finally(done);
+  }
+  return res;
+ },err=>{done();throw timedOut?new TypeError(TIMEOUT_MSG):err;});
 }
 export const isMissingErr=e=>!!e&&(e.code==='PGRST205'||e.code==='PGRST202'||e.code==='42P01'||e.code==='42883'||/schema cache|could not find the (table|function)|does not exist/i.test(String(e.message||'')));
 /* "Could not find the table 'public.queue_entries' …" / "… function public.my_account …" / relation "x" -> the name */

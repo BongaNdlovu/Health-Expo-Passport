@@ -1064,6 +1064,7 @@ function makeServer() {
     from: t => new Q(t),
     async rpc(name, args) {
       if (srv.offline) return { data: null, error: { message: 'Failed to fetch' } };
+      if (srv.holdRpc) { const h = srv.holdRpc(name, args || {}); if (h) return h; }   /* a test-held call never resolves until release */
       if (srv.rpcs && srv.rpcs[name]) return srv.rpcs[name](args || {});
       return { data: srv.staff, error: null };
     },
@@ -5845,6 +5846,140 @@ function makeServer() {
       !JSON.stringify(mins).includes('Guardian One') && !mins[0].includes('Parent or guardian')
       && fullRows[0].includes('Parent or guardian') && JSON.stringify(fullRows).includes('Guardian One'), mins[0].slice(-4).join(','));
     dec.interests.nurse = false; aged.created_at = undefined; aged.prayer = '';
+  }
+
+  /* ---- 20b. Wave 2 part 2: races (E1/E2), queued sync (E3), duplicate ids (E4), hung bodies (E5),
+     double taps (E9/E10) and the church-plans retry (E11) ---- */
+  {
+    /* TST-E5 (E5): the hard deadline outlives the headers — a body that never arrives must release
+       the request with the timeout wording, so busy locks can never hang on a stalled connection */
+    {
+      const keepT = { ...g.netTimes }, keepFetch = sandbox.fetch;
+      Object.assign(g.netTimes, { slow: 30, hard: 90 });
+      sandbox.fetch = (u, init) => Promise.resolve({ ok: true, status: 200,
+        text: () => new Promise((res, rej) => { init.signal.addEventListener('abort', () => rej(new Error('The user aborted a request.'))); }),
+        json: () => new Promise((res, rej) => { init.signal.addEventListener('abort', () => rej(new Error('The user aborted a request.'))); }) });
+      let out = null;
+      try { out = await Promise.race([
+        g.timedFetch('https://wlsrgihkijlvjyfxvhfl.supabase.co/rest/v1/attendees?select=*').then(r => r.text()).then(() => 'body finished'),
+        sleep(400).then(() => 'still hanging'),
+      ]).catch(e => String((e && e.message) || e)); } catch (e) { out = String((e && e.message) || e); }
+      sandbox.fetch = keepFetch; Object.assign(g.netTimes, keepT);
+      ok('TST-E5 a stalled response body still hits the hard deadline and reports the timeout',
+        g.isTimeoutErr(out), String(out));
+    }
+
+    /* TST-E1 (E1): a sync stranded mid-air by a sign-out must not land the old account's data */
+    {
+      device();
+      srv.tables.attendees.set('EXPO-400', { id: 'EXPO-400', name: 'Old Desk Sally', church_id: 'ch-1', s: {}, interests: {}, created_at: new Date(Date.now() - 3600000).toISOString(), updated_at: new Date(Date.now() - 3600000).toISOString() });   /* a recent visit: the 7-day retention rule must stay out of this race test */
+      await signIn();
+      ok('TST-E1 setup: the old account pulled its row onto this device',
+        g.attendees.some(a => a.id === 'EXPO-400') && !!C.user && C.status === 'online',
+        'rows=' + g.attendees.length + ' ' + C.status);
+      let release = null;
+      srv.holdRpc = n => { if (n !== 'my_account') return null; srv.holdRpc = null; return new Promise(r => { release = r; }); };
+      const pass = g.cloudSync();            /* this pass parks on the held account read */
+      await sleep(30);
+      const parked = !!release && C.busy === true;
+      await g.cloudSignOut(true).catch(() => {}); await sleep(40);
+      ok('TST-E1 ...the session ends while the pass is still parked', parked && C.user === null && C.busy === false && C.status === 'signedout',
+        'parked=' + parked + ' user=' + !!C.user + ' busy=' + C.busy + ' ' + C.status);
+      release({ data: { church: { id: 'ch-1', name: 'Old Church', status: 'active' }, membership: { role: 'admin', status: 'approved' }, server_now: '2026-11-03T08:00:00Z' } });
+      await pass.catch(() => {}); await sleep(80); srv.holdRpc = null;
+      ok('TST-E1 signing out mid-sync leaves nothing of the old account behind',
+        !C.user && C.busy === false && C.status === 'signedout' && C.acct === null && !g.attendees.some(a => a.id === 'EXPO-400'),
+        'user=' + !!C.user + ' busy=' + C.busy + ' ' + C.status + ' rows=' + g.attendees.map(a => a.id).join(','));
+    }
+
+    /* TST-E2 (E2): a slow personal answer that lands after the account switched is dropped, not shown to the next account */
+    {
+      device(); await signIn(); srv.rpcs = null;
+      let drop = null;
+      srv.holdRpc = n => { if (n !== 'my_health') return null; srv.holdRpc = null; return new Promise(r => { drop = r; }); };
+      C.acct = { church: { id: 'ch-1', name: 'Test', status: 'active' }, membership: { role: 'member', status: 'approved', attendee_id: 'EXPO-400' } };
+      C.health = undefined;
+      g.healthHTML(); await sleep(30);
+      const parked = !!drop && C.healthBusy === true;
+      srv.authCb('SIGNED_IN', { user: { id: 'user-2', email: 'next@example.org' } }); await sleep(250);
+      drop({ data: { id: 'EXPO-400', name: 'Old Desk Sally', s: { sys: 210, dia: 130 }, interests: {} }, error: null });
+      await sleep(60); srv.holdRpc = null; C.acct = null; C.health = undefined;
+      ok('TST-E2 a late my_health answer for the previous account is dropped when the account switched',
+        parked && C.healthBusy === false && !(C.health && C.health.id === 'EXPO-400'),
+        'parked=' + parked + ' busy=' + C.healthBusy + ' health=' + JSON.stringify(C.health));
+    }
+
+    /* TST-E3 (E3): "Sync now" during a running sync queues a second FULL pull, not a push-only pass */
+    {
+      device(); await signIn(); srv.rpcs = null; await sleep(80);
+      const fulls0 = srv.calls.filter(c => c === 'select:attendees:range0').length;
+      const p1 = g.cloudSync(true); const p2 = g.cloudSync(true);   /* the second lands while the first runs */
+      await p1; await sleep(450);
+      const n = srv.calls.filter(c => c === 'select:attendees:range0').length - fulls0;
+      ok('TST-E3 Sync now during a sync queues a second full pull, not a push-only pass', n >= 2, 'extra full pulls=' + n);
+    }
+
+    /* TST-E4 (E4): the first insert DID reach the database, only its answer was lost — when the retry hits
+       23505, the row on the server differs by its created_at alone, so this desk keeps the id */
+    {
+      device();
+      registerLocal('Race Insert', 'EXPO-330');
+      const local = g.attendees.find(a => a.id === 'EXPO-330');
+      srv.tables.attendees.set('EXPO-330', { ...g.attToRow(local), created_at: '2020-05-05T00:00:00Z', updated_at: '2020-05-06T00:00:00Z' });
+      await signIn(); await sleep(120);
+      ok('TST-E4 a lost first insert response keeps the visitor id and adopts the server row',
+        g.attendees.some(a => a.id === 'EXPO-330') && C.synced.att['EXPO-330'] !== undefined
+          && !srv.tables.attendees.has('EXPO-331') && !g.attendees.some(a => a.id === 'EXPO-331'),
+        'device=' + g.attendees.map(a => a.id).join(',') + ' toast=' + $el('toastMsg').textContent);
+    }
+
+    /* TST-E9 (E9): double-tapping Swap while the first swap is in flight must not fire two RPCs */
+    {
+      device(); await signIn(); srv.rpcs = null;
+      C.acct = { church: { id: 'ch-1', name: 'Test', status: 'active' }, membership: { role: 'admin', status: 'approved' } };
+      g.volunteers.length = 0;
+      g.volunteers.push(g.migrateVolunteer({ id: 'VOL-1001', name: 'Alpha One', status: 'registered', booth: 'bp', pref: ['bp'] }),
+                        g.migrateVolunteer({ id: 'VOL-1002', name: 'Beta Two', status: 'registered', booth: 'bp', pref: ['bp'] }));
+      g.state.placeId = 'VOL-1001';          /* the place sheet's own selection: placedVol() reads placeId */
+      let swaps = 0; srv.rpcs = { swap_volunteers: () => { swaps++; return { data: true, error: null }; } };
+      await Promise.all([g.placeSwap('VOL-1002').catch(() => {}), g.placeSwap('VOL-1002').catch(() => {})]);
+      await sleep(60); srv.rpcs = null; g.state.placeId = '';
+      ok('TST-E9 a second tap while a swap is in flight fires one swap, not two', swaps === 1, 'swaps=' + swaps);
+    }
+
+    /* TST-E10 (E10): double-submitting the church-plan form must not create two plans */
+    {
+      device(); await signIn(); srv.rpcs = null;
+      C.acct = { church: { id: 'ch-1', name: 'Test', status: 'active' }, membership: { role: 'admin', status: 'approved' } };
+      let saves = 0; srv.rpcs = { save_church_plan: () => { saves++; return { data: true, error: null }; } };
+      $el('cpProblem').value = 'bp'; $el('cpTitle').value = 'Saved once'; $el('cpDo0').value = 'Walk 10 min';
+      await Promise.all([g.saveChurchPlan({ preventDefault() {} }, 'ch-1').catch(() => {}), g.saveChurchPlan({ preventDefault() {} }, 'ch-1').catch(() => {})]);
+      await sleep(40); srv.rpcs = null; C.planEdit = null;
+      ok('TST-E10 a second submit while a plan save is in flight saves once', saves === 1, 'saves=' + saves);
+    }
+
+    /* TST-E11 (E11): a first church-plans load that fails is not cached as an empty list, and retries wait out a cooldown */
+    {
+      device(); await signIn(); srv.rpcs = null;
+      C.acct = { church: { id: 'ch-1', name: 'Test', status: 'active' }, membership: { role: 'admin', status: 'approved' } };   /* the state the real sign-in path leaves: myChurchId() reads the account's church */
+      C.churchId = 'ch-1';                     /* the church-switch fixture: the state the real sign-in path leaves behind */
+      let plans = 0; srv.rpcs = { church_plans: () => { plans++; return { data: null, error: { message: 'TypeError: Failed to fetch' } }; } };
+      g.churchPlansBox('ch-1'); await sleep(40);          /* the box pulls on first render */
+      const box2 = g.churchPlansBox('ch-1');              /* ...and again on the next render, after the failure landed */
+      ok('TST-E11 a failed first church-plans load is not cached as an empty list',
+        (!C.plans || C.plans.cid !== 'ch-1') && /Could not load/.test(box2), 'plans=' + JSON.stringify(C.plans) + ' box=' + box2.slice(0, 90));
+      const before = plans; g.churchPlansBox('ch-1'); await sleep(20);
+      ok('TST-E11 ...and it does not re-request inside the cooldown', plans === before, 'requests=' + plans + ' before=' + before);
+      srv.rpcs = { church_plans: () => { plans++; return { data: [{ id: 'p1', title: 'Plan One', problem: 'bp', actions: [{ do: 'Walk 10 min' }] }], error: null }; } };
+      C.plansErr = null;                       /* the 30 s cooldown has run out */
+      g.churchPlansBox('ch-1'); await sleep(40);
+      ok('TST-E11 ...and after the cooldown a retry downloads the plans for real',
+        plans === before + 1 && C.plans && C.plans.list.length === 1 && /Plan One/.test(g.churchPlansBox('ch-1')),
+        'requests=' + plans + ' list=' + JSON.stringify(C.plans));
+      srv.rpcs = null; C.churchId = ''; C.plans = null; C.acct = null; C.acctTab = 'me'; C.adminPlansErr = null;
+    }
+
+    device(); g.state.tab = 'home';          /* back to a signed-out demo desk: later blocks reset their own state */
   }
 
   /* ---- 20c. Android Back closes the big screen instead of leaving the app ---- */

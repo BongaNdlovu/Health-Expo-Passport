@@ -330,9 +330,12 @@ export async function saveMyDetails(e){
 }
 async function loadHealth(){
  if(cloud.healthBusy)return;
+ const uid=cloud.user&&cloud.user.id;   /* a slow personal answer must not land on the next account (E2) */
  cloud.healthBusy=true;
  const r=await acctRpc('my_health');
- cloud.healthBusy=false;cloud.healthErr=r===null;
+ cloud.healthBusy=false;
+ if((cloud.user&&cloud.user.id)!==uid)return;
+ cloud.healthErr=r===null;
  cloud.health=r&&r.data&&typeof r.data==='object'?r.data:null;
  cloud.acctV++;renderGate();renderAcct();profileChanged();
 }
@@ -416,9 +419,12 @@ export function pledgeHTML(){
 }
 async function loadPledge(force){
  if(cloud.pledgeBusy&&!force)return;
+ const uid=cloud.user&&cloud.user.id;   /* a slow personal answer must not land on the next account (E2) */
  cloud.pledgeBusy=true;
  const r=await acctRpc('my_pledge');
- cloud.pledgeBusy=false;cloud.pledgeErr=false;
+ cloud.pledgeBusy=false;
+ if((cloud.user&&cloud.user.id)!==uid)return;
+ cloud.pledgeErr=false;
  if(r===null){cloud.pledge=null;cloud.pledgeErr=true;}
  else cloud.pledge=r&&r.data&&typeof r.data==='object'?r.data:null;
  cloud.acctV++;renderGate();     /* the member screen keys its redraw on acctV: without this it stays on Loading… */
@@ -558,9 +564,12 @@ export function myTeamHTML(){
 }
 async function loadMyTeam(){
  if(cloud.myTeamBusy)return;
+ const uid=cloud.user&&cloud.user.id;   /* a slow personal answer must not land on the next account (E2) */
  cloud.myTeamBusy=true;
  const r=await acctRpc('my_team');
- cloud.myTeamBusy=false;cloud.myTeamErr=!(r&&Array.isArray(r.data));
+ cloud.myTeamBusy=false;
+ if((cloud.user&&cloud.user.id)!==uid)return;
+ cloud.myTeamErr=!(r&&Array.isArray(r.data));
  cloud.myTeam=r&&Array.isArray(r.data)?r.data:[];
  cloud.acctV++;renderGate();
  renderAcct();render();
@@ -1414,6 +1423,7 @@ export function cloudAuthEvent(ev,session){
   const same=cloud.user&&cloud.user.id===u.id;
   cloud.user=u;cloud.gateForce=false;noteHealth('auth','ok','Signed in as '+(u.email||''));
   if(!same){
+   cloud.gen=(cloud.gen||0)+1;   /* an account switch orphans the previous account's in-flight pass (E1) */
    /* An invite link a previous account was offered (it was bound to them when their approved account declined
       it) must not join this one automatically: drop it before the sync below would spend it. A code still
       waiting for its anonymous arrival (owner '') is the normal sign-up round trip and is kept. */
@@ -1471,6 +1481,7 @@ export async function cloudSignOut(force){
    :{title:'Sign out?',body:'The visitor and volunteer data stored on this device will be cleared.',label:'Sign out',danger:true});
   if(!yes)return;
  }
+ cloud.gen=(cloud.gen||0)+1;cloud.busy=false;cloud.again=false;cloud.againManual=false;   /* the running pass is orphaned the moment the session ends (E1) */
  clearTimeout(cloud.pushT);clearTimeout(cloud.retryT);stopRealtime();
  cloud.signingOut=true;
  try{await cloud.client.auth.signOut({scope:'local'});}catch(e){}
@@ -1478,7 +1489,7 @@ export async function cloudSignOut(force){
  Object.assign(EXPO_UPCOMING,EXPO_DEFAULT);
  cloud.acct=null;cloud.churchId='';cloud.health=undefined;cloud.dir=null;cloud.regChurch=false;cloud.members=null;cloud.plat=null;cloud.audit=null;cloud.pAdmins=null;cloud.expos=undefined;cloud.adminExpos=undefined;cloud.expoEdit=null;cloud.pledgeExpo='';cloud.adminChurch='';cloud.adminData='';cloud.adminRows=null;closeAcct();
  cloud.view='login';cloud.viewEmail='';cloud.pending=false;cloud.recovery=false;cloud.formErr='';cloud.gateForce=false;cloud.delOpen=false;
- cloud.plans=null;cloud.adminPlans=null;cloud.planEdit=null;try{localStorage.removeItem(CHURCH_PLANS_KEY);}catch(e){}
+ cloud.plans=null;cloud.adminPlans=null;cloud.planEdit=null;cloud.plansErr=null;cloud.adminPlansErr=null;cloud.followupsErr=null;cloud.adminFollowupsErr=null;try{localStorage.removeItem(CHURCH_PLANS_KEY);}catch(e){}
  cloud.followups=null;cloud.adminFollowups=null;cloud.myFollow=null;cloud.inviteLink=null;clearInvite();   /* a stale invite link must not join the next account on this desk */
  cloud.user=null;cloud.mode=false;cloud.blocked=false;cloud.synced={att:{},vol:{}};cloud.rejected={};cloud.rejectedNote=null;cloud.lastFull=0;freshCursor();
  cloud.phase='';cloud.prog={done:0,total:0};cloud.syncedAt=0;   /* the status chrome starts clean for the next account */
@@ -1511,17 +1522,20 @@ function cloudError(err,where){
 }
 export async function cloudSync(manual){
  if(!cloud.client||!cloud.user)return;
- if(cloud.busy){cloud.again=true;return;}
+ if(cloud.busy){if(manual)cloud.againManual=true;else cloud.again=true;return;}   /* a queued "Sync now" re-runs the full pull when the running pass ends (E3) */
  if(manual)cloud.blocked=false;
+ const gen=cloud.gen;   /* E1: every await below is followed by a generation check — a sign-out or account switch ends this pass */
  cloud.busy=true;cloud.phase='pull';cloud.prog={done:0,total:0};setCloud('syncing');
  try{
   if(!await loadAccount()){
+   if(gen!==cloud.gen)return;
    cloud.blocked=true;cloud.pending=true;
    noteHealth('sync','off','This account has no expo data access, so nothing is downloaded.');noteHealth('upload','off','Nothing to upload for this account.');
    if(cloud.acct){dropChurchData();cloud.ready=false;}      /* the database says no expo access: the saved copy goes too */
    setCloud('error',cloud.acct?ACCT_MSG[acctGate()]:'This account is not approved yet. Ask the administrator to add it to the staff list (see supabase/README.md).');
    notifWatch();return;
   }
+  if(gen!==cloud.gen){cloud.acct=null;cloud.churchId='';return;}   /* the pass belongs to a session that is gone (E1) */
   cloud.pending=false;
   /* A device signing in for the first time may carry edited demo rows. Their ids sit inside the normal numbering
      space, but a real visitor registered before the first sign-in is always numbered above the demo data, and an
@@ -1543,6 +1557,7 @@ export async function cloudSync(manual){
   const [ra,rv,ia,iv]=await Promise.all([
    fetchRows('attendees',cloud.since.att),fetchRows('volunteers',cloud.since.vol),
    full?fetchIds('attendees'):null,full?fetchIds('volunteers'):null]);
+  if(gen!==cloud.gen)return;
   let changed=mergeRemote('att',ra,false)|mergeRemote('vol',rv,false);
   noteSince('att',ra);noteSince('vol',rv);noteSeen('att',ra);noteSeen('vol',rv);
   if(full){
@@ -1551,6 +1566,7 @@ export async function cloudSync(manual){
       rows were deleted) would never come back through the changed-since pull. The ids say what exists: fetch any
       this device lacks or holds an older copy of. A normal full pull finds none and sends no extra request. */
    const [wa,wv]=await Promise.all([fetchWanted('attendees','att',ia),fetchWanted('volunteers','vol',iv)]);
+   if(gen!==cloud.gen)return;
    changed|=mergeRemote('att',wa,false)|mergeRemote('vol',wv,false);
    noteSeen('att',wa);noteSeen('vol',wv);
    cloud.lastFull=Date.now();
@@ -1561,18 +1577,22 @@ export async function cloudSync(manual){
   if(pruned&&!attendees.some(a=>a.id===state.activeId))state.activeId=(attendees[0]||{}).id||'';
   cloud.phase='push';
   await pushDirty();
+  if(gen!==cloud.gen)return;
   afterMerge();saveSynced();persistNow();
   startRealtime();
   queueSync();                    /* separate from the visitor sync: a queue problem must never block it */
   setCloud('online');noteHealth('sync','ok',`Up to date: ${attendees.length} visitors, ${volunteers.length} volunteers.`);healthUpload();
   if(changed||manual)cloudRefresh();
- }catch(err){cloudError(err);}
+ }catch(err){if(gen===cloud.gen)cloudError(err);}
  finally{
-  cloud.busy=false;cloud.phase='';
-  syncChrome();                    /* the ring and badge settle even when no setCloud ran (nothing to upload) */
-  if(cloud.status==='online')cloud.ready=true;      /* the first successful sync lifts the sign-in gate */
-  renderGate();
-  if(cloud.again){cloud.again=false;cloudQueuePush();}
+  if(gen===cloud.gen){
+   cloud.busy=false;cloud.phase='';
+   syncChrome();                    /* the ring and badge settle even when no setCloud ran (nothing to upload) */
+   if(cloud.status==='online')cloud.ready=true;      /* the first successful sync lifts the sign-in gate */
+   renderGate();
+   if(cloud.againManual){cloud.againManual=false;cloudSync(true);}   /* a queued "Sync now" still gets its pull, not a push-only pass (E3) */
+   else if(cloud.again){cloud.again=false;cloudQueuePush();}
+  }
  }
 }
 /* Supabase answers at most 1000 rows per request, so read in pages. Reading everything in one request
@@ -1763,7 +1783,7 @@ async function resolveConflict(kind,o,s){
  const k=KINDS[kind];
  const {data,error}=await cloud.client.from(k.table).select('*').eq('id',o.id).maybeSingle();
  if(error)throw error;
- if(data&&sigOf(k.toRow(k.fromRow(data)))===s){cloud.synced[kind][o.id]=s;return;}   /* an earlier upload of this very row */
+ if(data&&sigOf(k.toRow({...k.fromRow(data),created_at:undefined}))===s){cloud.synced[kind][o.id]=s;return;}   /* an earlier upload of this very row: the lost first response left only the server's created_at different (E4) */
  if(kind==='att')return renumberVisitor(o);
  /* two desks pledged at the same moment: take the next free volunteer number */
  const ids=await cloud.client.from('volunteers').select('id');
