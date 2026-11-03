@@ -6585,6 +6585,34 @@ function makeServer() {
       g.setAutoAnswer(false); g.state.tab = 'home';
     }
 
+    /* FUP-CARE: Care → Called / attended to ✓ takes an urgent visitor out of the red count, and nowhere else */
+    {
+      device();
+      const tap = (action, id) => { const el = { dataset: { action, args: id }, tagName: 'BUTTON', hasAttribute: () => false, closest() { return this; } }; g.dispatch(el, { type: 'click', target: el }); };
+      const badge = () => { g.render(); const m = $el('navItems').innerHTML.match(/nav-badge-alert">(\d+)</); return m ? +m[1] : 0; };
+      const red = g.attendees.find(a => g.redFlag(a));
+      const n0 = badge();
+      ok('FUP-CARE-1 setup: the demo has an urgent visitor counted on Care', !!red && n0 >= 1, 'badge=' + n0);
+      g.state.tab = 'care'; g.render();
+      ok('FUP-CARE-2 their card offers Called / attended to', /data-action="urgent-attended" data-args="EXPO-\d+"/.test($main.innerHTML));
+      tap('urgent-attended', red.id); await sleep(20);
+      g.state.tab = 'care'; g.render();
+      ok('FUP-CARE-3 once attended to, the red count drops and the card stays on the list, marked, with Undo',
+        badge() === n0 - 1 && /✓ Attended to/.test($main.innerHTML) && /data-action="urgent-undo"/.test($main.innerHTML) && /Urgent · 1 attended/.test($main.innerHTML), 'badge=' + badge());
+      g.persistNow(); g.loadPersisted();
+      const back = g.attendees.find(a => a.id === red.id);
+      ok('FUP-CARE-4 the mark survives a reload of the saved copy', !!(back && back.interests.attended && typeof back.interests.attended.sig === 'string') && badge() === n0 - 1,
+        JSON.stringify(back && back.interests.attended));
+      const round = g.migrateAttendee(g.rowToAtt(g.attToRow(back)));
+      ok('FUP-CARE-5 ...and the round trip through the shared database', !!(round.interests.attended && typeof round.interests.attended.sig === 'string' && round.interests.attended.sig === back.interests.attended.sig && round.interests.attended.at === back.interests.attended.at));
+      back.s.sys = (back.s.sys || 160) + 15; back.s.dia = back.s.dia || 100;
+      ok('FUP-CARE-6 a new danger reading counts again until someone attends to it', badge() === n0, 'badge=' + badge());
+      back.s.sys -= 15;
+      tap('urgent-undo', red.id); await sleep(20);
+      ok('FUP-CARE-7 Undo takes the mark back and the visitor counts again', badge() === n0 && !back.interests.attended);
+      g.resetDemo(); g.state.tab = 'home';
+    }
+
     /* FUP-ROLE: role-only controls carry a tag for the people who have them; nobody else reads about them */
     {
       device();

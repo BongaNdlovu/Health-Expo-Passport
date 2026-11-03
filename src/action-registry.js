@@ -12,7 +12,7 @@ import { state } from './data.js';
 import { queueBack, queueCallNext, queueClearHistory, queueDone, queueCancelHere, queueDoneNext, queueFinishHere, queueNextInLine, queueRemove, queueServe, queueStart } from './queue.js';
 import { qCapSet, qNamesToggle, qPlacesOpen, qSkipFilledToggle, qSlotCall, qSlotMove, qSlotNameSet } from './queue.js';
 import { closeBigScreen, closeQueuePick, openBigScreen, openQueuePick, qFilterPick, qPickAdd, qSelect, queueSync } from './queue.js';
-import { closeFood, exportCSV, exportPrayerCSV, exportXLSX, openFood, showAllCare } from './results.js';
+import { closeFood, exportCSV, exportPrayerCSV, exportXLSX, markAttended, openFood, showAllCare, unmarkAttended } from './results.js';
 import { closeHelp, openHelp, openHelpHere, startTour } from './help.js';
 import { onSim, setFoodPlan, toggleFood } from './results.js';
 import { isServe, render, toast, toggleTheme } from './shell.js';
@@ -122,6 +122,8 @@ export const ACTION_MAP = {
   cloudSignOut: () => cloudSignOut(),   /* adapter: the real function reads its first argument as `force`; dispatch passes the button (BUG-B) */
   'quarantine-export': () => quarantineExport(),
   'quarantine-discard': el => quarantineDiscard(el.dataset.args),
+  'urgent-attended': el => markAttended(el.dataset.args),
+  'urgent-undo': el => unmarkAttended(el.dataset.args),
   'retry-refused': () => { if (cloud.blocked) { toast('Sync is stopped: see the message at the top of Cloud status.'); return; } cloud.rejected = {}; cloud.rejectedNote = null; cloudPush(); },   /* one tap: send the refused changes again — pushed at once, not through the 700 ms damper (A15) */
   'church-search': el => churchSearchSoon(el.value),
   'join-church': el => joinChurch(el.dataset.args, el),

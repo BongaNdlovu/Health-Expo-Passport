@@ -3,11 +3,11 @@ import { I } from './icons.js';
 import { $, A } from './helpers.js';
 import { EXPO_UPCOMING, INT } from './data.js';
 import { disp } from './helpers.js';
-import { DROPS, FOOD_PRICES, PRICE_DATE, SEX_RANGE, autoProtocol, bmi, cat, chipClass, clamp, costOf, doneCount, esc, firstName, fmt1, healthAge, initials, money, pefPct, projection, redFlag, simBP, tweenGoal } from './helpers.js';
+import { DROPS, FOOD_PRICES, PRICE_DATE, SEX_RANGE, autoProtocol, bmi, cat, chipClass, clamp, costOf, doneCount, esc, firstName, fmt1, healthAge, initials, money, pefPct, projection, dangerSig, redFlag, urgentAttended, simBP, tweenGoal } from './helpers.js';
 import { ACTIONS, DISCLAIMER, FOOD_WHY, HEARD, HUE_P, PLAN_GOAL, PROTOCOLS, RECHECK, SEMINARS, SURVEY, attendees, cholUp, heavy, hueOf, planBooks, precautionsHTML, refLabel, state } from './data.js';
 import { cloud, persist } from './state.js';
 import { IS_APP } from './platform.js';
-import { jelly, renderMain, syncRanges, toast } from './shell.js';
+import { jelly, renderMain, renderNav, syncRanges, toast, toastUndo } from './shell.js';
 import { chosenChurchPlan, churchPlanFor, churchPlanPicker, customPlanFor, viewChurchPlan } from './churchPlans.js';
 import { customPlanBox } from './customPlan.js';
 import { GRACE_DAYS, hasReadings, readingsGone, visitIsOld, withoutOldReadings } from './retention.js';
@@ -512,7 +512,7 @@ export function viewCare(){
  /* the lists draw what a screen may still show (old visits' readings are dropped), and only people who
     agreed to follow-up appear in the calls list or with a phone number (E6) */
  const live=attendees.map(withoutOldReadings);
- const urgent=live.filter(redFlag),calls=live.filter(x=>x.interests.nurse&&optedIn(x)),
+ const urgent=live.filter(redFlag).sort((x,y)=>Number(urgentAttended(x))-Number(urgentAttended(y))),open=urgent.filter(x=>!urgentAttended(x)).length,calls=live.filter(x=>x.interests.nurse&&optedIn(x)),
        inter=live.filter(x=>x.interests.cook||x.interests.stress||x.interests.pouch);
  const countTile=(n,l,cls)=>`<div class="rounded-[18px] border px-2 py-2.5 text-center ${cls}">
   <div class="display text-xl leading-none font-extrabold">${n}</div>
@@ -526,7 +526,7 @@ export function viewCare(){
     <div class="flex flex-none flex-col gap-2"><button data-action="exportCSV" class="btn btn-primary px-3 py-2 text-[11px]" style="min-height:44px">Export CSV</button><button data-action="exportXLSX" class="btn btn-soft px-3 py-2 text-[11px]" style="min-height:44px">Excel</button></div>
    </div>
    <div class="mt-3.5 grid grid-cols-3 gap-2">
-    ${countTile(urgent.length,'Urgent','border-rose-200/70 bg-rose-50/70 text-rose-700')}
+    ${countTile(open,urgent.length>open?`Urgent · ${urgent.length-open} attended`:'Urgent','border-rose-200/70 bg-rose-50/70 text-rose-700')}
     ${countTile(calls.length,'Follow-up calls','border-amber-200/70 bg-amber-50/70 text-amber-700')}
     ${countTile(inter.length,'Interests','border-lilac-200/80 bg-lilac-50/90 text-lilac-700')}
    </div>
@@ -545,16 +545,17 @@ function listSection(title,arr,tone){
  const lim=CARE_CAP+((state.careMore&&state.careMore[tone])||0),shown=arr.slice(0,lim),left=arr.length-shown.length;
  return `<div class="space-y-2">
   <div class="px-1 text-[11px] font-extrabold uppercase tracking-wider ${head}">${title} · ${arr.length}</div>
- ${shown.map(x=>careCard(x)).join('')}
+ ${shown.map(x=>careCard(x,tone==='rose')).join('')}
  ${left>0?`<button data-action="showAllCare" data-args="${esc(tone)}" class="btn btn-glass w-full py-2.5 text-[11px] text-[#5b7178]">Show ${Math.min(CARE_MORE,left)} more · ${left} left</button>`:''}</div>`;
 }
 const CARE_CAP=30,CARE_MORE=100;
 export function showAllCare(tone){state.careMore=Object.assign({},state.careMore,{[tone]:((state.careMore&&state.careMore[tone])||0)+CARE_MORE});renderMain();}
-function careCard(a){
+function careCard(a,urgent){
  const flags=[['BP',cat('bp',{sys:a.s.sys,dia:a.s.dia})],['Sugar',cat('sugar',a.s.sugar)],['BMI',cat('bmi',bmi(a))]]
   .filter(x=>x[1][0]==='flag'||x[1][0]==='watch');
  const tags=Object.keys(INT).filter(k=>a.interests[k]).map(k=>`<span class="rounded-lg bg-[#123033]/[.06] px-1.5 py-0.5 text-[9px] font-bold text-[#5b7178]">${INT[k]}</span>`).join('');
- return `<div class="glass p-3.5">
+ const done=urgent&&urgentAttended(a),m=done&&a.interests.attended;
+ return `<div class="glass p-3.5"${done?' style="opacity:.7"':''}>
   <div class="flex items-center gap-2.5">
    <span class="flex h-9 w-9 flex-none items-center justify-center rounded-[13px] text-[11px] font-extrabold tint hue-${hueOf(a.id)}">${initials(a.name)}</span>
    <div class="min-w-0 flex-1"><div class="truncate text-[13px] font-bold">${esc(a.name)}</div>
@@ -567,7 +568,28 @@ function careCard(a){
   ${flags.length?`<div class="mt-2.5 flex flex-wrap gap-1.5">${flags.map(([l,c])=>`<span class="${chipClass(c[0])}">${l} ${c[1]==='—'?'':c[1]}</span>`).join('')}</div>`:''}
   ${tags?`<div class="mt-2 flex flex-wrap gap-1.5">${tags}</div>`:''}
   ${a.prayer?`<p class="mt-2.5 rounded-[14px] bg-white/60 px-2.5 py-2 text-[11px] italic leading-snug text-[#5c747a]">“${esc(a.prayer)}”</p>`:''}
+  ${!urgent?'':done?`<div class="mt-2.5 flex items-center justify-between gap-2 text-[11px] font-bold text-[#1f6b62]"><span>✓ Attended to${m.by?' by '+esc(m.by):''}${m.at?' · '+esc(attendedWhen(m.at)):''}</span>
+    <button class="tap-link" data-action="urgent-undo" data-args="${esc(a.id)}">Undo</button></div>`
+   :`<button class="btn btn-soft mt-2.5 w-full py-2 text-xs" data-action="urgent-attended" data-args="${esc(a.id)}">Called / attended to ✓</button>`}
  </div>`;
+}
+/* when an urgent visitor was attended to, in this phone's local time */
+const attendedWhen=iso=>{const d=new Date(iso);return isNaN(+d)?'':d.toLocaleString('en-ZA',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});};
+/* who is marking it: the signed-in person's name or email, nothing in practice mode */
+const markedBy=()=>{const m=cloud.acct&&cloud.acct.membership;return (m&&m.full_name)||(cloud.user&&cloud.user.email)||'';};
+/* Care → Called / attended to ✓: the visitor stays on the Urgent list, greyed, but no longer counts in the red badge.
+   It goes up with the visitor's row, so every desk in the church sees it. */
+export function markAttended(id){
+ const a=attendees.find(x=>x.id===id);if(!a||!redFlag(a))return;
+ a.interests=a.interests||{};
+ a.interests.attended={sig:dangerSig(a),at:new Date().toISOString(),by:markedBy()};
+ persist();renderMain();renderNav();
+ toastUndo(`${firstName(a.name)} marked as attended to`,()=>unmarkAttended(id));
+}
+export function unmarkAttended(id){
+ const a=attendees.find(x=>x.id===id);if(!a||!a.interests||!a.interests.attended)return;
+ delete a.interests.attended;
+ persist();renderMain();renderNav();
 }
 /* ---------- exports (v1.6.2) ----------
    The follow-up sheet has one column per value so it sorts and filters in a spreadsheet: all 8 checks, blood pressure

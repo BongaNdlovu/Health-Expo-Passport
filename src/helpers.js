@@ -26,6 +26,10 @@ export const firstName=n=>{const w=String(n||'').trim().split(/\s+/);return (/^(
 /* no height, no BMI: a guessed height would give a confident but wrong number */
 export const bmi=a=>{const w=a.s.weight,h=a.heightCm/100;return (w&&a.heightCm)?w/(h*h):null};
 export const redFlag=a=>(a.s.sys&&a.s.sys>=160)||(a.s.dia&&a.s.dia>=100)||(a.s.sugar&&(a.s.sugar>=15||a.s.sugar<3));
+/* an urgent visitor someone has attended to (Care → Attended to ✓). The mark keeps the danger readings it was given
+   for, so a new danger reading counts again until someone attends to that one too. */
+export const dangerSig=a=>[a.s.sys||'',a.s.dia||'',a.s.sugar||''].join('/');
+export const urgentAttended=a=>!!(a.interests&&a.interests.attended&&a.interests.attended.sig===dangerSig(a));
 export const doneCount=a=>['bp','sugar','chol','weight','veg','walk','water','sleep'].filter(k=>k==='bp'?(a.s.sys&&a.s.dia):(a.s[k]!=null)).length;
 export const costOf=k=>PROTOCOLS[k].items.reduce((t,i)=>t+i.daily,0);
 

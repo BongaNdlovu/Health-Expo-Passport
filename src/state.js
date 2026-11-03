@@ -73,6 +73,9 @@ export function migrateAttendee(a){
   /* the POPIA consent record: the date it was given, and the guardian who gave it for a child */
   for(const k of ['consentOn','consentV','submittedOn'])if(typeof it[k]==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(it[k]))keep[k]=it[k];   /* submittedOn: the visit's results were confirmed on the Check page */
   if(keep.guardian&&typeof it.guardianName==='string')keep.guardianName=it.guardianName.slice(0,80);
+  /* Care → attended to: the danger readings it was given for, when, and by whom (short plain text) */
+  const at=it.attended;delete keep.attended;
+  if(at&&typeof at==='object'&&typeof at.sig==='string')keep.attended={sig:at.sig.slice(0,40),at:typeof at.at==='string'&&!isNaN(Date.parse(at.at))?at.at:'',by:typeof at.by==='string'?at.by.slice(0,80):''};
   a=Object.assign({},a,{interests:keep});
  }
  /* ids are interpolated into data-* attributes, so keep them to letters, digits and dashes */

@@ -239,7 +239,8 @@ export const HELP_PAGES = [
    what: 'Ministry follow-up: the lists the team works from after the screenings.',
    sections: [
     { name: 'Lists', items: [
-      ['Urgent', 'Visitors in the danger range: blood pressure 160/100 or more, blood sugar 15 or more, or blood sugar under 3.'],
+      ['Urgent', 'Visitors in the danger range: blood pressure 160/100 or more, blood sugar 15 or more, or blood sugar under 3. The red number on Care counts the ones nobody has attended to yet.'],
+      ['Called / attended to ✓', 'Once someone has phoned the visitor or sent them to a clinic, tap it on their card. They stay on the list, greyed, with who marked it and when, and drop out of the red number. Undo takes the mark back. A new danger reading for the same visitor counts again.'],
       ['48-hour follow-up calls', 'Visitors who asked for a follow-up call.'],
       ['Seminar & co-op interests', 'Visitors who asked for Cooking school, Stress & peace or the R25 pouch.'],
       ['Sorted automatically', 'The lists fill in as visitors are registered and checked. Nothing is written on paper cards.'] ] },
