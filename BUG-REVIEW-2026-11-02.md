@@ -221,12 +221,80 @@ station the admin chose.
 - **Grade: A (provisional, pending the operator's sign-off and CP-05's compile/suite run).**
 
 ```
-Operator Sign-Off on Surgical Fix: [ PENDING ]
-Scope Expansion for Variants Approved?: [ PENDING — mergeRemote twin (recommended), FIX-B2 (optional) ]
+Operator Sign-Off on Surgical Fix: [ GIVEN — the operator pasted the execution plan built on these locked
+                                     fixes and instructed "execute" (2026-11-02 23:47), then "please
+                                     continue and finish" (2026-11-03); waves 0-4 ran 2026-11-03 ]
+Scope Expansion for Variants Approved?: [ YES — mergeRemote twin (A2) and FIX-B2 (B3) both applied in
+                                          Wave 1, commit 503b2e7 ]
 ```
 
-### CP-05 · Apply & verify — PENDING
-### CP-06 · Post-mortem — PENDING
+### CP-05 · Apply & verify — DONE (2026-11-03, branch `fix/2026-11-02-review`, never pushed)
+
+**Surgical fixes (BUG-A/B/C)** applied exactly as locked in CP-04 — plus both approved variants
+(mergeRemote deletion-loop twin; FIX-B2 refused-rows-in-warning). The three-vector regression matrix
+lives in `.smoke/harness.js` as `TST-BUG-A1/A2/A3`, `B0/B1/B2/B3`, `C1/C2/C3`
+(RED outputs in §6 A.1; each was seen failing at HEAD `7557faa` before its fix landed).
+
+**The review's full finding list** was planned (FIX-PLAN-2026-11-02, waves 0-4) and executed in six
+commit-waves, every fix RED-first then GREEN:
+
+| Commit | Wave | Scope |
+|---|---|---|
+| `8f2ac4a` | 0 | Smoke suite repaired (T0-1…T0-7): nsmem boot, internals snapshot, v1.6.2 check updates, the TST-BUG RED blocks added, `NEWSTART_PGLITE` documented |
+| `503b2e7` | 1 | Silent data loss: A1-A3 prune/merge guards, B1 button adapter, B2 warning counts refused rows, C1/C2 booth ownership, D1/D2/D3 |
+| `d716f39` | 2a | Privacy: E6 care lists follow opt-in + grace period, E7 prayer CSV + stale visits, E8 guardian out of the minimal CSV |
+| `8e3a6c5` | 2b | Races/duplicates: E1 session-generation guard, E2 stale personal answers, E3 queued full pull, E4 duplicate-id signature, E5 hung-body deadline; E9/E10 double-tap locks, E11 failed-load retry |
+| `5da6dac` | 3 | UI & async states: U1-U8, Q5/Q6, A13-A20a, R4, V8b (offline, timeouts, 429 cooldown, session-ended, aria, disabled styles, update hand-off, sw version.json) |
+| `d8b887c` | 4 | Correctness: Q1-Q4, V4-V6, V8a-V9, A12, A20b, A21, P1-P5 (queue counts/flush/toasts, volHours rounding, no health age under 18 + keep-previous-reading (both owner decisions), byte password limit, overlay Escape, imported-plan label) |
+
+**Final verification (2026-11-03):**
+```
+npm test                    1652/1652 PASS (with NEWSTART_PGLITE=C:\Users\fanel\pglite-test:
+                            1431 fake-server checks + the 18c churches battery + DB-attack batteries)
+npm run test:db              51/51   · npm run test:hub 35/35   (same env; no dependency added)
+npm run typecheck            0 errors
+npm run build + test:build   build 0 · 20/20
+npm test (no pglite)         1431/1431   · ui-budget within verification/budget.json (re-baselined
+                             once, Wave 3, sanctioned inline-JS growth; allowlist untouched)
+Browser preview (dist @ :4180, real CDP offline): boot ✓, offline state ✓, demo queue ✓,
+  .btn:disabled/[aria-busy] styling served and visible in light and dark ✓. Sign-in-gated flows
+  (sign-out warning, placed-volunteer edit, gate Try-again) are locked by the suite checks
+  (TST-BUG-B1/B2, TST-BUG-C1, TST-U1) and need a real account for screenshots.
+Footprint 7557faa..HEAD: 31 files, +1638/−360 (app code + smoke tests + budgets).
+```
+
+**Not done, on purpose:** V7 clinical wording (BP 120-129/80-84 label, BMI 25.0 rounding edge, sleep
+step) — **left flagged OWNER: the question was asked 2026-11-03 and skipped, so the current wording
+stands**; Q3c (queueNextInLine vs qFree) — owner chose to record it as a design follow-up; the
+expo-form draft-discard prompt — recorded as a follow-up (needs the async confirmAsk pattern);
+401/JWT refresh branch and last-writer-wins upserts — design follow-ups from the original plan.
+
+### CP-06 · Post-mortem — DONE
+
+Why 2 of the 3 top bugs could eat visitor data silently, and what keeps it from happening again:
+
+1. **The suite had been dead for a day.** TEST-0 (`g.setAutoAnswer is not a function` at boot) meant
+   the last green run predated every risky change of 2026-11-02. Wave 0 restored the harness first —
+   the root cause (internals gated on `NSMem.devBuild`, never booted by the harness) is now covered
+   by the boot path itself.
+2. **isDirty had two meanings.** The push loop reads it as "needs upload"; the prune loop (copied
+   from mergeRemote's, pre-split) read `!isDirty` as "the server has it". A refused row is neither
+   dirty nor on the server, so "not pending" deleted it. The fix pairs the guard with a comment, and
+   both loops now keep never-uploaded rows.
+3. **The module split introduced signature bugs.** BUG-B (an argument-ignoring action list receiving
+   `cloudSignOut(force)` via the dispatch contract) and BUG-C (an edit branch re-deriving an
+   admin-owned booth from a user preference) both date to `3310c4a`. The harness now dispatches the
+   real buttons rather than calling functions directly.
+4. **Async code had no session identity.** Every await in cloudSync could land after a sign-out or
+   account switch. The Wave 2 `cloud.gen` guard is now the house pattern: capture the generation
+   before the first await, check after each.
+5. **UX states lagged features.** The eleven network flows of the UI audit had no loading/offline/
+   rate-limited/refused states. Wave 3 added them per flow and the harness locks each.
+
+Process deltas that made the difference, kept as standards: every fix RED-first (a check that has
+never failed is not a regression lock); one wave, one commit, gates before each commit; test
+fixtures carry the state the real flow would leave (`cloud.churchId`, `signInWaitUntil` resets);
+race tests drive the fake server through held promises (`srv.holdRpc`) instead of sleeps.
 
 ---
 
