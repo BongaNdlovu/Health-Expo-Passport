@@ -1179,6 +1179,28 @@ function makeServer() {
       saved.map(o => o.name).join(','));
     { const s0 = saved.length; A.exportCSV(); A.exportCSV(); await tick(); await tick();
       ok('app: a second tap on the same export while it hands off saves once (R4, M12: behaviour)', saved.length === s0 + 1, (saved.length - s0) + ' saves'); }
+    /* FUP-APK: the app offers an update only when the downloadable app holds a different page (version.json apk.version),
+       not whenever the website changed — a website-only release used to make every phone reinstall the same app */
+    if (booted) {
+      const meta = $el('meta[name="app-version"]'), bar = $el('updateBar'), realFetch = appBox.fetch;
+      const answer = j => { appBox.fetch = async () => ({ ok: true, json: async () => j }); };
+      meta.setAttribute('content', 'page111111');
+      try {
+        bar.classList.add('hidden');
+        answer({ version: 'web2222222', apk: { url: 'newstart.apk', version: 'page111111' } });
+        A.updateInit(); await tick(); await tick(); await tick();
+        ok('FUP-APK-1 a website-only release offers the app no update (its download holds this same page)', bar.classList.contains('hidden'));
+        answer({ version: 'web2222222', apk: { url: 'newstart.apk', version: 'page333333' } });
+        A.updateInit(); await tick(); await tick(); await tick();
+        ok('FUP-APK-2 a newer app download is offered', !bar.classList.contains('hidden') && /new app version/.test($el('upTitle').textContent), $el('upTitle').textContent);
+        bar.classList.add('hidden');
+        answer({ version: 'web4444444', apk: { url: 'newstart.apk' } });
+        A.updateInit(); await tick(); await tick(); await tick();
+        ok('FUP-APK-3 an older version.json without the app\'s version still offers by the website\'s id', !bar.classList.contains('hidden'));
+      } finally { appBox.fetch = realFetch; meta.removeAttribute('content'); bar.classList.add('hidden'); }
+      const vj = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'dist', 'version.json'), 'utf8'));
+      ok('FUP-APK-4 version.json names the page inside the built download', !vj.apk || /^[0-9a-f]{10}$/.test(vj.apk.version || ''), JSON.stringify(vj.apk));
+    }
     ok('app: the native plugin saves through SecureExport — this app\'s private cache + the share sheet, never public Downloads', /public void saveDownload\(PluginCall call\)/.test(javaSrc)
       && /SecureExport\.save\(/.test(javaSrc) && !/MediaStore\.Downloads\.EXTERNAL_CONTENT_URI/.test(javaSrc));
     ok('app: printing refuses a second card while one is being prepared, and answers once with a timeout', /if \(printView != null\)/.test(javaSrc)
@@ -4275,7 +4297,7 @@ function makeServer() {
       Date.now = () => realNow() + offset;
       try {
         g.updateInit();
-        const look = docHandlers.visibilitychange.find(f => /lookAgain/.test(f.toString())) || (() => {});
+        const look = docHandlers.visibilitychange.filter(f => /lookAgain/.test(f.toString())).pop() || (() => {});   /* the one updateInit() just added (the app section adds its own earlier) */
         document.hidden = false;
         const opened = asks.length;
         look(); look(); look();
@@ -6373,7 +6395,7 @@ function makeServer() {
       document.hidden = false; for (const f of vis) f(); for (const f of vis) f();   /* the second return is inside 15 s: its redraw is skipped */
       await sleep(300); g.state.tab = 'home'; $main.innerHTML = 'STALE-U8';
       for (const f of (winHandlers.focusout || [])) f({});
-      await sleep(320);
+      for (let i = 0; i < 40 && $main.innerHTML === 'STALE-U8'; i++) await sleep(50);   /* the redraw waits 250 ms; a busy machine needs longer */
       ok('TST-U8 a redraw skipped by the 15 s throttle is finished on focusout (M12: fired, not grepped)', $main.innerHTML !== 'STALE-U8', $main.innerHTML.slice(0, 60)); }
     ok('TST-R4 a save in flight cannot be started twice, and a failure says so in fixed words',
       /saving|exportBusy|saveBusy/.test(srcOf('src/results.js')) && /Could not save/.test(srcOf('src/results.js')));

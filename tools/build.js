@@ -135,9 +135,34 @@ if (DEV_BUILD) console.log('NOTE: NS_DEV_BUILD=1 — nsmem.js diagnostics flag O
 const apk = path.join(root, 'capacitor', 'android', 'app-release-signed.apk');
 if (fs.existsSync(apk)) fs.copyFileSync(apk, path.join(dist, 'newstart.apk'));
 
+/* The build id of the page packaged inside the APK, read from the APK itself (a zip: assets/public/index.html), so
+   version.json says exactly what the download holds. The app offers an update only when this differs from its own
+   page; before, it compared the website's id, and a website-only release made every phone reinstall the same app. */
+function apkPageVersion(file) {
+  const b = fs.readFileSync(file), zlib = require('zlib');
+  let eocd = -1;
+  for (let i = b.length - 22; i >= Math.max(0, b.length - 65557); i--) if (b.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) throw new Error('newstart.apk is not a zip file');
+  let p = b.readUInt32LE(eocd + 16);
+  for (let n = b.readUInt16LE(eocd + 10); n > 0; n--) {
+    if (b.readUInt32LE(p) !== 0x02014b50) break;
+    const method = b.readUInt16LE(p + 10), size = b.readUInt32LE(p + 20), nameLen = b.readUInt16LE(p + 28);
+    const extraLen = b.readUInt16LE(p + 30), noteLen = b.readUInt16LE(p + 32), local = b.readUInt32LE(p + 42);
+    if (b.toString('utf8', p + 46, p + 46 + nameLen) === 'assets/public/index.html') {
+      const start = local + 30 + b.readUInt16LE(local + 26) + b.readUInt16LE(local + 28), raw = b.subarray(start, start + size);
+      const page = (method === 8 ? zlib.inflateRawSync(raw) : raw).toString('utf8');
+      return (/<meta name="?app-version"? content="?([0-9a-f]+)"?/.exec(page) || [])[1] || '';
+    }
+    p += 46 + nameLen + extraLen + noteLen;
+  }
+  return '';
+}
+const apkVersion = fs.existsSync(apk) ? apkPageVersion(apk) : '';
+if (fs.existsSync(apk) && !apkVersion) throw new Error('could not read the page version inside capacitor/android/app-release-signed.apk');
+if (apkVersion && apkVersion !== version) console.log('NOTE: the Android download holds page ' + apkVersion + ', the website is ' + version + ' — run tools\\sign-app.ps1 to ship this build to the app too');
+
 /* What src/update.js reads: the build this folder was made at, and — when an Android build is sitting beside it —
-   where to fetch it. No version is claimed for the APK: it was packaged from whichever dist/ existed at the time,
-   and its own page carries that build's id. */
+   where to fetch it and which page it holds. */
 /* The build date is HEAD's commit date, not the wall clock: two builds of the same source then write the
    same bytes, so a no-op rebuild stops showing dist/ as changed. Outside a git checkout it falls back to
    now. The build's real identity is `version` above, which is a hash of what actually went into it. */
@@ -147,7 +172,7 @@ catch (e) { /* not a checkout, or no git on PATH */ }
 fs.writeFileSync(path.join(dist, 'version.json'), JSON.stringify({
   version,
   built: builtAt || new Date().toISOString(),
-  apk: fs.existsSync(apk) ? { url: 'newstart.apk' } : null,
+  apk: fs.existsSync(apk) ? { url: 'newstart.apk', version: apkVersion } : null,
 }, null, 2) + '\n');
 
 /* Security headers for every file — identical to the built page's meta tag. What the policy locks down is WHERE

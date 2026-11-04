@@ -23,7 +23,7 @@ import { toast } from './shell.js';
 
 const SNOOZE = 'newstart.updSnooze';        /* the server version this person said "not now" to */
 
-/** @type {{version?:string, apk?:{url?:string}|null}|null} */
+/** @type {{version?:string, apk?:{url?:string, version?:string}|null}|null} */
 let server = null;            /* the last /version.json we read */
 /** @type {ServiceWorker|null} */
 let waiting = null;           /* a worker installed and waiting to take over this page */
@@ -105,11 +105,19 @@ async function checkNow() {
   offer();
 }
 
+/* Inside the app the question is whether the downloadable app holds a different page; the website's own id only
+   answers that for an older version.json that does not say (before, a website-only release made every phone
+   download and reinstall the same app). */
+function serverVersion() {
+  if (!server) return '';
+  if (IS_APP && server.apk && typeof server.apk.version === 'string' && server.apk.version) return server.apk.version;
+  return server.version || '';
+}
 function offer() {
-  const own = ownVersion();
-  const newer = !!(server && server.version && server.version !== own);
+  const own = ownVersion(), theirs = serverVersion();
+  const newer = !!(theirs && theirs !== own);
   if (!waiting && !newer) { hide(); return; }
-  const key = (server && server.version) || own;
+  const key = theirs || own;
   if (snoozed === key) return;               /* they asked not to be told again about this one */
   show(IS_APP && !!(server && server.apk));
 }
@@ -133,7 +141,7 @@ export async function updateNow() {
   hide();
   if (IS_APP) {
     if (server && server.apk && server.apk.url) {
-      const ver = server.version || '';         /* (U3) the snooze is only written once a hand-off really happened */
+      const ver = serverVersion();              /* (U3) the snooze is only written once a hand-off really happened */
       /* A WebView cannot install an APK, and navigating it to one usually just fails. Hand the address to the
          phone: the AppLauncher plugin (already in the app) opens it in the phone's own browser, which downloads
          the file for the installer. Capacitor's Browser plugin and a new window are the fallbacks. This is the one
@@ -168,7 +176,7 @@ export async function updateNow() {
 
 /** "Not now" — quiet until the next build, not just until the next screen. */
 export function updateLater() {
-  snoozed = (server && server.version) || '';
+  snoozed = serverVersion();
   if (snoozed) write(SNOOZE, snoozed);
   hide();
 }
