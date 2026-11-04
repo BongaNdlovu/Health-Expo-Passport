@@ -3707,6 +3707,40 @@ function makeServer() {
       await sys(`delete from public.queue_entries where church_id = $1 and attendee_id in ('EXPO-101', 'EXPO-102')`, [A]);
     }
 
+    /* ---- the church's own station order (queue_stations / set_queue_stations) ---- */
+    {
+      await as(U.alice, `insert into public.queue_entries (attendee_id, station) values ('EXPO-201', 'vitals'), ('EXPO-202', 'vitals'), ('EXPO-203', 'bp')`);
+      await sys(`update public.queue_entries set status = 'serving' where attendee_id = 'EXPO-202'`);
+      await sys(`insert into public.memberships (user_id, church_id, role, status) values ('${U.frank}', '${A}', 'staff', 'approved')`);
+      r = await as(U.frank, `select public.set_queue_stations(array['bp','sugar'])`);
+      ok('queue stations (db): a plain staff member cannot change the board', !!r.error && r.error.code === '42501', r.error ? r.error.code : 'no error');
+      r = await as(U.erin, `select public.set_queue_stations(array['bp','sugar'])`);
+      ok('queue stations (db): the app owner cannot change the board of a church they do not belong to', !!r.error && r.error.code === '42501', r.error ? r.error.code : 'no error');
+      r = await as(U.alice, `select public.set_queue_stations(array['sleep','bp','bogus','bp']) n`);
+      ok('queue stations (db): an admin saves an order; unknown keys are dropped and a repeat keeps one place',
+        !r.error && r.rows[0].n === 2 && JSON.stringify((await sys(`select stations from public.queue_stations where church_id = '${A}'`))[0].stations) === '["sleep","bp"]',
+        r.error ? r.error.message : JSON.stringify(r.rows));
+      const st = await sys(`select attendee_id, station, status from public.queue_entries where attendee_id like 'EXPO-20%' order by attendee_id`);
+      ok('queue stations (db): anyone still waiting or being served at a line taken off the board is taken out of it; kept lines are untouched',
+        st.length === 3 && st.filter(x => x.station === 'vitals').every(x => x.status === 'left') && st.find(x => x.attendee_id === 'EXPO-203').status === 'waiting', JSON.stringify(st));
+      await sys(`insert into public.memberships (user_id, church_id, role, status) values ('${U.erin}', '${A}', 'member', 'approved')`);
+      r = await as(U.erin, `select public.set_queue_stations(array['bp','sugar']) n`);
+      ok('queue stations (db): the app owner, as one of the church\'s people, may set the board', !r.error && r.rows[0].n === 0, r.error ? r.error.message : JSON.stringify(r.rows));
+      r = await as(U.alice, `select public.set_queue_stations(array[]::text[])`);
+      ok('queue stations (db): an empty board is refused', !!r.error && /at least one station/i.test(r.error.message), r.error ? r.error.message : 'no error');
+      r = await as(U.frank, `select stations from public.queue_stations where church_id = '${A}'`);
+      const carolRead = await as(U.carol, `select stations from public.queue_stations where church_id = '${A}'`);
+      ok('queue stations (db): the church\'s people read its board; another church reads nothing of it',
+        !r.error && r.rows.length === 1 && !carolRead.error && carolRead.rows.length === 0, JSON.stringify([r.rows, carolRead.rows]));
+      ok('queue stations (db): every save is in the audit log',
+        (await sys(`select count(*)::int c from public.audit_log where tbl = 'queue_stations' and church_id = '${A}'`))[0].c >= 2);
+      ok('queue stations (db): the table is in the realtime publication',
+        (await sys(`select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'queue_stations'`)).length === 1);
+      await sys(`delete from public.queue_entries where attendee_id like 'EXPO-20%'`);
+      await sys('delete from public.queue_stations');
+      await sys(`delete from public.memberships where user_id in ('${U.frank}', '${U.erin}')`);
+    }
+
     /* ---- members ---- */
     r = await as(U.dave, `select public.join_church($1, 'Dave Dlamini', '082 000 0000')`, [A]);
     const daveM = await sys(`select role, status, full_name from public.memberships where user_id = $1`, [U.dave]);
@@ -5325,6 +5359,26 @@ function makeServer() {
     g.qList('bp', 'waiting').some(e => e.attendeeId === 'EXPO-088') && /in the Blood Pressure line/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
   await g.queueFlowStart('EXPO-088', 'again');
   ok('…and only once', g.queue.filter(e => e.attendeeId === 'EXPO-088').length === 1);
+  /* a church's own stations: admins set the board's lines and order; the board, the big screen and the route follow */
+  ok('queue: nobody in practice mode may edit the church\'s stations', g.qMayEditStations() === false);
+  g.qs.stations = ['sleep', 'bp', 'prayer'];
+  ok('queue: the church\'s order drives the board list, and the route keeps only the flow lines of it',
+    g.qStations().join() === 'sleep,bp,prayer' && g.qFlow().join() === 'sleep,bp');
+  g.state.tab = 'queue'; g.state.qStation = 'bp'; g.render();
+  ok('queue: the board shows the church\'s lines, in the church\'s order, and no others',
+    (() => { const h = $main.innerHTML, at = s => h.indexOf('q-card-name">' + s); return at('Sleep') > -1 && at('Sleep') < at('Blood Pressure') && at('Blood Pressure') < at('Prayer') && at('Exercise') === -1; })());
+  localStorage.setItem('newstart.qSkipFilled', '0');   /* the route test below wants every line kept, readings or not */
+  g.queue.length = 0;
+  await g.queueFlowStart('EXPO-042', 'David is EXPO-042 ✓');
+  ok('queue: a new visitor starts at the church\'s first line, not the built-in first', g.qList('sleep', 'waiting').some(e => e.attendeeId === 'EXPO-042'));
+  await g.queueCallNext('sleep'); await g.queueDone(g.qList('sleep', 'serving')[0].id);
+  ok('queue: Done follows the church\'s route (Sleep → Blood Pressure), not the built-in one',
+    g.qList('bp', 'waiting').some(e => e.attendeeId === 'EXPO-042') && g.nextFlowStation('EXPO-042', 'bp') === '', JSON.stringify(g.queue.map(e => e.station + ':' + e.status)));
+  await g.queueCallNext('bp'); await g.queueDone(g.qList('bp', 'serving')[0].id);
+  ok('queue: after the church\'s last flow line nobody is put in another line', !g.queue.some(e => e.attendeeId === 'EXPO-042' && (e.status === 'waiting' || e.status === 'serving')));
+  localStorage.removeItem('newstart.qSkipFilled');   /* back to the usual skip-filled-on default */
+  g.qs.stations = null; g.state.qStation = 'bp'; g.render();
+  ok('queue: with no church order set, the built-in board and route stand', g.qStations().length === 10 && g.qFlow()[0] === 'bp');
   /* a tap while another change is saving */
   g.qs.busy = true; const qBefore = g.queue.length;
   await g.queueJoin('EXPO-042', 'kitchen');

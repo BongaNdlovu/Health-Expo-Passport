@@ -248,6 +248,12 @@ The **Queue** tab shows who is waiting at each station, live on every desk. It n
 **run the whole of `schema.sql` again** (it is safe to re-run). Until you do, the tab shows "The live queue is not set up
 yet" and everything else keeps working.
 
+- **The church's own stations (2026-11-04, needs the same re-run).** Church admins and the app owner can change which
+  stations are on the board and their order — the **Stations** button on the Queue tab (`set_queue_stations()`, the
+  `queue_stations` table). Every desk's board, the big screen and the route visitors walk after Done follow the saved
+  order; a newly registered visitor starts at its first line. Taking a line off the board takes anyone still in it out
+  of that line. Until a church sets one, the app's built-in ten lines and route stand, and other desks pick up a change
+  within about 20 s (or on their next sync).
 - A desk adds a visitor to a station's line, taps **Call next** when ready, then **Done**. **↩** puts someone back in
   the line in their original place; **✕** (tap twice) removes them.
 - The board shows, per station, how many are waiting, who is being served, the longest wait and an estimated wait for

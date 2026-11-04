@@ -38,7 +38,22 @@ export const QUEUE_FLOW=['bp','sugar','vitals','veg','walk','water','sleep','pla
 const QUEUE_WARN=10,QUEUE_ALERT=20;      /* minutes the longest-waiting person has stood in line: amber, then red */
 const QUEUE_WINDOW_H=18;                 /* only today's queue is loaded */
 export const queue=[];                          /* {id,attendeeId,station,status,joinedAt,calledAt,finishedAt,slot}; times in ms; slot: the place (1..N) at a station serving several at once, kept on this device */
-export const qs={ready:false,err:'',ch:null,rt:'',church:'',subbed:false,skew:0,since:'',busy:false,syncing:false,seq:1,confirm:'',pick:'',pickQ:'',renderT:null,retryT:null,names:''};
+export const qs={ready:false,err:'',ch:null,rt:'',church:'',subbed:false,skew:0,since:'',busy:false,syncing:false,seq:1,confirm:'',pick:'',pickQ:'',renderT:null,retryT:null,names:'',
+ stations:null,stationsErr:false,   /* the church's own station order (null = the built-ins) / the table is missing on this database */
+ edit:null,editBusy:false};         /* the Stations sheet's draft order while it is open */
+
+/* ---------- the church's own stations (admins set them; every desk follows) ----------
+   QUEUE_STATIONS and QUEUE_FLOW are the app's built-in board and route. A church's admins (or the app owner) can put
+   the lines in their own order and take lines off the board (Stations on the Queue tab). That list is kept in the
+   database (public.queue_stations, one row per church), so every desk and the big screen show the same board, and
+   Done sends visitors along the same route. The built-ins stand until they set one. */
+const qSanitizeStations=list=>{const seen=new Set(),out=[];for(const k of Array.isArray(list)?list:[])if(QUEUE_STATIONS.includes(k)&&!seen.has(k)){seen.add(k);out.push(k);}return out;};
+export const qStations=()=>qs.stations&&qs.stations.length?qs.stations:QUEUE_STATIONS;
+/* the route after Done: the church's order when they set one, else the built-in route (Blood Pressure first).
+   Kitchen Pharmacy and Prayer are never routed to automatically — they stay hand-added stops. */
+export const qFlow=()=>qs.stations&&qs.stations.length?qs.stations.filter(k=>QUEUE_FLOW.includes(k)):QUEUE_FLOW;
+/* the letter and colour of each line, for the Stations sheet (the same ones the booths and station cards use) */
+const QUEUE_GLYPH={vitals:['VI','sky'],bp:['BP','blush'],sugar:['SU','sand'],veg:['NU','sage'],walk:['EX','mint'],water:['WA','aqua'],sleep:['SL','lilac'],kitchen:['KP','sage'],plan:['NS','lilac'],prayer:['PR','aqua']};
 
 export const qSafe=s=>String(s==null?'':s).replace(/[^A-Za-z0-9-]/g,'');           /* ids end up inside data-* attributes */
 const qT=v=>v?(Date.parse(String(v).replace(/(\.\d{3})\d+/,'$1'))||0):0;
@@ -872,21 +887,23 @@ export function qSkipFilledToggle() {
  qAfter();
 }
 function qSkippedBetween(att, from, next) {
- let i = QUEUE_FLOW.indexOf(from);
- let j = next ? QUEUE_FLOW.indexOf(next) : QUEUE_FLOW.length;
+ const F=qFlow();
+ let i = F.indexOf(from);
+ let j = next ? F.indexOf(next) : F.length;
  if (i < 0 || !qSkipFilled()) {
-  return [];
+   return [];
  }
- return QUEUE_FLOW.slice(i + 1, j).filter(
-  k => !queue.some(e => e.attendeeId === att && e.station === k && e.status === 'done') && qFilledAt(att, k)
+ return F.slice(i + 1, j).filter(
+   k => !queue.some(e => e.attendeeId === att && e.station === k && e.status === 'done') && qFilledAt(att, k)
  );
 }
-/* the next station on QUEUE_FLOW after `from` that this visitor has not finished today, and whose readings are not
-   all in when skipping is on ('' when there is none) */
+/* the next station on the route (qFlow) after `from` that this visitor has not finished today, and whose readings
+   are not all in when skipping is on ('' when there is none) */
 export function nextFlowStation(att,from){
- const i=QUEUE_FLOW.indexOf(from);
+ const F=qFlow();
+ const i=F.indexOf(from);
  if(i<0)return '';
- return QUEUE_FLOW.slice(i+1).find(k=>!queue.some(e=>e.attendeeId===att&&e.station===k&&e.status==='done')&&!(qSkipFilled()&&qFilledAt(att,k)))||'';
+ return F.slice(i+1).find(k=>!queue.some(e=>e.attendeeId===att&&e.station===k&&e.status==='done')&&!(qSkipFilled()&&qFilledAt(att,k)))||'';
 }
 async function queueFlowNext(att,from){
  const next=nextFlowStation(att,from);
@@ -894,10 +911,13 @@ async function queueFlowNext(att,from){
  await queueJoin(att,next,n=>`${firstName(qName(att))} finished ✓ · now in the ${QUEUE_SHORT[next]} line${n>1?` (${n} waiting)`:''}`);
 }
 /* a newly registered visitor goes straight into the first line — when the queue can take changes; offline the
-   registration still stands and they can be added by hand once the desk is back online */
+   registration still stands and they can be added by hand once the desk is back online. A church whose board has
+   no flow lines on it (only the optional stops) simply registers them without a line. */
 export async function queueFlowStart(att,said){
  if(!qCan()||qActive(att))return;
- await queueJoin(att,QUEUE_FLOW[0],n=>`${said} · in the ${QUEUE_SHORT[QUEUE_FLOW[0]]} line${n>1?` (${n} waiting)`:''}`);
+ const first=qFlow()[0];
+ if(!first)return;
+ await queueJoin(att,first,n=>`${said} · in the ${QUEUE_SHORT[first]} line${n>1?` (${n} waiting)`:''}`);
 }
 export const queueBack=id=>qMove(id,'waiting',['serving'],e=>`${firstName(qName(e.attendeeId))} is back in line (same place)`);
 export function queueRemove(id){
@@ -969,6 +989,16 @@ export function qSelect(k){
 }
 
 /* ---------- loading and live updates ---------- */
+/* the church's station order: one row. No row = the built-ins. A missing table (the schema update has not run on
+   this database) leaves the built-in lines standing and is only said so in the Stations sheet — the queue itself
+   must keep working, so it is never a queue error. */
+export async function qStationsFetch(){
+ if(!cloud.churchId)return;
+ let r;try{r=await cloud.client.from('queue_stations').select('stations').eq('church_id',cloud.churchId).maybeSingle();}catch(e){qs.stationsErr=true;return;}
+ if(r.error){qs.stationsErr=String(r.error.code||'')!=='PGRST116';return;}   /* 116 is "no row", which is the built-ins, not a fault */
+ qs.stationsErr=false;
+ qs.stations=r.data?qSanitizeStations(r.data.stations):null;
+}
 export async function queueSync(manual){
  if(!cloud.client||!cloud.user||qs.syncing)return;
  qs.syncing=true;
@@ -987,6 +1017,7 @@ export async function queueSync(manual){
   if(first){queue.length=0;qs.since='';}
   rows.forEach(qApply);
   if(!qs.since)qs.since=from;
+  await qStationsFetch();     /* the church's own board: one row, read with the lines. A missing table is not a queue failure. */
   qs.ready=true;qs.err='';clearTimeout(qs.retryT);qs.retryT=null;   /* a retry that is still due is not wanted now (Q6) */
   startQueueRealtime();healthLive('queue',qs.rt);
   setTimeout(flushLeaves,0);                 /* visits finished while the queue could not change: leave their lines now */
@@ -1055,9 +1086,22 @@ export function seedDemoQueue() {
 export function queueReset(){
  if(qs.ch&&cloud.client){try{cloud.client.removeChannel(qs.ch);}catch(e){}}
  qs.ch=null;qs.rt='';qs.church='';qs.subbed=false;qs.ready=false;qs.err='';clearTimeout(qs.retryT);qs.retryT=null;qs.since='';qs.skew=0;qs.confirm='';
+ qs.stations=null;qs.stationsErr=false;qs.edit=null;qs.editBusy=false;   /* the next church's board is its own */
  queue.length=0;
 }
 function qRefresh(){clearTimeout(qs.renderT);qs.renderT=setTimeout(qAfter,150);}
+/* while the lines are live and realtime is healthy, the station order is re-read quietly on the same slow tick: an
+   admin's change reaches the other desks' boards and the big screen within 20 s, without another realtime channel
+   (a listener on a table the database has not been updated with would break the queue's own channel). */
+async function qStationsPoll(){
+ if(!qLive()||qs.rt!=='SUBSCRIBED')return;
+ const was=JSON.stringify(qStations());
+ try{await qStationsFetch();}catch(e){}
+ if(JSON.stringify(qStations())!==was){
+  if(state.qStation&&!qStations().includes(state.qStation))state.qStation=qStations()[0]||'';
+  qAfter();
+ }
+}
 export function qAfter(){
  qDemoSave();
  if(qMode()!=='demo')qPruneHistory();
@@ -1072,7 +1116,95 @@ export function openQueuePick(st){
   <input id="qq" type="search" placeholder="Search by name, badge or phone" data-on-input="queue-filter" class="field mt-2.5" autocomplete="off">`;
  qRenderPick();showModal('#queueModal',closeQueuePick);
 }
-export function closeQueuePick(){hideModal('#queueModal');qs.pick='';}
+export function closeQueuePick(){hideModal('#queueModal');qs.pick='';qs.edit=null;qs.editBusy=false;}
+
+/* ---------- the Stations sheet (church admins and the app owner) ----------
+   Which lines are on the board, and in which order — the board, the big screen and the route visitors walk after
+   Done all follow it. Tap targets, no drag-and-drop, like the placement board. */
+export const qMayEditStations=()=>qMode()!=='demo'&&(isAdminAcct()||!!(cloud.acct&&cloud.acct.platform_admin));
+export function qStationsOpen(){
+ if(!qMayEditStations())return;
+ switchTab('queue');
+ qs.pick='';qs.pickQ='';qs.edit={list:[...qStations()]};qs.editBusy=false;
+ qStationsRender();showModal('#queueModal',closeQueuePick);
+}
+function qStationsRender(){
+ if(!qs.edit)return;
+ const draft=qs.edit.list,off=QUEUE_STATIONS.filter(k=>!draft.includes(k));
+ const row=(k,on,i)=>{
+  const g=QUEUE_GLYPH[k]||['', 'mint'];
+  const btn=(act,arg,lab,dis,cls)=>`<button class="q-mini ${cls||'q-mini-soft'}" data-action="${act}" data-args="${esc(arg)}"${dis?' disabled':''} aria-label="${lab}">${lab}</button>`;
+  return `<div class="q-pick" style="cursor:default">
+   <span class="flex h-9 w-9 flex-none items-center justify-center rounded-[13px] text-[11px] font-extrabold tint hue-${g[1]}">${g[0]}</span>
+   <span class="q-who"><b>${esc(QUEUE_SHORT[k]||k)}</b><span>${esc(qChecksText(k))}</span></span>
+   ${on?btn('q-st-move',k+'|-1','↑',i===0)+btn('q-st-move',k+'|1','↓',i===draft.length-1)+btn('q-st-toggle',k,'− Off',false,'q-mini-x')
+       :btn('q-st-toggle',k,'+ On')}
+  </div>`;
+ };
+ $('#queueHead').innerHTML=`<h3 class="display text-base font-extrabold">Stations on the queue</h3>
+  <p class="q-note" style="margin-top:.45rem">The order here is the board, the big screen, and the route visitors walk after Done. ${QUEUE_SHORT[draft[0]]||'The first line'} is where a new visitor starts.</p>
+  ${qs.stationsErr?'<p class="q-note" style="color:#b3261e">Your church’s database does not have the queue-stations table yet — run the latest supabase/schema.sql in Supabase, then try again. The app’s usual lines are showing meanwhile.</p>':''}
+  <div class="mt-2.5 grid grid-cols-2 gap-2">
+   <button class="btn btn-glass py-2 text-[11px] text-[#5b7178]" data-action="q-st-reset">Usual order</button>
+   <button class="btn btn-primary py-2 text-[11px]" data-action="q-st-save"${qs.editBusy?' disabled aria-busy="true"':''}>${qs.editBusy?'Saving…':'Save for every desk'}</button>
+  </div>`;
+ $('#queueList').innerHTML=(draft.length?'':'<p class="q-empty">Keep at least one station on the queue.</p>')
+  +draft.map((k,i)=>row(k,true,i)).join('')
+  +(off.length?`<div class="q-label">Off the board</div>${off.map(k=>row(k,false)).join('')}`:'')
+  +`<p class="q-note">Off the board: no line, no card, and nobody is sent there after Done. Anyone still waiting at a line you take off is taken out of it.</p>`;
+}
+/* ↑ / ↓ move a line; the buttons sit at the ends of the list, so a move can never fall off */
+export function qStMove(arg){
+ if(!qs.edit)return;
+ const [k,d]=String(arg||'').split('|'),i=qs.edit.list.indexOf(k),j=i+(Number(d)||0);
+ if(i<0||j<0||j>=qs.edit.list.length)return;
+ qs.edit.list.splice(j,0,qs.edit.list.splice(i,1)[0]);
+ qStationsRender();
+}
+/* − Off takes a line off the board; + On puts it back at the end, ready to move up */
+export function qStToggle(k){
+ if(!qs.edit)return;
+ const i=qs.edit.list.indexOf(k);
+ if(i>=0)qs.edit.list.splice(i,1);else qs.edit.list.push(k);
+ qStationsRender();
+}
+/* the app's own board and route, for a church that wants to start over */
+export function qStReset(){
+ if(!qs.edit)return;
+ qs.edit.list=[...QUEUE_STATIONS];
+ qStationsRender();
+}
+export async function qStationsSave(){
+ if(!qs.edit||qs.editBusy)return;
+ const list=qs.edit.list;
+ if(!list.length){toast('Keep at least one station on the queue.');return;}
+ if(!qGate())return;
+ /* anyone still in a line that is going away is taken out of it — say so before it happens */
+ const gone=qStations().filter(k=>!list.includes(k));
+ const open=queue.filter(e=>gone.includes(e.station)&&(e.status==='waiting'||e.status==='serving'));
+ if(open.length){
+  const lines=[...new Set(open.map(e=>e.station))].map(k=>QUEUE_SHORT[k]||k).join(', ');
+  const yes=await confirmAsk({title:'Take lines off the board?',
+   body:`${open.length} ${open.length===1?'person is still':'people are still'} in the ${lines} line${lines.includes(',')?'s':''}. Saving takes them out of ${lines.includes(',')?'those lines':'it'}.`,
+   label:'Save anyway',danger:true});
+  if(!yes)return;
+ }
+ qs.editBusy=true;qStationsRender();
+ const r=await (async()=>{try{return await cloud.client.rpc('set_queue_stations',{p_stations:list});}catch(e){return {error:e};}})();
+ qs.editBusy=false;
+ if(r.error){
+  const msg=String(r.error.message||''),code=String(r.error.code||'');
+  if(!navigator.onLine||/failed to fetch|networkerror|load failed|network request/i.test(msg))toast('No connection — the stations cannot be saved until you are back online');
+  else if(code==='42883'||code==='PGRST202'||/could not find the function|schema cache/i.test(msg))toast('The database needs the latest schema.sql — run it in Supabase, then try again');
+  else toast(code==='42501'?msg:('Stations could not be saved: '+msg));
+  qStationsRender();return;
+ }
+ qs.stations=qSanitizeStations(list);
+ if(state.qStation&&!qStations().includes(state.qStation))state.qStation=qStations()[0]||'';
+ const closed=Number(r.data)||0;
+ closeQueuePick();qAfter();queueSync();
+ toast(`Stations saved for every desk ✓${closed?` · ${closed} ${closed===1?'person was':'people were'} taken out of removed lines`:''}`);
+}
 export function qFilterPick(v){qs.pickQ=v;qRenderPick();}
 function qRenderPick(){
  const rows=visitorsToShow(qs.pickQ),el=$('#queueList');
@@ -1113,7 +1245,7 @@ function renderBigScreen(){
  const [k,,short]=qStateInfo(qMode());
  const st=$('#tvState');st.className='q-tv-sub '+k;st.innerHTML=`<i></i>${esc(short)}`;
  $('#tvClock').textContent=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
- $('#tvGrid').innerHTML=QUEUE_STATIONS.map(key=>{
+ $('#tvGrid').innerHTML=qStations().map(key=>{
   const s=qStats(key),now=s.serving.slice(0,2),more=s.serving.length-now.length,nxt=s.wait.slice(0,4),rest=s.wait.length-nxt.length;
   return `<div class="q-tv-tile q-tv-${s.tone}">
    <div class="q-tv-name">${esc(QUEUE_SHORT[key])}</div>
@@ -1199,11 +1331,17 @@ function qDetail(k,st,can){
 }
 export function viewQueue(){
  const mode=qMode(),can=qCan(),loading=mode==='loading';
- const sel=QUEUE_STATIONS.includes(state.qStation)?state.qStation:QUEUE_STATIONS[0];
- const S={};QUEUE_STATIONS.forEach(k=>S[k]=qStats(k));
- const tot=QUEUE_STATIONS.reduce((t,k)=>({w:t.w+S[k].wait.length,s:t.s+S[k].serving.length,d:t.d+S[k].done,l:Math.max(t.l,S[k].longest)}),{w:0,s:0,d:0,l:0});
+ const ST=qStations();
+ const sel=ST.includes(state.qStation)?state.qStation:ST[0];
+ const S={};ST.forEach(k=>S[k]=qStats(k));
+ const tot=ST.reduce((t,k)=>({w:t.w+S[k].wait.length,s:t.s+S[k].serving.length,d:t.d+S[k].done,l:Math.max(t.l,S[k].longest)}),{w:0,s:0,d:0,l:0});
  const tile=(n,l)=>`<div class="q-total"><b>${n}</b><span>${l}</span></div>`;
  const over=qOverCount();
+ const mayStations=qMayEditStations();
+ const stBtn=mayStations?`<button class="btn btn-soft btn-tagged q-clear" data-action="qStationsOpen">Stations · order &amp; lines${roleTag('admin')}</button>`:'';
+ const clearBtn=!loading&&over&&qMayClear()?`<button class="btn btn-soft btn-tagged q-clear" data-action="queueClearHistory"${can?'':' disabled'}>Clear finished &amp; removed · ${over}${roleTag('admin')}</button>`:'';
+ /* two admin buttons share a row; on their own each keeps the usual full width */
+ const adminBtns=stBtn&&clearBtn?`<div class="mt-2 grid grid-cols-2 gap-2">${stBtn}${clearBtn}</div>`:(stBtn||clearBtn);
  return `<section class="space-y-3.5">
   <div class="glass p-4">
    <div class="q-head"><div><div class="microlabel">Live queue</div>
@@ -1211,9 +1349,9 @@ export function viewQueue(){
     <button class="btn btn-soft q-tvbtn" data-action="openBigScreen">Big screen</button></div>
    ${qStateBar(mode)}
    <div class="q-totals">${tile(loading?'—':tot.w,'Waiting')}${tile(loading?'—':tot.s,'Being served')}${tile(loading?'—':tot.d,'Finished')}${tile(loading?'—':(tot.w?qMin(tot.l).replace(' min','m'):'—'),'Longest wait')}</div>
-   ${!loading&&over&&qMayClear()?`<button class="btn btn-soft btn-tagged q-clear" data-action="queueClearHistory"${can?'':' disabled'}>Clear finished &amp; removed · ${over}${roleTag('admin')}</button>`:''}
+   ${adminBtns}
   </div>
-  <div class="q-board">${QUEUE_STATIONS.map(k=>qCard(k,S[k],k===sel)).join('')}</div>
+  <div class="q-board">${ST.map(k=>qCard(k,S[k],k===sel)).join('')}</div>
   ${qDetail(sel,S[sel],can)}
  </section>`;
 }
@@ -1222,5 +1360,5 @@ export function viewQueue(){
    registered with the memory layer (nsmem.js), which pauses page timers while the app is hidden. */
 (window.NSMem?window.NSMem.every.bind(null,'page'):setInterval)(()=>{
  if(!(state.tab==='queue'||tvOpen())||document.hidden)return;
- if(qs.ready&&qs.rt!=='SUBSCRIBED')queueSync();else qAfter();
+ if(qs.ready&&qs.rt!=='SUBSCRIBED')queueSync();else{qStationsPoll();qAfter();}
 },20000);

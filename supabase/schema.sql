@@ -723,7 +723,6 @@ begin
 end;
 $$;
 
--- the audit trail records the church too, so the platform admin can see where a change happened
 create or replace function public.audit_row()
 returns trigger
 language plpgsql
@@ -1752,6 +1751,78 @@ as $$
 $$;
 revoke all on function public.hub_church() from public, anon;
 grant execute on function public.hub_church() to authenticated;
+
+-- ---------------------------------------------------------------- queue stations: the church's own order
+-- Which stations are on the queue board, and in which order (src/queue.js keeps the same key list). One row per
+-- church; no row means the app's built-in ten lines and route. The board, the big screen and the route visitors
+-- walk after Done all follow this order. The church's approved people may read it (it is the public board's shape,
+-- not anyone's data); only the church's admins (or the app owner) may write it, through set_queue_stations() —
+-- there are no insert/update/delete policies on the table.
+create table if not exists public.queue_stations (
+  church_id  uuid primary key references public.churches (id) on delete cascade,
+  stations   text[] not null default '{}' check (cardinality(stations) <= 20),
+  updated_at timestamptz not null default now()
+);
+alter table public.queue_stations enable row level security;
+drop policy if exists "church staff queue stations read" on public.queue_stations;
+create policy "church staff queue stations read" on public.queue_stations
+  for select to authenticated using (church_id = (select public.hub_church()));
+revoke all on public.queue_stations from anon;
+
+-- the station keys the app knows, in one place so the app and the database agree (see QUEUE_STATIONS in src/queue.js)
+create or replace function public.queue_station_keys()
+returns text[]
+language sql
+immutable
+set search_path = ''
+as $$
+  select array['vitals','bp','sugar','veg','walk','water','sleep','kitchen','plan','prayer'];
+$$;
+
+-- Save the church's station order. Unknown keys are dropped, a repeated key keeps its first place, and at least one
+-- station must stay on the board. Anyone still waiting or being served at a station that comes off is taken out of
+-- that line (status 'left'), so nobody is ever left waiting in a line no desk can see. Returns how many were taken out.
+create or replace function public.set_queue_stations(p_stations text[])
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_church uuid := public.hub_church();   -- the caller's approved church, any role: the app owner may be a plain member
+  v_list text[];
+  v_n integer := 0;
+begin
+  if v_church is null or not public.church_admin_of(v_church) then
+    raise exception 'Only the church''s admins can do that.' using errcode = '42501';
+  end if;
+  select coalesce(array_agg(k order by o), '{}'::text[]) into v_list
+   from (select k, min(o) as o from unnest(p_stations) with ordinality as t(k, o)
+         where k = any (public.queue_station_keys()) group by k) s;
+  if v_list is null or v_list = '{}' then
+    raise exception 'Keep at least one station on the queue.';
+  end if;
+  insert into public.queue_stations as q (church_id, stations) values (v_church, v_list)
+   on conflict (church_id) do update set stations = excluded.stations, updated_at = now();
+  update public.queue_entries e set status = 'left'
+   where e.church_id = v_church and e.status in ('waiting', 'serving')
+     and not (e.station = any (v_list));
+  get diagnostics v_n = row_count;
+  insert into public.audit_log (tbl, op, row_id, church_id)
+    values ('queue_stations', 'UPDATE', v_church::text, v_church);
+  return v_n;
+end;
+$$;
+revoke all on function public.set_queue_stations(text[]) from public, anon;
+grant execute on function public.set_queue_stations(text[]) to authenticated;
+revoke all on function public.queue_station_keys() from public, anon;
+
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'queue_stations') then
+    alter publication supabase_realtime add table public.queue_stations;
+  end if;
+end $$;
 
 -- put someone on a station (an unplaced person, or a move). A prospect becomes registered on their first placement.
 create or replace function public.place_volunteer(p_vol text, p_booth text)

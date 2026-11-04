@@ -11,6 +11,7 @@ import { approveStaff } from './cloud.js';
 import { state } from './data.js';
 import { queueBack, queueCallNext, queueClearHistory, queueDone, queueCancelHere, queueDoneNext, queueFinishHere, queueNextInLine, queueRemove, queueServe, queueStart } from './queue.js';
 import { qCapSet, qNamesToggle, qPlacesOpen, qSkipFilledToggle, qSlotCall, qSlotMove, qSlotNameSet } from './queue.js';
+import { qStMove, qStReset, qStToggle, qStationsOpen, qStationsSave } from './queue.js';
 import { closeBigScreen, closeQueuePick, openBigScreen, openQueuePick, qFilterPick, qPickAdd, qSelect, queueSync } from './queue.js';
 import { closeFood, exportCSV, exportPrayerCSV, exportXLSX, markAttended, openFood, showAllCare, unmarkAttended } from './results.js';
 import { closeHelp, openHelp, openHelpHere, startTour } from './help.js';
@@ -79,6 +80,12 @@ export const ACTION_MAP = {
   qSlotName: el => qSlotNameSet(el.dataset.args, /** @type {HTMLInputElement} */ (el).value),
   qPlacesOpen: () => qPlacesOpen(),
   qSkipFilledToggle: () => qSkipFilledToggle(),
+  /* the Stations sheet: a church's own board (src/queue.js) */
+  qStationsOpen: () => qStationsOpen(),
+  'q-st-move': el => qStMove(el.dataset.args),
+  'q-st-toggle': el => qStToggle(el.dataset.args),
+  'q-st-reset': () => qStReset(),
+  'q-st-save': () => qStationsSave(),
   /* the memory diagnostics panel exists only in practice mode */
   nsDiag: () => { if (!cloud.user && !cloud.mode && window.NSMem) window.NSMem.openDiag(true); },
   exportCSVMin: () => exportCSV('minimal'),
