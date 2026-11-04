@@ -953,6 +953,12 @@ begin
      and not exists (select 1 from public.platform_admins p where p.user_id <> v_uid) then
     raise exception 'You are the only platform admin. Add another one in the database first.';
   end if;
+  /* the account's pledge is their own details too: it goes with the account instead of staying on the team list */
+  select * into v_m from public.memberships m where m.user_id = v_uid;
+  if v_m.volunteer_id is not null then
+    perform set_config('newstart.lead_ok', 'on', true);
+    delete from public.volunteers v where v.church_id = v_m.church_id and v.id = v_m.volunteer_id;
+  end if;
   delete from auth.users u where u.id = v_uid;
 end;
 $$;
@@ -1128,6 +1134,12 @@ begin
   -- removing an admin is the Leader's or the Expo admin's to do (the Assistant removes everyone else)
   if v_m.role = 'admin' and v_m.status = 'approved' and p_user <> (select auth.uid()) and not public.church_leader_of(v_m.church_id) then
     raise exception 'Only the Health Department Leader or the Expo admin can remove an admin.' using errcode = '42501';
+  end if;
+  /* their details are deleted from this church, as the app says: the pledge they made from this account goes too
+     (before, it stayed on the team list with their name and contacts after the account was removed) */
+  if v_m.volunteer_id is not null then
+    perform set_config('newstart.lead_ok', 'on', true);
+    delete from public.volunteers v where v.church_id = v_m.church_id and v.id = v_m.volunteer_id;
   end if;
   delete from public.memberships m where m.user_id = p_user;
 end;

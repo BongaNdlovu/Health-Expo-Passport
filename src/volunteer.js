@@ -12,7 +12,7 @@ import { overlayClosed, overlayOpened } from './overlay.js';
 import { confirmAsk } from './feedback.js';
 import { roleTag } from './ui.js';
 /* a lazy cycle: account.js imports this module's modal helpers; the sync call happens only at runtime */
-import { canManageExpos, cloudSync, ensureMembers } from './account.js';
+import { canManageExpos, cloudSync, ensureMembers, homeExpoState } from './account.js';
 import { downloadCSV, foodKeyOf, planFor, shortFood } from './results.js';
 import { GRACE_DAYS, withoutOldReadings } from './retention.js';
 import { queueFinishVisit } from './queue.js';
@@ -173,14 +173,26 @@ function serveTabs(){
 }
 
 /* ---------- 1. PLEDGE ---------- */
-function viewVolPledge(){
+/* the Team tab's expo card: the church's real expo, or — signed in to a church with none coming up, or still
+   checking — the same answer Home's banner gives, instead of passing the built-in sample's name, date and
+   "Pledges open" off as a real expo */
+function expoHeroHTML(){
+ const st=homeExpoState();
+ if(st==='none'||st==='loading'||st==='err'){
+  const n=volunteers.length,can=canManageExpos();
+  return `<div class="hero p-5">
+   <div class="microlabel">Incoming expo</div>
+   <div class="display mt-1 text-[19px] leading-tight font-extrabold text-[#0f2a2c]">${st==='none'?'No Health Expo yet':'Checking for your church’s Health Expo…'}</div>
+   <p class="mt-1.5 text-[11.5px] text-[#5c747a]">${st==='err'?'It is checked again when you are back online.':can?'Create one below.':'The next Health Expo will show here.'}</p>
+   ${can?`<button data-action="expo-manage" class="btn btn-soft btn-tagged mt-3 w-full py-2.5 text-xs">Manage Health Expos${roleTag('admin')}</button>`:''}
+   <div class="mt-4 text-[11px] font-bold text-[#5b7178]">${n} on the team list</div>
+  </div>`;
+ }
  const hired=staffedCount(),need=EXPO_UPCOMING.need,pct=Math.min(100,Math.round(hired/need*100));
  const vacancies=Math.max(0,need-hired);
  const dn=daysTo(EXPO_UPCOMING.date),openNow=dn!=null&&dn>=0&&dn<=14;
  const v=AV();
- return `<section class="stagger space-y-3.5 pb-2">
-
-  <div class="hero p-5">
+ return `<div class="hero p-5">
    <div class="flex items-start justify-between gap-2">
     <div class="microlabel">Incoming expo</div>
     <span class="servechip ${openNow?'sc-ok':'sc-warn'}">${openNow?'Registration open':'Pledges open'}</span>
@@ -197,7 +209,13 @@ function viewVolPledge(){
      <span class="text-[#667d83]">${volunteers.length} total pledges</span></div>
    </div>
    <div class="mt-2.5 h-1.5 overflow-hidden rounded-full bg-[#123033]/[.08]"><div class="bar-fill" style="width:${pct}%"></div></div>
-  </div>
+  </div>`;
+}
+function viewVolPledge(){
+ const v=AV();
+ return `<section class="stagger space-y-3.5 pb-2">
+
+  ${expoHeroHTML()}
 
   ${serveTabs()}
 

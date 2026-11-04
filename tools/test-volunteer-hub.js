@@ -298,6 +298,23 @@ const PROJ = path.join(__dirname, '..');
   ok('app-wide BLOCK and UNBLOCK both log church_id = null',
     appAudit.length === 2 && appAudit[0].op === 'BLOCK' && appAudit[0].church_id === null && appAudit[1].op === 'UNBLOCK' && appAudit[1].church_id === null, JSON.stringify(appAudit));
 
+  console.log('\n15. removing a member, or deleting an account, takes their pledge off the team list too');
+  // eve rejoined in section 14 (pending): approve her, give her a pledge, then remove her
+  await as(U.carol, `select public.set_member($1,'member','approved')`, [U.eve]);
+  await SQL(`insert into public.volunteers (church_id,id,name,status) values ($1,'VOL-9710','Eve Again','prospect')`, [B]);
+  await SQL(`update public.memberships set volunteer_id='VOL-9710' where user_id=$1`, [U.eve]);
+  r = await as(U.carol, `select public.remove_member($1)`, [U.eve]);
+  ok('an admin removes a member: their pledge goes with them', !r.error && (await SQL(`select 1 from public.volunteers where church_id=$1 and id='VOL-9710'`, [B])).length === 0, msg(r));
+  await SQL(`insert into public.volunteers (church_id,id,name,status) values ($1,'VOL-9711','Untouched Pledge','prospect')`, [B]);
+  ok('...and nobody else\'s', (await SQL(`select 1 from public.volunteers where church_id=$1 and id='VOL-9711'`, [B])).length === 1);
+  // mallory rejoined in section 14: approve, pledge, then delete her own account
+  await as(U.carol, `select public.set_member($1,'member','approved')`, [U.mallory]);
+  await SQL(`insert into public.volunteers (church_id,id,name,status,booth) values ($1,'VOL-9712','Mallory Pledge','registered','plan')`, [B]);
+  await SQL(`update public.memberships set volunteer_id='VOL-9712' where user_id=$1`, [U.mallory]);
+  r = await as(U.mallory, `select public.delete_my_account()`);
+  ok('deleting your own account deletes your pledge too, as the app promises', !r.error && (await SQL(`select 1 from public.volunteers where church_id=$1 and id='VOL-9712'`, [B])).length === 0
+    && (await SQL(`select 1 from auth.users where id=$1`, [U.mallory])).length === 0, msg(r));
+
   console.log(`\nRESULT: ${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
   process.exit(0);

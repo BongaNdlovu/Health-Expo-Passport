@@ -1062,9 +1062,9 @@ export async function linkMember(uid,cur){
 export async function removeMember(uid){
  const u=((cloud.members&&cloud.members.list)||[]).find(x=>x.user_id===uid)||{};
  const yes=await confirmAsk({title:`Remove ${u.full_name||u.email||'this person'}?`,
-  body:'Their details are deleted from this church and they lose access to it.',label:'Remove',danger:true});
+  body:'Their details and their pledge are deleted from this church, and they lose access to it.',label:'Remove',danger:true});
  if(!yes)return;
- if(await acctRpc('remove_member',{p_user:uid},'Removed'))await reloadMembers();
+ if(await acctRpc('remove_member',{p_user:uid},'Removed')){await reloadMembers();cloudSync(true);}   /* their pledge went too: the team list follows */
 }
 /* an admin's own post: step down with one action. A church may have no admin; the Expo admin appoints one. */
 export function adminPostHTML(m,ranks){

@@ -6741,6 +6741,29 @@ function makeServer() {
       g.resetDemo();
     }
 
+    /* FUP-TEAM: the Team tab's expo card agrees with Home: no sample expo, date or "Pledges open" for a church with none */
+    {
+      const sampleName = g.EXPO_UPCOMING.name;
+      device(); await signIn();
+      srv.rpcs = { church_expos: () => ({ data: [], error: null }) };
+      C.acct = { church: { id: 'ch-a', name: 'Grace', status: 'active' }, membership: { role: 'staff', status: 'approved' } };
+      C.expos = undefined; g.viewHome(); await sleep(60);
+      g.state.tab = 'serve'; g.state.volTab = 'pledge'; g.state.volRegOpen = false; g.render();
+      let h = $main.innerHTML;
+      ok('FUP-TEAM-1 a church with no expo sees "No Health Expo yet" on Team, not the sample\'s name, date or Pledges open',
+        /No Health Expo yet/.test(h) && !h.includes(g.esc(sampleName)) && !/Pledges open|Registration open/.test(h), h.slice(h.indexOf('hero'), h.indexOf('hero') + 220));
+      ok('FUP-TEAM-2 ...staff get no Manage button', !/data-action="expo-manage"/.test(h));
+      C.acct.membership.role = 'admin'; g.render(); h = $main.innerHTML;
+      ok('FUP-TEAM-3 ...an admin gets Manage Health Expos, tagged Admin only', /data-action="expo-manage"[^>]*>Manage Health Expos[^<]*<span class="servechip sc-role">Admin only/.test(h));
+      srv.rpcs = { church_expos: () => ({ data: [{ id: 'x1', name: 'Grace Health Expo 2027', status: 'open', starts_on: '2099-05-01', venue: 'Hall', volunteers_needed: 30 }], error: null }) };
+      C.expos = undefined; g.viewHome(); await sleep(60); g.render(); h = $main.innerHTML;
+      ok('FUP-TEAM-4 once an expo is open, Team shows it with its date and pledge count', /Grace Health Expo 2027/.test(h) && /Pledges open|Registration open/.test(h) && !/No Health Expo yet/.test(h));
+      device(); C.expos = undefined; g.syncExpoHeadline();   /* as a sign-out does: the church's expo is forgotten */
+      g.state.tab = 'serve'; g.state.volTab = 'pledge'; g.render();
+      ok('FUP-TEAM-5 practice mode keeps the sample expo on Team', $main.innerHTML.includes(g.esc(sampleName)));
+      srv.rpcs = null; C.acct = null; C.expos = undefined; g.syncExpoHeadline(); g.state.tab = 'home';
+    }
+
     /* FUP-ROLE: role-only controls carry a tag for the people who have them; nobody else reads about them */
     {
       device();
