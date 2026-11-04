@@ -292,7 +292,7 @@ export const HELP_PAGES = [
       ['Sync now', 'Sends what is waiting and fetches the latest changes.'],
       ['Details', 'Opens the full sync status.'] ] },
     { name: 'The three sections', items: [
-      ['The bar under Sync', 'Three buttons: Pledge & registration, My details & results, and Account & security. One section shows at a time, and the app remembers the one you used last on this device. Someone who is not in a church sees only the account part, with no bar.'],
+      ['The bar under Sync', 'Three buttons: Pledge (Pledge & registration), My details (My details & results) and Account (Account & security). One section shows at a time, and the app remembers the one you used last on this device. Someone who is not in a church sees only the account part, with no bar.'],
       ['Pledge & registration', 'Everything about helping at an expo: where you stand, your pledge, Unpledge and Deregister, the open expos, and your team if you lead a station.'],
       ['My details & results', 'Your details form and your screening results.'],
       ['Account & security', 'Password, installing the app, Help & tutorial, the guided tour, Sign out and Delete my account. In practice mode, Settings & help at the top of Profile has Help & tutorial and the guided tour.'] ] },

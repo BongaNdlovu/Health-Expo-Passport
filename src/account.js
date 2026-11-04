@@ -207,7 +207,7 @@ export function acctGateHTML(st){
  const out=`<div class="mt-4 flex gap-2"><button data-action="cloudSignOut" class="btn btn-glass flex-1 py-2.5 text-xs text-[#5b7178]">Sign out</button>
    <button data-action="sync-now" class="btn btn-primary flex-1 py-2.5 text-xs">Check again</button></div>`;
  const leave=c?`<button data-action="leaveChurch" class="mt-3 w-full text-center text-[11px] font-bold text-rose-700">Leave ${esc(c.name)}</button>`:'';
- const admin=a.platform_admin?`<button data-action="openAcct" data-args="admin" class="btn btn-soft mt-3 w-full py-2.5 text-xs">Open all churches${roleTag('owner')}</button>`:'';
+ const admin=a.platform_admin?`<button data-action="openAcct" data-args="admin" class="btn btn-soft btn-tagged mt-3 w-full py-2.5 text-xs">Open all churches${roleTag('owner')}</button>`:'';
  if(st==='church')return `${title('Choose your church')}
   ${acctNote('Signed in as <b class="text-[#33504f]">'+esc(a.email||'')+'</b>. Join the church you belong to. Its admins approve you, and then you can see your own expo results here.')}
   ${churchPickHTML()}
@@ -736,7 +736,7 @@ function meHTML(){
 /* the signed-in staff member's shortcut into the sheet (the panel behind the logo) */
 export function acctButtons(){
  const a=cloud.acct;if(!a)return '';
- const m=a.membership,b=(t,l)=>`<button data-action="hub-open" data-args="${esc(t)}" class="btn btn-soft flex-1 py-2.5 text-xs">${l}</button>`;
+ const m=a.membership,b=(t,l)=>`<button data-action="hub-open" data-args="${esc(t)}" class="btn btn-soft btn-tagged flex-1 py-2.5 text-xs">${l}</button>`;
  return acctBox(esc(a.church?a.church.name:'No church')+(m?' · '+roleLabel(m):''),
   `<div class="mt-2 flex gap-2">${b('me','My account')}${isChurchAdmin()?b('church','My church'+roleTag('admin')):''}${a.platform_admin?b('admin','All churches'+roleTag('owner')):''}</div>`);
 }
@@ -810,7 +810,8 @@ function profSignedIn(){
  return hero+profSync()+profSectionBar()+(sec==='pledge'?pledgeSectionHTML():sec==='me'?meFormHTML('pm')+healthHTML():profPasswordBox()+installBlock()+profAccountBox());
 }
 /* The Profile page is three sections, one at a time, the last one used remembered on this device. */
-const PF_SECTIONS=[['pledge','Pledge & registration'],['me','My details & results'],['account','Account & security']];
+/* key, the section's full name (read out and used in Help), and the short label that fits a phone-width button */
+const PF_SECTIONS=[['pledge','Pledge & registration','Pledge'],['me','My details & results','My details'],['account','Account & security','Account']];
 function profSection(){
  if(state.pfSection===undefined){
   let k='';try{k=localStorage.getItem('newstart.pfSection')||'';}catch(e){}
@@ -826,7 +827,7 @@ export function setProfSection(k){
 }
 export function profSectionBar(){
  const cur=profSection();
- return `<div class="pf-tabs" role="tablist" aria-label="Profile sections">${PF_SECTIONS.map(([k,l])=>`<button role="tab" aria-selected="${k===cur}" data-action="profSection" data-args="${esc(k)}" class="pf-tab${k===cur?' is-on':''}">${esc(l)}</button>`).join('')}</div>`;
+ return `<div class="pf-tabs" role="tablist" aria-label="Profile sections">${PF_SECTIONS.map(([k,l,s])=>`<button role="tab" aria-selected="${k===cur}" data-action="profSection" data-args="${esc(k)}" class="pf-tab${k===cur?' is-on':''}" aria-label="${esc(l)}">${esc(s)}</button>`).join('')}</div>`;
 }
 /* role, church and approval as small labels under the name */
 function profChips(){
@@ -841,7 +842,7 @@ function profChips(){
 function profShortcuts(){
  const a=cloud.acct;
  if(!a)return '';
- const go=(t,l)=>`<button data-action="openAcct" data-args="${esc(t)}" class="btn btn-soft flex-1 py-2.5 text-xs">${l}</button>`;
+ const go=(t,l)=>`<button data-action="openAcct" data-args="${esc(t)}" class="btn btn-soft btn-tagged flex-1 py-2.5 text-xs">${l}</button>`;
  const row=(isChurchAdmin()?go('church','My church'+roleTag('admin')):'')+(a.platform_admin?go('admin','All churches'+roleTag('owner')):'');
  return row?`<div class="mt-3 flex gap-2">${row}</div>`:'';
 }

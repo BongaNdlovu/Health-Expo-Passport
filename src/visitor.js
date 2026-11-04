@@ -887,8 +887,8 @@ export function followUpCard(a){
   </div>
   <div class="mt-3 rounded-[14px] bg-white/60 p-2.5">
    <div class="flex items-center justify-between gap-2"><span class="text-[12px] font-semibold text-[#33504f]">May the church contact them after the expo?</span>
-    <button type="button" data-action="toggleOptin" data-args="${esc(a.id)}" class="availpill hue-mint ${optedIn(a)?'availpill-on':''}" aria-pressed="${optedIn(a)}">${optedIn(a)?'✓ Yes':'No'}</button></div>
-   <p class="mt-1 text-[10.5px] text-[#6b8187]">Consent given ${esc(a.interests.consentOn||'(date not recorded)')}${a.interests.guardianName?` by ${esc(a.interests.guardianName)} (parent or guardian)`:''}. To withdraw it, a church admin deletes the record.</p>
+    <button type="button" data-action="toggleOptin" data-args="${esc(a.id)}" class="availpill hue-mint ${optedIn(a)?'availpill-on':''}" style="flex:none;white-space:nowrap" aria-pressed="${optedIn(a)}">${optedIn(a)?'✓ Yes':'No'}</button></div>
+   <p class="mt-1 text-[10.5px] text-[#6b8187]">Consent given ${esc(a.interests.consentOn||'(date not recorded)')}${a.interests.guardianName?` by ${esc(a.interests.guardianName)} (parent or guardian)`:''}. To withdraw it, ask for this record to be deleted.</p>
    <details class="mt-1"><summary class="text-[10.5px] font-semibold text-brand-800">What they agreed to${a.interests.consentV?` (notice of ${esc(a.interests.consentV)})`:''} ▾</summary>
     ${!a.interests.consentV||a.interests.consentV===NOTICE_VERSION?noticeHTML():'<p class="mt-1 text-[10.5px] text-[#6b8187]">An older version of the notice; this app now shows the '+NOTICE_VERSION+' version.</p>'}</details>
   </div>

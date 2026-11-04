@@ -1211,7 +1211,7 @@ export function viewQueue(){
     <button class="btn btn-soft q-tvbtn" data-action="openBigScreen">Big screen</button></div>
    ${qStateBar(mode)}
    <div class="q-totals">${tile(loading?'—':tot.w,'Waiting')}${tile(loading?'—':tot.s,'Being served')}${tile(loading?'—':tot.d,'Finished')}${tile(loading?'—':(tot.w?qMin(tot.l).replace(' min','m'):'—'),'Longest wait')}</div>
-   ${!loading&&over&&qMayClear()?`<button class="btn btn-soft q-clear" data-action="queueClearHistory"${can?'':' disabled'}>Clear finished &amp; removed · ${over}${roleTag('admin')}</button>`:''}
+   ${!loading&&over&&qMayClear()?`<button class="btn btn-soft btn-tagged q-clear" data-action="queueClearHistory"${can?'':' disabled'}>Clear finished &amp; removed · ${over}${roleTag('admin')}</button>`:''}
   </div>
   <div class="q-board">${QUEUE_STATIONS.map(k=>qCard(k,S[k],k===sel)).join('')}</div>
   ${qDetail(sel,S[sel],can)}

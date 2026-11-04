@@ -143,9 +143,9 @@ export function customPlanBox(a){
  const cp=a.interests&&a.interests.customPlan;
  if(state.customEdit)return customPlanHTML(a);
  if(cp)return `<div class="btn-row mt-2">
-  <button class="btn btn-glass py-2 text-[11px]" data-action="customPlanEdit">Edit custom plan${roleTag('admin')}</button>
+  <button class="btn btn-glass btn-tagged py-2 text-[11px]" data-action="customPlanEdit">Edit custom plan${roleTag('admin')}</button>
   <button class="btn btn-glass py-2 text-[11px] text-rose-700" data-action="customPlanClear">Remove custom plan</button></div>`;
- return `<button class="btn btn-glass mt-2 w-full py-2 text-[11px]" data-action="customPlanEdit">+ Write a custom plan for this visitor${roleTag('admin')}</button>`;
+ return `<button class="btn btn-glass btn-tagged mt-2 w-full py-2 text-[11px]" data-action="customPlanEdit">+ Write a custom plan for this visitor${roleTag('admin')}</button>`;
 }
 
 const churchLabel=()=>cloud.acct&&cloud.acct.church&&cloud.acct.church.name?cloud.acct.church.name:'your church';

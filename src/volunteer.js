@@ -392,7 +392,7 @@ function placeSheetHTML(){
   <div class="mt-1.5 grid grid-cols-2 gap-1.5">
    ${stations.map(({b,n})=>`<button data-action="place-move" data-args="${esc(b.k)}" class="boothpick hue-${b.hue} ${v.booth===b.k?'boothpick-sel':''}">
      <span class="flex items-center gap-2"><span class="boothpick-glyph">${b.letter}</span>
-      <span class="min-w-0"><span class="block truncate text-[10.5px] font-extrabold leading-tight text-[#123033]">${esc(b.label)}</span>
+      <span class="min-w-0"><span class="block text-[10.5px] font-extrabold leading-tight text-[#123033]">${esc(b.label)}</span>
        <span class="mono block text-[8.5px] font-bold text-[#8a9aa0]">${n}${v.booth===b.k?'':'/'+b.cap} filled</span></span></span></button>`).join('')}
   </div>
   ${v.booth?`<div class="microlabel mt-3">Swap with…</div>
@@ -404,7 +404,7 @@ function placeSheetHTML(){
    </div>
    <div class="mt-3 flex gap-2">
     <button data-action="place-release" class="btn btn-glass flex-1 py-2 text-xs text-rose-700">Take off this station</button>
-    ${isAdm?`<button data-action="place-lead" class="btn btn-soft flex-1 py-2 text-xs">${v.lead?'Remove ★ leader':'Make ★ team leader'}${roleTag('admin')}</button>`:''}
+    ${isAdm?`<button data-action="place-lead" class="btn btn-soft btn-tagged flex-1 py-2 text-xs">${v.lead?'Remove ★ leader':'Make ★ team leader'}${roleTag('admin')}</button>`:''}
    </div>`:`<p class="mt-3 text-[11px] leading-relaxed text-[#6b8187]">Pick a station above to place ${esc(firstName(v.name))}. Their choices are listed first, but the choice is yours.</p>`}`;
 }
 const rerenderPlace=()=>{const el=$('#placeBody');if(el)el.innerHTML=placeSheetHTML();};
@@ -561,7 +561,7 @@ function boothPicker(d,{onToggleA,onToggleB}){
      ${on?`<span class="boothpick-tick"><svg viewBox="0 0 24 24" style="width:.6rem;height:.6rem" fill="none" stroke="currentColor" stroke-width="3.4"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></span>`:''}
      <span class="flex items-center gap-2">
       <span class="boothpick-glyph">${b.letter}</span>
-      <span class="min-w-0"><span class="block truncate text-[10.5px] font-extrabold leading-tight text-[#123033]">${esc(b.label)}</span>
+      <span class="min-w-0"><span class="block text-[10.5px] font-extrabold leading-tight text-[#123033]">${esc(b.label)}</span>
        <span class="mono block text-[8.5px] font-bold text-[#8a9aa0]">${helpersAt(b.k).length}/${b.cap} filled</span></span>
      </span>
     </button>`;}).join('')}
@@ -1007,7 +1007,7 @@ const expoManageHTML=()=>{
  if(!EXPO_UPCOMING.sample&&!can)return '';
  return `<div class="mt-3 rounded-[14px] bg-[#123033]/[.05] p-3 text-[11px] leading-relaxed text-[#33504f]">
   ${EXPO_UPCOMING.sample?(can?'<b>This is a built-in sample expo</b>, so it cannot be deleted. Create your church’s own Health Expo and it replaces this one.':'<b>This is a built-in sample expo.</b> Your church’s Health Expo will show here once it is announced.'):''}
-  ${can?`<button data-action="expo-manage" class="btn btn-soft mt-2 w-full py-2.5 text-xs">Manage Health Expos · create, edit, delete${roleTag('admin')}</button>`:''}</div>`;
+  ${can?`<button data-action="expo-manage" class="btn btn-soft btn-tagged mt-2 w-full py-2.5 text-xs">Manage Health Expos · create, edit, delete${roleTag('admin')}</button>`:''}</div>`;
 };
 function renderVolModal(){
  const hired=staffedCount(),need=EXPO_UPCOMING.need;
