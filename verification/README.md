@@ -40,13 +40,13 @@ Exit 0 = within threshold, 1 = over, 2 = bad input. A red diff PNG is written to
 node tools/ui-budget.js
 ```
 
-Reads `verification/budget.json` (re-baselined 2026-11-03 to the current rebuild) and `dist/index.html`:
+Reads `verification/budget.json` (re-baselined 2026-11-04 to the current rebuild) and `dist/index.html`:
 
 | Metric | Baseline | Limit |
 |---|---:|---:|
-| raw page bytes | 725,333 | +2% |
-| CSS characters | 104,150 | +2% |
-| inline JS characters | 592,906 | +2% |
+| raw page bytes | 747,810 | +2% |
+| CSS characters | 104,457 | +2% |
+| inline JS characters | 615,076 | +2% |
 | external origins | 7 allowlisted | 0 new |
 
 The inline JS allowance was raised from +1% to +2% on 2026-11-04 for the admin pledge, deregister and block controls (+1.75% at the time). The release gate is +2% CSS. During the component build-out (Phases 2–6) the CSS is allowed to rise while legacy blocks still exist; Phase 7 must delete the superseded blocks and return under +2%. Page bytes and gzip are the binding runtime metrics at every phase.

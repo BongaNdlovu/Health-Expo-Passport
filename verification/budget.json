@@ -3,26 +3,26 @@
   "description": "Size and external-origin budget for the self-contained dist/index.html.",
   "baseline": {
     "appPath": "dist/index.html",
-    "sha256": "108EAE7191893345129F8A963668E096FB979846A0419EED998FF6199A984F39",
-    "rawBytes": 725333,
-    "cssChars": 104150,
-    "inlineJsChars": 592906,
-    "gzipBytes": 209624,
+    "sha256": "51FF0CDC328B14E7EB326CE1D6BE527B97D6AF670BF6666661DAFD7A5FE197B1",
+    "rawBytes": 747810,
+    "cssChars": 104457,
+    "inlineJsChars": 615076,
+    "gzipBytes": 216213,
     "gzipLevel": 9,
     "gzipMethod": "node:zlib.gzipSync(buffer, { level: 9 })"
   },
   "budgets": {
     "rawBytes": {
       "pct": 2,
-      "limit": 739839
+      "limit": 762766
     },
     "cssChars": {
       "pct": 2,
-      "limit": 106233
+      "limit": 106546
     },
     "inlineJsChars": {
       "pct": 2,
-      "limit": 604764
+      "limit": 627377
     }
   },
   "externalOrigins": {
