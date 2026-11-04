@@ -12,7 +12,7 @@ import { overlayClosed, overlayOpened } from './overlay.js';
 import { confirmAsk } from './feedback.js';
 import { roleTag } from './ui.js';
 /* a lazy cycle: account.js imports this module's modal helpers; the sync call happens only at runtime */
-import { canManageExpos, cloudSync } from './account.js';
+import { blockMember, canManageExpos, cloudSync, ensureMembers } from './account.js';
 import { downloadCSV, foodKeyOf, planFor, shortFood } from './results.js';
 import { GRACE_DAYS, withoutOldReadings } from './retention.js';
 import { queueFinishVisit } from './queue.js';
@@ -371,6 +371,7 @@ async function volRpc(fn,args,done){
 /* every placement change is pulled back straight away, so the board shows the truth even without live updates */
 const afterPlace=async()=>{await cloudSync(true);};
 export function openPlaceSheet(id){
+ if(isAdminAcct()&&cloud.user)ensureMembers();   /* to know which pledge came from an account that can be blocked */
  gotoServe();state.placeId=id;state.logOpen=false;showModal('#placeSheet',closePlaceSheet);rerenderPlace();
 }
 export function closePlaceSheet(){state.placeId='';hideModal('#placeSheet');render();}
@@ -405,7 +406,34 @@ function placeSheetHTML(){
    <div class="mt-3 flex gap-2">
     <button data-action="place-release" class="btn btn-glass flex-1 py-2 text-xs text-rose-700">Take off this station</button>
     ${isAdm?`<button data-action="place-lead" class="btn btn-soft btn-tagged flex-1 py-2 text-xs">${v.lead?'Remove ★ leader':'Make ★ team leader'}${roleTag('admin')}</button>`:''}
-   </div>`:`<p class="mt-3 text-[11px] leading-relaxed text-[#6b8187]">Pick a station above to place ${esc(firstName(v.name))}. Their choices are listed first, but the choice is yours.</p>`}`;
+   </div>`:`<p class="mt-3 text-[11px] leading-relaxed text-[#6b8187]">Pick a station above to place ${esc(firstName(v.name))}. Their choices are listed first, but the choice is yours.</p>`}
+  ${isAdm&&cloud.user?adminPledgeHTML(v):''}`;
+}
+/* an admin's controls for a whole pledge, under the placement ones: deregister, take the pledge back, block the account */
+function adminPledgeHTML(v){
+ const L=cloud.members&&cloud.members.list,acct=L&&L.find(u=>u.volunteer_id===v.id),me=cloud.acct&&cloud.acct.user_id;
+ return `<div class="microlabel mt-4">Pledge${roleTag('admin')}</div>
+  <div class="mt-1.5 flex flex-wrap gap-2">
+   ${v.status!=='prospect'?'<button data-action="vol-deregister" class="btn btn-glass flex-1 py-2 text-xs">Deregister</button>':''}
+   <button data-action="vol-unpledge" class="btn btn-glass flex-1 py-2 text-xs text-rose-700">Remove pledge</button>
+   ${acct&&acct.user_id!==me?`<button data-action="member-block" data-user="${esc(acct.user_id)}" class="btn btn-glass flex-1 py-2 text-xs text-rose-700">Block</button>`:''}
+  </div>`;
+}
+export async function adminDeregister(){
+ const v=placedVol();if(!v)return;
+ const yes=await confirmAsk({title:`Deregister ${firstName(v.name)}?`,
+  body:v.status==='checkedin'?'They are already checked in for this expo. Their check-in, station and shift are cleared; their pledge stays on the team list.'
+   :'Their station, shift and registration are cleared; their pledge stays on the team list.',
+  label:'Deregister',danger:v.status==='checkedin'});
+ if(!yes)return;
+ if(await volRpc('admin_deregister',{p_vol:v.id},`${firstName(v.name)} deregistered`)){await afterPlace();rerenderPlace();}
+}
+export async function adminUnpledge(){
+ const v=placedVol();if(!v)return;
+ const yes=await confirmAsk({title:`Remove ${firstName(v.name)}'s pledge?`,
+  body:'They come off the team list for good, with their station and history. They can pledge again later.',label:'Remove',danger:true});
+ if(!yes)return;
+ if(await volRpc('admin_unpledge',{p_vol:v.id},'Pledge removed')){closePlaceSheet();await afterPlace();}
 }
 const rerenderPlace=()=>{const el=$('#placeBody');if(el)el.innerHTML=placeSheetHTML();};
 export async function placeMove(booth){

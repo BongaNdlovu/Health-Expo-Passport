@@ -1,7 +1,7 @@
 // @ts-check
 import { acctRetry, manageExpos, removeVisitorAsk, closeAcct, cloudInit, cloudSignIn, cloudSignOut, cloudSync, gateBack, joinChurch, leaveChurch, linkMember, linkVolunteer, manageChurch, markNotifsRead, myField, myPickPledge, myPledgeEdit, myPledgeSave, mySecondBooth, myToggleBooth, myToggleList, notifClose, notifOpen, openAcct, openNotifs, profDeleteAsk, profDeleteGo, profDeleteTyped, profGate, profPassword, quarantineDiscard, quarantineExport, registerChurch, removeMember, renderAcct, saveChurch, saveMyDetails, setChurchStatus, setMember, teamAdd, teamRelease, teamShift, withdrawMyPledge } from './account.js';
 import { addPlatformAdmin, approveAssistant, cancelExpo, churchSearchSoon, deleteExpoAsk, editExpo, expoField, expoStation, expoType, newExpo, openChurchData, pickExpo, pickWant, pickWantBooth, pledgeToExpo, saveExpoForm, setAdminPost, setExpoStatus, stepDown } from './account.js';
-import { cloudPush, deregisterMyPledge, setProfSection } from './account.js';
+import { blockMember, cloudPush, deregisterMyPledge, setProfSection, unblockMember } from './account.js';
 import { answer } from './feedback.js';
 import { updateLater, updateNow } from './update.js';
 import { cancelInvites, chooseChurchPlan, chooseFollowup, deleteChurchPlan, editChurchPlan, makeInvite, saveChurchPlan, setFollowup } from './churchPlans.js';
@@ -22,7 +22,7 @@ import { clearVisitorSearch, filterVisitors, onPrayer, onStationCommit, onStatio
 import { applyReading, cancelReg, confirmResults, editReadings, finishVisit, goVisit, metricBack, newVisitFrom, onChronicList, onHeight, openMetric, pickSex, recordConsent, setAnswer, setMyStation, showGuardian, switchTo, toggleOptin, toggleTick } from './visitor.js';
 import { customPlanClear, customPlanEdit, customPlanFromCurrent, customPlanImport, customPlanSave, customPlanTemplate } from './customPlan.js';
 import { closeVolReg, closeWhatsApp, exportVolCSV, logExpoEntry, openEmail, openSwitcher, openVolModal, openVolReg, openVolSwitcher, openWhatsApp, pickSecondBooth, pickVolunteer, printCard, removeExpoEntry, saveExpoEntry, saveVolunteer, sendEmail, sendWhatsApp, setVol, setVolTab, startNewVolunteer, switchToVol, toggleDraftBooth, toggleDraftList, toggleShift } from './volunteer.js';
-import { closeSwitcher, closeVolModal, closePlaceSheet, filterSwitcher, filterVolSwitcher, openWAFor, openPlaceSheet, pickAttendee, pickPledge, placeLead, placeMove, placeRelease, placeSwap, recycleBadge, registerNew, setSwitchMode, showAllVol } from './volunteer.js';
+import { adminDeregister, adminUnpledge, closeSwitcher, closeVolModal, closePlaceSheet, filterSwitcher, filterVolSwitcher, openWAFor, openPlaceSheet, pickAttendee, pickPledge, placeLead, placeMove, placeRelease, placeSwap, recycleBadge, registerNew, setSwitchMode, showAllVol } from './volunteer.js';
 
 
 /* The action registry: one entry per data-action name. Plain functions are called with (element, event)
@@ -94,6 +94,11 @@ export const ACTION_MAP = {
   queueServe: el => queueServe(el.dataset.args),
   recordConsent: el => recordConsent(el.dataset.args),
   removeMember: el => removeMember(el.dataset.args),
+  'member-block': el => blockMember(el.dataset.user, false),
+  'member-block-app': el => blockMember(el.dataset.user, true),
+  'member-unblock': el => unblockMember(el.dataset.user, el.dataset.church),
+  'vol-deregister': () => adminDeregister(),
+  'vol-unpledge': () => adminUnpledge(),
   setFoodPlan: el => setFoodPlan(el.dataset.args),
   setMyStation: el => setMyStation(el.dataset.args),
   setSwitchMode: el => setSwitchMode(el.dataset.args),

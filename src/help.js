@@ -275,7 +275,10 @@ export const HELP_PAGES = [
     { name: 'Placement board', role: 'lead', items: [
       ['Opening it', 'With placement mode on, tap a volunteer in the Team list to open the placement board.'],
       ['Move, Swap, Release', 'Move a helper to another booth, swap two helpers, or release a helper from a booth.'],
-      ['Lead', 'Makes you the leader of a booth.', 'admin'] ] },
+      ['Lead', 'Makes you the leader of a booth.', 'admin'],
+      ['Deregister', 'Takes a registered or checked-in volunteer off the expo: their station, shift and check-in are cleared and their pledge stays on the team list. It asks first, and warns when they are already checked in.', 'admin'],
+      ['Remove pledge', 'Takes the pledge back for good: the volunteer comes off the team list. They can pledge again later.', 'admin'],
+      ['Block', 'Shown when the volunteer pledged from an account. Blocks that account from your church (see My church → Blocked).', 'admin'] ] },
     { name: 'A team leader’s team', role: 'lead', items: [
       ['Add, release, shift', 'A leader can add a helper to their team, release one, and set their shift.'] ] } ] },
 
@@ -324,7 +327,10 @@ export const HELP_PAGES = [
       ['Approve', 'Lets someone who asked to join the church in.'],
       ['Role', 'Sets a member’s role: Member, Volunteer, Team member, Team leader, Assistant Health Department Leader, or Health Department Leader (the admin).'],
       ['Link', 'Ties a member to a volunteer record or a visitor badge.'],
-      ['Remove, Step down, Leave', 'Removes a member, steps you down as admin, or leaves the church.'] ] },
+      ['Remove, Step down, Leave', 'Removes a member, steps you down as admin, or leaves the church.'],
+      ['Block', 'Removes the member and their pledge, and stops the account asking to join your church again. The Health Department Leader blocks admins.'],
+      ['Block from app', 'The app owner only: the account loses every church and cannot join or register one.', 'owner'],
+      ['Blocked', 'The accounts blocked from your church, with Unblock. Every block and unblock is kept in the change log.'] ] },
     { name: 'Staff approval', items: [
       ['Approve staff', 'Lets a staff account see the queue and the church’s data.'] ] },
     { name: 'Invitations', items: [
@@ -453,6 +459,7 @@ export const HELP_TOPICS = [
 export const HELP_MESSAGES = [
  ['The live queue isn’t switched on for your church yet', 'Your church’s queue has not been set up on the shared database. Ask your church admin to contact the app’s support. Meanwhile you can still register and check visitors.'],
  ['This sign-in is not approved for the queue', 'Ask a church admin to approve your staff account.'],
+ ['This account can’t join this church. Contact the church if you think this is a mistake.', 'The account cannot join that church. Speak to someone at the church.'],
  ['No connection — the queue cannot change', 'Queue changes need a connection. Reconnect, then try again.'],
  ['Deregistered — your pledge still stands', 'Deregister worked: your station is released and your pledge stays on the team list.'],
  ['Your pledge is withdrawn', 'Unpledge worked: your name is off the team list.'],

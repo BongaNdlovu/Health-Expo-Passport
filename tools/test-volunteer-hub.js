@@ -184,6 +184,60 @@ const PROJ = path.join(__dirname, '..');
   const leadNotes = await SQL(`select title from public.notifications where user_id=$1 and kind='lead'`, [U.mallory]);
   ok('the insert succeeds and no "You lead" notice is sent without a station', !r.error && leadNotes.length === 0, msg(r) + ' ' + JSON.stringify(leadNotes));
 
+  console.log('\n14. admins unpledge, deregister and block; a blocked account cannot come back');
+  // carol = church B admin (Health Department Leader); alice = app owner; bob = staff; eve and mallory = members
+  await SQL(`insert into public.volunteers (church_id,id,name,status,booth,checked_in) values ($1,'VOL-9700','Checked In','checkedin','plan',true)`, [B]);
+  await SQL(`insert into public.volunteers (church_id,id,name,status,booth,shift,registered_on) values ($1,'VOL-9701','Registered','registered','sugar','08:30–11:00',current_date)`, [B]);
+  await SQL(`insert into public.volunteers (church_id,id,name,status) values ($1,'VOL-9702','Just Pledged','prospect')`, [B]);
+  await SQL(`insert into public.volunteers (church_id,id,name,status) values ($1,'VOL-9703','Eve Pledge','prospect')`, [B]);
+  await SQL(`update public.memberships set volunteer_id='VOL-9703' where user_id=$1`, [U.eve]);
+  ok('staff cannot deregister someone', await refused(U.bob, `select public.admin_deregister('VOL-9701')`));
+  ok('staff cannot take back someone else\'s pledge', await refused(U.bob, `select public.admin_unpledge('VOL-9702')`));
+  r = await as(U.carol, `select public.admin_deregister('VOL-9701')`);
+  row = (await SQL(`select status,booth,shift,registered_on from public.volunteers where church_id=$1 and id='VOL-9701'`, [B]))[0];
+  ok('an admin deregisters a registered volunteer: back to pledged, station, shift and date cleared',
+    !r.error && row.status === 'prospect' && row.booth === null && row.shift === '' && row.registered_on === null, msg(r) + ' ' + JSON.stringify(row));
+  r = await as(U.carol, `select public.admin_deregister('VOL-9700')`);
+  row = (await SQL(`select status,booth,checked_in from public.volunteers where church_id=$1 and id='VOL-9700'`, [B]))[0];
+  ok('...and a checked-in one (the app asks first)', !r.error && row.status === 'prospect' && row.booth === null && row.checked_in === false, msg(r) + ' ' + JSON.stringify(row));
+  r = await as(U.carol, `select public.admin_deregister('VOL-9702')`);
+  ok('deregistering someone who only pledged says to remove the pledge instead', !!r.error && /remove the pledge/.test(r.error.message), msg(r));
+  r = await as(U.carol, `select public.admin_unpledge('VOL-9702')`);
+  ok('an admin takes back a pledge: the row is gone', !r.error && (await SQL(`select 1 from public.volunteers where church_id=$1 and id='VOL-9702'`, [B])).length === 0, msg(r));
+
+  ok('staff cannot block anyone', await refused(U.bob, `select public.block_member($1,$2)`, [U.eve, B]));
+  ok('a church admin cannot block from the whole app', await refused(U.carol, `select public.block_member($1,null)`, [U.eve]));
+  ok('nobody can block the app owner', await refused(U.carol, `select public.block_member($1,$2)`, [U.alice, B]));
+  r = await as(U.carol, `select public.block_member($1,$2)`, [U.eve, B]);
+  ok('an admin blocks a member from the church: no error', !r.error, msg(r));
+  ok('...their membership is gone', (await SQL(`select 1 from public.memberships where user_id=$1`, [U.eve])).length === 0);
+  ok('...and so is their pledge', (await SQL(`select 1 from public.volunteers where church_id=$1 and id='VOL-9703'`, [B])).length === 0);
+  r = await as(U.eve, `select public.join_church($1,'eve','')`, [B]);
+  ok('a blocked account cannot ask to join that church again, and is told so neutrally',
+    !!r.error && /can't join this church/.test(r.error.message) && !/block/i.test(r.error.message), msg(r));
+  r = await as(U.carol, `select * from public.church_blocks($1)`, [B]);
+  ok('the admin sees them on the Blocked list, with name and email', !r.error && r.rows.length === 1 && r.rows[0].email === 'eve@example.org', msg(r));
+  ok('a member cannot read the Blocked list', await refused(U.bob, `select * from public.church_blocks($1)`, [B]));
+  const audit = await SQL(`select op from public.audit_log where tbl='blocks' and row_id=$1`, [U.eve]);
+  ok('the block is in the change log', audit.some(a => a.op === 'BLOCK'), JSON.stringify(audit));
+  r = await as(U.carol, `select public.unblock_member($1,$2)`, [U.eve, B]);
+  ok('the admin unblocks them', !r.error, msg(r));
+  r = await as(U.eve, `select public.join_church($1,'eve','')`, [B]);
+  ok('...and they may ask to join again', !r.error, msg(r));
+
+  r = await as(U.alice, `select public.block_member($1,null)`, [U.mallory]);
+  ok('the app owner blocks an account from the whole app: its membership goes', !r.error && (await SQL(`select 1 from public.memberships where user_id=$1`, [U.mallory])).length === 0, msg(r));
+  r = await as(U.mallory, `select public.register_church('Mallory Church') as id`);
+  ok('...it cannot register a church of its own', !!r.error && /can't join/.test(r.error.message), msg(r));
+  ok('...and nothing of that attempt was left behind', (await SQL(`select 1 from public.churches where name='Mallory Church'`)).length === 0);
+  r = await as(U.mallory, `select public.join_church($1,'mallory','')`, [B]);
+  ok('...nor join any church', !!r.error, msg(r));
+  r = await as(U.alice, `select * from public.church_blocks(null)`);
+  ok('the app owner sees the app-wide Blocked list', !r.error && r.rows.some(x => x.user_id === U.mallory), msg(r));
+  ok('a church admin cannot read the app-wide list', await refused(U.carol, `select * from public.church_blocks(null)`));
+  r = await as(U.alice, `select public.unblock_member($1,null)`, [U.mallory]);
+  ok('the app owner unblocks it', !r.error && !(await as(U.mallory, `select public.join_church($1,'mallory','')`, [B])).error, msg(r));
+
   console.log(`\nRESULT: ${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
   process.exit(0);

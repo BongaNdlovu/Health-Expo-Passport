@@ -2401,7 +2401,7 @@ function makeServer() {
     ok('an Undo toast leaves with its offer (it stayed up and covered the buttons)',
       /setTimeout\([^\n]*toastUndo[^\n]*opacity-0/.test(bodyOf(sh, 'export function toastUndo')));
     ok('every placement Undo redraws the open sheet (it kept showing the old station)',
-      vol.split('afterPlace();rerenderPlace();}').length - 1 === 3 && !vol.includes('then(r2=>{if(r2)afterPlace();})'));
+      vol.split('afterPlace();rerenderPlace();}').length - 1 === 4   /* the three Undos, and the admin Deregister */ && !vol.includes('then(r2=>{if(r2)afterPlace();})'));
   }
   { /* a chip inside the member's pledge <form> was a submit button: the first tap sent a half-filled pledge */
     const vs = require('fs').readFileSync(require('path').join(__dirname, '..', 'src', 'volunteer.js'), 'utf8').replace(/\r/g, '');
@@ -6633,6 +6633,51 @@ function makeServer() {
       tap('urgent-undo', red.id); await sleep(20);
       ok('FUP-CARE-7 Undo takes the mark back and the visitor counts again', badge() === n0 && !back.interests.attended);
       g.resetDemo(); g.state.tab = 'home';
+    }
+
+    /* FUP-ADM: admins deregister, take back pledges and block; the app owner also blocks from the whole app */
+    {
+      device(); await signIn(); await sleep(200);
+      const calls = [];
+      const rec = n => a => { calls.push(n + ':' + JSON.stringify(a)); return { data: n === 'church_blocks' ? [{ user_id: 'u-blocked', name: 'Blocked Person', email: 'b@example.org', at: '2026-11-04T10:00:00Z' }] : null, error: null }; };
+      srv.rpcs = { admin_deregister: rec('admin_deregister'), admin_unpledge: rec('admin_unpledge'), block_member: rec('block_member'), unblock_member: rec('unblock_member'), church_blocks: rec('church_blocks'),
+        church_members: () => ({ data: [{ user_id: 'user-1', full_name: 'Me Admin', email: 'staff@example.org', role: 'admin', status: 'approved' },
+          { user_id: 'u-eve', full_name: 'Eve Member', email: 'eve@example.org', role: 'member', status: 'approved', volunteer_id: 'VOL-9800' }], error: null }) };
+      const acct = { user_id: 'user-1', church: { id: 'ch-a', name: 'Grace', status: 'active' }, membership: { role: 'admin', status: 'approved', church_id: 'ch-a', admin_rank: 1 }, server_now: new Date().toISOString() };
+      srv.rpcs.my_account = () => ({ data: acct, error: null });   /* the re-sync after each action reads the same admin back */
+      C.acct = acct; C.churchId = 'ch-a'; C.members = null;
+      g.volunteers.push(g.migrateVolunteer({ id: 'VOL-9800', name: 'Eve Member', status: 'registered', booth: 'bp', pref: ['bp'], history: [] }));
+      g.openPlaceSheet('VOL-9800'); await sleep(80); g.openPlaceSheet('VOL-9800');
+      const sheet = $el('placeBody').innerHTML;
+      ok('FUP-ADM-1 an admin\'s placement sheet has Deregister, Remove pledge and Block, tagged Admin only',
+        /data-action="vol-deregister"/.test(sheet) && /data-action="vol-unpledge"/.test(sheet) && /data-action="member-block" data-user="u-eve"/.test(sheet) && /Pledge<span class="servechip sc-role">Admin only/.test(sheet), '');
+      g.setAutoAnswer(true);
+      const tap = (action, data) => { const el = { dataset: Object.assign({ action }, data || {}), tagName: 'BUTTON', hasAttribute: () => false, closest() { return this; } }; g.dispatch(el, { type: 'click', target: el }); };
+      tap('vol-deregister'); await sleep(60);
+      ok('FUP-ADM-2 Deregister asks the database for that volunteer', calls.includes('admin_deregister:{"p_vol":"VOL-9800"}'), calls.join(' '));
+      tap('member-block', { user: 'u-eve' }); await sleep(60);
+      ok('FUP-ADM-3 Block blocks the account from this church', calls.includes('block_member:{"p_user":"u-eve","p_church":"ch-a"}'), calls.join(' '));
+      g.openPlaceSheet('VOL-9800'); tap('vol-unpledge'); await sleep(60);
+      ok('FUP-ADM-4 Remove pledge takes the pledge back', calls.includes('admin_unpledge:{"p_vol":"VOL-9800"}'), calls.join(' '));
+      await sleep(200); C.acct = acct; acct.membership.role = 'staff'; g.openPlaceSheet('VOL-9800');
+      ok('FUP-ADM-5 a staff member\'s sheet has none of them', !/vol-deregister|vol-unpledge|member-block/.test($el('placeBody').innerHTML));
+      acct.membership.role = 'admin'; g.closePlaceSheet();
+      const row = g.memberRow({ user_id: 'u-eve', full_name: 'Eve Member', email: 'eve@example.org', role: 'member', status: 'approved' }, [], 1, {}, true);
+      ok('FUP-ADM-6 the Members list offers Block, and not Block from app to a church admin', /data-action="member-block"/.test(row) && !/member-block-app/.test(row));
+      acct.platform_admin = true; C.acct = acct;
+      const rowOwner = g.memberRow({ user_id: 'u-eve', full_name: 'Eve Member', email: 'eve@example.org', role: 'member', status: 'approved' }, [], 1, {}, true);
+      ok('FUP-ADM-7 the app owner also gets Block from app, tagged App owner', /data-action="member-block-app"[^>]*>Block from app<span class="servechip sc-role">App owner/.test(rowOwner));
+      tap('member-block-app', { user: 'u-eve' }); await sleep(60);
+      ok('FUP-ADM-8 Block from app blocks from every church', calls.includes('block_member:{"p_user":"u-eve","p_church":null}'), calls.join(' '));
+      const selfRow = g.memberRow({ user_id: 'user-1', full_name: 'Me Admin', email: 'staff@example.org', role: 'admin', status: 'approved' }, [], 1, { 'user-1': 1 }, true);
+      ok('FUP-ADM-9 nobody is offered a Block on their own row', !/member-block/.test(selfRow));
+      await sleep(200); C.acct = acct; C.blocks = null; g.openAcct('church'); await sleep(80); g.renderAcct && g.renderAcct();
+      const hub = $el('acctBody').innerHTML;
+      ok('FUP-ADM-10 My church lists the blocked accounts with Unblock', /Blocked Person/.test(hub) && /data-action="member-unblock" data-user="u-blocked" data-church="ch-a"/.test(hub), hub.slice(hub.indexOf('Blocked'), hub.indexOf('Blocked') + 200));
+      tap('member-unblock', { user: 'u-blocked', church: 'ch-a' }); await sleep(60);
+      ok('FUP-ADM-11 Unblock asks the database to lift it', calls.includes('unblock_member:{"p_user":"u-blocked","p_church":"ch-a"}'), calls.join(' '));
+      g.closeAcct && g.closeAcct(); g.setAutoAnswer(false);
+      srv.rpcs = null; C.acct = null; C.members = null; C.blocks = null; C.appBlocks = null; C.churchId = '';
     }
 
     /* FUP-ROLE: role-only controls carry a tag for the people who have them; nobody else reads about them */

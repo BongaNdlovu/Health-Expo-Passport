@@ -2817,6 +2817,182 @@ begin
   end loop;
 end $$;
 
+-- ================================================================ ADMIN: UNPLEDGE, DEREGISTER, BLOCK (2026-11-04)
+-- A church's admins can take back anyone's pledge, take a registered (or checked-in) volunteer off the expo, and
+-- block an account from their church. The app owner (platform admin) can also block an account from the whole app.
+-- A block removes the person's pledge and membership, and the guard below stops them joining again by any route:
+-- a join request, an invite link or registering a church. They are told only that the account can't join.
+
+create table if not exists public.blocks (
+  id         bigint generated always as identity primary key,
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  church_id  uuid references public.churches (id) on delete cascade,   -- null: blocked from the whole app
+  name       text not null default '' check (length(name) <= 200),   -- as known when blocked, for the Blocked list
+  email      text not null default '' check (length(email) <= 320),
+  blocked_by uuid default auth.uid(),
+  at         timestamptz not null default now()
+);
+create unique index if not exists blocks_one_per_scope
+  on public.blocks (user_id, coalesce(church_id, '00000000-0000-0000-0000-000000000000'::uuid));
+alter table public.blocks enable row level security;   -- no policies: read through church_blocks() only
+revoke all on public.blocks from anon, authenticated;
+
+create or replace function public.memberships_block_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if exists (select 1 from public.blocks b
+             where b.user_id = new.user_id and (b.church_id is null or b.church_id = new.church_id)) then
+    raise exception 'This account can''t join this church. Contact the church if you think this is a mistake.'
+      using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.memberships_block_guard() from public, anon, authenticated;
+drop trigger if exists memberships_block_guard on public.memberships;
+create trigger memberships_block_guard before insert or update of church_id on public.memberships
+  for each row execute function public.memberships_block_guard();
+
+-- take back a volunteer's pledge entirely (any status): the row goes, and the account it was linked to is unlinked
+create or replace function public.admin_unpledge(p_vol text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_church uuid := public.hub_church();
+begin
+  if v_church is null or not public.church_admin_of(v_church) then
+    raise exception 'Only the church''s admins can do that.' using errcode = '42501';
+  end if;
+  perform pg_advisory_xact_lock(hashtext('vol:' || v_church::text));
+  update public.memberships m set volunteer_id = null, updated_at = now()
+   where m.church_id = v_church and m.volunteer_id = p_vol;
+  delete from public.volunteers v where v.church_id = v_church and v.id = p_vol;
+  if not found then raise exception 'No such volunteer in your church.'; end if;
+end;
+$$;
+
+-- take a registered or checked-in volunteer off the expo: the pledge stays on the team list as 'prospect', with the
+-- station, shift, registration date, check-in and team-leader title cleared (the app asks first when checked in)
+create or replace function public.admin_deregister(p_vol text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_church uuid := public.hub_church(); v_row public.volunteers;
+begin
+  if v_church is null or not public.church_admin_of(v_church) then
+    raise exception 'Only the church''s admins can do that.' using errcode = '42501';
+  end if;
+  perform pg_advisory_xact_lock(hashtext('vol:' || v_church::text));
+  select * into v_row from public.volunteers v where v.church_id = v_church and v.id = p_vol for update;
+  if not found then raise exception 'No such volunteer in your church.'; end if;
+  if v_row.status = 'prospect' then raise exception 'They are not registered for the expo — remove the pledge instead.'; end if;
+  perform set_config('newstart.lead_ok', 'on', true);
+  update public.volunteers v set
+    status = 'prospect', booth = null, shift = '', registered_on = null, lead = false, checked_in = false,
+    role = case when v.lead then '' else v.role end, updated_at = now()
+  where v.church_id = v_church and v.id = p_vol;
+end;
+$$;
+
+-- block an account: p_church = a church the caller runs (blocks it from that church), or null (the app owner only:
+-- blocks it from every church). Its pledge and membership in that church go at once.
+create or replace function public.block_member(p_user uuid, p_church uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_m public.memberships; v_email text; v_name text;
+begin
+  if (select auth.uid()) is null then raise exception 'sign in first' using errcode = '42501'; end if;
+  if p_user = (select auth.uid()) then raise exception 'You cannot block your own account.'; end if;
+  if exists (select 1 from public.platform_admins pa where pa.user_id = p_user) then
+    raise exception 'The app owner''s account cannot be blocked.';
+  end if;
+  select * into v_m from public.memberships m where m.user_id = p_user;
+  if p_church is null then
+    if not public.is_platform_admin() then raise exception 'Only the app owner can block an account from the whole app.' using errcode = '42501'; end if;
+  else
+    if not public.church_admin_of(p_church) then raise exception 'Only the church''s admins can do that.' using errcode = '42501'; end if;
+    if v_m.user_id is null or v_m.church_id <> p_church then raise exception 'That person is not in this church.'; end if;
+    if v_m.role = 'admin' and v_m.status = 'approved' and not public.church_leader_of(p_church) then
+      raise exception 'Only the Health Department Leader or the app owner can block an admin.' using errcode = '42501';
+    end if;
+  end if;
+  select u.email::text, coalesce(nullif(btrim(v_m.full_name), ''), u.raw_user_meta_data ->> 'full_name', '')
+    into v_email, v_name from auth.users u where u.id = p_user;
+  if v_email is null then raise exception 'No such account.'; end if;
+  if not exists (select 1 from public.blocks b where b.user_id = p_user and b.church_id is not distinct from p_church) then
+    insert into public.blocks (user_id, church_id, name, email) values (p_user, p_church, left(v_name, 200), left(v_email, 320));
+  end if;
+  if v_m.user_id is not null and (p_church is null or v_m.church_id = p_church) then
+    perform pg_advisory_xact_lock(hashtext('vol:' || v_m.church_id::text));
+    if v_m.volunteer_id is not null then
+      perform set_config('newstart.lead_ok', 'on', true);
+      delete from public.volunteers v where v.church_id = v_m.church_id and v.id = v_m.volunteer_id;
+    end if;
+    delete from public.memberships m where m.user_id = p_user;
+  end if;
+  insert into public.audit_log (tbl, op, row_id, church_id) values ('blocks', 'BLOCK', p_user::text, coalesce(p_church, v_m.church_id));
+end;
+$$;
+
+create or replace function public.unblock_member(p_user uuid, p_church uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if p_church is null then
+    if not public.is_platform_admin() then raise exception 'Only the app owner can do that.' using errcode = '42501'; end if;
+  elsif not public.church_admin_of(p_church) then
+    raise exception 'Only the church''s admins can do that.' using errcode = '42501';
+  end if;
+  delete from public.blocks b where b.user_id = p_user and b.church_id is not distinct from p_church;
+  if not found then raise exception 'That account is not blocked here.'; end if;
+  insert into public.audit_log (tbl, op, row_id, church_id) values ('blocks', 'UNBLOCK', p_user::text, p_church);
+end;
+$$;
+
+-- the Blocked list: a church's own blocks for its admins, or (p_church null) the app-wide blocks for the app owner
+create or replace function public.church_blocks(p_church uuid)
+returns table (user_id uuid, name text, email text, at timestamptz)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+begin
+  if p_church is null then
+    if not public.is_platform_admin() then raise exception 'Only the app owner can do that.' using errcode = '42501'; end if;
+  elsif not public.church_admin_of(p_church) then
+    raise exception 'Only the church''s admins can do that.' using errcode = '42501';
+  end if;
+  return query select b.user_id, b.name, b.email, b.at from public.blocks b
+    where b.church_id is not distinct from p_church order by b.at desc;
+end;
+$$;
+
+do $$
+declare f text;
+begin
+  foreach f in array array['admin_unpledge(text)', 'admin_deregister(text)', 'block_member(uuid, uuid)',
+                           'unblock_member(uuid, uuid)', 'church_blocks(uuid)'] loop
+    execute format('revoke all on function public.%s from public, anon', f);
+    execute format('grant execute on function public.%s to authenticated', f);
+  end loop;
+end $$;
+
 -- ================================================================ AFTER RUNNING THE SCRIPT
 -- 1. Make yourself the platform admin, once (change the email). Only this SQL editor can do it:
 --
