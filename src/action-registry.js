@@ -1,6 +1,6 @@
 // @ts-check
 import { acctRetry, manageExpos, removeVisitorAsk, closeAcct, cloudInit, cloudSignIn, cloudSignOut, cloudSync, gateBack, joinChurch, leaveChurch, linkMember, linkVolunteer, manageChurch, markNotifsRead, myField, myPickPledge, myPledgeEdit, myPledgeSave, mySecondBooth, myToggleBooth, myToggleList, notifClose, notifOpen, openAcct, openNotifs, profDeleteAsk, profDeleteGo, profDeleteTyped, profGate, profPassword, quarantineDiscard, quarantineExport, registerChurch, removeMember, renderAcct, saveChurch, saveMyDetails, setChurchStatus, setMember, teamAdd, teamRelease, teamShift, withdrawMyPledge } from './account.js';
-import { addPlatformAdmin, approveAssistant, cancelExpo, churchSearchSoon, deleteExpoAsk, editExpo, expoField, expoStation, expoType, newExpo, openChurchData, pickExpo, pickWant, pickWantBooth, pledgeToExpo, saveExpoForm, setAdminPost, setExpoStatus, stepDown } from './account.js';
+import { addPlatformAdmin, approveAssistant, approveLeader, changeChurch, chooseChurch, cancelExpo, churchSearchSoon, deleteExpoAsk, editExpo, expoField, expoStation, expoType, newExpo, openChurchData, pickExpo, pickWant, pickWantBooth, pledgeToExpo, saveExpoForm, setAdminPost, setExpoStatus, stepDown } from './account.js';
 import { blockMember, cloudPush, deregisterMyPledge, setProfSection, unblockMember } from './account.js';
 import { answer } from './feedback.js';
 import { updateLater, updateNow } from './update.js';
@@ -200,6 +200,10 @@ export const ACTION_MAP = {
   'want-booth': el => pickWantBooth(el.dataset.args),
   'member-post': el => setAdminPost(el.dataset.user, el.value),
   'member-approve-assistant': el => approveAssistant(el.dataset.user),
+  'member-approve-leader': el => approveLeader(el.dataset.user),
+  'church-choose': el => chooseChurch(el.dataset.args),
+  'church-change': () => changeChurch(),
+  'reg-post': el => { cloud.regPost = el.dataset.args === 'assistant' ? 'assistant' : 'leader'; cloud.acctV++; renderGate(); },
   'all-churches-back': el => { cloud.adminData = ''; renderAcct(); },
   'staff-approve': el => approveStaff(el.dataset.args, el),
   'approvals-clear': el => { cloud.isAdmin = undefined; cloud.approvalUnknown = false; cloud.apprRetryAt = 0; renderCloudBody(); },   /* Refresh accepts the failed check away, so the admin question is asked again (A19) */

@@ -3026,7 +3026,7 @@ function makeServer() {
         my_account: () => { acctCalls++; return done(JSON.parse(JSON.stringify(me))); },
         church_directory: a => { rc.push('dir:' + a.p_search); return done([{ id: A.id, name: A.name, city: A.city }]); },
         join_church: a => { rc.push('join:' + a.p_church); if (a.p_wants) rc.push('wants:' + a.p_church + ':' + a.p_wants + ':' + (a.p_booths || []).join('+')); me.membership = member(); me.church = { ...A }; return done(); },
-        register_church: a => { rc.push('register:' + a.p_name + ':' + a.p_city); me.membership = member({ church_id: B.id, role: 'admin', status: 'approved' }); me.church = { ...B, name: a.p_name, city: a.p_city }; return done(B.id); },
+        register_church: a => { rc.push('register:' + a.p_name + ':' + a.p_city); if (a.p_post) rc.push('post:' + a.p_post); me.membership = member({ church_id: B.id, role: 'admin', status: 'approved' }); me.church = { ...B, name: a.p_name, city: a.p_city }; return done(B.id); },
         update_my_details: a => { rc.push(['details', a.p_full_name, a.p_phone, a.p_area, a.p_birth_date].join(':')); Object.assign(me.membership, { full_name: a.p_full_name, phone: a.p_phone, area: a.p_area, birth_date: a.p_birth_date }); return done(); },
         leave_church: () => { rc.push('leave'); me.membership = null; me.church = null; return done(); },
         my_health: () => { rc.push('health'); return done(health); },
@@ -3087,13 +3087,26 @@ function makeServer() {
     const demoRows = g.attendees.length;
     await fresh(person()); await sleep(30);
     ok('signed in with no church → "Choose your church", with the list of churches', gateShown() && g.gateState() === 'church' && /Choose your church/.test(gate())
-      && /Grace Chapel/.test($el('churchDir').innerHTML) && /data-action="join-church" data-args="ch-a"/.test($el('churchDir').innerHTML), g.gateState());
+      && /Grace Chapel/.test($el('churchDir').innerHTML) && /data-action="church-choose" data-args="ch-a"/.test($el('churchDir').innerHTML) && /Step 1 of 2/.test(gate())
+      && !/data-action="want-pick"/.test(gate()), g.gateState());   /* church first: no positions until a church is chosen */
     ok('…and a "← Back to sign in" at the top signs the account out', /class="tap-link mb-2" data-action="cloudSignOut">← Back to sign in/.test(gate()));
     ok('…and the visitor data saved on this device is cleared', demoRows > 0 && g.attendees.length === 0 && g.volunteers.length === 0, demoRows + ' → ' + g.attendees.length);
     ok('…and only the platform admin is offered the admin screens', !/data-action="openAcct" data-args="admin"/.test(gate()) && !g.acctTabs().some(t => t[0] === 'admin'));
-    ok('…and "What would you like to be?" comes first, with the positions and Health Department Leader (register a church)',
-      /What would you like to be\?/.test(gate()) && /data-action="want-pick" data-args="team_leader"/.test(gate()) && /data-action="want-pick" data-args="assistant"/.test(gate()) && /data-action="reg-church-form"/.test(gate())
-      && !/data-action="want-booth"/.test(gate()), gate().slice(0, 300));
+    g.chooseChurch('ch-a'); await sleep(5);
+    ok('…choosing the church shows step 2: the positions at that church, a Change link and Send my request',
+      /Step 2 of 2/.test(gate()) && /What is your position at Grace Chapel\?/.test(gate()) && /data-action="want-pick" data-args="team_leader"/.test(gate()) && /data-action="want-pick" data-args="assistant"/.test(gate())
+      && /data-action="church-change"/.test(gate()) && /data-action="join-church" data-args="ch-a"[^>]*>Send my request/.test(gate())
+      && !/data-action="want-booth"/.test(gate()) && !/data-args="leader"/.test(gate()), gate().slice(0, 300));   /* this church has a Leader (no has_leader:false) */
+    C.dir = [...C.dir, { id: 'ch-n', name: 'Open Church', city: 'Durban', status: 'active', has_leader: false }];
+    g.chooseChurch('ch-n'); await sleep(5);
+    ok('FUP-POS-1 a church with no Health Department Leader also offers that post, approved by the Health Expo admin',
+      /data-action="want-pick" data-args="leader"/.test(gate()) && /What is your position at Open Church/.test(gate()), gate().slice(0, 200));
+    g.pickWant('leader'); await sleep(5);
+    ok('FUP-POS-2 ...choosing it says who approves it', C.wants === 'leader' && /Health Expo admin approves who leads a church/.test(gate()));
+    g.changeChurch(); await sleep(5);
+    ok('FUP-POS-3 Change goes back to the list of churches', /Step 1 of 2/.test(gate()) && !/Step 2 of 2/.test(gate()));
+    g.chooseChurch('ch-a'); await sleep(5);
+    ok('FUP-POS-4 choosing a church that has a Leader drops that choice', C.wants === 'member' && !/data-args="leader"/.test(gate()));
     g.pickWant('team_leader'); await sleep(5);
     ok('…a team leader is asked for one station, and an assistant is told the Leader approves',
       /Which station would you lead/.test(gate()) && /data-action="want-booth" data-args="bp"/.test(gate()), gate().slice(0, 200));
@@ -3153,10 +3166,15 @@ function makeServer() {
     ok('"My church is not listed" opens the church registration form', /Register the church/.test(gate()));
     ok('…and it lists the churches already registered, so a church is not registered twice: Join for an active one, a waiting note for a pending one',
       /Already registered/.test(gate()) && gate().includes('Grace Chapel') && gate().includes('Zion Fellowship') && /data-on-input="church-search"/.test(gate())
-      && (gate().match(/data-action="join-church"/g) || []).length === 1 && /Waiting for approval/.test(gate()), gate().slice(0, 400));
+      && (gate().match(/data-action="church-choose"/g) || []).length === 1 && /Waiting for approval/.test(gate()), gate().slice(0, 400));
     shots.push(gate());
+    ok('FUP-POS-5 the registration form asks whether you are the Leader or the Assistant, the Leader by default',
+      /data-action="reg-post" data-args="leader" aria-pressed="true"/.test(gate()) && /data-action="reg-post" data-args="assistant" aria-pressed="false"/.test(gate()));
+    { const el = { dataset: { action: 'reg-post', args: 'assistant' }, tagName: 'BUTTON', hasAttribute: () => false, closest() { return this; } }; g.dispatch(el, { type: 'click', target: el }); }
+    ok('FUP-POS-6 ...choosing Assistant says the Leader\'s post stays open', /data-args="assistant" aria-pressed="true"/.test(gate()) && /The Leader’s post stays open/.test(gate()));
     $el('rcName').value = 'Hope Church'; $el('rcCity').value = 'Pinetown'; $el('rcPhone').value = ''; $el('rcEmail').value = '';
     await g.registerChurch({ preventDefault() {} }); await sleep(30);
+    ok('FUP-POS-7 ...and the registration is sent as the Assistant', rc.includes('post:assistant'), rc.join());
     ok('registering a church sends its details, then waits for the NEWSTART admin', rc.includes('register:Hope Church:Pinetown') && g.gateState() === 'churchwait'
       && /Waiting for your church to be approved/.test(gate()) && gate().includes('Hope Church'), g.gateState());
     ok('…a church waiting for approval offers Delete my account (and no Leave, which would orphan the church)', /data-action="profDeleteAsk"/.test(gate()) && !/data-action="leaveChurch"/.test(gate()));
@@ -6816,6 +6834,19 @@ function makeServer() {
       g.state.tab = 'serve'; g.state.volTab = 'pledge'; g.render();
       ok('FUP-TEAM-5 practice mode keeps the sample expo on Team', $main.innerHTML.includes(g.esc(sampleName)));
       srv.rpcs = null; C.acct = null; C.expos = undefined; g.syncExpoHeadline(); g.state.tab = 'home';
+    }
+
+    /* FUP-POS: a Leader request on the Members list */
+    {
+      device(); await signIn();
+      C.acct = { user_id: 'user-1', platform_admin: true, church: { id: 'ch-a', name: 'Grace', status: 'active' }, membership: { role: 'admin', status: 'approved', church_id: 'ch-a', admin_rank: 2 } };
+      const ask = { user_id: 'u-lead', full_name: 'Would Lead', email: 'lead@example.org', role: 'member', status: 'pending', confirmed: true, wants: 'leader' };
+      const ownerRow = g.memberRow(ask, [], 1, {}, true);
+      ok('FUP-POS-8 the app owner sees Approve as Leader, with the request named', /data-action="member-approve-leader"[^>]*>Approve as Leader/.test(ownerRow) && /Wants to be the Health Department Leader/.test(ownerRow));
+      C.acct.platform_admin = false;
+      const asstRow = g.memberRow(ask, [], 1, {}, false);
+      ok('FUP-POS-9 an Assistant sees a plain Approve and who approves a Leader', !/member-approve-leader/.test(asstRow) && /Only the Health Expo admin can approve a new Health Department Leader/.test(asstRow));
+      C.acct = null;
     }
 
     /* FUP-ROLE: role-only controls carry a tag for the people who have them; nobody else reads about them */

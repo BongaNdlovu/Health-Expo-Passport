@@ -53,7 +53,8 @@ export const HELP_START = [
       ['Volunteer', 'Pledges on Team, then works a station. On Check, pick Your station and use Done · call next. If you are a volunteer, start on Team → Pledge.'],
       ['Team leader', 'Leads one booth. Can place helpers and remove a visitor at their own station.', 'lead'],
       ['Church admin (Health Department Leader)', 'Approves people, sets up expos, writes plans, exports data and clears the queue.', 'admin'],
-      ['Staff account', 'A signed-in account. It needs a church admin’s approval before it can see the queue and church data.'] ] } ] },
+      ['Staff account', 'A signed-in account. It needs a church admin’s approval before it can see the queue and church data.'],
+      ['Joining a church', 'Pick your church from the list, then your position there, and send the request. Not listed? Register it as its Leader or Assistant.'] ] } ] },
  { title: 'Practice mode and live use',
    what: 'Practice mode is for learning; sign in to work a real expo.',
    sections: [
@@ -326,6 +327,7 @@ export const HELP_PAGES = [
    sections: [
     { name: 'Members', items: [
       ['Approve', 'Lets someone who asked to join the church in.'],
+      ['Approve as Leader', 'For a church with no Health Department Leader: makes the person who asked its Leader.', 'owner'],
       ['Role', 'Sets a member’s role: Member, Volunteer, Team member, Team leader, Assistant Health Department Leader, or Health Department Leader (the admin).'],
       ['Link', 'Ties a member to a volunteer record or a visitor badge.'],
       ['Remove, Step down, Leave', 'Removes a member, steps you down as admin, or leaves the church.'],

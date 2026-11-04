@@ -35,10 +35,12 @@ const CHURCH_L={pending:'Waiting',active:'Active',suspended:'Paused'};
 const WANTS=[['member','Church member','See my own results'],['pledge','Volunteer','Pledge to help at the expo'],
  ['team_member','Team member','Help at the station I choose'],['team_leader','Team leader','Lead one station'],
  ['assistant','Assistant Health Department Leader','Your church’s Leader approves this']];
+/* asked for only at a church with no Health Department Leader (church_directory says has_leader); the app owner approves */
+const LEADER_WANT=['leader','Health Department Leader','Your church has none yet · the Health Expo admin approves this'];
 const boothNames=l=>(l||[]).map(k=>boothLabel(k)).join(', ');
 export const wantText=u=>{
  const w=u&&u.wants,b=boothNames(u&&u.wants_booths);
- return w==='assistant'?'Wants to be the Assistant Health Department Leader'
+ return w==='leader'?'Wants to be the Health Department Leader':w==='assistant'?'Wants to be the Assistant Health Department Leader'
   :w==='team_leader'?'Wants to lead '+(b||'a station'):w==='team_member'?'Wants to help at '+(b||'a station')
   :w==='pledge'?'Wants to pledge'+(b?' · '+b:''):'';
 };
@@ -235,24 +237,35 @@ function churchPickHTML(){
    <label class="block"><span class="microlabel">Town or city</span><input id="rcCity" maxlength="80" placeholder="e.g. Durban" class="field mt-1"></label>
    <label class="block"><span class="microlabel">Church phone</span><input id="rcPhone" type="tel" inputmode="tel" maxlength="40" class="field mt-1"></label>
    <label class="block"><span class="microlabel">Church email</span><input id="rcEmail" type="email" inputmode="email" maxlength="254" class="field mt-1"></label>
-   <p class="text-[10px] leading-relaxed text-[#8a9aa0]">You become the church’s Health Department Leader. One Assistant can be added later — a church has two admin posts. The Health Expo admin approves the church before any visitor data can be added.</p>
+   <div><span class="microlabel">Your position</span>
+    <div class="mt-1.5 grid grid-cols-2 gap-2">${[['leader','Health Department Leader'],['assistant','Assistant Health Department Leader']].map(([k,l])=>`<button type="button" data-action="reg-post" data-args="${k}" aria-pressed="${(cloud.regPost||'leader')===k}" class="btn ${(cloud.regPost||'leader')===k?'btn-primary':'btn-glass'} px-2 py-2.5 text-xs">${l}</button>`).join('')}</div></div>
+   <p class="text-[10px] leading-relaxed text-[#8a9aa0]">${(cloud.regPost||'leader')==='assistant'?'You become the church’s Assistant. The Leader’s post stays open: someone can ask for it when they join, and the Health Expo admin approves them.':'You become the church’s Health Department Leader. One Assistant can be added later — a church has two admin posts.'} The Health Expo admin approves the church before any visitor data can be added.</p>
    <button id="rcGo" class="btn btn-primary w-full py-3 text-sm">Register the church</button></form>
   ${link('reg-church-list','Back to the list of churches')}`;
- return `${wantsPickHTML()}${dirBoxHTML('Then find your church','max-h-[52vh]')}
+ const c=cloud.joinPick;
+ if(c)return `<div class="mt-4 rounded-[14px] bg-white/70 p-3">
+   <div class="microlabel">Step 2 of 2 · Your church</div>
+   <div class="mt-1 flex items-center gap-2"><div class="min-w-0 flex-1"><div class="truncate text-[14px] font-extrabold text-[#123033]">${esc(c.name)}</div>
+    <div class="truncate text-[11px] text-[#4f6870]">${esc(c.city||'')}</div></div>
+    <button type="button" data-action="church-change" class="tap-link flex-none">Change</button></div></div>
+  ${wantsPickHTML(c)}
+  <button type="button" data-action="join-church" data-args="${qSafe(c.id)}" class="btn btn-primary mt-4 w-full py-3 text-sm">Send my request</button>
+  <p class="mt-2 text-[10px] leading-relaxed text-[#8a9aa0]">The church approves your request. Until then you are a plain member.</p>`;
+ return `${dirBoxHTML('Step 1 of 2 · Choose your church','max-h-[52vh]')}
   ${link('reg-church-form','My church is not listed — register it')}`;
 }
 /* "What would you like to be?" comes first at sign-up; the station chips appear for the positions that need one */
-function wantsPickHTML(){
- const w=cloud.wants||'member',one=w==='team_leader',needs=w==='team_leader'||w==='team_member'||w==='pledge';
+function wantsPickHTML(c){
+ const opts=c&&c.has_leader===false?[...WANTS,LEADER_WANT]:WANTS;   /* an older database says nothing: the Leader's post is not offered */
+ const w=opts.some(x=>x[0]===cloud.wants)?cloud.wants:'member',one=w==='team_leader',needs=w==='team_leader'||w==='team_member'||w==='pledge';
  /* a title over its description, left-aligned: .btn centres a row, which put the two side by side and squeezed them */
  const two=(t,d)=>`<span class="block min-w-0 text-left"><b class="block text-xs">${esc(t)}</b><span class="block text-[10px] font-semibold leading-snug opacity-80">${esc(d)}</span></span>`;
  const btn=(k,t,d)=>`<button type="button" data-action="want-pick" data-args="${esc(k)}" aria-pressed="${w===k}" class="btn ${w===k?'btn-primary':'btn-glass'} w-full px-3 py-2.5 text-left" style="justify-content:flex-start">${two(t,d)}</button>`;
- return `<div class="mt-4"><div class="microlabel">What would you like to be?</div>
-  <div class="mt-1.5 space-y-1.5">${WANTS.map(x=>btn(x[0],x[1],x[2])).join('')}
-   <button type="button" data-action="reg-church-form" class="btn btn-glass w-full px-3 py-2.5 text-left" style="justify-content:flex-start">${two('Health Department Leader','Register my church — I lead it')}</button></div>
+ return `<div class="mt-4"><div class="microlabel">What is your position at ${esc(c?c.name:'the church')}?</div>
+  <div class="mt-1.5 space-y-1.5">${opts.map(x=>btn(x[0],x[1],x[2])).join('')}</div>
   ${needs?`<div class="mt-2"><span class="microlabel">${one?'Which station would you lead?':w==='pledge'?'A station you would like (optional, up to 2)':'Which station(s)? Up to 2'}</span>
    <div class="mt-1.5 flex flex-wrap gap-2">${BOOTHS.map(b=>`<button type="button" data-action="want-booth" data-args="${esc(b.k)}" aria-pressed="${(cloud.wantsBooths||[]).includes(b.k)}" class="availpill hue-${b.hue} ${(cloud.wantsBooths||[]).includes(b.k)?'availpill-on':''}">${esc(b.label)}</button>`).join('')}</div></div>`:''}
-  ${w==='assistant'||w==='team_leader'?acctNote('Nobody gives themselves this: your church’s Health Department Leader or admin approves it first. Until then you are a plain member.'):''}</div>`;
+  ${w==='leader'?acctNote('The Health Expo admin approves who leads a church. Until then you are a plain member.'):w==='assistant'||w==='team_leader'?acctNote('Nobody gives themselves this: your church’s Health Department Leader or admin approves it first. Until then you are a plain member.'):''}</div>`;
 }
 /* the gate only redraws when its fingerprint changes, so a choice made on it clears the fingerprint; the search box keeps its text */
 function redrawGate(){
@@ -261,7 +274,7 @@ function redrawGate(){
  const el=$('#dirQ');if(el&&q)el.value=q;
 }
 export function pickWant(k){
- if(!WANTS.some(x=>x[0]===k))return;
+ if(!WANTS.some(x=>x[0]===k)&&k!=='leader')return;
  cloud.wants=k;
  const keep=(cloud.wantsBooths||[]).slice(0,k==='team_leader'?1:2);
  cloud.wantsBooths=(k==='team_leader'||k==='team_member'||k==='pledge')?keep:[];
@@ -287,7 +300,7 @@ function dirHTML(){
    <div class="min-w-0 flex-1"><div class="truncate text-[13px] font-bold text-[#123033]">${esc(c.name)}</div>
     <div class="truncate text-[11px] text-[#4f6870]">${esc(c.city||'')}</div></div>
    ${c.status==='pending'?`<span class="${chipClass('watch')} flex-none">Waiting for approval</span>`
-    :`<button class="btn btn-primary flex-none px-4 text-xs" data-action="join-church" data-args="${qSafe(c.id)}">Join</button>`}</div>`).join('');
+    :`<button class="btn btn-primary flex-none px-4 text-xs" data-action="church-choose" data-args="${qSafe(c.id)}">Choose</button>`}</div>`).join('');
 }
 let _dirT=null,_dirN=0;
 export function churchSearchSoon(q){clearTimeout(_dirT);_dirT=setTimeout(()=>churchSearch(q),250);}
@@ -298,6 +311,14 @@ export async function churchSearch(q){
  cloud.dir=r&&Array.isArray(r.data)?r.data:[];
  const el=$('#churchDir');if(el)el.innerHTML=dirHTML();
 }
+/* step 1 → step 2: the church picked from the list; Change goes back to the list */
+export function chooseChurch(id){
+ const c=(cloud.dir||[]).find(x=>x.id===id);if(!c)return;
+ cloud.joinPick=c;cloud.regChurch=false;   /* picked from the list under the registration form too */
+ if(cloud.wants==='leader'&&c.has_leader!==false)cloud.wants='member';
+ redrawGate();
+}
+export function changeChurch(){cloud.joinPick=null;redrawGate();}
 export async function joinChurch(id,btn){
  const w=cloud.wants||'member',b=(cloud.wantsBooths||[]).slice();
  if(w==='team_leader'&&b.length!==1){toast('Choose the one station you would lead');return;}
@@ -306,8 +327,8 @@ export async function joinChurch(id,btn){
  /* a plain member sends the old short call, which works with any version of the database */
  const args=w==='member'?{p_church:id}:{p_church:id,p_wants:w,p_booths:b};
  const r=await acctRpc('join_church',args,'Request sent — the church will approve you');
- if(!r){if(btn){btn.disabled=false;btn.textContent='Join';}return;}
- cloud.wants='member';cloud.wantsBooths=[];
+ if(!r){if(btn){btn.disabled=false;btn.textContent='Send my request';}return;}
+ cloud.wants='member';cloud.wantsBooths=[];cloud.joinPick=null;
  cloud.dir=null;await cloudSync(true);
 }
 export async function registerChurch(e){
@@ -315,9 +336,11 @@ export async function registerChurch(e){
  const v=id=>(($('#'+id)||{}).value||'').trim();
  if(v('rcName').length<2){toast('Enter the church’s name.');return;}
  gateBusy('rc','Registering…');
- const r=await acctRpc('register_church',{p_name:v('rcName'),p_city:v('rcCity'),p_phone:v('rcPhone'),p_email:v('rcEmail')},'Church registered — waiting for the Health Expo admin');
+ const args={p_name:v('rcName'),p_city:v('rcCity'),p_phone:v('rcPhone'),p_email:v('rcEmail')};
+ if(cloud.regPost==='assistant')args.p_post='assistant';   /* the Leader is the default, so an older database still takes the call */
+ const r=await acctRpc('register_church',args,'Church registered — waiting for the Health Expo admin');
  if(!r){const b=$('#rcGo');if(b){b.disabled=false;b.removeAttribute('aria-busy');b.textContent='Register the church';}return;}
- cloud.regChurch=false;await cloudSync(true);
+ cloud.regChurch=false;cloud.regPost='';await cloudSync(true);
 }
 export async function leaveChurch(){
  const c=cloud.acct&&cloud.acct.church;if(!c)return;
@@ -953,13 +976,14 @@ export function churchAdminHTML(){
 export function memberRow(u,F,admins,ranks,canPost){
  const id=qSafe(u.user_id),fu=!!(F&&F.includes(u.user_id)),isAdmin=u.role==='admin'&&u.status==='approved',want=wantText(u);
  const post=isAdmin?((ranks&&ranks[u.user_id])===1?'leader':'assistant'):'none';
- const asst=u.status==='pending'&&u.confirmed&&u.wants==='assistant'&&canPost;
+ const asst=u.status==='pending'&&u.confirmed&&u.wants==='assistant'&&canPost,lead=u.status==='pending'&&u.confirmed&&u.wants==='leader'&&canPost;
  return `<div class="border-t border-[#123033]/[.07] py-2.5">
   <div class="flex items-center gap-2"><div class="min-w-0 flex-1"><div class="truncate text-[13px] font-bold text-[#123033]">${esc(u.full_name||'(no name given)')}</div>
    ${ranks&&ranks[u.user_id]?`<div class="text-[10px] font-bold text-[#33504f]">${esc(ADMIN_TITLES[ranks[u.user_id]-1])}</div>`:''}
    ${want?`<div class="text-[10px] font-bold text-brand-700">${esc(want)}</div>`:''}
    <div class="truncate text-[11px] text-[#4f6870]">${esc(u.email||'')}${u.phone?' · '+esc(u.phone):''}${u.area?' · '+esc(u.area):''}${u.confirmed?'':' · has not confirmed the email yet'}</div></div>
-   ${u.status==='pending'&&u.confirmed?`<button class="btn btn-primary flex-none px-4 text-xs" data-action="${asst?'member-approve-assistant':'member-approve'}" data-user="${esc(id)}" data-role="${qSafe(u.role)}">${asst?'Approve as Assistant':'Approve'}</button>`:''}</div>
+   ${u.status==='pending'&&u.confirmed?`<button class="btn btn-primary flex-none px-4 text-xs" data-action="${lead?'member-approve-leader':asst?'member-approve-assistant':'member-approve'}" data-user="${esc(id)}" data-role="${qSafe(u.role)}">${lead?'Approve as Leader':asst?'Approve as Assistant':'Approve'}</button>`:''}</div>
+  ${u.status==='pending'&&u.wants==='leader'&&!canPost?acctNote('Only the Health Expo admin can approve a new Health Department Leader. Approve them as a member now if you like.'):''}
   ${u.status==='pending'&&u.wants==='assistant'&&!canPost?acctNote('Only the Health Department Leader or the Expo admin can make someone the Assistant. Approve them as a member now, and they can appoint them.'):''}
   <div class="mt-1.5 flex flex-wrap items-center gap-2">
    ${isAdmin?'':`<select data-on-change="member-role" data-user="${esc(id)}" data-status="${qSafe(u.status)}" aria-label="Role" class="field py-1.5 text-xs" style="width:auto">${['member','staff'].map(r=>`<option value="${esc(r)}" ${r===u.role?'selected':''}>${ROLE_L[r]}</option>`).join('')}</select>`}
@@ -1049,6 +1073,11 @@ export async function setAdminPost(uid,post){
  if(r&&cloud.acct)await acctReload();
 }
 /* approve someone who asked to be the Assistant: approve them as a member, then give the post (asking first if it is held) */
+export async function approveLeader(uid){
+ if(!await acctRpc('set_member',{p_user:uid,p_role:'member',p_status:'approved'}))return;
+ await reloadMembers();
+ await setAdminPost(uid,'leader');
+}
 export async function approveAssistant(uid){
  if(!await acctRpc('set_member',{p_user:uid,p_role:'member',p_status:'approved'}))return;
  await reloadMembers();
@@ -1594,7 +1623,7 @@ export async function cloudSignOut(force){
  try{await cloud.client.auth.signOut({scope:'local'});}catch(e){}
  cloud.signingOut=false;cloud.ready=false;cloud.demo=false;cloud.gateHide=false;cloud.gateKey='';cloud.isAdmin=undefined;cloud.knownAdmin=false;cloud.apprRetryAt=0;cloud.pendingUsers=null;
  Object.assign(EXPO_UPCOMING,EXPO_DEFAULT);
- cloud.blocks=null;cloud.appBlocks=null;cloud.acct=null;cloud.churchId='';cloud.health=undefined;cloud.dir=null;cloud.regChurch=false;cloud.members=null;cloud.plat=null;cloud.audit=null;cloud.pAdmins=null;cloud.expos=undefined;cloud.adminExpos=undefined;cloud.expoEdit=null;cloud.pledgeExpo='';cloud.adminChurch='';cloud.adminData='';cloud.adminRows=null;closeAcct();
+ cloud.joinPick=null;cloud.regPost='';cloud.blocks=null;cloud.appBlocks=null;cloud.acct=null;cloud.churchId='';cloud.health=undefined;cloud.dir=null;cloud.regChurch=false;cloud.members=null;cloud.plat=null;cloud.audit=null;cloud.pAdmins=null;cloud.expos=undefined;cloud.adminExpos=undefined;cloud.expoEdit=null;cloud.pledgeExpo='';cloud.adminChurch='';cloud.adminData='';cloud.adminRows=null;closeAcct();
  cloud.view='login';cloud.viewEmail='';cloud.pending=false;cloud.recovery=false;cloud.formErr='';cloud.gateForce=false;cloud.delOpen=false;
  cloud.plans=null;cloud.adminPlans=null;cloud.planEdit=null;cloud.plansErr=null;cloud.adminPlansErr=null;cloud.followupsErr=null;cloud.adminFollowupsErr=null;try{localStorage.removeItem(CHURCH_PLANS_KEY);}catch(e){}
  cloud.followups=null;cloud.adminFollowups=null;cloud.myFollow=null;cloud.inviteLink=null;clearInvite();   /* a stale invite link must not join the next account on this desk */

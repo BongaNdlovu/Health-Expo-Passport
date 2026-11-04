@@ -461,6 +461,10 @@ alter table public.memberships add column if not exists admin_post text check (a
 -- what the person asked to be when they joined; an admin sees it beside the Approve button
 alter table public.memberships add column if not exists wants text not null default 'member'
   check (wants in ('member', 'assistant', 'team_leader', 'team_member', 'pledge'));
+-- 'leader': the person asks to be the Health Department Leader of a church that has none (join_church checks it)
+alter table public.memberships drop constraint if exists memberships_wants_check;
+alter table public.memberships add constraint memberships_wants_check
+  check (wants in ('member', 'assistant', 'team_leader', 'team_member', 'pledge', 'leader'));
 alter table public.memberships add column if not exists wants_booths text[] not null default '{}'
   check (cardinality(wants_booths) <= 2);
 -- databases from before the posts were stored: the oldest approved admin of a church is its Leader, the next its
@@ -813,7 +817,7 @@ $$;
 -- status only. The status column came later, so the old shape is replaced outright.
 drop function if exists public.church_directory(text);
 create or replace function public.church_directory(p_search text default '')
-returns table (id uuid, name text, city text, status text)
+returns table (id uuid, name text, city text, status text, has_leader boolean)
 language plpgsql
 stable
 security definer
@@ -826,10 +830,12 @@ begin
     raise exception 'sign in first' using errcode = '42501';
   end if;
   return query
-    select c.id, c.name, c.city, c.status from public.churches c
+    select c.id, c.name, c.city, c.status,
+           exists (select 1 from public.memberships m where m.church_id = c.id and m.admin_post = 'leader')
+    from public.churches c
     where c.status in ('active', 'pending') and (v_q = '' or position(v_q in lower(c.name || ' ' || c.city)) > 0)
     order by (c.status = 'pending'), lower(c.name), c.id
-    limit 50;
+    limit 2000;   -- every church: the app shows the whole list, the search narrows it
 end;
 $$;
 
@@ -852,7 +858,10 @@ begin
   if not exists (select 1 from public.churches c where c.id = p_church and c.status = 'active') then
     raise exception 'That church is not taking members at the moment.';
   end if;
-  if v_wants not in ('member', 'assistant', 'team_leader', 'team_member', 'pledge') then raise exception 'Choose what you would like to be.'; end if;
+  if v_wants not in ('member', 'assistant', 'team_leader', 'team_member', 'pledge', 'leader') then raise exception 'Choose what you would like to be.'; end if;
+  if v_wants = 'leader' and exists (select 1 from public.memberships m where m.church_id = p_church and m.admin_post = 'leader') then
+    raise exception 'That church already has a Health Department Leader. Choose another position.';
+  end if;
   v_booths := coalesce((select array_agg(t.b) from (select left(btrim(x), 40) b from unnest(coalesce(p_booths, '{}'::text[])) x
                                                     where btrim(x) <> '' limit 2) t), '{}'::text[]);
   if v_wants = 'team_leader' and cardinality(v_booths) <> 1 then raise exception 'Choose the one station you would lead.'; end if;
@@ -880,11 +889,21 @@ begin
            left('Open My church to approve ' || v_wants || case when cardinality(v_booths) > 0 then ' (' || array_to_string(v_booths, ', ') || ')' else '' end || '.', 300)
     from public.memberships m where m.church_id = p_church and m.role = 'admin' and m.status = 'approved';
   end if;
+  /* a church with no Leader: the app owner approves who leads it, so they are told as well */
+  if v_wants = 'leader' then
+    insert into public.notifications (church_id, user_id, kind, title, body)
+    select p_church, pa.user_id, 'join', left('Leader request: ' || v_who, 120),
+           left('Wants to be the Health Department Leader of ' || coalesce((select c.name from public.churches c where c.id = p_church), 'a church')
+                || '. Open All churches to approve.', 300)
+    from public.platform_admins pa;
+  end if;
 end;
 $$;
 
 -- a new church starts 'pending' with the person who registers it as its Health Department Leader (its first admin)
-create or replace function public.register_church(p_name text, p_city text default '', p_phone text default '', p_email text default '')
+drop function if exists public.register_church(text, text, text, text);
+create or replace function public.register_church(p_name text, p_city text default '', p_phone text default '', p_email text default '',
+                                                  p_post text default 'leader')
 returns uuid
 language plpgsql
 security definer
@@ -897,11 +916,15 @@ begin
     raise exception 'You already belong to a church. Leave it first.';
   end if;
   if length(btrim(coalesce(p_name, ''))) < 2 then raise exception 'Enter the church''s name.'; end if;
+  if coalesce(p_post, 'leader') not in ('leader', 'assistant') then raise exception 'Choose Leader or Assistant.'; end if;
   insert into public.churches (name, city, phone, email, created_by)
   values (btrim(p_name), btrim(coalesce(p_city, '')), btrim(coalesce(p_phone, '')), btrim(coalesce(p_email, '')), v_uid)
   returning id into v_church;
-  insert into public.memberships (user_id, church_id, role, status, full_name)
-  select v_uid, v_church, 'admin', 'approved', left(coalesce(u.raw_user_meta_data ->> 'full_name', ''), 200)
+  /* the admin-post trigger makes a new admin the Leader when the post is free; a person registering as the Assistant
+     takes that post instead, and the Leader's stays open for someone to ask for */
+  insert into public.memberships (user_id, church_id, role, status, full_name, admin_post)
+  select v_uid, v_church, 'admin', 'approved', left(coalesce(u.raw_user_meta_data ->> 'full_name', ''), 200),
+         case when p_post = 'assistant' then 'assistant' end
   from auth.users u where u.id = v_uid;
   return v_church;
 end;
@@ -2439,7 +2462,7 @@ declare f text;
 begin
   foreach f in array array['is_platform_admin()', 'staff_church()', 'is_staff()', 'is_admin()', 'church_admin_of(uuid)',
     'queue_call_next(text)', 'staff_pending()', 'staff_approve(uuid)', 'my_account()', 'church_directory(text)',
-    'join_church(uuid, text, text, text, text[])', 'register_church(text, text, text, text)', 'update_my_details(text, text, text, date)',
+    'join_church(uuid, text, text, text, text[])', 'register_church(text, text, text, text, text)', 'update_my_details(text, text, text, date)',
     'leave_church()', 'delete_my_account()', 'my_health()', 'update_church(uuid, text, text, text, text)', 'church_members(uuid)',
     'set_member(uuid, text, text)', 'link_member(uuid, text)', 'remove_member(uuid)', 'admin_churches()',
     'admin_set_church_status(uuid, text)', 'admin_audit(integer)', 'admin_church_data(uuid)',

@@ -315,6 +315,39 @@ const PROJ = path.join(__dirname, '..');
   ok('deleting your own account deletes your pledge too, as the app promises', !r.error && (await SQL(`select 1 from public.volunteers where church_id=$1 and id='VOL-9712'`, [B])).length === 0
     && (await SQL(`select 1 from auth.users where id=$1`, [U.mallory])).length === 0, msg(r));
 
+  console.log('\n16. positions: register as Leader or Assistant; ask to lead only a church with no Leader; the full church list');
+  const NEW = { leader2: '00000000-0000-4000-8000-0000000000e1', asst: '00000000-0000-4000-8000-0000000000e2', asker: '00000000-0000-4000-8000-0000000000e3', other: '00000000-0000-4000-8000-0000000000e4' };
+  for (const [n, id] of Object.entries(NEW))
+    await SQL(`insert into auth.users (id,email,raw_user_meta_data,email_confirmed_at) values ($1,$2,$3,$4)`, [id, n + '@example.org', JSON.stringify({ full_name: n }), new Date().toISOString()]);
+  r = await as(NEW.asst, `select public.register_church('Assistant Church','Durban','','','assistant') as id`);
+  const AC = r.rows && r.rows[0].id;
+  let m = (await SQL(`select role,status,admin_post from public.memberships where user_id=$1`, [NEW.asst]))[0];
+  ok('registering as the Assistant makes them an admin holding the Assistant post', !r.error && m.role === 'admin' && m.admin_post === 'assistant', msg(r) + ' ' + JSON.stringify(m));
+  r = await as(NEW.leader2, `select public.register_church('Leader Church') as id`);
+  m = (await SQL(`select admin_post from public.memberships where user_id=$1`, [NEW.leader2]))[0];
+  ok('registering without a choice still makes them the Leader', !r.error && m.admin_post === 'leader', msg(r) + ' ' + JSON.stringify(m));
+  const LC = r.rows && r.rows[0].id;
+  ok('a made-up post is refused at registration', await refused(NEW.other, `select public.register_church('Odd Church','','','','owner')`));
+  await as(U.alice, `select public.admin_set_church_status($1,'active')`, [AC]);
+  await as(U.alice, `select public.admin_set_church_status($1,'active')`, [LC]);
+  r = await as(NEW.asker, `select * from public.church_directory('')`);
+  const dir = r.rows || [];
+  ok('the church list says which churches have no Leader yet', dir.some(c => c.id === AC && c.has_leader === false) && dir.some(c => c.id === LC && c.has_leader === true), msg(r));
+  for (let i = 0; i < 55; i++) await SQL(`insert into public.churches (name,city,status) values ($1,'Town','active')`, ['Extra Church ' + String(i).padStart(2, '0')]);
+  r = await as(NEW.asker, `select count(*)::int n from public.church_directory('')`);
+  ok('the church list is no longer cut at 50', !r.error && r.rows[0].n >= 57, msg(r));
+  r = await as(NEW.asker, `select public.join_church($1,'Asker','','leader')`, [LC]);
+  ok('asking to lead a church that has a Leader is refused, saying so', !!r.error && /already has a Health Department Leader/.test(r.error.message), msg(r));
+  r = await as(NEW.asker, `select public.join_church($1,'Asker','','leader')`, [AC]);
+  m = (await SQL(`select status,wants from public.memberships where user_id=$1`, [NEW.asker]))[0];
+  ok('asking to lead a church with no Leader is a pending request marked leader', !r.error && m.status === 'pending' && m.wants === 'leader', msg(r) + ' ' + JSON.stringify(m));
+  const owner = await SQL(`select 1 from public.notifications where user_id=$1 and title like 'Leader request:%'`, [U.alice]);
+  ok('...and the app owner is told', owner.length >= 1, JSON.stringify(owner));
+  r = await as(U.alice, `select public.set_member($1,'member','approved')`, [NEW.asker]);
+  const r2 = await as(U.alice, `select public.set_admin_post($1,'leader')`, [NEW.asker]);
+  m = (await SQL(`select role,status,admin_post from public.memberships where user_id=$1`, [NEW.asker]))[0];
+  ok('the app owner approves them as the Leader', !r.error && !r2.error && m.role === 'admin' && m.admin_post === 'leader', msg(r) + ' ' + msg(r2) + ' ' + JSON.stringify(m));
+
   console.log(`\nRESULT: ${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
   process.exit(0);
