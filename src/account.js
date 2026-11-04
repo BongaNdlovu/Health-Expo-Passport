@@ -12,7 +12,7 @@ import { BOOTHS, EXPO_TOTAL, EXPO_UPCOMING, PROTOCOLS, STATUS_UI, attendees, boo
 import { qSafe, queueLeaveFor, queuePause, queueReset, queueSync } from './queue.js';
 import { bmi, cat, chipClass, esc, fmt1, initials, redFlag } from './helpers.js';
 import { planNeeds, downloadCSV } from './results.js';
-import { MY_PLEDGE_ACTS, emptyDraft, hideModal, isAdminAcct, mayPlace, pledgeFormParts, setVolTab, showModal } from './volunteer.js';
+import { MY_PLEDGE_ACTS, canBlockMember, closePlaceSheet, emptyDraft, hideModal, isAdminAcct, mayPlace, pledgeFormParts, rerenderPlace, setVolTab, showModal } from './volunteer.js';
 import { loadScript } from './libs.js';
 /* The account hub: my account, my church, all churches (platform admin), members and approvals. Split from the original single-file app; bundled back into one file by tools/build.js. */
 /* ---------- churches, members and the platform admin ----------
@@ -710,8 +710,8 @@ export function acctTabs(){
 export function openAcct(tab){
  cloud.acctTab=tab||'me';
  cloud.expos=undefined;cloud.adminExpos=undefined;   /* pledge counts change while the sheet is closed: read them fresh */
- if(cloud.acctTab==='admin'){cloud.plat=null;cloud.audit=null;cloud.pAdmins=null;}
- if(cloud.acctTab==='church'){cloud.members=null;cloud.adminPlans=null;cloud.planEdit=null;cloud.adminFollowups=null;cloud.inviteLink=null;}
+ if(cloud.acctTab==='admin'){cloud.plat=null;cloud.audit=null;cloud.pAdmins=null;cloud.appBlocks=null;}
+ if(cloud.acctTab==='church'){cloud.members=null;cloud.blocks=null;cloud.adminPlans=null;cloud.planEdit=null;cloud.adminFollowups=null;cloud.inviteLink=null;}
  if(cloud.acctTab==='me')cloud.myFollow=null;
  showModal('#acctSheet');renderAcct();
 }
@@ -968,8 +968,8 @@ export function memberRow(u,F,admins,ranks,canPost){
    <button class="tap-link" data-action="member-vol-link" data-user="${esc(id)}" data-cur="${qSafe(u.volunteer_id||'')}">${u.volunteer_id?'Vol '+esc(u.volunteer_id):'Link volunteer'}</button>
    ${F&&u.status==='approved'?`<button class="tap-link" aria-pressed="${fu}" data-action="followup-toggle" data-user="${esc(id)}" data-on="${fu?0:1}">${fu?'✓ Follow-up person':'Make follow-up person'}</button>`:''}
    ${isAdmin&&!canPost?'':`<button class="tap-link text-rose-700" data-action="removeMember" data-args="${esc(id)}">Remove</button>`}
-   ${isAdmin&&!canPost||u.user_id===(cloud.acct&&cloud.acct.user_id)?'':`<button class="tap-link text-rose-700" data-action="member-block" data-user="${esc(id)}">Block</button>`}
-   ${cloud.acct&&cloud.acct.platform_admin&&u.user_id!==cloud.acct.user_id?`<button class="tap-link text-rose-700" data-action="member-block-app" data-user="${esc(id)}">Block from app${roleTag('owner')}</button>`:''}</div></div>`;
+   ${!canBlockMember(u,canPost)?'':`<button class="tap-link text-rose-700" data-action="member-block" data-user="${esc(id)}">Block</button>`}
+   ${cloud.acct&&cloud.acct.platform_admin&&!u.platform_admin&&u.user_id!==cloud.acct.user_id?`<button class="tap-link text-rose-700" data-action="member-block-app" data-user="${esc(id)}">Block from app${roleTag('owner')}</button>`:''}</div></div>`;
 }
 async function loadMembers(cid){
  if(!cid||cloud.membersBusy===cid)return;
@@ -977,7 +977,7 @@ async function loadMembers(cid){
  const r=await acctRpc('church_members',{p_church:cid});
  cloud.membersBusy='';
  cloud.members={cid,list:r&&Array.isArray(r.data)?r.data:[],err:!(r&&Array.isArray(r.data))};
- renderAcct();
+ renderAcct();rerenderPlace();
 }
 const reloadMembers=()=>{const cid=cloud.members&&cloud.members.cid;cloud.members=null;return loadMembers(cid);};
 /* the placement sheet asks for this church's members, to know which volunteer pledged from an account it can block */
@@ -988,13 +988,14 @@ export async function blockMember(uid,app){
  const L=(cloud.members&&cloud.members.list)||[],u=L.find(x=>x.user_id===uid)||{},who=u.full_name||u.email||'this person';
  const cid=app?null:(cloud.members&&cloud.members.cid)||cloud.churchId;
  const yes=await confirmAsk({title:`Block ${who}${app?' from the app':''}?`,
-  body:app?'They lose access to every church and their pledge is removed. They cannot join any church or register one until you unblock them under All churches.'
-   :'They lose access to this church and their pledge is removed. They cannot ask to join it again until an admin unblocks them under My church → Blocked.',
+  body:app?'They lose access to every church, and any pledge linked to this account or its email is removed. They cannot join any church or register one until you unblock them under All churches.'
+   :'They lose access to this church, and any pledge linked to this account or its email is removed. They cannot ask to join it again until an admin unblocks them under My church → Blocked.',
   label:'Block',danger:true});
  if(!yes)return;
  if(await acctRpc('block_member',{p_user:uid,p_church:cid},`${who} blocked`)){
-  cloud.blocks=null;cloud.appBlocks=null;
-  if(cloud.members)await reloadMembers();
+  if(state.placeId)closePlaceSheet();
+  cloud.blocks=null;cloud.appBlocks=null;cloud.audit=null;
+  if(cloud.members)await reloadMembers();else renderAcct();
   cloudSync(true);   /* their pledge went with the block: the team list follows */
  }
 }
@@ -1002,7 +1003,7 @@ export async function unblockMember(uid,cid){
  const L=((cid?cloud.blocks:cloud.appBlocks)||{}).list||[],b=L.find(x=>x.user_id===uid)||{},who=b.name||b.email||'this person';
  const yes=await confirmAsk({title:`Unblock ${who}?`,body:cid?'They can ask to join this church again. Nothing they had before comes back by itself.':'They can join a church or register one again.',label:'Unblock'});
  if(!yes)return;
- if(await acctRpc('unblock_member',{p_user:uid,p_church:cid||null},`${who} unblocked`)){if(cid)cloud.blocks=null;else cloud.appBlocks=null;renderAcct();}
+ if(await acctRpc('unblock_member',{p_user:uid,p_church:cid||null},`${who} unblocked`)){if(cid)cloud.blocks=null;else cloud.appBlocks=null;cloud.audit=null;renderAcct();}
 }
 async function loadBlocks(cid){
  const key=cid?'blocks':'appBlocks';
@@ -1017,7 +1018,7 @@ async function loadBlocks(cid){
 function blocksHTML(cid){
  const key=cid?'blocks':'appBlocks',B=cloud[key];
  if(!B||B.cid!==(cid||'')){loadBlocks(cid);return acctSkel(1);}
- if(B.err)return acctNote('Could not load the blocked accounts. Check your connection.');
+ if(B.err)return retryNote('Could not load the blocked accounts. Check your connection.',key);
  if(!B.list.length)return acctNote(cid?'Nobody is blocked from this church.':'Nobody is blocked from the app.');
  return B.list.map(b=>`<div class="flex items-center gap-2 border-t border-[#123033]/[.07] py-2">
    <div class="min-w-0 flex-1"><div class="truncate text-[13px] font-bold text-[#123033]">${esc(b.name||'(no name)')}</div>
@@ -1179,6 +1180,7 @@ async function loadAdminExpos(cid){
 }
 export function acctRetry(what){
  if(what==='members')cloud.members=null;
+ else if(what==='blocks'||what==='appBlocks')cloud[what]=null;
  else if(what==='pAdmins')cloud.pAdmins=null;
  else if(what==='expos'){cloud.expos=undefined;cloud.adminExpos=undefined;}
  else if(what==='health'){cloud.health=undefined;cloud.healthErr=false;}
@@ -1365,7 +1367,7 @@ export function platformHTML(){
   ${platformAdminsHTML()}
   ${acctBox('Blocked from the app',blocksHTML(''))}
   ${acctBox('Recent changes',!cloud.audit?acctSkel(3):cloud.auditErr?retryNote('Could not load the recent changes. Check your connection.','audit'):!cloud.audit.length?acctNote('Nothing changed yet.')
-   :cloud.audit.map(x=>`<div class="leading-snug border-t border-[#123033]/[.07] py-1.5 text-[11px] text-[#33504f]">${esc(String(x.at||'').slice(0,16).replace('T',' '))} · ${esc(x.church||'—')} · ${esc(x.actor||'?')} · ${esc(String(x.op||'').toLowerCase())} ${x.tbl==='platform_admins'?'platform admin':x.tbl==='attendees'?'visitor':'volunteer'} ${esc(x.row_id||'')}</div>`).join(''))}`;
+   :cloud.audit.map(x=>`<div class="leading-snug border-t border-[#123033]/[.07] py-1.5 text-[11px] text-[#33504f]">${esc(String(x.at||'').slice(0,16).replace('T',' '))} · ${esc(x.church||'—')} · ${esc(x.actor||'?')} · ${esc(String(x.op||'').toLowerCase())} ${x.tbl==='platform_admins'?'platform admin':x.tbl==='blocks'?'account':x.tbl==='attendees'?'visitor':'volunteer'} ${esc(x.row_id||'')}</div>`).join(''))}`;
 }
 /* the platform admins: who they are, and add one by email. The first is made once in the SQL editor; removing one is not in the app yet. */
 function platformAdminsHTML(){

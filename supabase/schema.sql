@@ -994,7 +994,7 @@ drop function if exists public.church_members(uuid);
 create or replace function public.church_members(p_church uuid)
 returns table (user_id uuid, email text, full_name text, phone text, area text, birth_date date, role text, status text,
                attendee_id text, confirmed boolean, created_at timestamptz, volunteer_id text,
-               admin_post text, wants text, wants_booths text[])
+               admin_post text, wants text, wants_booths text[], platform_admin boolean)
 language plpgsql
 stable
 security definer
@@ -1005,7 +1005,8 @@ begin
   if not public.church_admin_of(p_church) then raise exception 'church admins only' using errcode = '42501'; end if;
   return query
     select m.user_id, u.email::text, m.full_name, m.phone, m.area, m.birth_date, m.role, m.status, m.attendee_id,
-           u.email_confirmed_at is not null, m.created_at, m.volunteer_id, m.admin_post, m.wants, m.wants_booths
+           u.email_confirmed_at is not null, m.created_at, m.volunteer_id, m.admin_post, m.wants, m.wants_booths,
+           exists (select 1 from public.platform_admins pa where pa.user_id = m.user_id)
     from public.memberships m join auth.users u on u.id = m.user_id
     where m.church_id = p_church
     order by (m.status = 'pending') desc, lower(m.full_name), m.created_at
@@ -2149,6 +2150,12 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
+declare
+  v_by_admin boolean := public.is_platform_admin() or exists (
+    select 1 from public.memberships m join public.churches c on c.id = m.church_id
+    where m.user_id = (select auth.uid()) and m.church_id = new.church_id
+      and m.status = 'approved' and m.role = 'admin' and c.status <> 'suspended');
+  v_body text;
 begin
   if new.status is not distinct from old.status then return null; end if;
   if new.status = 'registered' then
@@ -2162,14 +2169,20 @@ begin
                 else 'They are registered at ' || public.booth_title(new.booth) || '.' end
     from public.memberships m
     where m.church_id = new.church_id and m.role = 'admin' and m.status = 'approved';
-  elsif new.status = 'prospect' and old.status = 'registered' then
+  elsif new.status = 'prospect' and old.status in ('registered', 'checkedin') then
+    v_body := case
+      when coalesce(current_setting('newstart.self_release', true), '') = 'on'
+        then 'They gave up their place at the expo. Their pledge still stands.'
+      when v_by_admin
+        then 'An admin took them off the expo. Their pledge still stands.'
+      else 'A team leader took them off their station. Their pledge still stands.'
+    end;
     if exists (select 1 from public.notifications n
                where n.church_id = new.church_id and n.kind = 'deregister'
-                 and n.title = left('Deregistered: ' || new.name, 120)
+                 and n.title = left('Deregistered: ' || new.name, 120) and n.body = v_body
                  and n.created_at > now() - interval '1 hour') then return null; end if;
     insert into public.notifications (church_id, user_id, kind, title, body)
-    select new.church_id, m.user_id, 'deregister', left('Deregistered: ' || new.name, 120),
-           'They gave up their place at the expo. Their pledge still stands.'
+    select new.church_id, m.user_id, 'deregister', left('Deregistered: ' || new.name, 120), v_body
     from public.memberships m
     where m.church_id = new.church_id and m.role = 'admin' and m.status = 'approved';
   end if;
@@ -2187,7 +2200,11 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
-declare v_by_admin boolean := public.is_admin();
+declare
+  v_by_admin boolean := public.is_platform_admin() or exists (
+    select 1 from public.memberships m join public.churches c on c.id = m.church_id
+    where m.user_id = (select auth.uid()) and m.church_id = old.church_id
+      and m.status = 'approved' and m.role = 'admin' and c.status <> 'suspended');
 begin
   /* deleting a church cascades here: there is no church left to notify, and a row pointing at it would
      fail the foreign key and abort the delete */
@@ -2903,14 +2920,14 @@ end;
 $$;
 
 -- block an account: p_church = a church the caller runs (blocks it from that church), or null (the app owner only:
--- blocks it from every church). Its pledge and membership in that church go at once.
+-- blocks it from every church). Its pledge (linked or matching email) and membership in scope go at once.
 create or replace function public.block_member(p_user uuid, p_church uuid)
 returns void
 language plpgsql
 security definer
 set search_path = ''
 as $$
-declare v_m public.memberships; v_email text; v_name text;
+declare v_m public.memberships; v_email text; v_name text; v_cid uuid;
 begin
   if (select auth.uid()) is null then raise exception 'sign in first' using errcode = '42501'; end if;
   if p_user = (select auth.uid()) then raise exception 'You cannot block your own account.'; end if;
@@ -2933,15 +2950,28 @@ begin
   if not exists (select 1 from public.blocks b where b.user_id = p_user and b.church_id is not distinct from p_church) then
     insert into public.blocks (user_id, church_id, name, email) values (p_user, p_church, left(v_name, 200), left(v_email, 320));
   end if;
+  for v_cid in
+    select distinct cid from (
+      select v_m.church_id as cid where v_m.user_id is not null and (p_church is null or v_m.church_id = p_church)
+      union
+      select v.church_id as cid from public.volunteers v
+      where (p_church is null or v.church_id = p_church)
+        and btrim(v_email) <> '' and lower(btrim(v.email)) = lower(btrim(v_email))
+    ) s order by cid
+  loop
+    perform pg_advisory_xact_lock(hashtext('vol:' || v_cid::text));
+  end loop;
+  perform set_config('newstart.lead_ok', 'on', true);
+  delete from public.volunteers v
+  where (p_church is null or v.church_id = p_church)
+    and ((v_m.user_id is not null and v.church_id = v_m.church_id and v.id = v_m.volunteer_id)
+      or (btrim(v_email) <> '' and lower(btrim(v.email)) = lower(btrim(v_email))
+          and not exists (select 1 from public.memberships o
+                          where o.church_id = v.church_id and o.volunteer_id = v.id and o.user_id <> p_user)));
   if v_m.user_id is not null and (p_church is null or v_m.church_id = p_church) then
-    perform pg_advisory_xact_lock(hashtext('vol:' || v_m.church_id::text));
-    if v_m.volunteer_id is not null then
-      perform set_config('newstart.lead_ok', 'on', true);
-      delete from public.volunteers v where v.church_id = v_m.church_id and v.id = v_m.volunteer_id;
-    end if;
     delete from public.memberships m where m.user_id = p_user;
   end if;
-  insert into public.audit_log (tbl, op, row_id, church_id) values ('blocks', 'BLOCK', p_user::text, coalesce(p_church, v_m.church_id));
+  insert into public.audit_log (tbl, op, row_id, church_id) values ('blocks', 'BLOCK', p_user::text, p_church);
 end;
 $$;
 

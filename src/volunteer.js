@@ -12,7 +12,7 @@ import { overlayClosed, overlayOpened } from './overlay.js';
 import { confirmAsk } from './feedback.js';
 import { roleTag } from './ui.js';
 /* a lazy cycle: account.js imports this module's modal helpers; the sync call happens only at runtime */
-import { blockMember, canManageExpos, cloudSync, ensureMembers } from './account.js';
+import { canManageExpos, cloudSync, ensureMembers } from './account.js';
 import { downloadCSV, foodKeyOf, planFor, shortFood } from './results.js';
 import { GRACE_DAYS, withoutOldReadings } from './retention.js';
 import { queueFinishVisit } from './queue.js';
@@ -409,14 +409,20 @@ function placeSheetHTML(){
    </div>`:`<p class="mt-3 text-[11px] leading-relaxed text-[#6b8187]">Pick a station above to place ${esc(firstName(v.name))}. Their choices are listed first, but the choice is yours.</p>`}
   ${isAdm&&cloud.user?adminPledgeHTML(v):''}`;
 }
+/* may the signed-in admin block this member? Never self or an app owner; only the Leader or app owner blocks an admin */
+export const canBlockMember=(u,canPost)=>{
+ const a=cloud.acct,m=a&&a.membership;
+ if(!a||!u||u.platform_admin||u.user_id===a.user_id)return false;
+ return u.role!=='admin'||u.status!=='approved'||(canPost!==undefined?!!canPost:!!(a.platform_admin||(m&&m.role==='admin'&&m.status==='approved'&&m.admin_rank===1)));
+};
 /* an admin's controls for a whole pledge, under the placement ones: deregister, take the pledge back, block the account */
 function adminPledgeHTML(v){
- const L=cloud.members&&cloud.members.list,acct=L&&L.find(u=>u.volunteer_id===v.id),me=cloud.acct&&cloud.acct.user_id;
+ const M=cloud.members,L=M&&(!cloud.churchId||M.cid===cloud.churchId)&&M.list,acct=L&&L.find(u=>u.volunteer_id===v.id);
  return `<div class="microlabel mt-4">Pledge${roleTag('admin')}</div>
   <div class="mt-1.5 flex flex-wrap gap-2">
    ${v.status!=='prospect'?'<button data-action="vol-deregister" class="btn btn-glass flex-1 py-2 text-xs">Deregister</button>':''}
    <button data-action="vol-unpledge" class="btn btn-glass flex-1 py-2 text-xs text-rose-700">Remove pledge</button>
-   ${acct&&acct.user_id!==me?`<button data-action="member-block" data-user="${esc(acct.user_id)}" class="btn btn-glass flex-1 py-2 text-xs text-rose-700">Block</button>`:''}
+   ${canBlockMember(acct)?`<button data-action="member-block" data-user="${esc(acct.user_id)}" class="btn btn-glass flex-1 py-2 text-xs text-rose-700">Block</button>`:''}
   </div>`;
 }
 export async function adminDeregister(){
@@ -435,7 +441,7 @@ export async function adminUnpledge(){
  if(!yes)return;
  if(await volRpc('admin_unpledge',{p_vol:v.id},'Pledge removed')){closePlaceSheet();await afterPlace();}
 }
-const rerenderPlace=()=>{const el=$('#placeBody');if(el)el.innerHTML=placeSheetHTML();};
+export const rerenderPlace=()=>{const el=state.placeId&&$('#placeBody');if(el)el.innerHTML=placeSheetHTML();};
 export async function placeMove(booth){
  const v=placedVol();if(!v)return;
  if(v.booth===booth)return;
