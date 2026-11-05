@@ -1,0 +1,11 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  // The public landing page: a static site of its own, separate from the app (../wrangler.jsonc serves ../dist).
+  // Deploy from this folder:  npx wrangler deploy
+  "name": "health-expo-passport",
+  "compatibility_date": "2026-10-21",
+  "workers_dev": true,
+  "assets": {
+    "directory": "."
+  }
+}
