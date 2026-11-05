@@ -893,13 +893,18 @@ begin
            left('Open My church to approve ' || v_wants || case when cardinality(v_booths) > 0 then ' (' || array_to_string(v_booths, ', ') || ')' else '' end || '.', 300)
     from public.memberships m where m.church_id = p_church and m.role = 'admin' and m.status = 'approved';
   end if;
-  /* a church with no Leader: the app owner approves who leads it, so they are told as well */
+  /* a church with no Leader: the app owner approves who leads it, so they are told as well — with the same 1-hour
+     identical-title window, per app owner, so a join/leave cycle cannot flood their inbox either */
   if v_wants = 'leader' then
     insert into public.notifications (church_id, user_id, kind, title, body)
     select p_church, pa.user_id, 'join', left('Leader request: ' || v_who, 120),
            left('Wants to be the Health Department Leader of ' || coalesce((select c.name from public.churches c where c.id = p_church), 'a church')
                 || '. Open All churches to approve.', 300)
-    from public.platform_admins pa;
+    from public.platform_admins pa
+    where not exists (select 1 from public.notifications n
+                      where n.church_id = p_church and n.user_id = pa.user_id and n.kind = 'join'
+                        and n.title = left('Leader request: ' || v_who, 120)
+                        and n.created_at > now() - interval '1 hour');
   end if;
 end;
 $$;
@@ -964,6 +969,7 @@ end;
 $$;
 
 -- delete the caller's own login. Their membership, platform-admin and old staff rows go with it (on delete cascade);
+-- a block against them stays (name and email as known when blocked), so deleting the login does not lift it;
 -- the church's visitors, volunteers and queue stay with the church. A church may be left with no admin (the Expo admin
 -- appoints one); the only platform admin cannot delete themselves, so the platform is never left with nobody.
 create or replace function public.delete_my_account()
@@ -2974,17 +2980,22 @@ end $$;
 -- A block removes the person's pledge and membership, and the guard below stops them joining again by any route:
 -- a join request, an invite link or registering a church. They are told only that the account can't join.
 
+-- user_id has no foreign key on purpose: a block must outlive the account it was made for. With "on delete cascade" a
+-- blocked person could delete their login (delete_my_account) and register again with the same email. The guard below
+-- therefore matches the email as well, and the row keeps the name and email as known when blocked.
 create table if not exists public.blocks (
   id         bigint generated always as identity primary key,
-  user_id    uuid not null references auth.users (id) on delete cascade,
+  user_id    uuid not null,
   church_id  uuid references public.churches (id) on delete cascade,   -- null: blocked from the whole app
   name       text not null default '' check (length(name) <= 200),   -- as known when blocked, for the Blocked list
   email      text not null default '' check (length(email) <= 320),
   blocked_by uuid default auth.uid(),
   at         timestamptz not null default now()
 );
+alter table public.blocks drop constraint if exists blocks_user_id_fkey;   -- databases made before this change had the cascade
 create unique index if not exists blocks_one_per_scope
   on public.blocks (user_id, coalesce(church_id, '00000000-0000-0000-0000-000000000000'::uuid));
+create index if not exists blocks_email_idx on public.blocks (lower(btrim(email)));
 alter table public.blocks enable row level security;   -- no policies: read through church_blocks() only
 revoke all on public.blocks from anon, authenticated;
 
@@ -2994,9 +3005,13 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
+declare v_email text;
 begin
+  select lower(btrim(u.email::text)) into v_email from auth.users u where u.id = new.user_id;
+  v_email := coalesce(v_email, '');
   if exists (select 1 from public.blocks b
-             where b.user_id = new.user_id and (b.church_id is null or b.church_id = new.church_id)) then
+             where (b.church_id is null or b.church_id = new.church_id)
+               and (b.user_id = new.user_id or (v_email <> '' and lower(btrim(b.email)) = v_email))) then
     raise exception 'This account can''t join this church. Contact the church if you think this is a mistake.'
       using errcode = '42501';
   end if;
@@ -3121,7 +3136,12 @@ begin
   elsif not public.church_admin_of(p_church) then
     raise exception 'Only the church''s admins can do that.' using errcode = '42501';
   end if;
-  delete from public.blocks b where b.user_id = p_user and b.church_id is not distinct from p_church;
+  -- the block is matched by email too, so lifting it also clears an older row left by a deleted login with the same email
+  delete from public.blocks b
+  where b.church_id is not distinct from p_church
+    and (b.user_id = p_user
+         or (btrim(b.email) <> '' and lower(btrim(b.email)) in (select lower(btrim(x.email)) from public.blocks x
+                                                                where x.user_id = p_user and x.church_id is not distinct from p_church)));
   if not found then raise exception 'That account is not blocked here.'; end if;
   insert into public.audit_log (tbl, op, row_id, church_id) values ('blocks', 'UNBLOCK', p_user::text, p_church);
 end;

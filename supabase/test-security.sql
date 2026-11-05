@@ -2,8 +2,9 @@
 -- Everything here is read-only and the whole run is rolled back: nothing is kept.
 -- The editor shows only the last result, so each check stores its value and one table at the end lists them all.
 -- Expected result: 13 rows, and every `ok` reads `t` (true).
--- Needs one church and one platform admin (README step 5). If no ordinary member exists yet (only the owner has joined),
--- a made-up member with no church stands in for checks 2 and 3, and the `note` column says so.
+-- Needs one church and one platform admin (README step 5). An "ordinary member" is someone who is neither the owner nor
+-- approved staff/admin of a church (staff and admins are meant to see their church's visitors). If none exists yet, a
+-- made-up member with no church stands in for checks 2 and 3, and the `note` column says so.
 begin;
 
 do $$ begin
@@ -17,11 +18,20 @@ end $$;
 select set_config('test.church', (select id::text from public.churches order by created_at limit 1), true);
 select set_config('test.admin', (select user_id::text from public.platform_admins limit 1), true);
 select set_config('test.real_member', (exists (select 1 from public.memberships m
-  where not exists (select 1 from public.platform_admins p where p.user_id = m.user_id)))::text, true);
+  where not exists (select 1 from public.platform_admins p where p.user_id = m.user_id)
+    and not (m.status = 'approved' and m.role in ('staff', 'admin'))))::text, true);
 select set_config('test.member', coalesce((select m.user_id::text from public.memberships m
-  where not exists (select 1 from public.platform_admins p where p.user_id = m.user_id) limit 1), gen_random_uuid()::text), true);
-select set_config('test.member_church', coalesce((select church_id::text from public.memberships
-  where user_id = current_setting('test.member')::uuid), gen_random_uuid()::text), true);
+  where not exists (select 1 from public.platform_admins p where p.user_id = m.user_id)
+    and not (m.status = 'approved' and m.role in ('staff', 'admin')) limit 1), gen_random_uuid()::text), true);
+
+-- one visitor in every church (the member's own included), so check 3 has rows it could wrongly show
+select set_config('request.jwt.claims', '', true);
+insert into public.attendees (church_id, id, name, age, s, interests)
+select id, 'EXPO-9990', 'Row Level Security Probe', 40, '{"sys":120,"dia":80}',
+       jsonb_build_object('consent', true, 'optin', false, 'consentOn', to_char(now(), 'YYYY-MM-DD'))
+from public.churches
+on conflict (church_id, id) do nothing;
+select set_config('test.probe_rows', (select count(*) from public.attendees where id = 'EXPO-9990')::text, true);
 
 set local role authenticated;
 select set_config('request.jwt.claims',
@@ -35,11 +45,10 @@ select set_config('request.jwt.claims',
 select set_config('r.member_gets_no_church_data',
   (public.admin_church_data(current_setting('test.church')::uuid) is null)::text, true);
 
--- 3. … and Row Level Security hands them zero rows from any other church
-select set_config('r.member_sees_no_other_churchs_visitors', (not exists (
-  select 1 from public.attendees a
-  where a.church_id <> current_setting('test.member_church')::uuid
-))::text, true);
+-- 3. … and Row Level Security hands them zero visitor rows, from any church (their own included). It only counts
+--    if the probe rows above were really written (test.probe_rows), so an empty table can never pass it
+select set_config('r.member_sees_no_visitors',
+  (current_setting('test.probe_rows')::int > 0 and not exists (select 1 from public.attendees))::text, true);
 
 -- The two-admin cap needs a write, so it is not tested here: in the app, try to promote a third
 -- admin in a church that already has two — the database refuses with
@@ -121,7 +130,7 @@ select c.check_name,
 from (values
   ('owner_reads_church_data', false),
   ('member_gets_no_church_data', true),
-  ('member_sees_no_other_churchs_visitors', true),
+  ('member_sees_no_visitors', true),
   ('fresh_visit_kept', false),
   ('old_visit_not_yet_written_since', false),
   ('reupload_cleared_by_trigger', false),

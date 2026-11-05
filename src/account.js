@@ -1612,7 +1612,7 @@ export function cloudAuthEvent(ev,session){
       no "Up to date", no gate lift on a signed-out desk (H4) */
    cloud.gen=(cloud.gen||0)+1;cloud.busy=false;cloud.again=false;cloud.againManual=false;cloud.againPull=false;
    applyRetention();afterMerge();persistNow();      /* the server may already have purged these readings; the saved copy follows */
-   cloud.ready=false;}
+   cloud.ready=false;cloud.gateHide=false;}   /* a Back pressed earlier must not outlive the session: gateState() honours gateHide before it looks at ready */
   if(wasIn)cloud.formErr='Your session ended. Sign in again to keep syncing.';   /* one glanceable reason at the gate (A14) */
   healthReset();noteHealth('auth','off','Not signed in.');
   if(ev==='SIGNED_OUT'&&wasIn&&!cloud.signingOut)toast('Signed out — tap the logo to sign in again');

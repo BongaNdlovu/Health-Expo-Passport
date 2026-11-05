@@ -315,6 +315,45 @@ const PROJ = path.join(__dirname, '..');
   ok('deleting your own account deletes your pledge too, as the app promises', !r.error && (await SQL(`select 1 from public.volunteers where church_id=$1 and id='VOL-9712'`, [B])).length === 0
     && (await SQL(`select 1 from auth.users where id=$1`, [U.mallory])).length === 0, msg(r));
 
+  // a block outlives the login it was made for: deleting the account and registering again with the same email changes nothing
+  const IVY = ['00000000-0000-4000-8000-0000000000c1', '00000000-0000-4000-8000-0000000000c2', '00000000-0000-4000-8000-0000000000c3'];
+  const IVY_MAIL = ['ivy@example.org', 'Ivy@Example.org', 'IVY@example.ORG'];   // the same address, three letter cases
+  const mkIvy = i => SQL(`insert into auth.users (id,email,raw_user_meta_data,email_confirmed_at) values ($1,$2,$3,now())`, [IVY[i], IVY_MAIL[i], JSON.stringify({ full_name: 'Ivy' })]);
+  await mkIvy(0);
+  await as(IVY[0], `select public.join_church($1,'Ivy','')`, [B]);
+  await as(U.carol, `select public.set_member($1,'member','approved')`, [IVY[0]]);
+  await as(U.carol, `select public.block_member($1,$2)`, [IVY[0], B]);
+  r = await as(IVY[0], `select public.delete_my_account()`);
+  ok('a blocked member can still delete their login, and the block stays',
+    !r.error && (await SQL(`select 1 from auth.users where id=$1`, [IVY[0]])).length === 0
+    && (await SQL(`select 1 from public.blocks where user_id=$1 and church_id=$2`, [IVY[0], B])).length === 1, msg(r));
+  await mkIvy(1);
+  r = await as(IVY[1], `select public.join_church($1,'Ivy','')`, [B]);
+  ok('...registering again with the same email (in any letter case) still cannot join that church, and is told so neutrally',
+    !!r.error && /can't join this church/.test(r.error.message) && !/block/i.test(r.error.message), msg(r));
+  r = await as(IVY[1], `select public.join_church($1,'Ivy','')`, [C2]);
+  ok('...yet a church-scoped block leaves them free to join a different church', !r.error, msg(r));
+  await as(IVY[1], `select public.leave_church()`);
+  r = await as(U.carol, `select * from public.church_blocks($1)`, [B]);
+  ok('the Blocked list still shows them, with name and email, so an admin can lift it',
+    !r.error && r.rows.some(x => x.user_id === IVY[0] && x.email === 'ivy@example.org' && x.name === 'Ivy'), msg(r));
+  r = await as(U.carol, `select public.unblock_member($1,$2)`, [IVY[0], B]);
+  ok('lifting it lets the new account ask to join', !r.error && !(await as(IVY[1], `select public.join_church($1,'Ivy','')`, [B])).error, msg(r));
+  await as(IVY[1], `select public.leave_church()`);
+  // the same for a block from the whole app
+  r = await as(U.alice, `select public.block_member($1,null)`, [IVY[1]]);
+  const ivyDel = await as(IVY[1], `select public.delete_my_account()`);
+  await mkIvy(2);
+  ok('an app-wide block survives the login being deleted: the new account joins no church and registers none',
+    !r.error && !ivyDel.error && !!(await as(IVY[2], `select public.join_church($1,'Ivy','')`, [B])).error
+    && !!(await as(IVY[2], `select public.join_church($1,'Ivy','')`, [C2])).error
+    && !!(await as(IVY[2], `select public.register_church('Ivy Church') as id`)).error
+    && (await SQL(`select 1 from public.churches where name='Ivy Church'`)).length === 0, msg(r) + ' ' + msg(ivyDel));
+  r = await as(U.alice, `select public.unblock_member($1,null)`, [IVY[1]]);
+  ok('...and the app owner lifts it from the old row', !r.error && !(await as(IVY[2], `select public.join_church($1,'Ivy','')`, [B])).error, msg(r));
+  await as(IVY[2], `select public.leave_church()`);
+  await SQL(`delete from public.notifications where title like '%Ivy%'`);
+
   console.log('\n16. positions: register as Leader or Assistant; ask to lead only a church with no Leader; the full church list');
   const NEW = { leader2: '00000000-0000-4000-8000-0000000000e1', asst: '00000000-0000-4000-8000-0000000000e2', asker: '00000000-0000-4000-8000-0000000000e3', other: '00000000-0000-4000-8000-0000000000e4' };
   for (const [n, id] of Object.entries(NEW))
@@ -343,6 +382,14 @@ const PROJ = path.join(__dirname, '..');
   ok('asking to lead a church with no Leader is a pending request marked leader', !r.error && m.status === 'pending' && m.wants === 'leader', msg(r) + ' ' + JSON.stringify(m));
   const owner = await SQL(`select 1 from public.notifications where user_id=$1 and title like 'Leader request:%'`, [U.alice]);
   ok('...and the app owner is told', owner.length >= 1, JSON.stringify(owner));
+  const leaderNotes = async () => (await SQL(`select 1 from public.notifications where user_id=$1 and title='Leader request: Asker'`, [U.alice])).length;
+  await as(NEW.asker, `select public.leave_church()`);
+  await as(NEW.asker, `select public.join_church($1,'Asker','','leader')`, [AC]);
+  ok('...but leaving and asking again within the hour does not tell them a second time', (await leaderNotes()) === 1, String(await leaderNotes()));
+  await SQL(`update public.notifications set created_at = now() - interval '2 hours' where user_id=$1 and title='Leader request: Asker'`, [U.alice]);
+  await as(NEW.asker, `select public.leave_church()`);
+  await as(NEW.asker, `select public.join_church($1,'Asker','','leader')`, [AC]);
+  ok('...while a request an hour later is told again', (await leaderNotes()) === 2, String(await leaderNotes()));
   r = await as(U.alice, `select public.set_member($1,'member','approved')`, [NEW.asker]);
   const r2 = await as(U.alice, `select public.set_admin_post($1,'leader')`, [NEW.asker]);
   m = (await SQL(`select role,status,admin_post from public.memberships where user_id=$1`, [NEW.asker]))[0];

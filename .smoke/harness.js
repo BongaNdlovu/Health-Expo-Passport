@@ -2263,6 +2263,15 @@ function makeServer() {
     gateShown() && $el('authGateBody').innerHTML.includes('data-action="gateBack"'));
   g.gateBack();
   ok('…and Back returns to the app', g.gateState() === 'hidden' && !gateShown());
+  /* M-2: that Back must not outlive a later session. Signed out, Back, then sign in; when the session ends the gate
+     returns (gateState honours gateHide before it looks at ready, so the session's end has to clear it) */
+  C.gateForce = false; C.demo = false; C.view = 'login'; srv.staff = true;
+  await signIn(); await sleep(400);
+  ok('M-2 Back pressed while signed out, then signing in: the desk opens', C.ready === true && g.gateState() === 'hidden', g.gateState() + ' ready=' + C.ready);
+  srv.authCb('SIGNED_OUT', null); await sleep(60);
+  ok('M-2 …a session that then ends puts the gate back; the earlier Back does not wave the desk through',
+    gateShown() && g.gateState() === 'form' && C.gateHide === false, g.gateState() + ' gateHide=' + C.gateHide);
+  ok('M-2 …and the gate offers no Back to the app', !$el('authGateBody').innerHTML.includes('data-action="gateBack"'));
   C.gateHide = false; C.gateForce = false; C.demo = false; C.view = 'login'; C.gateKey = ''; g.renderGate();
 
   C.user = { email: 'staff@example.org' }; C.recovery = true; C.gateHide = false; C.gateKey = ''; g.renderGate();
