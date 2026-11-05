@@ -32,7 +32,7 @@ const ADMIN_TITLES=['Health Department Leader','Assistant Health Department Lead
 export const roleLabel=m=>!m?'':(m.role==='admin'&&m.status==='approved'&&m.admin_rank?(ADMIN_TITLES[m.admin_rank-1]||'Admin'):(ROLE_L[m.role]||m.role));
 const CHURCH_L={pending:'Waiting',active:'Active',suspended:'Paused'};
 /* the church plan: practice mode is free; a church is switched on once its yearly invoice is paid */
-export const PLAN={price:'R3,000',per:'per church, per year',email:'healthexpopassport@gmail.com'};
+export const PLAN={price:'price on request',per:'yearly, per church',email:'healthexpopassport@gmail.com'};
 const planMail=()=>`<a class="font-bold text-brand-700" href="mailto:${PLAN.email}">${PLAN.email}</a>`;
 /* days from today to a YYYY-MM-DD date (negative once it has passed), and the date as people read it */
 const daysTo=iso=>{const d=Date.parse(String(iso).slice(0,10)+'T00:00:00');if(isNaN(d))return null;const t=new Date();t.setHours(0,0,0,0);return Math.round((d-t.getTime())/86400000);};
@@ -47,7 +47,7 @@ export function planNoticeHTML(){
   :`Church plan · paid until <b>${esc(d)}</b>`;
  return `<div class="q-state q-state-${{ok:'info',warn:'warn',flag:'bad'}[tone]} mt-3" data-plan="${tone}"><span class="q-dot"></span><span style="flex:1">${msg}</span></div>`;
 }
-const planBox=body=>`<div class="mt-3 rounded-[16px] border border-sage-200/80 bg-sage-50/90 p-3 text-[11.5px] leading-relaxed text-[#33504f]"><b class="text-[#123033]">Church plan · ${PLAN.price} ${PLAN.per}</b><br>${body}</div>`;
+const planBox=body=>`<div class="mt-3 rounded-[16px] border border-sage-200/80 bg-sage-50/90 p-3 text-[11.5px] leading-relaxed text-[#33504f]"><b class="text-[#123033]">Church plan · ${PLAN.per} · ${PLAN.price}</b><br>${body}</div>`;
 /* what a person can ask to be when they sign up (memberships.wants): nothing here gives a right, an admin decides */
 const WANTS=[['member','Church member','See my own results'],['pledge','Volunteer','Pledge to help at the expo'],
  ['team_member','Team member','Help at the station I choose'],['team_leader','Team leader','Lead one station'],
@@ -233,7 +233,7 @@ export function acctGateHTML(st){
   <button data-action="cloudSignOut" class="btn btn-glass mt-4 w-full py-2.5 text-xs text-[#5b7178]">Sign out</button>${admin}${profDeleteHTML()}`;
  if(st==='churchwait')return `${title('Waiting for your church to be switched on')}
   ${acctNote('<b class="text-[#33504f]">'+esc(c.name)+'</b> is registered, with you as its '+esc(roleLabel(m)||'admin')+'. It is switched on once the church plan is paid; then visitors and volunteers can be added. Press Check again once it is — or just come back to the app, it checks by itself.')}
-  ${planBox(`Your PayPal invoice is sent to <b>${esc(a.email||'your email')}</b>. Not received it, or have a question? Email ${planMail()}. You can keep using practice mode meanwhile.`)}
+  ${planBox(`We contact you at <b>${esc(a.email||'your email')}</b> to agree your church’s yearly price, then send a PayPal invoice there. Not heard from us, or have a question? Email ${planMail()}. You can keep using practice mode meanwhile.`)}
   ${out}${admin}${profDeleteHTML()}`;
  if(st==='suspended')return `${title(esc(c.name)+' is paused')}
   ${acctNote('The Health Expo admin has paused this church, so its expo data cannot be opened. Nothing has been deleted.')}
@@ -259,7 +259,7 @@ function churchPickHTML(){
    <div><span class="microlabel">Your position</span>
     <div class="mt-1.5 grid grid-cols-2 gap-2">${[['leader','Health Department Leader'],['assistant','Assistant Health Department Leader']].map(([k,l])=>`<button type="button" data-action="reg-post" data-args="${k}" aria-pressed="${(cloud.regPost||'leader')===k}" class="btn ${(cloud.regPost||'leader')===k?'btn-primary':'btn-glass'} px-2 py-2.5 text-xs">${l}</button>`).join('')}</div></div>
    <p class="text-[10px] leading-relaxed text-[#8a9aa0]">${(cloud.regPost||'leader')==='assistant'?'You become the church’s Assistant. The Leader’s post stays open: someone can ask for it when they join, and the Health Expo admin approves them.':'You become the church’s Health Department Leader. One Assistant can be added later — a church has two admin posts.'} The Health Expo admin approves the church before any visitor data can be added.</p>
-   ${planBox(`After you register, a PayPal invoice is sent to the email you signed in with (in US dollars at the day’s rate; card or PayPal). Your church is switched on once it is paid. Practice mode stays free.`)}
+   ${planBox(`After you register, we contact you at the email you signed in with to agree your church’s yearly price. A PayPal invoice follows (in US dollars at the day’s rate; card or PayPal), and your church is switched on once it is paid. Practice mode stays free.`)}
    <button id="rcGo" class="btn btn-primary w-full py-3 text-sm">Register the church</button></form>
   ${link('reg-church-list','Back to the list of churches')}`;
  const c=cloud.joinPick;
@@ -1451,7 +1451,7 @@ export async function addPlatformAdmin(e){
 }
 /* All churches: where each church's plan stands */
 function planRowNote(c){
- if(!c.paid_until)return c.status==='pending'?'':'<div class="mt-1 text-[11px] font-bold text-[#8a9aa0]">Plan date not recorded</div>';
+ if(!c.paid_until)return c.status==='pending'?'':'<div class="mt-1 text-[11px] font-bold" style="color:#8a5a12" data-plan-row="unpaid">Not paid yet</div>';
  const n=daysTo(c.paid_until),d=planDate(c.paid_until);
  const col=n==null?'#8a9aa0':n<0?'#b42318':n<=30?'#8a5a12':'#1f6b62';
  const t=n==null?d:n<0?`Plan ended ${d} · overdue`:n<=30?`Paid until ${d} · due in ${n} day${n===1?'':'s'}`:`Paid until ${d}`;

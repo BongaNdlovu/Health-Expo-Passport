@@ -3179,7 +3179,7 @@ function makeServer() {
     await g.registerChurch({ preventDefault() {} }); await sleep(30);
     ok('FUP-POS-7 ...and the registration is sent as the Assistant', rc.includes('post:assistant'), rc.join());
     ok('registering a church sends its details, then waits for the NEWSTART admin', rc.includes('register:Hope Church:Pinetown') && g.gateState() === 'churchwait'
-      && /Waiting for your church to be switched on/.test(gate()) && /R3,000 per church, per year/.test(gate()) && /healthexpopassport@gmail.com/.test(gate()) && gate().includes('Hope Church'), g.gateState());
+      && /Waiting for your church to be switched on/.test(gate()) && /yearly, per church · price on request/.test(gate()) && !/R3,000/.test(gate()) && /healthexpopassport@gmail.com/.test(gate()) && gate().includes('Hope Church'), g.gateState());
     ok('…a church waiting for approval offers Delete my account (and no Leave, which would orphan the church)', /data-action="profDeleteAsk"/.test(gate()) && !/data-action="leaveChurch"/.test(gate()));
     me.church.status = 'suspended';
     await g.cloudSync(true); await sleep(20);
@@ -3398,9 +3398,9 @@ function makeServer() {
     shots.push(sheet());
     await g.setChurchStatus('ch-b', 'active');
     ok('…approving a church calls the database', rc.includes('status:ch-b:active'), rc.join());
-    ok('FUP-PLAN-1 All churches shows each church\'s plan date, with a Paid until… button carrying it (a church still waiting shows no plan note)',
+    ok('FUP-PLAN-1 All churches shows each church\'s plan date, with a Paid until… button carrying it (a church still waiting shows no plan note; an active one with no date says Not paid yet)',
       /data-plan-row="ok"/.test(sheet()) && /Paid until \d/.test(sheet()) && new RegExp('data-action="church-paid" data-args="ch-a" data-cur="' + planDay(200) + '"').test(sheet())
-      && /data-action="church-paid" data-args="ch-b" data-cur=""/.test(sheet()) && !/Plan date not recorded/.test(sheet()), sheet().slice(sheet().indexOf('Grace Chapel'), sheet().indexOf('Grace Chapel') + 900));
+      && /data-action="church-paid" data-args="ch-b" data-cur=""/.test(sheet()) && !/Not paid yet/.test(sheet()), sheet().slice(sheet().indexOf('Grace Chapel'), sheet().indexOf('Grace Chapel') + 900));
     { let asked = ''; sandbox.prompt = (q, d) => { asked = d; return ' ' + planDay(500) + ' '; };
       rc.length = 0; await g.setPaidUntil('ch-a', planDay(200)); await sleep(30);
       ok('FUP-PLAN-2 recording a renewal suggests a year on from the current date, then calls the database and reloads All churches',
