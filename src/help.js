@@ -54,6 +54,7 @@ export const HELP_START = [
       ['Team leader', 'Leads one booth. Can place helpers and remove a visitor at their own station.', 'lead'],
       ['Church admin (Health Department Leader)', 'Approves people, sets up expos, writes plans, exports data and clears the queue.', 'admin'],
       ['Staff account', 'A signed-in account. It needs a church admin’s approval before it can see the queue and church data.'],
+      ['Role tags', 'A control only some roles have carries a small tag (Admin only, Leader & admin, Leader of the Health Department or App owner), so you know others do not see it.', 'lead'],
       ['Joining a church', 'Pick your church from the list, then your position there, and send the request. Not listed? Register it as its Leader or Assistant.'] ] } ] },
  { title: 'Practice mode and live use',
    what: 'Practice mode is for learning; sign in to work a real expo.',
@@ -108,7 +109,7 @@ export const HELP_PAGES = [
       ['Optimal — healthy', 'Blood pressure, blood sugar and BMI are all normal.'],
       ['Count line', 'How many visitors are screened (their blood pressure, blood sugar and BMI are in), and how many are still in checks.'] ] },
     { name: 'Expo and volunteers', items: [
-      ['Expo banner', 'The expo’s name, and how many helpers are confirmed out of the number needed.'],
+      ['Expo banner', 'The expo’s name, and how many helpers are confirmed out of the number needed. Signed in to a church with no expo coming up, it says “No Health Expo yet”; practice mode shows a built-in sample expo.'],
       ['Pledge & Booth Registration', 'Tapping the banner opens the volunteer sheet, to pledge to help, pick a booth or add a new volunteer. The note counts pledged helpers still waiting for registration.'] ] },
     { name: 'Status, sync and theme', items: [
       ['Status line', 'Whether this device’s data is saved to the shared database, for example “Up to date with the shared database”.'],
@@ -173,6 +174,7 @@ export const HELP_PAGES = [
       ['Prayer request (optional)', 'Saved with the record and noted under Follow-up for the team. It is in the CSV export as Prayer note.'] ] },
     { name: 'Results (step 2)', items: [
       ['Health age', 'The age their readings point to, next to their actual age. It shows only when all 8 checks and a height are in; until then it says what is missing.'],
+      ['Under 18', 'There is no health age before 18: the tiles show a dash and “from age 18”. The readings and the plan still apply.'],
       ['90-day goal', 'The age they could reach in 90 days with the plan, and the years that would be won. Shown after all 8 checks.'],
       ['What to work on', 'The readings that most need attention.'],
       ['What adds the most years', 'The readings that add the most years to the health age.'],
@@ -261,6 +263,7 @@ export const HELP_PAGES = [
       ['Switch', 'Chooses whose view this device shows, and switches between Visitors and Volunteers.'] ] },
     { name: 'Team for this expo', items: [
       ['Confirmed of needed', 'Helpers confirmed out of the number needed.'],
+      ['No Health Expo yet', 'Shown instead when your church has no expo coming up, with the number of pledges on the team list. Pledging still works.'],
       ['Pledged, Registered, Booths short', 'How many have pledged, how many are registered, and how many booths still need people.'],
       ['Export volunteer roster CSV', 'Downloads a spreadsheet file of the roster: ID, name, phone, email, status, team leader, badge, expos served, hours, booth, shift, availability, skills, shirt size, emergency contact, notes and expo history.'] ] },
     { name: 'Booth coverage', items: [
@@ -271,7 +274,8 @@ export const HELP_PAGES = [
       ['Started from', 'The Pledge & Booth Registration banner on Home, which opens the volunteer sheet.'],
       ['Details', 'Name, phone, email, shirt size, emergency contact and notes.'],
       ['Booths', 'The first and backup booth they would like.'],
-      ['Availability and skills', 'Where the form asks for them.'] ] },
+      ['Availability and skills', 'Where the form asks for them.'],
+      ['Leaving with changes', 'Switching tab or volunteer with unsaved changes asks “Discard your changes?” first. No keeps the form and what you typed.'] ] },
     { name: 'Record: Log an expo', items: [
       ['Log an expo', 'Adds a past expo for a helper: name, date, booth worked and hours. Remove deletes an entry.'] ] },
     { name: 'Placement board', role: 'lead', items: [
@@ -431,7 +435,7 @@ export const HELP_TOPICS = [
     { name: 'A new version', items: [
       ['The update bar', 'When a new version is ready, a bar appears at the top: “A new version is ready · Tap Update — it takes a few seconds.” Update reloads the app on the new version.'],
       ['× (Not now)', 'Hides the bar until the next version. It does not ask again for the same one.'],
-      ['The Android app', 'It says “A new app version is ready · Tap Update to download and install it.” Update opens the download in the phone’s own browser, which hands the file to the phone’s installer.'],
+      ['The Android app', 'It says “A new app version is ready · Tap Update to download and install it.” Update opens the download in the phone’s own browser, which hands the file to the phone’s installer. It is offered only when the app on the website is newer than the one on the phone.'],
       ['Offline', 'With no connection the app looks for no update and stays quiet.'] ] },
     { name: 'Install on a phone', items: [
       ['Install the app on this phone', 'In a browser that allows it, tap the cloud button in the header. The sheet that opens (“Sync & sign-in” in practice mode) has the Install button at the bottom. The Android app has no install button.'],

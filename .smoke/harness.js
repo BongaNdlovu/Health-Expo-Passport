@@ -7481,6 +7481,17 @@ function makeServer() {
     ok('help: the Remove visitor messages are the code\'s', ['This visitor can’t be removed from this account.', 'Removing a visitor needs a connection — try again when you are online.', 'The database did not remove them. This visitor can’t be removed from this account.'].every(m => help.includes(m) && srcText.includes(m)));
     ok('help: clearing the queue is for church admins, in the screen and in the database', help.includes('Nothing was cleared. This can’t be done from this account.') && /qMayClear=\(\)=>qMode\(\)==='demo'\|\|isAdminAcct\(\)/.test(srcText)
       && /create policy "church admins queue delete" on public\.queue_entries\s+for delete to authenticated using \(church_id = \(select public\.staff_church\(\)\) and \(select public\.is_admin\(\)\)\)/.test(schemaText));
+    { /* FUP-TOUR: every spot the guided tour names is drawn by the app, so no step loses its highlight */
+      const steps = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'tutorial', 'steps.json'), 'utf8')).steps;
+      const appSrc = ['index.html', ...fs.readdirSync(path.join(__dirname, '..', 'src')).filter(f => f.endsWith('.js')).map(f => 'src/' + f)]
+        .map(f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')).join('\n');
+      const named = [...new Set(steps.flatMap(st => (st.target || []).map(t => (/^\[data-tour='([a-z0-9-]+)'\]$/.exec(t) || [])[1]).filter(Boolean)))];
+      const tabs = ['home', 'visit', 'queue', 'care', 'serve', 'me'];   /* the six tab buttons come from one template: data-tour="nav-${k}" */
+      const missing = named.filter(k => !appSrc.includes('data-tour="' + k + '"') && !(k.startsWith('nav-') && tabs.includes(k.slice(4)) && appSrc.includes('data-tour="nav-${esc(k)}"')));
+      ok('FUP-TOUR-1 every data-tour spot the tour names exists in the app', named.length > 10 && missing.length === 0, missing.join(', '));
+      ok('FUP-TOUR-2 every tour step has a title and words', steps.length >= 25 && steps.every(st => st.id && st.title && st.body), steps.length);
+      ok('FUP-TOUR-3 the roles step is for practice mode only (signed in, Help shows each person only their own tools)', steps.some(st => st.id === 'roles' && st.demoOnly === true));
+    }
     /* confirming the results leaves the queue alone, as the help says; Finish visit takes the visitor out of their lines */
     g.resetDemo(); g.queue.length = 0; g.cloud.user = null; g.qs.busy = false;
     await g.queueJoin('EXPO-042', 'vitals'); await g.queueJoin('EXPO-088', 'bp'); await g.queueCallNext('bp');

@@ -69,6 +69,7 @@
     "tab:home"
    ],
    "target": [
+    "[data-tour='nav']",
     "nav.bottom-nav",
     "[data-tour='nav-home']"
    ]
@@ -244,7 +245,7 @@
   {
    "id": "care",
    "title": "Care: follow-up after the expo",
-   "body": "The team works from these lists after the screenings: Urgent first, then the 48-hour calls, then interests. The WhatsApp button opens a message to the visitor.",
+   "body": "The team works from these lists after the screenings: Urgent first, then the 48-hour calls, then interests. Once someone has been phoned or sent to a clinic, Called / attended to ✓ takes them out of the red number on Care. The WhatsApp button opens a message to the visitor.",
    "before": [
     "tab:care"
    ],
@@ -290,7 +291,7 @@
   {
    "id": "profile",
    "title": "Profile and settings",
-   "body": "Your account, sign-in, sync status and pledge.",
+   "body": "Your account and sync status. Signed in, it has three sections: Pledge (helping at an expo), My details (your details and results) and Account (password, help, sign out).",
    "before": [
     "tab:me"
    ],
@@ -325,14 +326,15 @@
   {
    "id": "roles",
    "title": "Who does what",
-   "body": "Volunteer: works a station. Team leader: leads one booth. Church admin: approves people, sets up expos, writes plans, exports data and clears the queue. A new staff account needs an admin's approval before it sees church data.",
+   "body": "Volunteer or team member: works a station. Team leader: leads one booth and places its helpers. The Health Department Leader and their Assistant run the church: they approve people, set up expos, write plans and export data. Someone joining picks their church first, then their position, and the church approves it.",
    "before": [],
-   "target": []
+   "target": [],
+   "demoOnly": true
   },
   {
    "id": "privacy",
    "title": "Privacy and how long data is kept",
-   "body": "Only your church's admins and the staff they approve see visitor records. Readings and prayer notes are deleted 7 days after the visit; follow-up contact details are kept up to 2 years. Visitors may ask to see, correct or delete their data (POPIA).",
+   "body": "Only your church's admins and the staff they approve see visitor records. Readings and prayer notes are deleted 7 days after the visit. If a visitor agrees to follow-up, only their name and contact details are kept, for up to 2 years. Visitors may ask to see, correct or delete their data (POPIA).",
    "before": [],
    "target": []
   },

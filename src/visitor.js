@@ -176,7 +176,7 @@ export function viewHome(){
    <div class="hx-id" style="font-size:36px;letter-spacing:-1px">No visitors yet</div>
    <p style="margin:4px auto 0;max-width:32ch;font-size:11.5px;line-height:1.5;color:var(--hx-hero-sub)">${cloud.mode?'The shared database is empty. ':''}Register a new visitor to begin.</p>
    <button data-action="toggleReg" class="btn btn-primary mt-4 w-full py-3 text-sm">+ Register first visitor</button>
-  </div>`:`<div class="hx-hero">
+  </div>`:`<div class="hx-hero" data-tour="home-now">
    <div style="position:absolute;inset:0;top:50%;transform:translateY(-50%)">${ecgHTML()}</div>
    <div style="position:relative">
     <div class="hx-hero-top">
@@ -261,7 +261,7 @@ export function viewHome(){
    <div class="hx-ivory-head">
     <div><h3>Visitors today</h3><p class="hx-ivory-sub">Tap a visitor to open their passport${(!cloud.user||mayPlace())&&attendees.length?' · the bin removes them'+roleTag('lead'):''}</p></div>
     <div style="display:flex;gap:6px;flex:none">
-     <button data-action="toggleReg" class="hx-round hx-round-ivory" aria-label="Register a new visitor" aria-expanded="${!!state.regOpen}">${I.plus}</button>
+     <button data-action="toggleReg" data-tour="register" class="hx-round hx-round-ivory" aria-label="Register a new visitor" aria-expanded="${!!state.regOpen}">${I.plus}</button>
      <button data-action="openSwitcher" class="hx-round hx-round-ivory" aria-label="Find or switch visitor">${I.chevD}</button>
     </div>
    </div>
@@ -332,7 +332,7 @@ function visitorRowHTML(x){
  /* Remove sits beside the row, not inside it (a button in a button is not valid): church admins and team leaders when signed in,
     anyone in practice mode; it asks first (removeVisitorAsk) */
  const rm=(!cloud.user||mayPlace())?`<button class="hx-row-x" data-action="visitor-remove" data-args="${esc(x.id)}" aria-label="Remove ${esc(x.name)}" title="Remove visitor"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l.9 12.5h9.2L17.5 7M10 11v5M14 11v5"/></svg></button>`:'';
- return `<div class="hx-rowwrap"><button data-action="switchTo" data-args="${esc(x.id)}" class="hx-row${act?' is-on':''}" style="font:inherit;text-align:left">
+ return `<div class="hx-rowwrap"><button data-action="switchTo" data-tour="visitor-row" data-args="${esc(x.id)}" class="hx-row${act?' is-on':''}" style="font:inherit;text-align:left">
   <span class="hx-row-main"><span class="hx-row-dot" style="background:${dot}"></span>
    <span class="hx-row-txt"><strong class="hx-row-name">${esc(x.name)}${x.done?' ✓':''}</strong><span class="hx-row-sub">${esc(x.id)} · ${esc(line)} · ${d}/8 checks</span></span></span>
   <span class="hx-row-badge">${n} / 4</span></button>${rm}</div>`;
