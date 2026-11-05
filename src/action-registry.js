@@ -1,5 +1,5 @@
 // @ts-check
-import { acctRetry, manageExpos, removeVisitorAsk, closeAcct, cloudInit, cloudSignIn, cloudSignOut, cloudSync, gateBack, joinChurch, leaveChurch, linkMember, linkVolunteer, manageChurch, markNotifsRead, myField, myPickPledge, myPledgeEdit, myPledgeSave, mySecondBooth, myToggleBooth, myToggleList, notifClose, notifOpen, openAcct, openNotifs, profDeleteAsk, profDeleteGo, profDeleteTyped, profGate, profPassword, quarantineDiscard, quarantineExport, registerChurch, removeMember, renderAcct, saveChurch, saveMyDetails, setChurchStatus, setMember, teamAdd, teamRelease, teamShift, withdrawMyPledge } from './account.js';
+import { acctRetry, manageExpos, removeVisitorAsk, closeAcct, cloudInit, cloudSignIn, cloudSignOut, cloudSync, gateBack, joinChurch, leaveChurch, linkMember, linkVolunteer, manageChurch, markNotifsRead, myField, myPickPledge, myPledgeEdit, myPledgeSave, mySecondBooth, myToggleBooth, myToggleList, notifClose, notifOpen, openAcct, openNotifs, profDeleteAsk, profDeleteGo, profDeleteTyped, profGate, profPassword, quarantineDiscard, quarantineExport, registerChurch, removeMember, renderAcct, saveChurch, saveMyDetails, setChurchStatus, setPaidUntil, setMember, teamAdd, teamRelease, teamShift, withdrawMyPledge } from './account.js';
 import { addPlatformAdmin, approveAssistant, approveLeader, changeChurch, chooseChurch, cancelExpo, churchSearchSoon, deleteExpoAsk, editExpo, expoField, expoStation, expoType, newExpo, openChurchData, pickExpo, pickWant, pickWantBooth, pledgeToExpo, saveExpoForm, setAdminPost, setExpoStatus, stepDown } from './account.js';
 import { blockMember, cloudPush, deregisterMyPledge, setProfSection, unblockMember } from './account.js';
 import { answer } from './feedback.js';
@@ -179,6 +179,7 @@ export const ACTION_MAP = {
   'notif-open': el => notifOpen(el.dataset.args),
   'church-save': (el, ev) => saveChurch(ev, el.dataset.args),
   'church-status': el => setChurchStatus(el.dataset.args, el.dataset.status),
+  'church-paid': el => setPaidUntil(el.dataset.args, el.dataset.cur),
   'padmin-add': (el, ev) => addPlatformAdmin(ev),
   'expo-new': el => newExpo(el.dataset.args),
   'expo-edit': el => editExpo(el.dataset.args),

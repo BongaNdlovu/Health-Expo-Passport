@@ -429,6 +429,9 @@ create table if not exists public.churches (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+-- the church plan: the date its yearly plan is paid up to. The app owner sets it; the app reminds the church's admins
+-- before and after it passes. Nothing locks by itself: pausing a church stays the owner's decision.
+alter table public.churches add column if not exists paid_until date;
 drop trigger if exists churches_touch on public.churches;
 create trigger churches_touch before update on public.churches
   for each row execute function public.touch_updated_at();
@@ -807,7 +810,8 @@ as $$
                                    else 0 end,
                      'wants', m.wants, 'wants_booths', to_jsonb(m.wants_booths))
                    from public.memberships m where m.user_id = u.id),
-    'church', (select jsonb_build_object('id', c.id, 'name', c.name, 'city', c.city, 'phone', c.phone, 'email', c.email, 'status', c.status)
+    'church', (select jsonb_build_object('id', c.id, 'name', c.name, 'city', c.city, 'phone', c.phone, 'email', c.email, 'status', c.status,
+                                         'paid_until', case when m.role = 'admin' and m.status = 'approved' then c.paid_until end)
                from public.memberships m join public.churches c on c.id = m.church_id where m.user_id = u.id))
   from auth.users u where u.id = (select auth.uid());
 $$;
@@ -1168,9 +1172,10 @@ end;
 $$;
 
 -- ---------------------------------------------------------------- platform admin only
+drop function if exists public.admin_churches();
 create or replace function public.admin_churches()
 returns table (id uuid, name text, city text, phone text, email text, status text, created_at timestamptz,
-               members bigint, staff bigint, pending bigint, visitors bigint, volunteers bigint)
+               members bigint, staff bigint, pending bigint, visitors bigint, volunteers bigint, paid_until date)
 language plpgsql
 stable
 security definer
@@ -1185,7 +1190,8 @@ begin
       (select count(*) from public.memberships m where m.church_id = c.id and m.status = 'approved' and m.role in ('staff', 'admin')),
       (select count(*) from public.memberships m where m.church_id = c.id and m.status = 'pending'),
       (select count(*) from public.attendees a where a.church_id = c.id),
-      (select count(*) from public.volunteers v where v.church_id = c.id)
+      (select count(*) from public.volunteers v where v.church_id = c.id),
+      c.paid_until
     from public.churches c
     order by (c.status = 'pending') desc, lower(c.name), c.id;
 end;
@@ -1200,10 +1206,32 @@ as $$
 begin
   if not public.is_platform_admin() then raise exception 'platform admin only' using errcode = '42501'; end if;
   if p_status not in ('pending', 'active', 'suspended') then raise exception 'Unknown status.'; end if;
-  update public.churches c set status = p_status where c.id = p_church;
+  update public.churches c set status = p_status,
+    paid_until = case when p_status = 'active' and c.paid_until is null then current_date + interval '1 year' else c.paid_until end
+  where c.id = p_church;
   if not found then raise exception 'No such church.'; end if;
 end;
 $$;
+
+-- the app owner records a renewal (or corrects the date); null clears it. Written to audit_log.
+create or replace function public.admin_set_paid_until(p_church uuid, p_until date)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not public.is_platform_admin() then raise exception 'platform admin only' using errcode = '42501'; end if;
+  if p_until is not null and (p_until < date '2020-01-01' or p_until > current_date + interval '10 years') then
+    raise exception 'That date does not look right.';
+  end if;
+  update public.churches c set paid_until = p_until where c.id = p_church;
+  if not found then raise exception 'No such church.'; end if;
+  insert into public.audit_log (tbl, op, row_id, church_id) values ('churches', 'PAID_UNTIL', coalesce(p_until::text, 'cleared'), p_church);
+end;
+$$;
+revoke all on function public.admin_set_paid_until(uuid, date) from public, anon;
+grant execute on function public.admin_set_paid_until(uuid, date) to authenticated;
 
 -- The platform admins themselves: listed and added by email in the app (platform admin only), so that after the first
 -- one no SQL is needed. The first is still made by hand in the SQL editor, because nobody may promote themselves.

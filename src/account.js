@@ -31,6 +31,23 @@ const ROLE_L={member:'Member',staff:'Staff',admin:'Admin'};
 const ADMIN_TITLES=['Health Department Leader','Assistant Health Department Leader'];
 export const roleLabel=m=>!m?'':(m.role==='admin'&&m.status==='approved'&&m.admin_rank?(ADMIN_TITLES[m.admin_rank-1]||'Admin'):(ROLE_L[m.role]||m.role));
 const CHURCH_L={pending:'Waiting',active:'Active',suspended:'Paused'};
+/* the church plan: practice mode is free; a church is switched on once its yearly invoice is paid */
+export const PLAN={price:'R3,000',per:'per church, per year',email:'healthexpopassport@gmail.com'};
+const planMail=()=>`<a class="font-bold text-brand-700" href="mailto:${PLAN.email}">${PLAN.email}</a>`;
+/* days from today to a YYYY-MM-DD date (negative once it has passed), and the date as people read it */
+const daysTo=iso=>{const d=Date.parse(String(iso).slice(0,10)+'T00:00:00');if(isNaN(d))return null;const t=new Date();t.setHours(0,0,0,0);return Math.round((d-t.getTime())/86400000);};
+const planDate=iso=>{const d=new Date(String(iso).slice(0,10)+'T00:00:00');return isNaN(d.getTime())?String(iso):d.toLocaleDateString('en-ZA',{day:'numeric',month:'short',year:'numeric'});};
+/* a church's admins: the plan date, with a reminder in its last 30 days and a notice once it has passed (nothing locks by itself) */
+export function planNoticeHTML(){
+ const c=cloud.acct&&cloud.acct.church;if(!c||!isChurchAdmin()||!c.paid_until)return '';
+ const n=daysTo(c.paid_until),d=planDate(c.paid_until);if(n==null)return '';
+ const tone=n<0?'flag':n<=30?'warn':'ok';
+ const msg=n<0?`Your church plan ended on <b>${esc(d)}</b>. Renew it to keep your expo data open: email ${planMail()} for the renewal invoice.`
+  :n<=30?`Your church plan ends on <b>${esc(d)}</b> (${n===0?'today':n===1?'tomorrow':'in '+n+' days'}). Email ${planMail()} for the renewal invoice.`
+  :`Church plan · paid until <b>${esc(d)}</b>`;
+ return `<div class="q-state q-state-${{ok:'info',warn:'warn',flag:'bad'}[tone]} mt-3" data-plan="${tone}"><span class="q-dot"></span><span style="flex:1">${msg}</span></div>`;
+}
+const planBox=body=>`<div class="mt-3 rounded-[16px] border border-sage-200/80 bg-sage-50/90 p-3 text-[11.5px] leading-relaxed text-[#33504f]"><b class="text-[#123033]">Church plan · ${PLAN.price} ${PLAN.per}</b><br>${body}</div>`;
 /* what a person can ask to be when they sign up (memberships.wants): nothing here gives a right, an admin decides */
 const WANTS=[['member','Church member','See my own results'],['pledge','Volunteer','Pledge to help at the expo'],
  ['team_member','Team member','Help at the station I choose'],['team_leader','Team leader','Lead one station'],
@@ -214,11 +231,13 @@ export function acctGateHTML(st){
   ${acctNote('Signed in as <b class="text-[#33504f]">'+esc(a.email||'')+'</b>. Join the church you belong to. Its admins approve you, and then you can see your own expo results here.')}
   ${churchPickHTML()}
   <button data-action="cloudSignOut" class="btn btn-glass mt-4 w-full py-2.5 text-xs text-[#5b7178]">Sign out</button>${admin}${profDeleteHTML()}`;
- if(st==='churchwait')return `${title('Waiting for your church to be approved')}
-  ${acctNote('<b class="text-[#33504f]">'+esc(c.name)+'</b> is registered, with you as its Health Department Leader. The Health Expo admin still has to approve it before visitors and volunteers can be added. Press Check again once they have — or just come back to the app, it checks by itself.')}
+ if(st==='churchwait')return `${title('Waiting for your church to be switched on')}
+  ${acctNote('<b class="text-[#33504f]">'+esc(c.name)+'</b> is registered, with you as its '+esc(roleLabel(m)||'admin')+'. It is switched on once the church plan is paid; then visitors and volunteers can be added. Press Check again once it is — or just come back to the app, it checks by itself.')}
+  ${planBox(`Your PayPal invoice is sent to <b>${esc(a.email||'your email')}</b>. Not received it, or have a question? Email ${planMail()}. You can keep using practice mode meanwhile.`)}
   ${out}${admin}${profDeleteHTML()}`;
  if(st==='suspended')return `${title(esc(c.name)+' is paused')}
-  ${acctNote('The Health Expo admin has paused this church, so its expo data cannot be opened. Ask them about it, or leave the church to join another one.')}
+  ${acctNote('The Health Expo admin has paused this church, so its expo data cannot be opened. Nothing has been deleted.')}
+  ${planBox(`If your church’s yearly plan has ended, renewing it opens everything again. Email ${planMail()} for the renewal invoice, or leave the church to join another one.`)}
   ${out}${leave}${admin}${profDeleteHTML()}`;
  if(st==='pending')return `${title('Waiting for approval')}
   ${acctNote('Your email <b class="text-[#33504f]">'+esc(a.email||'')+'</b> is confirmed. <b class="text-[#33504f]">'+esc(c.name)+'</b> still has to approve you as a member. Give the Health Department Leader or their Assistant the email above. The app checks again by itself when you come back to it, or press Check again.')}
@@ -240,6 +259,7 @@ function churchPickHTML(){
    <div><span class="microlabel">Your position</span>
     <div class="mt-1.5 grid grid-cols-2 gap-2">${[['leader','Health Department Leader'],['assistant','Assistant Health Department Leader']].map(([k,l])=>`<button type="button" data-action="reg-post" data-args="${k}" aria-pressed="${(cloud.regPost||'leader')===k}" class="btn ${(cloud.regPost||'leader')===k?'btn-primary':'btn-glass'} px-2 py-2.5 text-xs">${l}</button>`).join('')}</div></div>
    <p class="text-[10px] leading-relaxed text-[#8a9aa0]">${(cloud.regPost||'leader')==='assistant'?'You become the church’s Assistant. The Leader’s post stays open: someone can ask for it when they join, and the Health Expo admin approves them.':'You become the church’s Health Department Leader. One Assistant can be added later — a church has two admin posts.'} The Health Expo admin approves the church before any visitor data can be added.</p>
+   ${planBox(`After you register, a PayPal invoice is sent to the email you signed in with (in US dollars at the day’s rate; card or PayPal). Your church is switched on once it is paid. Practice mode stays free.`)}
    <button id="rcGo" class="btn btn-primary w-full py-3 text-sm">Register the church</button></form>
   ${link('reg-church-list','Back to the list of churches')}`;
  const c=cloud.joinPick;
@@ -867,7 +887,7 @@ function profShortcuts(){
  if(!a)return '';
  const go=(t,l)=>`<button data-action="openAcct" data-args="${esc(t)}" class="btn btn-soft btn-tagged flex-1 py-2.5 text-xs">${l}</button>`;
  const row=(isChurchAdmin()?go('church','My church'+roleTag('admin')):'')+(a.platform_admin?go('admin','All churches'+roleTag('owner')):'');
- return row?`<div class="mt-3 flex gap-2">${row}</div>`:'';
+ return (row?`<div class="mt-3 flex gap-2">${row}</div>`:'')+planNoticeHTML();
 }
 function profSync(){
  const ui=CLOUD_UI[cloud.status]||CLOUD_UI.off;
@@ -959,6 +979,7 @@ export function churchAdminHTML(){
  return `${viaAdmin?`<button data-action="back-to-churches" class="tap-link">← All churches</button>`:''}
   <div class="mt-1 text-[13px] font-bold text-[#123033]">${esc(c.name)}${roleTag(viaAdmin?'owner':'admin')}</div>
   <p class="mt-0.5 text-[10.5px] text-[#6b8187]">Everything on this screen is seen only by ${viaAdmin?'the app owner':'this church’s admins'}.</p>
+  ${viaAdmin?'':planNoticeHTML()}
   ${acctBox('Health Expos',expoAdminHTML(cid))}
   ${acctBox('Members'+(waiting?` · ${waiting} waiting`:'')+(F?` · ${F.length} of ${FOLLOWUP_MAX} follow-up people`:''),
    !L?acctSkel(3):cloud.members.err?retryNote('Could not load the members. Check your connection.','members'):(!L.length?acctNote('Nobody has joined yet.'):'')+L.map(u=>memberRow(u,F,admins,ranks,canPost)).join('')   /* (A20b) an empty list still shows the notes below: before, only the row branch carried them */
@@ -1428,6 +1449,25 @@ export async function addPlatformAdmin(e){
  if(!r){if(b){b.disabled=false;b.textContent='Add';}return;}
  cloud.pAdmins=null;cloud.audit=null;renderAcct();
 }
+/* All churches: where each church's plan stands */
+function planRowNote(c){
+ if(!c.paid_until)return c.status==='pending'?'':'<div class="mt-1 text-[11px] font-bold text-[#8a9aa0]">Plan date not recorded</div>';
+ const n=daysTo(c.paid_until),d=planDate(c.paid_until);
+ const col=n==null?'#8a9aa0':n<0?'#b42318':n<=30?'#8a5a12':'#1f6b62';
+ const t=n==null?d:n<0?`Plan ended ${d} · overdue`:n<=30?`Paid until ${d} · due in ${n} day${n===1?'':'s'}`:`Paid until ${d}`;
+ return `<div class="mt-1 text-[11px] font-bold" style="color:${col}" data-plan-row="${n==null?'':n<0?'overdue':n<=30?'due':'ok'}">${esc(t)}</div>`;
+}
+/* the app owner records a renewal: a year from today, or from the current date if that is still ahead */
+export async function setPaidUntil(id,cur){
+ const base=cur&&daysTo(cur)>0?new Date(cur+'T00:00:00'):new Date();
+ base.setFullYear(base.getFullYear()+1);
+ const suggest=base.getFullYear()+'-'+String(base.getMonth()+1).padStart(2,'0')+'-'+String(base.getDate()).padStart(2,'0');
+ const v=prompt('Paid until (YYYY-MM-DD). Leave empty to clear.',suggest);
+ if(v===null)return;
+ const t=v.trim();
+ if(t&&!/^\d{4}-\d{2}-\d{2}$/.test(t)){toast('Use the form YYYY-MM-DD, for example '+suggest);return;}
+ if(await acctRpc('admin_set_paid_until',{p_church:id,p_until:t||null},t?'Paid until '+planDate(t)+' ✓':'Plan date cleared')){cloud.plat=null;renderAcct();}
+}
 function churchRow(c){
  const id=qSafe(c.id);
  return `<div class="border-t border-[#123033]/[.07] py-2.5">
@@ -1438,7 +1478,9 @@ function churchRow(c){
    ${c.status==='active'?`<button class="tap-link text-rose-700" data-action="church-status" data-args="${esc(id)}" data-status="suspended">Pause</button>`
     :`<button class="btn btn-primary px-4 py-1.5 text-xs" data-action="church-status" data-args="${esc(id)}" data-status="active">${c.status==='pending'?'Approve':'Reactivate'}</button>`}
    <button class="tap-link" data-action="openChurchData" data-args="${esc(id)}">Data</button>
-   <button class="tap-link" data-action="manageChurch" data-args="${esc(id)}">Members & details</button></div></div>`;
+   <button class="tap-link" data-action="manageChurch" data-args="${esc(id)}">Members & details</button>
+   <button class="tap-link" data-action="church-paid" data-args="${esc(id)}" data-cur="${esc(c.paid_until?String(c.paid_until).slice(0,10):'')}">Paid until…</button></div>
+  ${planRowNote(c)}</div>`;
 }
 /* the owner's read-only look at one church's visitors and volunteers (admin_church_data) */
 export function openChurchData(id){cloud.adminData=id;cloud.adminRows=null;renderAcct();}

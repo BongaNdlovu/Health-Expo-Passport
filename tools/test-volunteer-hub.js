@@ -348,6 +348,33 @@ const PROJ = path.join(__dirname, '..');
   m = (await SQL(`select role,status,admin_post from public.memberships where user_id=$1`, [NEW.asker]))[0];
   ok('the app owner approves them as the Leader', !r.error && !r2.error && m.role === 'admin' && m.admin_post === 'leader', msg(r) + ' ' + msg(r2) + ' ' + JSON.stringify(m));
 
+  console.log('\n17. the church plan: paid until');
+  const PU = '00000000-0000-4000-8000-0000000000f1', PM = '00000000-0000-4000-8000-0000000000f2';
+  for (const [id, n] of [[PU, 'planlead'], [PM, 'planmember']])
+    await SQL(`insert into auth.users (id,email,raw_user_meta_data,email_confirmed_at) values ($1,$2,$3,$4)`, [id, n + '@example.org', JSON.stringify({ full_name: n }), new Date().toISOString()]);
+  r = await as(PU, `select public.register_church('Plan Church') as id`);
+  const PC = r.rows[0].id;
+  ok('a new church has no plan date yet', (await SQL(`select paid_until from public.churches where id=$1`, [PC]))[0].paid_until === null);
+  await as(U.alice, `select public.admin_set_church_status($1,'active')`, [PC]);
+  let pu = (await SQL(`select paid_until, (paid_until - current_date) as days from public.churches where id=$1`, [PC]))[0];
+  ok('approving it starts the plan a year from today', pu.paid_until !== null && pu.days >= 365 && pu.days <= 366, JSON.stringify(pu));
+  await as(U.alice, `select public.admin_set_church_status($1,'suspended')`, [PC]);
+  await as(U.alice, `select public.admin_set_church_status($1,'active')`, [PC]);
+  ok('pausing and reactivating leaves the date alone', (await SQL(`select (paid_until - current_date) as days from public.churches where id=$1`, [PC]))[0].days === pu.days);
+  r = await as(U.alice, `select public.admin_set_paid_until($1, current_date + 400)`, [PC]);
+  ok('the app owner records a renewal', !r.error && (await SQL(`select (paid_until - current_date) as days from public.churches where id=$1`, [PC]))[0].days === 400, msg(r));
+  ok('a church admin cannot change their own date', await refused(PU, `select public.admin_set_paid_until($1, current_date + 999)`, [PC]));
+  ok('a date far in the future is refused', await refused(U.alice, `select public.admin_set_paid_until($1, current_date + 4000)`, [PC]));
+  r = await as(PU, `select public.my_account() a`);
+  ok('the church admin sees their plan date', !r.error && !!r.rows[0].a.church.paid_until, msg(r));
+  await as(PM, `select public.join_church($1,'planmember','')`, [PC]);
+  await as(PU, `select public.set_member($1,'member','approved')`, [PM]);
+  r = await as(PM, `select public.my_account() a`);
+  ok('a plain member does not', !r.error && r.rows[0].a.church && r.rows[0].a.church.paid_until == null, msg(r));
+  r = await as(U.alice, `select id, paid_until from public.admin_churches() where id=$1`, [PC]);
+  ok('All churches lists the date', !r.error && r.rows.length === 1 && !!r.rows[0].paid_until, msg(r));
+  ok('the change log has it', (await SQL(`select 1 from public.audit_log where tbl='churches' and op='PAID_UNTIL' and church_id=$1`, [PC])).length === 1);
+
   console.log(`\nRESULT: ${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
   process.exit(0);

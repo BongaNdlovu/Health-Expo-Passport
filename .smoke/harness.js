@@ -3056,8 +3056,9 @@ function makeServer() {
         create_church_invite: a => { rc.push('invite:' + a.p_church + ':' + a.p_role); return done('0123456789abcdef0123456789abcdef'); },
         cancel_church_invites: a => { rc.push('cancelinv:' + a.p_church); return done(1); },
         join_with_invite: a => { rc.push('joininv:' + a.p_code); me.membership = member({ role: 'staff', status: 'approved' }); me.church = { ...A }; return done(A.id); },
-        admin_churches: () => { rc.push('admin_churches'); return done([{ ...B, members: 1, staff: 0, pending: 0, visitors: 0, volunteers: 0 }, { ...A, members: 2, staff: 1, pending: 1, visitors: 5, volunteers: 2 }]); },
+        admin_churches: () => { rc.push('admin_churches'); return done([{ ...B, members: 1, staff: 0, pending: 0, visitors: 0, volunteers: 0 }, { ...A, members: 2, staff: 1, pending: 1, visitors: 5, volunteers: 2, paid_until: planDay(200) }]); },
         admin_set_church_status: a => { rc.push('status:' + a.p_church + ':' + a.p_status); return done(); },
+        admin_set_paid_until: a => { rc.push('paid:' + a.p_church + ':' + a.p_until); return done(); },
         admin_audit: () => done([{ at: '2026-10-20T09:15:00Z', church: A.name, actor: 'st@example.org', tbl: 'attendees', op: 'UPDATE', row_id: 'EXPO-042' },
           { at: '2026-10-21T08:00:00Z', church: '', actor: 'owner@example.org', tbl: 'platform_admins', op: 'INSERT', row_id: 'new@example.org' }]),
         admin_platform_admins: () => { rc.push('padmins'); return done(padmins.map(p => ({ ...p }))); },
@@ -3065,6 +3066,8 @@ function makeServer() {
           padmins.push({ user_id: 'u-new', email: a.p_email, created_at: '2026-10-30T10:00:00Z' }); return done(); },
       };
     };
+    /* a YYYY-MM-DD date n days from today, local time (as the app reads it) */
+    function planDay(n) { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
     const gate = () => { const h = $el('authGateBody').innerHTML; shots.push(h); return h; };
     const sheet = () => { const h = $el('acctBody').innerHTML + $el('acctTabs').innerHTML; shots.push(h); return h; };
     const panel = () => { g.renderCloudBody(); const h = $el('cloudBody').innerHTML; shots.push(h); return h; };
@@ -3176,7 +3179,7 @@ function makeServer() {
     await g.registerChurch({ preventDefault() {} }); await sleep(30);
     ok('FUP-POS-7 ...and the registration is sent as the Assistant', rc.includes('post:assistant'), rc.join());
     ok('registering a church sends its details, then waits for the NEWSTART admin', rc.includes('register:Hope Church:Pinetown') && g.gateState() === 'churchwait'
-      && /Waiting for your church to be approved/.test(gate()) && gate().includes('Hope Church'), g.gateState());
+      && /Waiting for your church to be switched on/.test(gate()) && /R3,000 per church, per year/.test(gate()) && /healthexpopassport@gmail.com/.test(gate()) && gate().includes('Hope Church'), g.gateState());
     ok('…a church waiting for approval offers Delete my account (and no Leave, which would orphan the church)', /data-action="profDeleteAsk"/.test(gate()) && !/data-action="leaveChurch"/.test(gate()));
     me.church.status = 'suspended';
     await g.cloudSync(true); await sleep(20);
@@ -3216,6 +3219,18 @@ function makeServer() {
     g.openAcct('church'); await sleep(30);
     ok('the Church screen lists the members, with Approve for someone waiting', rc.includes('members:ch-a') && sheet().includes('Pending Person') && sheet().includes('Staff Person')
       && /data-action="member-approve" data-user="u-pend" data-role="member"/.test(sheet()) && /1 waiting/.test(sheet()), rc.join());
+    {
+      const plan = n => { C.acct.church.paid_until = n == null ? null : planDay(n); return g.planNoticeHTML(); };
+      ok('FUP-PLAN-6 a church admin sees "paid until" while the plan has more than 30 days left', /data-plan="ok"/.test(plan(120)) && /Church plan · paid until/.test(plan(120)) && !/renewal/.test(plan(120)), plan(120));
+      ok('FUP-PLAN-7 …a reminder with the days left and the email in its last 30 days', /data-plan="warn"/.test(plan(12)) && /in 12 days/.test(plan(12)) && /healthexpopassport@gmail.com/.test(plan(12)) && /tomorrow/.test(plan(1)) && /today/.test(plan(0)), plan(12));
+      ok('FUP-PLAN-8 …a notice once it has ended', /data-plan="flag"/.test(plan(-3)) && /plan ended on/.test(plan(-3)) && /renewal invoice/.test(plan(-3)), plan(-3));
+      ok('FUP-PLAN-9 …nothing when no date is recorded', plan(null) === '');
+      plan(12); g.renderAcct(); await sleep(10);
+      ok('FUP-PLAN-10 …and My church shows the reminder', /data-plan="warn"/.test(sheet()), '');
+      const keepM = C.acct.membership; C.acct.membership = { ...keepM, role: 'staff' };
+      ok('FUP-PLAN-11 …which staff do not see', plan(12) === '');
+      C.acct.membership = keepM; C.acct.church.paid_until = null;
+    }
     await g.setMember('u-pend', 'staff', 'pending');
     sandbox.prompt = () => ' EXPO-042 '; await g.linkMember('u-pend', ''); sandbox.prompt = () => null;
     await g.removeMember('u-staff');
@@ -3383,6 +3398,19 @@ function makeServer() {
     shots.push(sheet());
     await g.setChurchStatus('ch-b', 'active');
     ok('…approving a church calls the database', rc.includes('status:ch-b:active'), rc.join());
+    ok('FUP-PLAN-1 All churches shows each church\'s plan date, with a Paid until… button carrying it (a church still waiting shows no plan note)',
+      /data-plan-row="ok"/.test(sheet()) && /Paid until \d/.test(sheet()) && new RegExp('data-action="church-paid" data-args="ch-a" data-cur="' + planDay(200) + '"').test(sheet())
+      && /data-action="church-paid" data-args="ch-b" data-cur=""/.test(sheet()) && !/Plan date not recorded/.test(sheet()), sheet().slice(sheet().indexOf('Grace Chapel'), sheet().indexOf('Grace Chapel') + 900));
+    { let asked = ''; sandbox.prompt = (q, d) => { asked = d; return ' ' + planDay(500) + ' '; };
+      rc.length = 0; await g.setPaidUntil('ch-a', planDay(200)); await sleep(30);
+      ok('FUP-PLAN-2 recording a renewal suggests a year on from the current date, then calls the database and reloads All churches',
+        asked === planDay(200 + 0).replace(/^\d{4}/, y => String(+y + 1)) && rc.includes('paid:ch-a:' + planDay(500)) && rc.includes('admin_churches'), asked + ' | ' + rc.join());
+      sandbox.prompt = () => '31/01/2028'; rc.length = 0; await g.setPaidUntil('ch-a', ''); await sleep(20);
+      ok('FUP-PLAN-3 a date not in YYYY-MM-DD form is not sent', !rc.some(x => /^paid:/.test(x)), rc.join());
+      sandbox.prompt = () => ''; rc.length = 0; await g.setPaidUntil('ch-a', planDay(10)); await sleep(20);
+      ok('FUP-PLAN-4 an empty answer clears the date; Cancel sends nothing', rc.includes('paid:ch-a:null'), rc.join());
+      sandbox.prompt = () => null; rc.length = 0; await g.setPaidUntil('ch-a', planDay(10)); await sleep(20);
+      ok('FUP-PLAN-5 …Cancel sends nothing', rc.length === 0, rc.join()); }
     g.manageChurch('ch-b'); await sleep(30);
     ok('…and the platform admin can open any church\'s members and details', rc.includes('members:ch-b') && C.acctTab === 'church' && /All churches/.test(sheet()) && sheet().includes('Hope Church'), C.acctTab + ' ' + rc.join());
     g.closeAcct();

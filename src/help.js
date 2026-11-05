@@ -55,7 +55,8 @@ export const HELP_START = [
       ['Church admin (Health Department Leader)', 'Approves people, sets up expos, writes plans, exports data and clears the queue.', 'admin'],
       ['Staff account', 'A signed-in account. It needs a church admin’s approval before it can see the queue and church data.'],
       ['Role tags', 'A control only some roles have carries a small tag (Admin only, Leader & admin, Leader of the Health Department or App owner), so you know others do not see it.', 'lead'],
-      ['Joining a church', 'Pick your church from the list, then your position there, and send the request. Not listed? Register it as its Leader or Assistant.'] ] } ] },
+      ['Joining a church', 'Pick your church from the list, then your position there, and send the request. Not listed? Register it as its Leader or Assistant.'],
+      ['Church plan', 'Practice mode is free. A church is switched on once its yearly plan (R3,000 per church) is paid by PayPal invoice; members who join a church pay nothing.'] ] } ] },
  { title: 'Practice mode and live use',
    what: 'Practice mode is for learning; sign in to work a real expo.',
    sections: [
@@ -332,6 +333,8 @@ export const HELP_PAGES = [
     { name: 'Members', items: [
       ['Approve', 'Lets someone who asked to join the church in.'],
       ['Approve as Leader', 'For a church with no Health Department Leader: makes the person who asked its Leader.', 'owner'],
+      ['Church plan', 'My church and Profile show the date your yearly plan is paid until, with a reminder in its last 30 days and a notice once it has ended.', 'admin'],
+      ['Paid until…', 'On All churches: records a church’s renewal (a year from today, or from its current date). Approving a church starts its first year. Nothing locks by itself; pausing stays your choice.', 'owner'],
       ['Role', 'Sets a member’s role: Member, Volunteer, Team member, Team leader, Assistant Health Department Leader, or Health Department Leader (the admin).'],
       ['Link', 'Ties a member to a volunteer record or a visitor badge.'],
       ['Remove, Step down, Leave', 'Removes a member, steps you down as admin, or leaves the church.'],

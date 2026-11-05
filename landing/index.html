@@ -178,6 +178,24 @@
 #hx .st h3{font-size:18px;font-weight:700;margin-bottom:8px}
 #hx .st p{color:var(--ink2);font-size:14px;margin:0}
 #hx .st b{color:var(--ink)}
+#hx .plans{display:grid;grid-template-columns:1fr 1.15fr;gap:16px;align-items:stretch}
+#hx .plan{padding:34px 32px;display:flex;flex-direction:column}
+#hx .plan h3{font-size:15px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ink2)}
+#hx .price{display:flex;align-items:baseline;gap:8px;margin:18px 0 6px}
+#hx .price b{font-size:clamp(44px,5vw,60px);font-weight:300;letter-spacing:-.04em;line-height:1}
+#hx .price span{font-size:15px;color:var(--ink3)}
+#hx .plan p.sub{color:var(--ink2);font-size:15px;margin:0 0 18px}
+#hx .plan ul{list-style:none;margin:0 0 26px;padding:0;display:grid;gap:10px}
+#hx .plan li{display:flex;gap:10px;font-size:14.5px;color:var(--ink2)}
+#hx .plan li svg{width:18px;height:18px;flex:none;color:var(--em3);margin-top:2px}
+#hx .plan .btn{margin-top:auto;justify-content:center}
+#hx .plan.pro{border-color:rgba(31,174,92,.45);background:linear-gradient(160deg,#fff,var(--mint));box-shadow:0 40px 80px -44px rgba(15,95,48,.55)}
+#hx .plan.pro h3{color:var(--em3)}
+#hx .plan.pro .price b{color:var(--em4)}
+#hx .tag{align-self:flex-start;margin-top:-6px;margin-bottom:12px;padding:5px 11px;border-radius:999px;background:var(--em3);color:#fff;font-size:11px;font-weight:700;letter-spacing:.08em}
+#hx .howpay{margin-top:18px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+#hx .howpay div{padding:16px 18px;border-radius:16px;background:var(--bg2);border:1px solid var(--line);font-size:14px;color:var(--ink2)}
+#hx .howpay b{display:block;color:var(--ink);margin-bottom:4px}
 #hx .inst{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 #hx .inst .glass{padding:32px}
 #hx .inst h3{font-size:22px;font-weight:600;display:flex;align-items:center;gap:12px}
@@ -224,7 +242,8 @@
  #hx .ecg{height:135%}
  #hx .vt{font-size:12px;padding:8px 13px}
  #hx .vt.wide{display:none}
- #hx .steps,#hx .feats,#hx .start,#hx .inst,#hx .trust{grid-template-columns:1fr}
+ #hx .steps,#hx .feats,#hx .start,#hx .inst,#hx .trust,#hx .plans,#hx .howpay{grid-template-columns:1fr}
+ #hx .plan{padding:28px 22px}
  #hx .step{border-right:0;border-bottom:1px solid var(--line)}
  #hx .step:last-child{border-bottom:0}
  #hx .trust>div{border-right:0!important;border-bottom:1px solid var(--line)!important}
@@ -265,7 +284,7 @@
  <div class="wrap top">
   <div class="bar">
    <a class="brand" href="#top" aria-label="Health Expo Passport"><span class="mark" id="hxMark" aria-hidden="true"><svg><use href="#i-pulse"/></svg></span><span class="word"><b>Health Expo</b><span>PASSPORT</span></span></a>
-   <nav class="nav" aria-label="Sections"><a href="#how">How it works</a><a href="#features">Features</a><a href="#start">Get started</a><a href="#privacy">Privacy</a></nav>
+   <nav class="nav" aria-label="Sections"><a href="#how">How it works</a><a href="#features">Features</a><a href="#start">Get started</a><a href="#pricing">Pricing</a><a href="#privacy">Privacy</a></nav>
    <a class="btn btn-em btn-sm" href="https://winter-bonus-626a.ndlovufanelesibonge8.workers.dev/">Open the app</a>
   </div>
  </div>
@@ -392,9 +411,50 @@
    <p>Try everything first with demo visitors: nothing is shared and there is nothing to sign up for.</p></div>
   <div class="start">
    <div class="glass st rv" style="--d:0s"><span class="n">1</span><h3>Practise</h3><p>Open the app and choose <b>Try it with demo visitors</b>. A guided tour walks you through every tab.</p></div>
-   <div class="glass st rv" style="--d:.08s"><span class="n">2</span><h3>Register your church</h3><p>Create an account, then register your church as its Health Department Leader or Assistant. The Health Expo admin approves it.</p></div>
+   <div class="glass st rv" style="--d:.08s"><span class="n">2</span><h3>Register your church</h3><p>Create an account and register your church as its Health Department Leader or Assistant. Pay the yearly plan's invoice and your church is switched on.</p></div>
    <div class="glass st rv" style="--d:.16s"><span class="n">3</span><h3>Bring your team</h3><p>Members choose your church and their position; you approve them, or share an invite link that lets them straight in.</p></div>
    <div class="glass st rv" style="--d:.24s"><span class="n">4</span><h3>Run the day</h3><p>Create your expo, set your stations and open pledges. On the day, every desk just opens the app.</p></div>
+  </div>
+ </div>
+</section>
+
+<!-- ======================================= PRICING ======================================= -->
+<section id="pricing" style="padding-top:40px">
+ <div class="wrap">
+  <div class="head2 rv"><div><span class="lbl">Pricing</span><h2>Practise free. <em>One plan</em> for your church.</h2></div>
+   <p>Try everything with demo visitors first. When your church is ready for a real expo, one yearly plan covers your whole team.</p></div>
+  <div class="plans">
+   <div class="glass plan rv" style="--d:0s">
+    <h3>Practice mode</h3>
+    <div class="price"><b>Free</b></div>
+    <p class="sub">For anyone who wants to learn the app.</p>
+    <ul>
+     <li><svg><use href="#i-check"/></svg>Every screen, with three demo visitors</li>
+     <li><svg><use href="#i-check"/></svg>The guided tour of every tab</li>
+     <li><svg><use href="#i-check"/></svg>No account, nothing to sign up for</li>
+     <li><svg><use href="#i-check"/></svg>Nothing is shared: demo data stays on the phone</li>
+    </ul>
+    <a class="btn btn-ghost" href="https://winter-bonus-626a.ndlovufanelesibonge8.workers.dev/">Try it now<svg><use href="#i-arrow"/></svg></a>
+   </div>
+   <div class="glass plan pro rv" style="--d:.1s">
+    <span class="tag">FOR YOUR CHURCH</span>
+    <h3>Church plan</h3>
+    <div class="price"><b>R3,000</b><span>per church, per year</span></div>
+    <p class="sub">Everything your health ministry needs for every expo in the year.</p>
+    <ul>
+     <li><svg><use href="#i-check"/></svg>Unlimited visitors and expos</li>
+     <li><svg><use href="#i-check"/></svg>The live queue, big screen and stations on every desk</li>
+     <li><svg><use href="#i-check"/></svg>Volunteers, team leaders and service badges</li>
+     <li><svg><use href="#i-check"/></svg>Results, 90-day plans, Care lists and exports</li>
+     <li><svg><use href="#i-check"/></svg>The Android app, the web app and updates</li>
+    </ul>
+    <a class="btn btn-em" href="https://winter-bonus-626a.ndlovufanelesibonge8.workers.dev/">Register your church<svg><use href="#i-arrow"/></svg></a>
+   </div>
+  </div>
+  <div class="howpay rv">
+   <div><b>1 · Register</b>Register your church in the app. It waits for activation.</div>
+   <div><b>2 · Pay the invoice</b>A PayPal invoice reaches the email you registered with. Pay by card or PayPal; the invoice is in US dollars at the day's rate.</div>
+   <div><b>3 · You're on</b>Once it is paid, your church is switched on, usually the same day. Questions? <a href="mailto:healthexpopassport@gmail.com" style="color:var(--em3)">healthexpopassport@gmail.com</a></div>
   </div>
  </div>
 </section>
