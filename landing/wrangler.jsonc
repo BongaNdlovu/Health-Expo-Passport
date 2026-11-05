@@ -5,7 +5,11 @@
   "name": "health-expo-passport",
   "compatibility_date": "2026-10-21",
   "workers_dev": true,
+  // range-worker.js runs only for the video (Safari needs byte ranges); every other path is served as a plain file.
+  "main": "range-worker.js",
   "assets": {
-    "directory": "."
+    "directory": ".",
+    "binding": "ASSETS",
+    "run_worker_first": ["/*.mp4"]
   }
 }

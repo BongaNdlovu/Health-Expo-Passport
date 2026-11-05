@@ -2,3 +2,4 @@ wrangler.jsonc
 .assetsignore
 make-headers.js
 .wrangler
+range-worker.js
