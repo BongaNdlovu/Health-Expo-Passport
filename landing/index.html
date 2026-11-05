@@ -232,28 +232,71 @@
  #hx .nav{display:none}
  #hx .bar .btn{margin-left:auto}
 }
+@media (hover:none){   /* a finger leaves no hover: a button must not stay lifted after it is tapped */
+ #hx .btn:hover,#hx .feat:hover{transform:none}
+}
 @media (max-width:640px){
  #hx .wrap{padding:0 16px}
- #hx section{padding:76px 0}
+ #hx section{padding:64px 0}
+ #hx section[style*="padding-top"]{padding-top:28px!important}
  #hx .top{padding-top:10px}
- #hx .bar{padding:10px 12px}
+ #hx .bar{padding:10px 12px;gap:12px}
  #hx .mark{width:40px;height:40px}
  #hx .word b{font-size:15px}
- #hx .bar .btn{padding:10px 16px;font-size:13px}
- #hx .hero{padding:40px 16px 30px}
+ #hx .bar .btn{padding:10px 16px;font-size:13px;min-height:44px;justify-content:center}
+ #hx .hero{padding:36px 16px 30px}
  #hx h1{letter-spacing:-.025em;line-height:.98}
  #hx .ecg{height:135%}
- #hx .vt{font-size:12px;padding:8px 13px}
+ /* the pill: the dot, then two tidy lines, instead of the words splitting into two columns */
+ #hx .pill{align-items:flex-start;padding:9px 16px 9px 12px;font-size:12.5px;line-height:1.4;text-align:left}
+ #hx .pill .dot{margin-top:4px;flex:none}
+ #hx .pill .sep{display:none}
+ #hx .pill b{display:block}
+ #hx .titlebox{margin-top:22px}
+ #hx .lead{margin-top:20px}
+ #hx .cta{margin-top:26px;gap:10px}
+ #hx .cta .btn{flex:1 1 100%;justify-content:center}
+ #hx .ip{text-wrap:balance;max-width:30ch;margin:14px auto 0}
+ /* the chips: a neat 2 x 2 grid, all the same size and all easy to tap */
+ #hx .vitals{display:grid;grid-template-columns:1fr 1fr;align-items:stretch;gap:10px;max-width:360px;margin:28px auto 0}
+ #hx .vt,#hx .snd{justify-content:center;min-height:44px;padding:8px 12px}
+ #hx .vt{font-size:12px}
  #hx .vt.wide{display:none}
+ #hx .head2{gap:16px;margin-bottom:28px}
+ #hx .head2 p{margin:0;font-size:16px}
+ #hx h2{margin-top:10px;text-wrap:balance}
  #hx .steps,#hx .feats,#hx .start,#hx .inst,#hx .trust,#hx .plans,#hx .howpay{grid-template-columns:1fr}
- #hx .plan{padding:28px 22px}
- #hx .step{border-right:0;border-bottom:1px solid var(--line)}
+ #hx .plan{padding:26px 22px}
+ #hx .step{border-right:0;border-bottom:1px solid var(--line);padding:26px 22px 28px}
  #hx .step:last-child{border-bottom:0}
- #hx .trust>div{border-right:0!important;border-bottom:1px solid var(--line)!important}
+ #hx .step .n{font-size:52px}
+ #hx .step h3{margin:18px 0 8px}
+ #hx .feat{padding:24px 22px}
+ #hx .feat .ic{margin-bottom:16px}
+ #hx .st{padding:24px 22px}
+ #hx .st .n{margin-bottom:16px}
+ #hx .howpay{margin-top:14px;gap:10px}
+ #hx .howpay div{padding:14px 16px}
+ #hx .inst .glass{padding:26px 22px}
+ #hx .inst .btn{display:flex;width:100%;justify-content:center}   /* the two install buttons match: full width, centred */
+ #hx .trust>div{border-right:0!important;border-bottom:1px solid var(--line)!important;padding:22px}
  #hx .trust>div:last-child{border-bottom:0!important}
+ #hx .tour li{padding:16px 0}
  #hx .orbit{width:400px;height:400px}
  #hx .screen{height:520px}
- #hx .cta .btn{flex:1 1 100%;justify-content:center}
+ #hx .final{padding:80px 0 88px}
+ #hx .final p{font-size:16px;margin-top:18px}
+ #hx footer{padding:30px 0 36px}
+ #hx footer .wrap{flex-direction:column;align-items:center;text-align:center;gap:12px}
+ #hx footer .sp{margin-left:0}
+}
+@media (max-width:360px){   /* the smallest phones: the header and the headline must still fit */
+ #hx .wrap,#hx .hero{padding-left:14px;padding-right:14px}
+ #hx .bar{gap:8px;padding:10px}
+ #hx .word span{letter-spacing:.26em}
+ #hx .bar .btn{padding:10px 13px}
+ #hx h1{font-size:42px}
+ #hx .vitals{gap:8px}
 }
 @media (prefers-reduced-motion:reduce){
  #hx *,#hx *:before,#hx *:after{animation:none!important;transition:none!important}
@@ -293,7 +336,7 @@
  </div>
 
  <div class="wrap hero" id="top">
-  <span class="pill"><span class="dot" id="hxDot"></span>For church health ministries · <b>register, screen, advise, follow up</b></span>
+  <span class="pill"><span class="dot" id="hxDot"></span><span class="pt">For church health ministries<span class="sep"> · </span><b>register, screen, advise, follow up</b></span></span>
   <div class="titlebox">
    <div class="ecg" aria-hidden="true">
     <svg viewBox="0 0 1200 240" preserveAspectRatio="none">
