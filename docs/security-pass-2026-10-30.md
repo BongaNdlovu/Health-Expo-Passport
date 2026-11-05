@@ -263,3 +263,11 @@ and `tools/test-build.js` 17/17. Baseline on pristine `main`: 954/954 (one timin
 - **F-04 / F-13 (Medium/Info, dashboard)** — `supabase/README.md` gained a tickable "Before the expo — dashboard checklist" (pg_cron verification commands, leaked-password protection, SMTP, redirect URLs, platform admin + 2FA). **pg_cron is ON** (job `purge-expired-visitors` at `0 3 * * *`, verified 2026-10-30). Leaked-password protection still needs Pro plan + dashboard toggle.
 
 **Still to do outside this repo:** enable leaked-password protection (Authentication → Sign In / Providers → Email → Prevent use of leaked passwords; Pro plan required).
+
+## Later update — 2026-11-05 (`supabase/test-security.sql`)
+
+The counts above ("9 assertions") describe the script as it was on 2026-10-30. Since then it has been changed
+so that it still runs on a project with no ordinary member yet, and so that its results appear as one table
+of **13 checks** (the editor shows only the last result). The rules it checks are unchanged. On the live
+project the rolled-back run returned all 13 `true`; checks 2 and 3 used a made-up member with no church,
+because no ordinary member existed. Re-run once a real member has joined. The two-admin cap is still a manual check.

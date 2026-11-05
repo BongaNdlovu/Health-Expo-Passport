@@ -48,6 +48,7 @@ deliberate. Companion documents: `docs/threat-model.md`, `docs/security-pass-202
 1. Check pg_cron: `select * from cron.job;` (empty → enable the extension, re-run `schema.sql`)
    and `select * from cron.job_run_details order by start_time desc limit 10;`
 2. Run the purge by hand: `select public.purge_expired_visitors();` — it returns the number of
-   visitors deleted; then run `supabase/test-security.sql` to confirm the rules still hold.
+   visitors deleted; then paste `supabase/test-security.sql` into the SQL Editor to confirm the rules
+   still hold: it changes nothing, and must return 13 rows with every `ok` reading `t` (true).
 3. If readings were over-retained beyond the notice, treat as a POPIA assessment (RB-1 step 5).
    Owner: ____________
