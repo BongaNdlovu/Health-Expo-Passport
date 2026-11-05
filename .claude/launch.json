@@ -12,7 +12,10 @@
     {
       "name": "health-expo-dist",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["-e", "process.env.PORT='4180';require('./tools/serve.js')"],
+      "runtimeArgs": [
+        "-e",
+        "process.env.PORT='4180';require('./tools/serve.js')"
+      ],
       "port": 4180
     },
     {
@@ -28,6 +31,20 @@
         "C:/Users/fanel/Downloads/Rain Of The Word v2"
       ],
       "port": 8125
+    },
+    {
+      "name": "landing",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8130",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "landing"
+      ],
+      "port": 8130
     }
   ]
 }
