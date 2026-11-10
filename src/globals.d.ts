@@ -24,5 +24,7 @@ interface Window {
   NSTour?: { start(): void; offer(why?: string): void; status?(): string; [k: string]: any };
   /* the secure store (index.html) starts the app once the saved data is decrypted */
   __secureReady?: boolean;
+  /** keys whose saved value could not be decrypted at start and was cleared (index.html secureStore) */
+  __secureDropped?: string[];
   __bootApp?: (() => void) | null;
 }

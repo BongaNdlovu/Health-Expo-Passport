@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <!-- Same policy as dist/_headers (tools/build.js checks the two stay identical). The header needs a host that reads
      _headers (Cloudflare); this meta travels with the page, so the packaged Android app keeps the same protections. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-jHF5kcI45dj1J0vBtQFZmMlLev+5KxohjpFMn4YE924=' 'sha256-Zr72/7Oe0bQTjyb7b+7MYX0en9/H/Peyg9q7oEsABTs='; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://winter-bonus-626a.ndlovufanelesibonge8.workers.dev https://wlsrgihkijlvjyfxvhfl.supabase.co wss://wlsrgihkijlvjyfxvhfl.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-jHF5kcI45dj1J0vBtQFZmMlLev+5KxohjpFMn4YE924=' 'sha256-dv34QZmYY0i7aWrbqiuRivi85+qDKqnnsDROJyxJSS4='; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://winter-bonus-626a.ndlovufanelesibonge8.workers.dev https://wlsrgihkijlvjyfxvhfl.supabase.co wss://wlsrgihkijlvjyfxvhfl.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <meta name="theme-color" content="#f4f3ee"/>
 <!-- Stamped by tools/build.js with the cache version this page was built from. src/update.js compares it with
@@ -1975,15 +1975,17 @@ n {
  var P='enc1:', S=Storage.prototype, ls=window.localStorage, raw={g:S.getItem,s:S.setItem,r:S.removeItem,c:S.clear,k:S.key};
  /* v1.6.2: 'newstart.theme' (only 'light'/'dark') and 'newstart.tour.v1' (tour progress: step number and done/offered flags) hold no personal data and stay plaintext so they can be read synchronously before the key is ready */
  var PLAIN={'newstart.theme':1,'newstart.tour.v1':1}, mem=new Map(), key=null, te=new TextEncoder(), td=new TextDecoder();
- function b64(u){var s='';for(var i=0;i<u.length;i++)s+=String.fromCharCode(u[i]);return btoa(s);}
+ /* 32 KB slices: one fromCharCode call per slice instead of one string append per byte (the saved copy runs to MBs) */
+ function b64(u){var p=[];for(var i=0;i<u.length;i+=32768)p.push(String.fromCharCode.apply(null,u.subarray(i,i+32768)));return btoa(p.join(''));}
  function unb64(s){var b=atob(s),u=new Uint8Array(b.length);for(var i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u;}
  function idbKey(){return new Promise(function(res,rej){var o=indexedDB.open('newstart.keys',1);
   o.onupgradeneeded=function(){o.result.createObjectStore('k');};
   o.onerror=function(){rej(o.error);};
   o.onsuccess=function(){var db=o.result,g=db.transaction('k').objectStore('k').get('main');
    g.onsuccess=function(){if(g.result)return res(g.result);
-    crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']).then(function(k){
-     var t=db.transaction('k','readwrite');t.objectStore('k').put(k,'main');t.oncomplete=function(){res(k);};t.onerror=function(){rej(t.error);};});};
+    /* a key that cannot be made (no crypto.subtle on this origin, or a refusal) must reach the message below, not hang the start */
+    try{crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']).then(function(k){
+     var t=db.transaction('k','readwrite');t.objectStore('k').put(k,'main');t.oncomplete=function(){res(k);};t.onerror=function(){rej(t.error);};}).catch(rej);}catch(e){rej(e);}};
    g.onerror=function(){rej(g.error);};};});}
  function getKey(){var C=window.Capacitor,SK=C&&C.Plugins&&C.Plugins.SecureKey;
   if(C&&C.isNativePlatform&&C.isNativePlatform()&&SK)return SK.getKey().then(function(r){
@@ -1997,12 +1999,14 @@ n {
  var seq=new Map();
  function persist(k){if(PLAIN[k]){return mem.has(k)?raw.s.call(ls,k,mem.get(k)):raw.r.call(ls,k);}var n=(seq.get(k)||0)+1;seq.set(k,n);
   if(!mem.has(k))return raw.r.call(ls,k);
-  enc(k,mem.get(k)).then(function(c){if(seq.get(k)===n&&mem.has(k))raw.s.call(ls,k,c);}).catch(function(e){console.error('secure store write failed',e);});}
+  enc(k,mem.get(k)).then(function(c){if(seq.get(k)===n&&mem.has(k))raw.s.call(ls,k,c);}).catch(function(e){console.error('secure store write failed',e);
+   /* the caller's setItem returned long ago: tell the app the copy on disk is stale (src/state.js warns once) */
+   try{window.dispatchEvent(new CustomEvent('securestore:writefail',{detail:k}));}catch(_){}});}
  function boot(){window.__secureReady=true;if(typeof window.__bootApp==='function')window.__bootApp();}
  getKey().then(function(k){key=k;var ks=[],jobs=[];for(var i=0;i<ls.length;i++)ks.push(raw.k.call(ls,i));
   ks.forEach(function(k){var v=raw.g.call(ls,k);if(v==null)return;
    if(PLAIN[k]){mem.set(k,v);return;}
-   if(v.indexOf(P)===0)jobs.push(dec(k,v).then(function(p){mem.set(k,p);},function(){console.warn('secure store: dropped unreadable',k);raw.r.call(ls,k);}));
+   if(v.indexOf(P)===0)jobs.push(dec(k,v).then(function(p){mem.set(k,p);},function(){console.warn('secure store: dropped unreadable',k);(window.__secureDropped=window.__secureDropped||[]).push(k);raw.r.call(ls,k);}));   /* the app tells the person (src/main.js) */
    else{mem.set(k,v);persist(k);} /* one-time migration of old plaintext */});
   return Promise.all(jobs);}).then(function(){
   S.getItem=function(k){if(this!==ls)return raw.g.call(this,k);k=String(k);return mem.has(k)?mem.get(k):null;};

@@ -1002,8 +1002,12 @@ export async function qStationsFetch(){
 export async function queueSync(manual){
  if(!cloud.client||!cloud.user||qs.syncing)return;
  qs.syncing=true;
+ /* the session can end or change while this waits on the server (cloud.gen moves on every sign-out, expiry and
+    account switch). A sync whose session is gone writes nothing: its rows are the previous church's line (C-1). */
+ const gen=cloud.gen;
  try{
   const clock=await cloud.client.rpc('queue_now');
+  if(gen!==cloud.gen)return;
   if(clock.error)throw clock.error;
   qs.skew=qT(clock.data)-Date.now();
   const first=!qs.ready||!!manual,col=first?'joined_at':'updated_at';
@@ -1011,6 +1015,7 @@ export async function queueSync(manual){
   const rows=[];
   for(let p=0;p<100;p++){
    const {data,error}=await cloud.client.from('queue_entries').select('*').gte(col,from).order(col).order('id').range(p*500,p*500+499);
+   if(gen!==cloud.gen)return;
    if(error)throw error;
    rows.push(...data);if(data.length<500)break;
   }
@@ -1018,20 +1023,27 @@ export async function queueSync(manual){
   rows.forEach(qApply);
   if(!qs.since)qs.since=from;
   await qStationsFetch();     /* the church's own board: one row, read with the lines. A missing table is not a queue failure. */
+  if(gen!==cloud.gen){queueReset();return;}   /* the board it just read was the previous church's too */
   qs.ready=true;qs.err='';clearTimeout(qs.retryT);qs.retryT=null;   /* a retry that is still due is not wanted now (Q6) */
   startQueueRealtime();healthLive('queue',qs.rt);
   setTimeout(flushLeaves,0);                 /* visits finished while the queue could not change: leave their lines now */
  }catch(err){
+  if(gen!==cloud.gen)return;                 /* a failure of the gone session says nothing about this one */
   console.warn('queue sync:',err);
   const msg=String((err&&err.message)||err||'');
   if(err&&(err.code==='PGRST205'||err.code==='PGRST202'||err.code==='42P01'||err.code==='42883'||/schema cache|could not find the (table|function)/i.test(msg)))
    {qs.ready=false;qs.err='The live queue isn’t switched on for your church yet. Ask your church admin to contact the app’s support.';clearTimeout(qs.retryT);qs.retryT=null;}
-  else if(!navigator.onLine||/failed to fetch|networkerror|load failed|network request/i.test(msg)){if(!qs.ready){qs.err='Could not reach the server yet — retrying.';clearTimeout(qs.retryT);qs.retryT=setTimeout(queueSync,15000);}}   /* a failed first load retries by itself (Q6) */
+  else if(!navigator.onLine||/failed to fetch|networkerror|load failed|network request/i.test(msg)){if(!qs.ready){qs.err='Could not reach the server yet — retrying.';clearTimeout(qs.retryT);qs.retryT=setTimeout(queueSync,15000+Math.round(Math.random()*15000));}}   /* a failed first load retries by itself (Q6) */
   else if(err&&(err.code==='42501'||/row-level security|permission denied/i.test(msg)))
    {qs.ready=false;qs.err='This sign-in is not approved for the queue.';clearTimeout(qs.retryT);qs.retryT=null;}
-  else if(!qs.ready){qs.err='The queue could not load.';clearTimeout(qs.retryT);qs.retryT=setTimeout(queueSync,15000);}   /* a failed first load retries by itself (Q6) */
+  else if(!qs.ready){qs.err='The queue could not load.';clearTimeout(qs.retryT);qs.retryT=setTimeout(queueSync,15000+Math.round(Math.random()*15000));}   /* a failed first load retries by itself (Q6) */
   healthFromError('queue',err,isMissingErr(err)?(missingName(err)||'queue_entries'):'');
- }finally{qs.syncing=false;qAfter();}
+ }finally{
+  qs.syncing=false;qAfter();
+  /* a sign-in that arrived while the gone session's sync was still out was turned away at the top: run it now */
+  const sessionChanged=gen!==cloud.gen;
+  if(sessionChanged&&cloud.user)setTimeout(queueSync,0);
+ }
 }
 function startQueueRealtime(){
  if(qs.ch&&qs.church===cloud.churchId)return;

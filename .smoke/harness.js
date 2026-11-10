@@ -1590,6 +1590,15 @@ function makeServer() {
 
     const cp = g.normaliseCustomPlan(good);
     david.interests.customPlan = cp;
+    /* E-3: the saved copy and every pull pass through migrateAttendee, which must carry the plan and only a plan */
+    const davidCopy = () => JSON.parse(JSON.stringify(david));
+    ok('a custom plan survives migrateAttendee unchanged (app start, sync pull)',
+      JSON.stringify(g.migrateAttendee(davidCopy()).interests.customPlan) === JSON.stringify(cp),
+      JSON.stringify(Object.keys(g.migrateAttendee(davidCopy()).interests)));
+    ok('…and survives a second pass, so a synced row does not look edited',
+      JSON.stringify(g.migrateAttendee(g.migrateAttendee(davidCopy())).interests.customPlan) === JSON.stringify(cp));
+    ok('…while something that is not a plan is dropped, not kept as data',
+      (() => { const bad = davidCopy(); bad.interests.customPlan = { title: 'x', extra: '<img onerror=1>' }; return g.migrateAttendee(bad).interests.customPlan === undefined; })());
     g.state.activeId = david.id;
     const P = g.planFor(david);
     ok('a custom plan overrides the generated plan', !!P.custom && P.goal === cp.title);
@@ -2649,6 +2658,76 @@ function makeServer() {
   sandbox.NEWSTART_NO_CLOUD = true; g.renderGate();
   C.user = null; g.stopRealtime(); srv.reset(); C.mode = false; C.ready = false; C.synced = { att: {}, vol: {} }; g.resetDemo();
   C.client = null; await g.cloudInit();
+
+  /* ---- 17d. state machines: the gate's decision table, the state snapshot, the hand-off reset ---- */
+  {
+    console.log('\n17d. State machines');
+    /* whatever the checks below do (a session that ends also tears down realtime, the queue and the notices), it all goes back here */
+    const cloudWas = { ...C }, qsWas = { ...g.qs }, noCloudWas = sandbox.NEWSTART_NO_CLOUD, toastWas = $el('toastMsg').textContent;
+    const restore = () => { sandbox.NEWSTART_NO_CLOUD = noCloudWas; Object.assign(C, cloudWas); Object.assign(g.qs, qsWas); };
+    /* gateState() (cloud.js): one row per branch, in the order the function takes them; each row sets every field it reads */
+    const GATE_OFF = { recovery: false, user: null, pending: false, gateHide: false, ready: false, demo: false, gateForce: false, status: 'off', client: null, view: 'login', acct: null };
+    const T = { id: 'user-t', email: 't@example.org' }, NO_CHURCH = { membership: null, church: null };
+    const gateRows = [
+      ['the test switch (NEWSTART_NO_CLOUD) hides the gate', {}, 'hidden', true],
+      ['a reset-password link with a session → newpass', { recovery: true, user: T }, 'newpass'],
+      ['pending, account not answered yet → pending', { user: T, pending: true }, 'pending'],
+      ['pending, a session with no church → church', { user: T, pending: true, acct: NO_CHURCH }, 'church'],
+      ['pending and Back chosen → the account status, not hidden', { user: T, pending: true, gateHide: true, acct: NO_CHURCH }, 'church'],
+      ['Back chosen, no session → hidden', { gateHide: true }, 'hidden'],
+      ['ready, not forced → hidden', { ready: true }, 'hidden'],
+      ['demo, not forced → hidden', { demo: true }, 'hidden'],
+      ['ready and forced, session online → loading', { ready: true, gateForce: true, user: T, status: 'online' }, 'loading'],
+      ['session, not ready, status error → error', { user: T, status: 'error' }, 'error'],
+      ['session, not ready, status syncing → loading', { user: T, status: 'syncing' }, 'loading'],
+      ['no session, unavailable → unavailable', { status: 'unavailable' }, 'unavailable'],
+      ['no session, sign-in form → form', { client: {}, status: 'signedout', view: 'login' }, 'form'],
+      ['no session, sign-up screen → signup (the view name)', { client: {}, status: 'signedout', view: 'signup' }, 'signup'],
+      ['no session, no client yet → connecting', { status: 'loading' }, 'connecting'],
+    ];
+    for (const [label, set, want, noCloud] of gateRows) {
+      sandbox.NEWSTART_NO_CLOUD = !!noCloud;
+      Object.assign(C, GATE_OFF, set);
+      const got = g.gateState();
+      ok('gateState: ' + label, got === want, 'got ' + got + ', wanted ' + want);
+    }
+    restore();
+    /* stateSnapshot() (main.js, dev and test builds): its gate and status are the live ones, and queued follows the re-run flags */
+    sandbox.NEWSTART_NO_CLOUD = false; Object.assign(C, GATE_OFF, { client: {}, status: 'signedout', view: 'login' });
+    C.again = false; C.againPull = false; C.againManual = false;
+    const snapIdle = g.stateSnapshot();
+    ok('stateSnapshot: gate and status are the live gate and cloud status', snapIdle.gate === g.gateState() && snapIdle.status === C.status, 'gate=' + snapIdle.gate + ' status=' + snapIdle.status);
+    ok('stateSnapshot: nothing is queued while no re-run is set', snapIdle.queued === '', 'queued=' + JSON.stringify(snapIdle.queued));
+    C.againManual = true;
+    ok('stateSnapshot: a queued "Sync now" reads as manual', g.stateSnapshot().queued === 'manual', 'queued=' + JSON.stringify(g.stateSnapshot().queued));
+    restore();
+    /* orphanPass() (account.js) is not exported, so its effect is checked: a session that ends orphans the running pass and clears its re-runs (E1, H3, H4) */
+    C.user = T; C.busy = true; C.again = true; C.againManual = true; C.againPull = true;
+    const mfWas = g.state.mf;
+    C.recovery = true; C.pending = true; C.pledgeEdit = true; g.state.mf = { name: 'the previous person' };
+    const genWas = C.gen;
+    g.cloudAuthEvent('SIGNED_OUT', null);
+    ok('a session that ends orphans its pass: generation bumped, busy and all re-run flags cleared (orphanPass)',
+      C.gen > genWas && C.user === null && !C.busy && !C.again && !C.againManual && !C.againPull,
+      'gen ' + genWas + ' to ' + C.gen + ', user=' + !!C.user + ', busy=' + C.busy + ', again=' + C.again + ', manual=' + C.againManual + ', pull=' + C.againPull);
+    ok('…and leaves nothing of that person for the next one: no new-password hold, no account-status screen, no pledge draft (A-2, A-3, A-4)',
+      C.recovery === false && C.pending === false && C.pledgeEdit === false && g.state.mf === null,
+      'recovery=' + C.recovery + ', pending=' + C.pending + ', pledgeEdit=' + C.pledgeEdit + ', mf=' + JSON.stringify(g.state.mf));
+    g.state.mf = mfWas;
+    restore(); $el('toastMsg').textContent = toastWas;
+    /* E-1: a danger reading the plans do not cover (a low sugar; a top blood-pressure number alone) is never "all clear" */
+    const activeWas = g.state.activeId, tabWas = g.state.tab;
+    for (const [what, s] of [['a blood sugar under 3', { sugar: 2.5 }], ['a top blood-pressure number of 170 alone', { sys: 170 }]]) {
+      const low = g.migrateAttendee({ id: 'EXPO-9917', name: 'Danger Reading', age: 40, sex: 'M', s, interests: { consent: true } });
+      g.attendees.push(low); g.state.activeId = low.id;
+      const res = g.viewResults(), plan = g.viewPlan();
+      ok('Results never says "no numbers need attention" for ' + what,
+        g.redFlag(low) && g.planNeeds(low).length === 0 && /danger range/.test(res) && !/No numbers need attention/.test(res));
+      ok('…and the Plan never says the numbers "look fine" for ' + what, !/Your numbers look fine today/.test(plan));
+      g.attendees.splice(g.attendees.indexOf(low), 1);
+    }
+    g.state.activeId = activeWas; g.state.tab = tabWas;
+  }
 
   /* ---- 18. scale: thousands of visitors ------------------------------ */
   console.log('\n18. Scale (3000 visitors, 900 volunteers, 1000-row response cap)');
@@ -5043,14 +5122,20 @@ function makeServer() {
   const swCaches = new Map();
   /* like a real cache, keys are absolute addresses (relative ones resolve against the worker's scope) */
   const keyOf = k => new URL(typeof k === 'string' ? k : k.url, 'https://expo.example/').href;
+  /* the stored copy names the file as sw.js listed it (relative), whether it was handed a string or a Request */
+  const nameOf = k => typeof k === 'string' ? k : k.url.replace('https://expo.example/', '');
+  const modeOf = k => typeof k === 'string' ? 'default' : k.cache;
+  const swInstallModes = [];
+  /* like a worker's Request, a relative address resolves against the worker's scope */
+  class SwRequest extends Request { constructor(u, o) { super(typeof u === 'string' ? new URL(u, 'https://expo.example/').href : u, o); } }
   const swCache = name => { if (!swCaches.has(name)) swCaches.set(name, new Map()); const m = swCaches.get(name);
     return {
       /* like the real Cache API, every match hands back a fresh copy of the stored response */
       match: async (k, opt) => { const key = keyOf(k); if (m.has(key)) return m.get(key).clone();
         if (opt && opt.ignoreSearch) { const bare = key.split('?')[0]; for (const [mk, v] of m) if (mk.split('?')[0] === bare) return v.clone(); } return undefined; },
       put: async (k, v) => { m.set(keyOf(k), v); },
-      addAll: async ks => ks.forEach(k => m.set(keyOf(k), new Response('shell:' + k))),
-      add: async k => { m.set(keyOf(k), new Response('lib:' + k)); },
+      addAll: async ks => ks.forEach(k => { swInstallModes.push(modeOf(k)); m.set(keyOf(k), new Response('shell:' + nameOf(k))); }),
+      add: async k => { swInstallModes.push(modeOf(k)); m.set(keyOf(k), new Response('lib:' + nameOf(k))); },
     }; };
   const swHandlers = {};
   let netFail = false, netCalls = [];
@@ -5062,7 +5147,7 @@ function makeServer() {
     caches: { open: async n => swCache(n), keys: async () => [...swCaches.keys()], delete: async k => swCaches.delete(k), match: async () => undefined },
     fetch: async r => { const u = typeof r === 'string' ? r : r.url; netCalls.push(u); if (netFail) throw new TypeError('Failed to fetch');
       return new Response('net:' + u, { headers: { 'Content-Type': typeOfNet(u) } }); },
-    Response, URL, Promise, setTimeout, clearTimeout, Error, TypeError, Map,
+    Response, Request: SwRequest, URL, Promise, setTimeout, clearTimeout, Error, TypeError, Map,
   };
   swSandbox.self.caches = swSandbox.caches;
   vm.createContext(swSandbox);
@@ -5078,6 +5163,10 @@ function makeServer() {
   ok('install caches the app shell with the vendored sign-in library and the fonts', !!shellC && shellC.has(keyOf('index.html'))
     && shellC.has(keyOf('vendor/supabase.min.js')) && shellC.has(keyOf('vendor/fonts.css')) && swCaches.get('newstart-libs-v4') === undefined,
     [...swCaches.keys()].join());
+  /* vendor/ and tutorial/ carry a max-age (tools/build.js _headers): install must skip the HTTP cache, or a new release
+     would store the old files the browser still holds */
+  ok('install fetches every shell file and font past the HTTP cache (cache: reload)',
+    swInstallModes.length > 0 && swInstallModes.every(m => m === 'reload'), swInstallModes.join());
   swCache('newstart-shell-old'); swCache('something-else');
   await new Promise(res => swHandlers.activate({ waitUntil: p => p.then(res) }));
   ok('activate deletes caches from older versions', !swCaches.has('newstart-shell-old') && !swCaches.has('something-else') && swCaches.has('newstart-shell-test1'), [...swCaches.keys()].join());
@@ -7572,7 +7661,7 @@ function makeServer() {
       && help.includes('the lines could not be updated (no connection), they will be when you are back online') && help.includes('Being served at Blood Pressure') && help.includes('In line at Blood Pressure')
       && /taken out of the \$\{qLabels\(gone\)\}/.test(srcText));
     ok('help: pending lines are kept per church (badge numbers repeat across churches)', /const c=cloud\.churchId;if\(!c\)return false;/.test(srcText) && /leaveRead\(\)\[cloud\.churchId\]/.test(srcText) && help.includes('in the same church'));
-    ok('help: the nearly-full message is the code\'s (about 10,000 visitors)', help.includes('Saved copy is nearly full') && /Saved copy is nearly full — sync now and remove old visitors/.test(srcText) && /One device holds about 10,000/.test(srcText));
+    ok('help: the nearly-full message is the code\'s (about 9,000 visitors)', help.includes('Saved copy is nearly full') && /Saved copy is nearly full — sync now and remove old visitors/.test(srcText) && /One device holds about 9,000/.test(srcText));
   }
 
   console.log('\n' + '='.repeat(52));

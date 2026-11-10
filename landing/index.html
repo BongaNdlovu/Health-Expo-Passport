@@ -602,14 +602,20 @@
   var L=tr.getTotalLength(),peakAt=PEAKS.map(function(px){var lo=0,hi=L;for(var k=0;k<24;k++){var m=(lo+hi)/2;if(tr.getPointAtLength(m).x<px)lo=m;else hi=m;}return lo;});
   if(reduced){old.style.display='none';pen.style.display='none';if(glow)glow.style.opacity='.35';}
   else{
-   var t0=null,last=-1;
-   (function frame(t){if(t0===null)t0=t;var p=((t-t0)%PERIOD)/PERIOD,s=p*L;
+   var t0=null,last=-1,onScreen=true,running=true;
+   function frame(t){if(t0===null)t0=t;var p=((t-t0)%PERIOD)/PERIOD,s=p*L;
     tr.style.strokeDasharray=s+' '+L;                       /* drawn so far this sweep */
     if(glow)glow.style.strokeDasharray='0 '+Math.max(0,s-260)+' '+Math.min(s,260)+' '+L;   /* the glow trails just behind the pen */
     old.style.strokeDasharray='0 '+Math.min(L,s+GAP)+' '+L;  /* last sweep, erased just ahead of the pen */
     var pt=tr.getPointAtLength(s);pen.setAttribute('cx',pt.x);pen.setAttribute('cy',pt.y);
     for(var i=0;i<peakAt.length;i++){var a=peakAt[i];if((last<a&&s>=a)||(last>s&&s>=a&&a<s)){var q=tr.getPointAtLength(a);onBeat(q.x,q.y);}}
-    last=s;requestAnimationFrame(frame);})(performance.now());
+    last=s;if(onScreen)requestAnimationFrame(frame);else running=false;}
+   frame(performance.now());
+   /* the trace only draws while the hero can be seen: scrolled away, the loop stops, and it restarts on return */
+   if('IntersectionObserver' in window&&tr.ownerSVGElement){
+    new IntersectionObserver(function(es){onScreen=es[es.length-1].isIntersecting;
+     if(onScreen&&!running){running=true;last=NaN;requestAnimationFrame(frame);}   /* NaN: the first frame back fires no beats */}).observe(tr.ownerSVGElement);
+   }
   }
  }
  var snd=document.getElementById('hxSnd'),sndT=document.getElementById('hxSndT'),wave=document.getElementById('hxWave');

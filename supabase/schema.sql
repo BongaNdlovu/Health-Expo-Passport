@@ -166,10 +166,13 @@ alter table public.volunteers add column if not exists expo_id uuid;
 
 -- ---------------------------------------------------------------- indexes (the app pages through rows by
 -- created_at and pulls "changes since" by updated_at; these keep both fast with many thousands of rows)
-create index if not exists attendees_created_idx  on public.attendees  (created_at, id);
+-- Since rows belong to a church, every app read is filtered by church_id (row level security), so the church-led
+-- indexes in the CHURCHES section serve them. Of these global ones only attendees (updated_at, id) is still used: the
+-- daily purge deletes visits untouched for 2 years across all churches. The rest only cost writes, so they go.
+drop index if exists public.attendees_created_idx;
 create index if not exists attendees_updated_idx  on public.attendees  (updated_at, id);
-create index if not exists volunteers_created_idx on public.volunteers (created_at, id);
-create index if not exists volunteers_updated_idx on public.volunteers (updated_at, id);
+drop index if exists public.volunteers_created_idx;
+drop index if exists public.volunteers_updated_idx;
 
 -- ---------------------------------------------------------------- row level security
 alter table public.attendees  enable row level security;
@@ -235,9 +238,11 @@ create trigger queue_entries_touch before insert or update on public.queue_entri
 
 -- a person can only be in one line at a time at the same station: per church, so that index is made in the CHURCHES
 -- section below (which adds the church_id column)
-create index if not exists queue_entries_station_idx on public.queue_entries (station, status, joined_at);
+-- (station, status, joined_at) and (updated_at, id) are superseded by the church-led indexes in the CHURCHES section.
+-- (joined_at, id) stays: the daily purge deletes queue lines older than 30 days across all churches.
+drop index if exists public.queue_entries_station_idx;
 create index if not exists queue_entries_joined_idx  on public.queue_entries (joined_at, id);
-create index if not exists queue_entries_updated_idx on public.queue_entries (updated_at, id);
+drop index if exists public.queue_entries_updated_idx;
 
 alter table public.queue_entries enable row level security;
 drop policy if exists "staff full access" on public.queue_entries;
@@ -363,6 +368,9 @@ create table if not exists public.audit_log (
 alter table public.audit_log enable row level security;       -- no policies: read it in the dashboard (service role)
 revoke all on public.audit_log from anon, authenticated;
 create index if not exists audit_log_at_idx on public.audit_log (at);
+-- the daily purge clears kept copies of deleted rows (tbl, op, old is not null): only those rows are in this index,
+-- so the sweep stops reading the whole log
+create index if not exists audit_log_kept_copies_idx on public.audit_log (tbl, op) where old is not null;
 
 create or replace function public.audit_row()
 returns trigger
@@ -661,6 +669,10 @@ drop index if exists public.queue_entries_one_active_idx;
 create unique index if not exists queue_entries_one_active_church_idx on public.queue_entries (church_id, attendee_id, station)
   where status in ('waiting', 'serving');
 create index if not exists queue_entries_church_idx on public.queue_entries (church_id, station, status, joined_at);
+-- the desks' queue pull (src/queue.js queueSync): church_id from row level security, then joined_at on the first load
+-- and updated_at for "changes since", each ordered by (that column, id)
+create index if not exists queue_entries_church_joined_idx  on public.queue_entries (church_id, joined_at, id);
+create index if not exists queue_entries_church_updated_idx on public.queue_entries (church_id, updated_at, id);
 
 -- ---------------------------------------------------------------- row level security, per church
 -- The helpers are wrapped in (select ...) so Postgres evaluates them once per statement (an initplan) instead of

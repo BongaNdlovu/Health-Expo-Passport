@@ -192,6 +192,13 @@ fs.writeFileSync(path.join(dist, '_headers'), [
   '/sw.js', '  Cache-Control: no-cache', '/index.html', '  Cache-Control: no-cache', '/manifest.webmanifest', '  Cache-Control: no-cache',
   '  Content-Type: application/manifest+json', '/',
   '  Cache-Control: no-cache', '/icons/*', '  Cache-Control: public, max-age=86400',
+  /* Filenames here are not content-hashed, so no "immutable": a day (fonts a month) saves a revalidation round-trip per
+     file, and a new release still lands because sw.js installs with cache: 'reload'. One rule per path, never two
+     matching the same file (Pages would join both Cache-Control values). */
+  '/tutorial/*', '  Cache-Control: public, max-age=86400',
+  '/vendor/fonts.css', '  Cache-Control: public, max-age=86400',
+  '/vendor/supabase.min.js', '  Cache-Control: public, max-age=86400',
+  '/vendor/fonts/*', '  Cache-Control: public, max-age=2592000',
   '/version.json', '  Cache-Control: no-store', '  Access-Control-Allow-Origin: *',
   '/newstart.apk', '  Content-Type: application/vnd.android.package-archive', '  Content-Disposition: attachment; filename="NEWSTART.apk"', ''].join('\n'));
 

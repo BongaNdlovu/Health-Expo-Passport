@@ -9,7 +9,7 @@ import { JOURNEY, JOURNEY_LABEL, jelly, render, renderMain, toast } from './shel
 import { planFor, viewMetric } from './results.js';
 import { followupPicker } from './churchPlans.js';
 import { cloud, migrateAttendee, persist, seedDemo } from './state.js';
-import { GRACE_DAYS, RETENTION_YEARS, visitIsOld } from './retention.js';
+import { GRACE_DAYS, RETENTION_YEARS, serverNow, visitIsOld } from './retention.js';
 import { homeHealthHTML, installEvt, validEmail } from './cloud.js';
 import { hiredCountLabel, isAdminAcct, mayPlace, pendingLabel, todayStr } from './volunteer.js';
 import { homeExpoState } from './account.js';
@@ -432,11 +432,18 @@ function consentFields(p,minor){
 }
 export function showGuardian(p,age){const b=document.getElementById(p+'GuardianBox');if(b)b.hidden=!isMinor(Math.round(+String(age).trim()));}
 /* reads the ticks: an error message, or the consent entries to keep in interests */
+/* The day consent was given, on the database's clock once it is known (retention.js serverNow; the phone's own clock
+   until then). The database judges a visit's age by this date, so a phone running a week slow would otherwise
+   write a date the database treats as an old visit, and drop the new record without an error (G-3). */
+function consentDay(){
+ const d=new Date(serverNow());
+ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
 function readConsent(p,age){
  const on=id=>{const el=/** @type {HTMLInputElement|null} */ (document.getElementById(p+id));return !!(el&&el.checked);};
  if(!on('Consent'))return {err:'Ask the consent question and tick Yes: without it the checks cannot be recorded (POPIA).'};
  /* the screening yes is required; the follow-up yes is a separate, optional answer */
- const out={consent:true,optin:on('Optin'),consentOn:todayStr(),consentV:NOTICE_VERSION};
+ const out={consent:true,optin:on('Optin'),consentOn:consentDay(),consentV:NOTICE_VERSION};
  if(isMinor(age)){
   const el=/** @type {HTMLInputElement|null} */ (document.getElementById(p+'GuardianName')),gn=el?String(el.value||'').trim().replace(/\s+/g,' ').slice(0,80):'';
   if(!gn||!on('Guardian'))return {err:'Under 18: type the parent or guardian’s name and tick their consent.'};

@@ -1,9 +1,9 @@
 // @ts-check
 import { STATUS_UI } from './data.js';
 import { EXTRA_DEFS, MED_YN, SEED, SEED_VOL, SURVEY, attendees, state, volunteers } from './data.js';
-import { hashStr } from './cloud.js';
 import { cloudQueuePush } from './account.js';
 import { toast } from './shell.js';
+import { normaliseCustomPlan } from './customPlan.js';
 /* State and persistence: the app state, the cloud state and the saved offline copy. Split from the original single-file app; bundled back into one file by tools/build.js. */
 /* ================= PERSISTENCE ================= */
 const LS_KEY='newstart.passport.v2';
@@ -22,25 +22,29 @@ export const cloud={client:null,user:null,mode:false,status:'off',err:'',busy:fa
   signInWaitUntil:0,                                       /* a 429 starts a local sign-in cooldown (A13) */
   pledgeNetErr:/** @type {false|'net'|'other'} */(false),                                      /* a network failure loading My pledge, vs not-switched-on (A20a) */
   notifN:0,notifT:null,notifLive:false,notifChannel:null,notifWatched:'',notifs:undefined,notifsOffline:false,notifOpen:false};
-/* Every screen change calls this, but the data rarely changes: compare a fingerprint first and only write (and only
-   look for rows to upload) when something really changed. Writing ~1 MB to storage on every tap is what drained phones. */
-let _savedSig='',_pMax=0,_fullWarned=false,_nearWarned=false;
-/* Browsers cap localStorage around 5 MB per origin. The saved copy crosses 4.2 MB at roughly 10,000 visitors — past
-   that the next write can be refused, and an offline desk then loses edits on reload. Say so while there is still
-   time to act, not only once the write has already failed. */
-const NEAR_FULL_BYTES=4.2*1024*1024;
+/* Every screen change calls this, but the data rarely changes: compare with the copy already saved and only write (and
+   only look for rows to upload) when something really changed. Writing ~1 MB to storage on every tap is what drained
+   phones. The saved copy is held in memory by the secure store (index.html), so comparing two strings is one fast
+   memory compare — cheaper than hashing the whole copy on every save. */
+let _pMax=0,_fullWarned=false,_nearWarned=false;
+/* Browsers cap localStorage around 5 M characters per origin (VERIFY on each target WebView). What is stored is not this
+   plain text but 'enc1:' + base64(AES-GCM), about 4/3 of its length, so writes start failing near 3.9 M plain
+   characters — about 9,000 visitors at the pen-test's record size (4,254 KB for 10,000). Warn at 3.1 MB, while there is
+   still room to act, not once the write has already failed. */
+const NEAR_FULL_CHARS=3.1*1024*1024;
 export function persistNow(){
  let s;
  try{s=JSON.stringify({attendees,activeId:state.activeId,sim:state.sim,
   volunteers,volId:state.volId,volTab:state.volTab,_volSeq:state._volSeq,cloud:cloud.mode,
   since:cloud.mode?cloud.since:undefined});}catch(e){return;}
- if(s.length>NEAR_FULL_BYTES&&!_nearWarned){_nearWarned=true;
-  setTimeout(()=>toast('Saved copy is nearly full — sync now and remove old visitors. One device holds about 10,000.'),0);}
- const h=hashStr(s);
- if(h===_savedSig)return;
- try{localStorage.setItem(LS_KEY,s);_savedSig=h;}catch(e){storageFull();}
+ if(s.length>NEAR_FULL_CHARS&&!_nearWarned){_nearWarned=true;
+  setTimeout(()=>toast('Saved copy is nearly full — sync now and remove old visitors. One device holds about 9,000.'),0);}
+ if(s===localStorage.getItem(LS_KEY))return;
+ try{localStorage.setItem(LS_KEY,s);}catch(e){storageFull();}
  if(cloud.user)cloudQueuePush();
 }
+/* The secure store writes to disk after encrypting, so a refused write cannot throw here: it reports it instead. */
+addEventListener('securestore:writefail',e=>{if(/** @type {CustomEvent} */(e).detail===LS_KEY)storageFull();});
 /* the browser refused to save: say so once instead of failing silently */
 export function storageFull(){
  if(_fullWarned)return;_fullWarned=true;
@@ -76,6 +80,12 @@ export function migrateAttendee(a){
   /* Care → attended to: the danger readings it was given for, when, and by whom (short plain text) */
   const at=it.attended;delete keep.attended;
   if(at&&typeof at==='object'&&typeof at.sig==='string')keep.attended={sig:at.sig.slice(0,40),at:typeof at.at==='string'&&!isNaN(Date.parse(at.at))?at.at:'',by:typeof at.by==='string'?at.by.slice(0,80):''};
+  /* the plan written for this visitor (customPlan.js). Its key has a capital, so the lowercase rule above drops it,
+     and it is database JSON like the rest: it is kept only through the validator the editor itself uses, which
+     returns a saved plan unchanged. Anything that is not a plan is dropped (E-3). */
+  if(it.customPlan!=null){
+   try{keep.customPlan=normaliseCustomPlan(it.customPlan);}catch(e){/* not a plan: not kept */}
+  }
   a=Object.assign({},a,{interests:keep});
  }
  /* ids are interpolated into data-* attributes, so keep them to letters, digits and dashes */
@@ -106,7 +116,6 @@ export function migrateVolunteer(v){
 export function loadPersisted(){
  try{
   const raw=localStorage.getItem(LS_KEY); if(!raw)return false;
-  _savedSig=hashStr(raw);
   const d=JSON.parse(raw);
   /* a copy saved while connected to the shared database may legitimately be empty */
   cloud.mode=!!d.cloud;

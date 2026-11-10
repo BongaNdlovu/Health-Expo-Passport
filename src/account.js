@@ -1579,6 +1579,8 @@ export function nsAuthTimer(on){
  }catch(e){/* an older client without these */}
 }
 document.addEventListener('visibilitychange',()=>nsAuthTimer(!!cloud.user));
+/* A session ended or the account changed: the in-flight sync pass is orphaned (its generation is gone) and the hand-off flags start clean (E1, H3, H4). */
+function orphanPass(){cloud.gen=(cloud.gen||0)+1;cloud.busy=false;cloud.again=false;cloud.againManual=false;cloud.againPull=false;}
 export function cloudAuthEvent(ev,session){
  const u=session&&session.user;
  nsAuthTimer(!!u);
@@ -1589,10 +1591,12 @@ export function cloudAuthEvent(ev,session){
   const same=cloud.user&&cloud.user.id===u.id;
   cloud.user=u;cloud.gateForce=false;noteHealth('auth','ok','Signed in as '+(u.email||''));
   if(!same){
-   cloud.gen=(cloud.gen||0)+1;   /* an account switch orphans the previous account's in-flight pass (E1) */
+   orphanPass();   /* an account switch orphans the previous account's in-flight pass (E1) */
+   /* nothing the previous person left half-done is this person's: their pledge draft (loadAccount keeps a draft
+      for the same church, and a church has many members) and their "not approved yet" answer (A-2, A-4) */
+   cloud.pledgeEdit=false;state.mf=null;cloud.pending=false;
    /* that parked pass can no longer run its finally (its generation is gone too), so the hand-off is reset here:
       without it the next pass never starts and the status line hangs at Syncing… for the whole session (H3) */
-   cloud.busy=false;cloud.again=false;cloud.againManual=false;cloud.againPull=false;
    cloud.isAdmin=undefined;cloud.knownAdmin=false;cloud.approvalUnknown=false;cloud.apprRetryAt=0;cloud.pendingUsers=null;   /* the admin answer was the previous account's */
    /* An invite link a previous account was offered (it was bound to them when their approved account declined
       it) must not join this one automatically: drop it before the sync below would spend it. A code still
@@ -1610,7 +1614,10 @@ export function cloudAuthEvent(ev,session){
   if(wasIn){cloud.user=null;stopRealtime();notifStop();cloudRefresh();
    /* an in-flight pass may still be parked on a fetch: orphan it here so its return touches nothing —
       no "Up to date", no gate lift on a signed-out desk (H4) */
-   cloud.gen=(cloud.gen||0)+1;cloud.busy=false;cloud.again=false;cloud.againManual=false;cloud.againPull=false;
+   orphanPass();
+   /* the next person at this desk starts clean: no "choose a new password" hold from an opened reset link, no
+      account-status screen and no pledge draft of the person whose session just ended (A-2, A-3, A-4) */
+   cloud.recovery=false;cloud.pending=false;cloud.pledgeEdit=false;state.mf=null;
    applyRetention();afterMerge();persistNow();      /* the server may already have purged these readings; the saved copy follows */
    cloud.ready=false;cloud.gateHide=false;}   /* a Back pressed earlier must not outlive the session: gateState() honours gateHide before it looks at ready */
   if(wasIn)cloud.formErr='Your session ended. Sign in again to keep syncing.';   /* one glanceable reason at the gate (A14) */
@@ -1659,7 +1666,7 @@ export async function cloudSignOut(force){
   cloud.signOutAsk=false;
   if(!yes||cloud.signingOut||!cloud.user)return;   /* answered after another sign-out (a forced one) already ran */
  }
- cloud.gen=(cloud.gen||0)+1;cloud.busy=false;cloud.again=false;cloud.againManual=false;cloud.againPull=false;   /* the running pass is orphaned the moment the session ends (E1) */
+ orphanPass();   /* the running pass is orphaned the moment the session ends (E1) */
  clearTimeout(cloud.pushT);clearTimeout(cloud.retryT);stopRealtime();
  cloud.signingOut=true;
  try{await cloud.client.auth.signOut({scope:'local'});}catch(e){}
@@ -1681,13 +1688,16 @@ export async function cloudSignOut(force){
 /* The place-guard trigger answers 42501 with hint 'place_guard'. The message test keeps a database that has not
    been updated yet working. Either way it is one row another desk has moved, not a bad sign-in. */
 const isPlaceRefusal=e=>!!e&&e.code==='42501'&&(e.hint==='place_guard'||/may place volunteers|choose team leaders/i.test(e.message||''));
+/* A retry delay plus up to 15 s of random spread: when the venue wifi comes back, every desk would otherwise retry in
+   the same second. */
+export const retryIn=ms=>ms+Math.round(Math.random()*15000);
 function cloudError(err,where){
  console.warn('cloud sync:',err);
  healthFromError(where||'sync',err);
  if(where!=='upload'&&isOfflineErr(err&&err.message))healthUpload();
  const msg=String((err&&err.message)||err||'');
  if(!navigator.onLine||/failed to fetch|networkerror|load failed|network request/i.test(msg)){
-  setCloud('offline');clearTimeout(cloud.retryT);cloud.retryT=setTimeout(()=>cloudSync(),20000);return;
+  setCloud('offline');clearTimeout(cloud.retryT);cloud.retryT=setTimeout(()=>cloudSync(),retryIn(20000));return;
  }
  if(err&&(err.code==='PGRST205'||err.code==='PGRST202'||/schema cache|could not find the (table|function)/i.test(msg)))
   {cloud.blocked=true;setCloud('error','The shared database is not set up for your church yet. Ask your church admin to contact the app’s support.');return;}
@@ -1696,7 +1706,7 @@ function cloudError(err,where){
   {cloud.blocked=true;setCloud('error','This sign-in is not on the staff list yet. Ask your church admin to approve it (Profile → My church → Staff approval).');return;}
  /* the raw message is already in Details (healthFromError put it there): the status line keeps calm words */
  setCloud('error','Sync hit a problem. It retries by itself — Details has the technical bit.');
- clearTimeout(cloud.retryT);cloud.retryT=setTimeout(()=>cloudSync(),60000);
+ clearTimeout(cloud.retryT);cloud.retryT=setTimeout(()=>cloudSync(),retryIn(60000));
 }
 export async function cloudSync(manual,pull){
  if(!cloud.client||!cloud.user||cloud.signingOut)return;   /* nothing starts while the session is being closed */
@@ -1900,19 +1910,26 @@ async function pushDirty(gen){
     if(chunk.length>1){
      const rows=chunk.map(o=>k.toRow(o)),sigs=rows.map(sigOf);
      const {error}=await (isFresh?cloud.client.from(k.table).insert(rows.map(inChurch)):cloud.client.from(k.table).upsert(rows.map(inChurch),{onConflict:conflictOn()}));
+     if(gen!==cloud.gen)return;   /* the answer belongs to a session that is gone: write none of it (B-4) */
      if(!error){chunk.forEach((o,j)=>{sy[o.id]=sigs[j];delete cloud.rejected[o.id];if(cloud.rejectedNote&&cloud.rejectedNote.id===o.id)cloud.rejectedNote=null;});cloud.prog.done+=chunk.length;syncChrome();continue;}   /* a batch that landed takes its rows' stale refusals with it (A15) */
     }
-    for(const o of chunk){if(gen!==cloud.gen)return;await pushOne(kind,o);cloud.prog.done++;}   /* refused rows count as handled */
+    for(const o of chunk){if(gen!==cloud.gen)return;await pushOne(kind,o,false,gen);if(gen!==cloud.gen)return;cloud.prog.done++;}   /* refused rows count as handled */
     syncChrome();                                                     /* once per chunk, never once per row */
    }
   }
  }
  syncChrome();
 }
-async function pushOne(kind,o,again){
+/* One row's upload, and the repairs it may need (a taken number, a moved station). Each of them waits on the server,
+   and the session can end or change while it waits: `gen` is the pass's generation, and after every wait a pass
+   whose generation is gone writes nothing more — not to this phone's lists, and not into the next account's
+   church (B-4). */
+const passGone=gen=>gen!==undefined&&gen!==cloud.gen;
+async function pushOne(kind,o,again,gen){
  const k=KINDS[kind],row=k.toRow(o),s=sigOf(row),fresh=cloud.synced[kind][o.id]===undefined;
  const q=fresh?cloud.client.from(k.table).insert(inChurch(row)):cloud.client.from(k.table).upsert(inChurch(row),{onConflict:conflictOn()});
  const {error}=await q;
+ if(passGone(gen))return;
  if(!error){
   cloud.synced[kind][o.id]=s;
   if(cloud.rejected[o.id]!==undefined){            /* an edit after a refusal went through: the refusal is over */
@@ -1921,11 +1938,12 @@ async function pushOne(kind,o,again){
   }
   return;
  }
- if(fresh&&error.code==='23505')return resolveConflict(kind,o,s);
+ if(fresh&&error.code==='23505')return resolveConflict(kind,o,s,gen);
  /* one row's station was changed on another desk: take the server's placement, keep this phone's other edits,
     and try once more. Never let it stop the rest of the desk (it used to set cloud.blocked). */
  const placeRefused=isPlaceRefusal(error);
- if(placeRefused&&!again&&kind==='vol'&&await resolvePlacement(o))return;
+ if(placeRefused&&!again&&kind==='vol'&&await resolvePlacement(o,gen))return;
+ if(passGone(gen))return;
  if(/^2[23]/.test(error.code||'')||placeRefused){           /* data the database refuses: skip this row, keep syncing the rest */
   cloud.rejected[o.id]=s;cloud.rejectedNote={id:o.id,msg:String(error.message||'')};
   toast(`${o.id} was not uploaded. See Cloud status for the reason.`);   /* the raw message is already in Details via rejectedNote (A15) */return;
@@ -1933,15 +1951,16 @@ async function pushOne(kind,o,again){
  throw error;
 }
 /* the server's placement wins over a stale copy; the local name, notes and other edits are kept */
-async function resolvePlacement(o){
+async function resolvePlacement(o,gen){
  let q=cloud.client.from('volunteers').select('*').eq('id',o.id);
  if(cloud.churchId)q=q.eq('church_id',cloud.churchId);      /* ids repeat across churches; RLS already scopes this */
  let r;try{r=await q.maybeSingle();}catch(e){return false;}
+ if(passGone(gen))return true;                              /* handled: there is nothing left for this pass to do */
  if(r.error||!r.data)return false;
  const srv=KINDS.vol.fromRow(r.data);
  o.booth=srv.booth;o.lead=!!srv.lead;o.role=srv.role||'';o.status=srv.status||o.status;
  o.registeredOn=srv.registeredOn;o.checkedIn=!!srv.checkedIn;
- await pushOne('vol',o,true);
+ await pushOne('vol',o,true,gen);
  return true;
 }
 /* the id is already taken on the server */
@@ -1949,29 +1968,45 @@ async function resolvePlacement(o){
    two different people: the one uploaded second takes the next number free on the server and on this phone, and the
    volunteer is told the new number. This is the visitor's first upload, so only a queue place taken in the second
    before it would still carry the old number. */
-async function renumberVisitor(o){
- const ids=await cloud.client.from('attendees').select('id');
- if(ids.error)throw ids.error;
+/* Every id in the table, in pages: Supabase answers at most 1000 rows per request, so one unpaged select would miss
+   the higher numbers of a big church and hand out a number that is already taken. */
+async function allIds(table){
+ const PAGE=1000,ids=[];
+ for(let page=0;page<400;page++){
+  const {data,error}=await cloud.client.from(table).select('id').order('id').range(page*PAGE,page*PAGE+PAGE-1);
+  if(error)throw error;
+  for(const r of data)ids.push(r.id);
+  if(data.length<PAGE)break;
+ }
+ return ids;
+}
+/* the highest number among ids — a loop, not Math.max(...ids): spreading tens of thousands of arguments can overflow */
+const maxNum=(ids,num,floor)=>{let m=floor;for(const id of ids){const n=num(id);if(n>m)m=n;}return m;};
+async function renumberVisitor(o,gen){
+ const ids=await allIds('attendees');
+ if(passGone(gen))return;
  const num=id=>{const m=/^EXPO-(\d+)$/.exec(String(id));return m?+m[1]:0;};
- const max=Math.max(0,...ids.data.map(r=>num(r.id)),...attendees.map(a=>num(a.id)));
+ const max=Math.max(maxNum(ids,num,0),maxNum(attendees.map(a=>a.id),num,0));
  const old=o.id;o.id='EXPO-'+String(max+1).padStart(3,'0');
  if(state.activeId===old)state.activeId=o.id;
  toast(`Another desk gave out ${old} at the same moment: this visitor is now ${o.id}`);
- return pushOne('att',o);
+ return pushOne('att',o,false,gen);
 }
-async function resolveConflict(kind,o,s){
+async function resolveConflict(kind,o,s,gen){
  const k=KINDS[kind];
  const {data,error}=await cloud.client.from(k.table).select('*').eq('id',o.id).maybeSingle();
+ if(passGone(gen))return;
  if(error)throw error;
  if(data&&sigOf(k.toRow({...k.fromRow(data),created_at:o.created_at}))===s){cloud.synced[kind][o.id]=s;return;}   /* an earlier upload of this very row: the lost first response left only the server's created_at different (E4) */
- if(kind==='att')return renumberVisitor(o);
+ if(kind==='att')return renumberVisitor(o,gen);
  /* two desks pledged at the same moment: take the next free volunteer number */
- const ids=await cloud.client.from('volunteers').select('id');
- if(ids.error)throw ids.error;
- const max=Math.max(1000,...ids.data.map(r=>parseInt(String(r.id).replace(/\D/g,''),10)||0),...volunteers.map(v=>parseInt(String(v.id).replace(/\D/g,''),10)||0));
+ const ids=await allIds('volunteers');
+ if(passGone(gen))return;
+ const vnum=id=>parseInt(String(id).replace(/\D/g,''),10)||0;
+ const max=Math.max(maxNum(ids,vnum,1000),maxNum(volunteers.map(v=>v.id),vnum,1000));
  const old=o.id;o.id='VOL-'+(max+1);
  if(state.volId===old)state.volId=o.id;
- return pushOne(kind,o);
+ return pushOne(kind,o,false,gen);
 }
 export function afterMerge(kind){
  if(!kind||kind==='att')if(!attendees.some(a=>a.id===state.activeId))state.activeId=(attendees[0]||{}).id||'';
@@ -1996,6 +2031,9 @@ export async function removeVisitorAsk(id){
    label:'Remove',danger:true});
   if(!yes)return;
   // 1. The shared copy, when there is one
+  /* the two waits below can outlast the session: an answer for a session that is gone removes nothing from
+     whoever holds the desk now, whose list may carry the same badge number (B-3) */
+  const gen=cloud.gen;
   const isOnServer=isShared&&cloud.synced.att[id]!==undefined;
   if(isOnServer){
    const client=cloud.client;
@@ -2003,12 +2041,14 @@ export async function removeVisitorAsk(id){
    let res;
    try{res=await client.rpc('remove_visitor',{p_id:id});}catch(e){res={error:e};}
    const {data,error}=res;
+   if(gen!==cloud.gen)return;
    if(error){toast(isNet(error.message)?'Removing a visitor needs a connection — try again when you are online.':(error.message||'That did not work.'));return;}
    const wasDeleted=data===true;
    if(!wasDeleted){toast('The database did not remove them. This visitor can’t be removed from this account.');return;}
   }
   // 2. Their open places in the station lines
   await queueLeaveFor(id);
+  if(gen!==cloud.gen)return;
   // 3. This device
   const i=attendees.findIndex(x=>x.id===id);
   if(i>=0)attendees.splice(i,1);

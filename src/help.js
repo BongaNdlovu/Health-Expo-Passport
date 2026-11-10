@@ -494,7 +494,7 @@ export const HELP_MESSAGES = [
  ['Removing a visitor needs a connection — try again when you are online.', 'The visitor is on the shared database, so it has to be removed there first. Reconnect and try again.'],
  ['The database did not remove them. This visitor can’t be removed from this account.', 'The database refused, so nothing was removed.'],
  ['Custom plans are not available on this account.', 'Nothing was changed.'],
- ['Saved copy is nearly full — sync now and remove old visitors', 'This device holds about 10,000 visitors. Sync, then remove visitors you no longer need.'],
+ ['Saved copy is nearly full — sync now and remove old visitors', 'This device holds about 9,000 visitors. Sync, then remove visitors you no longer need.'],
  ['That email address does not look right', 'Check the address, for example name@example.com. Leave it empty where it is optional.'],
  ['Could not reach the server yet — retrying', 'Wait. The app retries when the connection returns.']
 ];
