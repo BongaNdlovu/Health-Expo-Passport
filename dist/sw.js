@@ -3,7 +3,7 @@
    tour and the vendored sign-in library and fonts. v1.6.2: nothing is loaded from a CDN any more. It NEVER stores anything from Supabase — visitor health data, volunteer details and sign-in
    tokens travel only between the app and the database (the app keeps its own saved copy on the device).
    VERSION is stamped by tools/build.js so every release replaces the old cache. */
-const VERSION = '7d6505a96b';
+const VERSION = '71d849782a';
 const SHELL = 'newstart-shell-' + VERSION;
 const LIBS = 'newstart-libs-v4';              /* v4: the CDN copies (supabase-js 2.45.4, Google Fonts) are dropped; everything is same-origin */
 
@@ -23,12 +23,14 @@ const isSupabase = host => host === 'supabase.co' || host.endsWith('.supabase.co
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const shell = await caches.open(SHELL);
-    await shell.addAll(SHELL_FILES);                                    /* the app itself must be cacheable */
+    /* cache: 'reload' skips the browser's HTTP cache: vendor/ and tutorial/ are served with a max-age (tools/build.js
+       _headers), and a new release must store the new files, not the copies the browser kept from the old one */
+    await shell.addAll(SHELL_FILES.map(url => new Request(url, { cache: 'reload' })));   /* the app itself must be cacheable */
     const home = await fetch('./', { cache: 'reload' });
     if (!home.ok) throw new Error('page not available');
     await shell.put('index.html', await cleanCopy(home));
     /* fonts are best-effort and same-origin, so they live in the shell cache that ownFile() reads */
-    await Promise.allSettled(LIB_URLS.map(async url => { if (!(await shell.match(url))) await shell.add(url); }));
+    await Promise.allSettled(LIB_URLS.map(async url => { if (!(await shell.match(url))) await shell.add(new Request(url, { cache: 'reload' })); }));
     /* No skipWaiting() here. A new build now waits until the page asks for it (src/update.js shows the banner
        and its Update button sends UPDATE_NOW). Swapping the worker under a running page is how an app ends up
        half-updated: the open page still runs the old bundle while every later fetch comes from the new worker. */

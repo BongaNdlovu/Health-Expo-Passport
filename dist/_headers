@@ -1,5 +1,5 @@
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-jHF5kcI45dj1J0vBtQFZmMlLev+5KxohjpFMn4YE924=' 'sha256-Zr72/7Oe0bQTjyb7b+7MYX0en9/H/Peyg9q7oEsABTs=' 'sha256-Zpc6NdYWJNaj0Xio2BUDAbQ1KJPCbIqW/dhQJJeNFcM='; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://winter-bonus-626a.ndlovufanelesibonge8.workers.dev https://wlsrgihkijlvjyfxvhfl.supabase.co wss://wlsrgihkijlvjyfxvhfl.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-jHF5kcI45dj1J0vBtQFZmMlLev+5KxohjpFMn4YE924=' 'sha256-dv34QZmYY0i7aWrbqiuRivi85+qDKqnnsDROJyxJSS4=' 'sha256-ceGmGa0QWVaqsgeZ31GXxSApZBxONrxLfxVIaxl7zDU='; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://winter-bonus-626a.ndlovufanelesibonge8.workers.dev https://wlsrgihkijlvjyfxvhfl.supabase.co wss://wlsrgihkijlvjyfxvhfl.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin
@@ -16,6 +16,14 @@
   Cache-Control: no-cache
 /icons/*
   Cache-Control: public, max-age=86400
+/tutorial/*
+  Cache-Control: public, max-age=86400
+/vendor/fonts.css
+  Cache-Control: public, max-age=86400
+/vendor/supabase.min.js
+  Cache-Control: public, max-age=86400
+/vendor/fonts/*
+  Cache-Control: public, max-age=2592000
 /version.json
   Cache-Control: no-store
   Access-Control-Allow-Origin: *
