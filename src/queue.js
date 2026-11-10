@@ -40,7 +40,8 @@ const QUEUE_WINDOW_H=18;                 /* only today's queue is loaded */
 export const queue=[];                          /* {id,attendeeId,station,status,joinedAt,calledAt,finishedAt,slot}; times in ms; slot: the place (1..N) at a station serving several at once, kept on this device */
 export const qs={ready:false,err:'',ch:null,rt:'',church:'',subbed:false,skew:0,since:'',busy:false,syncing:false,seq:1,confirm:'',pick:'',pickQ:'',renderT:null,retryT:null,names:'',
  stations:null,stationsErr:false,   /* the church's own station order (null = the built-ins) / the table is missing on this database */
- edit:null,editBusy:false};         /* the Stations sheet's draft order while it is open */
+ edit:null,editBusy:false,
+ histCut:false};                    /* this desk holds only the newest finished entries (qPruneHistory): its Finished count is a floor */         /* the Stations sheet's draft order while it is open */
 
 /* ---------- the church's own stations (admins set them; every desk follows) ----------
    QUEUE_STATIONS and QUEUE_FLOW are the app's built-in board and route. A church's admins (or the app owner) can put
@@ -311,6 +312,7 @@ export function qPruneHistory() {
    queue.splice(i, 1);
   }
  }
+ qs.histCut = true;   /* the Finished tile says "150+" from here on, not a number that has stopped counting (C-2) */
  return queue_length - queue.length;
 }
 function qDemoSave() {
@@ -627,7 +629,8 @@ export async function queueDoneNext(id){
  const r=await qFinish(id);
  if(!r)return;
  const full=qFree(r.st)<=0,c=full?null:await qCall(r.st,true);
- if(c===undefined)return;
+ /* the Done is saved; only calling the next person failed, and qFail has just said "nothing was changed" (C-3) */
+ if(c===undefined){toast(`${r.who} finished ✓${r.moved} · the next person was not called — tap Call next`);return;}
  toast(`${r.who} finished ✓${r.moved} · ${c?`Next: ${qName(c.attendeeId)} · ${c.attendeeId}${qAt(c)}`:full?'all places are busy':'nobody else is waiting'}`);
 }
 
@@ -1019,8 +1022,15 @@ export async function queueSync(manual){
    if(error)throw error;
    rows.push(...data);if(data.length<500)break;
   }
-  if(first){queue.length=0;qs.since='';}
+  /* a full re-read empties the list, and the place each served person is at lives only on this device (qApply
+     keeps it for an entry it already holds): carry the places across (C-5) */
+  const placeOf=new Map();
+  if(first){
+   for(const e of queue){if(e.slot&&e.status==='serving')placeOf.set(e.id,e.slot);}
+   queue.length=0;qs.since='';qs.histCut=false;
+  }
   rows.forEach(qApply);
+  for(const e of queue){if(e.status==='serving'&&placeOf.has(e.id))e.slot=placeOf.get(e.id);}
   if(!qs.since)qs.since=from;
   await qStationsFetch();     /* the church's own board: one row, read with the lines. A missing table is not a queue failure. */
   if(gen!==cloud.gen){queueReset();return;}   /* the board it just read was the previous church's too */
@@ -1067,7 +1077,7 @@ function startQueueRealtime(){
    .on('postgres_changes',{event:'DELETE',schema:'public',table:'queue_entries'},onQ);
  ch.subscribe(st=>{
   qs.rt=st;healthLive('queue',st);
-  if(st==='SUBSCRIBED'){if(qs.subbed)queueSync();qs.subbed=true;}    /* reconnected: fetch whatever was missed */
+  if(st==='SUBSCRIBED'){if(qs.subbed)queueSync(true);qs.subbed=true;}    /* reconnected: read the whole line again. "Changes since" cannot show an entry another desk deleted while this one was away (C-4) */
   qRefresh();
  });
  qs.ch=ch;qs.church=cloud.churchId;
@@ -1099,6 +1109,7 @@ export function queueReset(){
  if(qs.ch&&cloud.client){try{cloud.client.removeChannel(qs.ch);}catch(e){}}
  qs.ch=null;qs.rt='';qs.church='';qs.subbed=false;qs.ready=false;qs.err='';clearTimeout(qs.retryT);qs.retryT=null;qs.since='';qs.skew=0;qs.confirm='';
  qs.stations=null;qs.stationsErr=false;qs.edit=null;qs.editBusy=false;   /* the next church's board is its own */
+ qs.histCut=false;qAsked.clear();   /* and so are its counts and its "Start…?" answers: badge numbers repeat across churches (C-6) */
  queue.length=0;
 }
 function qRefresh(){clearTimeout(qs.renderT);qs.renderT=setTimeout(qAfter,150);}
@@ -1360,7 +1371,7 @@ export function viewQueue(){
     <div class="display text-base font-extrabold">Who is waiting where</div></div>
     <button class="btn btn-soft q-tvbtn" data-action="openBigScreen">Big screen</button></div>
    ${qStateBar(mode)}
-   <div class="q-totals">${tile(loading?'—':tot.w,'Waiting')}${tile(loading?'—':tot.s,'Being served')}${tile(loading?'—':tot.d,'Finished')}${tile(loading?'—':(tot.w?qMin(tot.l).replace(' min','m'):'—'),'Longest wait')}</div>
+   <div class="q-totals">${tile(loading?'—':tot.w,'Waiting')}${tile(loading?'—':tot.s,'Being served')}${tile(loading?'—':tot.d+(qs.histCut?'+':''),'Finished')}${tile(loading?'—':(tot.w?qMin(tot.l).replace(' min','m'):'—'),'Longest wait')}</div>
    ${adminBtns}
   </div>
   <div class="q-board">${ST.map(k=>qCard(k,S[k],k===sel)).join('')}</div>

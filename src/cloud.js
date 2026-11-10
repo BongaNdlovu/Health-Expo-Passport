@@ -717,9 +717,14 @@ export async function healthTest(){
  if(cloud.testing)return;
  cloud.testing=true;renderCloudBody();
  const missing=[];let unreached=0;
+ /* a test that outlives its session reports nothing: signed out, every probe is refused, and those rows would
+    greet the next person (A-5) */
+ const gen=cloud.gen,sessionGone=()=>gen!==cloud.gen;
  const probe=async(key,what,run)=>{
+  if(sessionGone())return null;
   let r;
   try{r=await run();}catch(e){r={error:e};}
+  if(sessionGone())return null;
   if(r&&r.error){if(isMissingErr(r.error))missing.push(what);else unreached++;healthFromError(key,r.error,what);return null;}
   return r||{};
  };
@@ -731,6 +736,7 @@ export async function healthTest(){
  const qt=await probe('queue','queue_entries',()=>cloud.client.from('queue_entries').select('id').range(0,0));
  if(qc&&qt)healthLive('queue',qs.rt||'');
  const me=await probe('account','my_account',()=>cloud.client.rpc('my_account'));
+ if(sessionGone()){cloud.testing=false;return;}
  if(me&&me.data&&typeof me.data==='object')noteHealth('account','ok','Account functions answer.');
  else if(me){missing.push('my_account (churches part)');noteHealth('account','warn','Church accounts are not switched on for this database yet, so the old staff list decides who gets in. Ask the app’s support to update the database.');}
  healthUpload();

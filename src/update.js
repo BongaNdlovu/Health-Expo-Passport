@@ -119,7 +119,10 @@ function offer() {
   if (!waiting && !newer) { hide(); return; }
   const key = theirs || own;
   if (snoozed === key) return;               /* they asked not to be told again about this one */
-  show(IS_APP && !!(server && server.apk));
+  /* in the app the only update is a new APK: with none published there is nothing the Update button could do (F-4) */
+  const appHasNoDownload = IS_APP && !(server && server.apk);
+  if (appHasNoDownload) { hide(); return; }
+  show(IS_APP);
 }
 
 /** @param {boolean} app */

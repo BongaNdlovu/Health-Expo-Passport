@@ -52,8 +52,10 @@ async function loadChurchPlans(cid,key){
  if(cloud[errKey]&&cloud[errKey].cid===cid&&Date.now()-cloud[errKey].at<30000)return;   /* offline renders re-fire the load; hold 30 s between tries (E11) */
  if(!cid||!cloud.client)return;
  if(key==='plans')cloud.plansBusy=cid;
+ const gen=cloud.gen;
  let r;try{r=await cloud.client.rpc('church_plans',{p_church:cid});}catch(e){r={error:e};}
  if(key==='plans')cloud.plansBusy='';
+ if(gen!==cloud.gen)return;   /* asked for a session that is gone: sign-out cleared the saved plans, and they stay cleared (D-3) */
  const list=!r.error&&Array.isArray(r.data)?r.data:null;
  if(!list){
   if(cloud[key]&&cloud[key].cid===cid)return;        /* offline or an older database: keep what we have */

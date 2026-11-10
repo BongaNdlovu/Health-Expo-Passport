@@ -2726,6 +2726,24 @@ function makeServer() {
       ok('…and the Plan never says the numbers "look fine" for ' + what, !/Your numbers look fine today/.test(plan));
       g.attendees.splice(g.attendees.indexOf(low), 1);
     }
+    /* E-2: nothing measured yet is not "all clear" */
+    {
+      const blank = g.migrateAttendee({ id: 'EXPO-9918', name: 'No Readings', age: 40, sex: 'F', s: {}, interests: { consent: true } });
+      g.attendees.push(blank); g.state.activeId = blank.id;
+      const res = g.viewResults(), plan = g.viewPlan();
+      ok('a visitor with no readings is told to do the checks, not that the numbers are fine',
+        /No readings yet/.test(res) && !/No numbers need attention/.test(res) && !/Your numbers look fine today/.test(plan));
+      g.attendees.splice(g.attendees.indexOf(blank), 1);
+    }
+    /* A-1: the church step's picks do not wait for the next person */
+    {
+      const snap = { ...C };
+      C.wants = 'team_leader'; C.wantsBooths = ['bp'];
+      Object.assign(C, { wants: 'team_leader', wantsBooths: ['bp'] });
+      ok('the sign-out reset list names the church-step picks (wants, wantsBooths)',
+        /cloud\.wants='member';cloud\.wantsBooths=\[\];/.test(srcText.slice(srcText.indexOf('export async function cloudSignOut'), srcText.indexOf('/* ---------- pull, merge, push ---------- */'))));
+      Object.assign(C, snap);
+    }
     g.state.activeId = activeWas; g.state.tab = tabWas;
   }
 

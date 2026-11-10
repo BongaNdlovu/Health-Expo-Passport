@@ -28,6 +28,8 @@ function yearsHTML(byYears,row){
    ${byYears.length>3?`<details class="pl-switch"><summary>Show all ${byYears.length} ▾</summary><div class="mt-2 space-y-1.5">${byYears.slice(3).map(row).join('')}</div></details>`:''}`;
 }
 /* what the "What to work on" card lists: the needs, or the all-clear */
+/* at least one measured value (height, a prayer note or the illness list alone are not readings) */
+const anyReading=a=>Object.keys((a&&a.s)||{}).some(k=>a.s[k]!=null);
 function workOnHTML(a,needs){
  return needs.length?`<div class="mt-2.5 space-y-1.5">${needs.map((n,i)=>`<div class="flex items-start gap-2.5 rounded-[16px] px-3 py-2 ${i?'bg-white/50':'bg-white/85 ring-1 ring-brand-400/25'}">
       <span class="chip ${n.sev>=3?'chip-flag':'chip-watch'} mt-0.5 flex-none">${PROTOCOLS[n.k].tag}</span>
@@ -35,6 +37,8 @@ function workOnHTML(a,needs){
     <p class="mt-2.5 text-[11px] leading-snug text-[#5c747a]">Next, the Plan turns <b class="text-[#123033]">${PROTOCOLS[needs[0].k].tag.toLowerCase()}</b> into 3 clear actions.</p>`
   /* a danger reading the plans do not cover (a low sugar, or a top blood-pressure number alone) is never "all clear" (E-1) */
   :redFlag(a)?`<p class="mt-1 text-[11.5px] font-bold leading-snug text-rose-700">A reading is in the danger range. The team attends to you now, before any plan.</p>`
+  /* nothing measured yet is not "all clear" either (E-2) */
+  :!anyReading(a)?`<p class="mt-1 text-[11.5px] leading-snug text-[#3d5c5e]">No readings yet. Do the checks first, then this shows what to work on.</p>`
   :`<p class="mt-1 text-[11.5px] leading-snug text-[#3d5c5e]">No numbers need attention today ✓ The Plan shows habits that keep them that way.</p>`;
 }
 /* the one line a screen shows instead of numbers whose readings were deleted after the grace period */
@@ -270,6 +274,7 @@ export function problemOf(a,pk){
  if(pk==='water'&&tw&&s.tbw!=null&&s.tbw<tw[0])return `Body water ${s.tbw}%: below range. Healthy is ${tw.join('–')}%.`;
  return planNeeds(a).length?'Not your main need today, but these habits help everyone.'
   :redFlag(a)?'A reading is in the danger range today. The team attends to that first; these habits are for afterwards.'
+  :!anyReading(a)?'No readings yet. These habits help everyone; the checks show which matter most for you.'
   :'Your numbers look fine today. This plan helps keep them that way.';
 }
 /* What the counsellor must also raise: things no home plan covers, from the paper record and survey. Plain sentences. */

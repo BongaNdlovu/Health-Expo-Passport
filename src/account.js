@@ -77,6 +77,10 @@ export async function loadAccount(){
  const gen=cloud.gen,sentAt=Date.now(),r=await cloud.client.rpc('my_account');
  if(gen!==cloud.gen)return false;   /* the account changed while asking: write nothing of the old one (M9) */
  if(r.data&&typeof r.data==='object')noteServerTime(r.data.server_now,sentAt,Date.now());
+ /* no answer because the network dropped is not "no churches in this database": forget nothing (the church id is
+    what uploads are keyed by) and let the pass fail as offline; it retries by itself (B-1) */
+ const noAnswer=!!r.error&&isOfflineErr(r.error.message);
+ if(noAnswer)throw r.error;
  if(r.error||!r.data||typeof r.data!=='object'){         /* no churches in this database yet: the old staff check decides */
   cloud.acct=null;cloud.churchId='';
    if(!r.error||!isOfflineErr(r.error.message))noteHealth('account','warn','Church accounts are not switched on for this database yet, so the old staff list decides who gets in. Ask the app’s support to update the database.',r.error?String(r.error.message||''):'my_account gave no account');
@@ -1214,8 +1218,10 @@ export function syncExpoHeadline(){
 async function loadExpos(){
  if(cloud.expoBusy)return;
  cloud.expoBusy=true;
+ const gen=cloud.gen;
  const r=await fetchExpos('');
  cloud.expoBusy=false;
+ if(gen!==cloud.gen)return;   /* the session this list was asked for is gone: it is another church's list (D-1) */
  r.at=Date.now();cloud.expos=r;syncExpoHeadline();
  cloud.acctV++;renderGate();
  renderAcct();render();
@@ -1652,7 +1658,7 @@ export async function cloudSignIn(e){
    :isNet(msg)?'No connection — try again when you are online.':(msg||'Sign-in failed.'));
   return;
  }
- cloud.formErr='';closeCloud();
+ cloud.formErr='';cloud.view='login';closeCloud();   /* signed in: a later gate opens on the sign-in form, not on "check your email" (A-6) */
 }
 export async function cloudSignOut(force){
  if(cloud.signingOut||(!force&&cloud.signOutAsk))return;       /* one sign-out at a time, and one question */
@@ -1674,6 +1680,7 @@ export async function cloudSignOut(force){
  Object.assign(EXPO_UPCOMING,EXPO_DEFAULT);
  cloud.joinPick=null;cloud.regPost='';cloud.blocks=null;cloud.appBlocks=null;cloud.acct=null;cloud.churchId='';cloud.health=undefined;cloud.dir=null;cloud.regChurch=false;cloud.members=null;cloud.plat=null;cloud.audit=null;cloud.pAdmins=null;cloud.expos=undefined;cloud.adminExpos=undefined;cloud.expoEdit=null;cloud.pledgeExpo='';cloud.adminChurch='';cloud.adminData='';cloud.adminRows=null;closeAcct();
  cloud.view='login';cloud.viewEmail='';cloud.pending=false;cloud.recovery=false;cloud.formErr='';cloud.gateForce=false;cloud.delOpen=false;
+ cloud.wants='member';cloud.wantsBooths=[];cloud.expoBusy=false;   /* the church step's picks and a load still out are the previous person's (A-1, D-1) */
  cloud.plans=null;cloud.adminPlans=null;cloud.planEdit=null;cloud.plansErr=null;cloud.adminPlansErr=null;cloud.followupsErr=null;cloud.adminFollowupsErr=null;try{localStorage.removeItem(CHURCH_PLANS_KEY);}catch(e){}
  cloud.followups=null;cloud.adminFollowups=null;cloud.myFollow=null;cloud.inviteLink=null;clearInvite();   /* a stale invite link must not join the next account on this desk */
  cloud.user=null;cloud.mode=false;cloud.blocked=false;cloud.synced={att:{},vol:{}};cloud.rejected={};cloud.rejectedNote=null;cloud.lastFull=0;freshCursor();
