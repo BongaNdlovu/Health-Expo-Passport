@@ -853,7 +853,7 @@ function viewVolRegister(){
   <div class="sticky bottom-24 z-20">
    <button data-action="saveVolunteer" class="btn btn-primary w-full py-3 text-sm">${v&&!needsRegistration(v)?'Save changes':'Submit pledge →'}</button>
   </div>
-  <p class="pb-2 text-center text-[10px] leading-relaxed text-[#8a9aa0]">Stored on this device only. Nothing is sent anywhere.</p>
+  <p class="pb-2 text-center text-[10px] leading-relaxed text-[#8a9aa0]">${cloud.user?'Saved on this device and shared with your church’s team.':'Stored on this device only. Nothing is sent anywhere.'}</p>
  </section>`;
 }
 export function pickPledge(n){state.vf.pledgeExpos=n;render();}

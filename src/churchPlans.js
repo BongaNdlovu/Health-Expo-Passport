@@ -38,11 +38,15 @@ const churchNameOf=cp=>cp.church_id==='demo'?'Practice church':(cloud.acct&&clou
 const churchPlanLabel=cp=>PROTOCOLS[cp.problem]?PROTOCOLS[cp.problem].tag:cp.problem;
 const cleanHow=x=>(Array.isArray(x.how)?x.how:String(x.how||'').split('\n')).map(h=>String(h).trim()).filter(Boolean);
 /* the plans this device can send: the demo set in practice mode, otherwise the signed-in church's (cached for offline) */
+/* A co-admin's edit must reach every desk: a cached list is shown at once but asked for again once per session and
+   every PLANS_TTL after that, as the visitor and volunteer lists are re-pulled (P2-1). */
+const PLANS_TTL=10*60*1000;
+const plansStale=key=>Date.now()-(cloud[key+'At']||0)>PLANS_TTL;
 export function churchPlanList(){
  if(inPractice())return DEMO_CHURCH_PLANS;
  if(!cloud.plans){try{const s=JSON.parse(localStorage.getItem(CHURCH_PLANS_KEY)||'null');if(s&&Array.isArray(s.list))cloud.plans=s;}catch(e){}}
  const cid=myChurchId();
- if(cid&&cloud.client&&(!cloud.plans||cloud.plans.cid!==cid)&&cloud.plansBusy!==cid)loadChurchPlans(cid);
+ if(cid&&cloud.client&&(!cloud.plans||cloud.plans.cid!==cid||plansStale('plans'))&&cloud.plansBusy!==cid)loadChurchPlans(cid);
  return cloud.plans&&(!cid||cloud.plans.cid===cid)?cloud.plans.list:[];
 }
 /* `key` keeps the platform admin's view of another church apart from this device's own church */
@@ -52,6 +56,7 @@ async function loadChurchPlans(cid,key){
  if(cloud[errKey]&&cloud[errKey].cid===cid&&Date.now()-cloud[errKey].at<30000)return;   /* offline renders re-fire the load; hold 30 s between tries (E11) */
  if(!cid||!cloud.client)return;
  if(key==='plans')cloud.plansBusy=cid;
+ cloud[key+'At']=Date.now();   /* asked now: the next ask waits PLANS_TTL, whatever the answer */
  const gen=cloud.gen;
  let r;try{r=await cloud.client.rpc('church_plans',{p_church:cid});}catch(e){r={error:e};}
  if(key==='plans')cloud.plansBusy='';
@@ -77,7 +82,7 @@ export function churchPlanFor(a,cp){
  const base=PROTOCOLS[cp.problem]?cp.problem:autoProtocol(a),name=churchNameOf(cp);
  const list=(cp.actions||[]).map(x=>({do:String(x.do||''),why:String(x.why||''),how:cleanHow(x),ref:'',cost:0}));
  const p={tag:churchPlanLabel(cp),title:cp.title,credit:name,src:'its own plan, not reviewed by the app',steps:[],facts:[],items:[],
-  habits:list.slice(0,3).map(x=>x.do),note:cp.note||'',help:['sleep','mind'].includes(cp.problem)?HELP_LINE:'',hydro:null};
+  habits:list.slice(0,3).map(x=>x.do),note:cp.note||'',help:['sleep','mind'].includes(base)?HELP_LINE:'',hydro:null};
  return {pk:base,church:cp,p,goal:cp.title,problem:PROTOCOLS[cp.problem]?problemOf(a,cp.problem):`A plan from ${name} for: ${cp.problem}.`,
   urgent:urgentOf(a,base),top:list.slice(0,3),more:list.slice(3),recheck:['Check in with your church’s health team in 3 weeks.','']};
 }
@@ -161,6 +166,7 @@ export function churchPlansBox(cid){
   if(!(own&&cloud.plansBusy===cid))loadChurchPlans(cid,key);
   return acctSkel(2);
  }
+ if(plansStale(key)&&!(own&&cloud.plansBusy===cid))loadChurchPlans(cid,key);   /* shown from the cache, refreshed behind it (P2-1) */
  const ed=cloud.planEdit&&cloud.planEdit.cid===cid?cloud.planEdit:null;
  return (S.list.length?S.list.map(cp=>`<div class="border-t border-[#123033]/[.07] py-2.5"><div class="flex items-center gap-2">
    <div class="min-w-0 flex-1"><div class="truncate text-[13px] font-bold text-[#123033]">${esc(cp.title)}</div>
@@ -349,8 +355,11 @@ export function inviteBox(cid,c){
    <div class="mt-1.5 flex gap-3"><button class="tap-link" data-action="copyInvite">Copy</button><button class="tap-link" data-action="shareInvite">Share</button></div></div>`:''}
   <button class="tap-link mt-2 text-rose-700" data-action="cancelInvites" data-args="${qSafe(cid)}">Cancel all invite links</button>`;
 }
+let inviteBusy=false;   /* one invite request in flight: a double tap must not mint unseen live links (P3-5) */
 export async function makeInvite(cid,role){
- const r=await acctRpc('create_church_invite',{p_church:cid,p_role:role});
+ if(inviteBusy)return;
+ inviteBusy=true;
+ let r;try{r=await acctRpc('create_church_invite',{p_church:cid,p_role:role});}finally{inviteBusy=false;}
  if(!r||!r.data)return;
  cloud.inviteLink={cid,role,link:(IS_APP?APP_SITE:location.origin+location.pathname)+'?join='+r.data};
  renderAcct();copyInvite();

@@ -130,6 +130,8 @@ export function saveSynced(){clearTimeout(cloud.saveT);try{
  localStorage.setItem(SYNC_KEY,s);_ledgerSig=h;
 }catch(e){storageFull();}}
 /* a burst of live changes would otherwise rewrite the whole ledger once per row */
+/* the secure store reports a refused write after setItem returned: forget the fingerprint so the next save writes again (P3-3) */
+addEventListener('securestore:writefail',e=>{if(/** @type {CustomEvent} */(e).detail!==SYNC_KEY)return;_ledgerSig='';storageFull();});
 export function saveSyncedSoon(){clearTimeout(cloud.saveT);cloud.saveT=setTimeout(saveSynced,500);}
 
 /* ---------- status ---------- */

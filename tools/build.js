@@ -104,7 +104,7 @@ const SB_SRC = /^https:\/\//.test(SB_CDN) ? ' ' + SB_CDN : '';
 const CSP_DEV = policy("script-src 'self'" + SB_SRC);
 const CSP_DIST = policy("script-src 'self' " + hashOf(inlineBundle) + SB_SRC);
 
-/* The shell's meta tag is the development policy (dev loads src/main.js as an external module, so it needs
+/* The shell's meta tag is the development policy (dev loads src/dev-boot.js, then src/main.js, as external modules, so it needs
    'self' but not the bundle hash). It must carry the current fontPick hash — fail the build on drift. */
 {
   const m = /<meta http-equiv="Content-Security-Policy" content="([^"]*)"\s*\/?>/.exec(shell);
@@ -117,7 +117,7 @@ const CSP_DIST = policy("script-src 'self' " + hashOf(inlineBundle) + SB_SRC);
    update. The hash above is taken over the source page, which still holds the placeholder, and the built copy is
    stamped afterwards — the same two-step sw.js already uses for __VERSION__. */
 if (!minifiedShell.includes('__APP_VERSION__')) throw new Error('index.html lost its app-version meta — the update check cannot tell which build it is');
-const built = minifiedShell.replace('<script type="module" src="./src/main.js"></script>', () => '<script>' + inlineBundle + '</script>')
+const built = minifiedShell.replace('<script type="module" src="./src/dev-boot.js"></script>', () => '<script>' + inlineBundle + '</script>')
   .replace(/(<meta http-equiv="Content-Security-Policy" content=")[^"]*(")/, (all, a, b) => a + CSP_DIST + b)
   .replace('__APP_VERSION__', version);
 if (!built.includes('__NEWSTART') || built.includes('<script type="module"')) throw new Error('bundle injection failed');

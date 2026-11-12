@@ -1588,6 +1588,17 @@ function makeServer() {
     ok('the downloaded template is exactly what the importer accepts',
       (() => { const r = g.parseCustomPlanFile(template); return r.ok && r.plan.actions.length >= 3; })());
 
+    {
+      /* P3-9: a single how step may use the whole 400 characters the total allows, and is not cut off */
+      const long = 'x'.repeat(300);
+      const lp = g.normaliseCustomPlan(Object.assign({}, good, { actions: good.actions.map((x, i) => i ? x : Object.assign({}, x, { how: [long] })) }));
+      ok('P3-9 a how step longer than 200 characters is kept whole', lp.actions[0].how[0] === long);
+      /* P2-2: a church plan for a free-text problem carries the help line when the visitor's own protocol is sleep or mind */
+      const blank = g.migrateAttendee({ id: 'EXPO-P22', name: 'Help line', s: {} });
+      const chp = g.churchPlanFor(blank, { id: 'p', church_id: 'demo', title: 'Joint care', problem: 'Joint pain', actions: [{ do: 'Walk' }], note: '' });
+      ok('P2-2 a church plan follows the visitor’s protocol for the help line, as a custom plan does',
+        ['sleep', 'mind'].includes(chp.pk) && chp.p.help === g.HELP_LINE, 'pk=' + chp.pk);
+    }
     const cp = g.normaliseCustomPlan(good);
     david.interests.customPlan = cp;
     /* E-3: the saved copy and every pull pass through migrateAttendee, which must carry the plan and only a plan */
@@ -7570,6 +7581,25 @@ function makeServer() {
   ok('an empty connected copy loads as empty (not re-seeded)', g.loadPersisted() === true && g.attendees.length === 0 && g.volunteers.length === 0);
   localStorage.setItem('newstart.passport.v2', JSON.stringify({ attendees: [], activeId: '' }));
   ok('an empty demo copy still re-seeds', g.loadPersisted() === false);
+  ok('P3-8 ...but the demo visitors are not put in its place: the lists stay as the copy left them', g.attendees.length === 0);
+  {
+    /* P2-3 / P3-3: the secure store reports a refused disk write after setItem returned; the next save must write again */
+    const fire = key => (winHandlers['securestore:writefail'] || []).forEach(f => f({ detail: key }));
+    const realSet = localStorage.setItem; let writes = [];
+    localStorage.setItem = (k, v) => { writes.push(k); realSet(k, v); };
+    try {
+      g.persistNow(); writes = []; g.persistNow();
+      ok('P2-3 an unchanged saved copy is not written again', !writes.includes('newstart.passport.v2'));
+      fire('newstart.passport.v2'); g.persistNow();
+      ok('P2-3 after a refused disk write the same copy is written again', writes.includes('newstart.passport.v2'));
+      writes = []; g.persistNow();
+      ok('P2-3 ...once: a write that went through is not repeated', !writes.includes('newstart.passport.v2'));
+      g.saveSynced(); writes = []; g.saveSynced();
+      ok('P3-3 an unchanged sync ledger is not written again', !writes.includes('newstart.cloud.v1'));
+      fire('newstart.cloud.v1'); g.saveSynced();
+      ok('P3-3 after a refused ledger write the ledger is written again', writes.includes('newstart.cloud.v1'));
+    } finally { localStorage.setItem = realSet; }
+  }
   C.mode = false; g.resetDemo();
 
   /* ---- Help & tutorial (src/help.js) ---- */

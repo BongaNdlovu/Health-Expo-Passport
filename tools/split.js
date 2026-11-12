@@ -76,7 +76,7 @@ function doSplit() {
   const lines = fs.readFileSync(htmlPath, 'utf8').split('\n');
   if (!lines.some(l => /^<script type="module" src="\.\/src\/main\.js"><\/script>$/.test(l))) {
     const { start, end } = mainScript(lines);
-    lines.splice(start, end - start + 1, '<script type="module" src="./src/main.js"></script>');
+    lines.splice(start, end - start + 1, '<script type="module" src="./src/dev-boot.js"></script>');
     fs.writeFileSync(htmlPath, lines.join('\n'));
   }
   const cuts = [];

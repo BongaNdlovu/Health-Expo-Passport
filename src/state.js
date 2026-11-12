@@ -39,12 +39,16 @@ export function persistNow(){
   since:cloud.mode?cloud.since:undefined});}catch(e){return;}
  if(s.length>NEAR_FULL_CHARS&&!_nearWarned){_nearWarned=true;
   setTimeout(()=>toast('Saved copy is nearly full — sync now and remove old visitors. One device holds about 9,000.'),0);}
- if(s===localStorage.getItem(LS_KEY))return;
+ if(s===localStorage.getItem(LS_KEY)&&!_diskStale)return;
+ _diskStale=false;
  try{localStorage.setItem(LS_KEY,s);}catch(e){storageFull();}
  if(cloud.user)cloudQueuePush();
 }
 /* The secure store writes to disk after encrypting, so a refused write cannot throw here: it reports it instead. */
-addEventListener('securestore:writefail',e=>{if(/** @type {CustomEvent} */(e).detail===LS_KEY)storageFull();});
+/* getItem reads the store's memory, which already holds the refused value: without this flag every later save of
+   the same content would skip the write and a reload would bring back the stale disk copy (P2-3). */
+let _diskStale=false;
+addEventListener('securestore:writefail',e=>{if(/** @type {CustomEvent} */(e).detail!==LS_KEY)return;_diskStale=true;storageFull();});
 /* the browser refused to save: say so once instead of failing silently */
 export function storageFull(){
  if(_fullWarned)return;_fullWarned=true;
@@ -125,7 +129,7 @@ export function loadPersisted(){
   /* an empty visitor list alone is not an empty copy: the volunteers saved beside it stand (D2) */
   const hasAtt=Array.isArray(d.attendees)&&d.attendees.length>0;
   const hasVol=Array.isArray(d.volunteers)&&d.volunteers.length>0;
-  if(!hasAtt&&!hasVol&&!cloud.mode)return false;
+  if(!hasAtt&&!hasVol&&!cloud.mode){attendees.length=0;state.activeId='';return false;}   /* emptied on purpose: not the demo visitors data.js starts with (P3-8) */
   if(!Array.isArray(d.attendees))d.attendees=[];
   attendees.length=0; d.attendees.forEach(a=>attendees.push(migrateAttendee(a)));
   state.sim=Object.assign({kitchen:3,walk:30,hydro:2},d.sim||{});

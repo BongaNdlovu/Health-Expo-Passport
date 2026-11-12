@@ -22,7 +22,7 @@ import { IS_APP } from './platform.js';
 import { canCustomPlan } from './account.js';
 
 export const CUSTOM_MIN_ACTIONS=3, CUSTOM_MAX_ACTIONS=8, CUSTOM_MAX_BYTES=2*1024*1024;
-const LIMITS={title:120,problem:60,do:140,why:240,howItem:200,note:600,by:80,how:400};
+const LIMITS={title:120,problem:60,do:140,why:240,howItem:400,note:600,by:80,how:400};
 const TOP_KEYS=['title','problem','actions','note','by','at'];
 const ACT_KEYS=['do','why','how'];
 

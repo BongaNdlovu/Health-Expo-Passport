@@ -153,6 +153,8 @@ export function quarantineExport(){
  if(rows.length===1)return;
  downloadCSV(rows,'newstart-kept-records.csv','The kept records are exported (CSV) ✓ Delete the file when you are done.');
 }
+addEventListener('securestore:writefail',e=>{if(/** @type {CustomEvent} */(e).detail!==QUAR_KEY)return;   /* P3-3 */
+ toast('The kept records could not be saved on this phone. Export them from Cloud status before closing the app.');});
 function quarantineKeep(church,name){
  let rows;
  try{rows=['att','vol'].map(k=>KINDS[k].list.filter(o=>isDirty(k,o)||cloud.rejected[o.id]!==undefined).map(o=>JSON.parse(JSON.stringify(o))));}catch(e){return;}
@@ -1906,6 +1908,7 @@ async function pushDirty(gen){
     the upload order and requests are exactly as before) */
  const lists={att:cloudDirtyList('att'),vol:cloudDirtyList('vol')};   /* one snapshot, same rows and order as before */
  cloud.prog={done:0,total:lists.att.length+lists.vol.length};
+ let failed=null;   /* the first row error: thrown once the other rows are sent, so the pass still retries */
  syncChrome();
  for(const kind of ['att','vol']){
   const k=KINDS[kind],sy=cloud.synced[kind],list=lists[kind];
@@ -1920,12 +1923,17 @@ async function pushDirty(gen){
      if(gen!==cloud.gen)return;   /* the answer belongs to a session that is gone: write none of it (B-4) */
      if(!error){chunk.forEach((o,j)=>{sy[o.id]=sigs[j];delete cloud.rejected[o.id];if(cloud.rejectedNote&&cloud.rejectedNote.id===o.id)cloud.rejectedNote=null;});cloud.prog.done+=chunk.length;syncChrome();continue;}   /* a batch that landed takes its rows' stale refusals with it (A15) */
     }
-    for(const o of chunk){if(gen!==cloud.gen)return;await pushOne(kind,o,false,gen);if(gen!==cloud.gen)return;cloud.prog.done++;}   /* refused rows count as handled */
+    for(const o of chunk){
+     if(gen!==cloud.gen)return;
+     /* one row that keeps failing must not hold back every row after it (P3-1); a lost connection stops the pass */
+     try{await pushOne(kind,o,false,gen);}catch(e){const m=e&&e.message;if(isOfflineErr(m)||isTimeoutErr(m))throw e;failed=failed||e;}
+     if(gen!==cloud.gen)return;cloud.prog.done++;}   /* refused rows count as handled */
     syncChrome();                                                     /* once per chunk, never once per row */
    }
   }
  }
  syncChrome();
+ if(failed)throw failed;
 }
 /* One row's upload, and the repairs it may need (a taken number, a moved station). Each of them waits on the server,
    and the session can end or change while it waits: `gen` is the pass's generation, and after every wait a pass
@@ -1961,9 +1969,10 @@ async function pushOne(kind,o,again,gen){
 async function resolvePlacement(o,gen){
  let q=cloud.client.from('volunteers').select('*').eq('id',o.id);
  if(cloud.churchId)q=q.eq('church_id',cloud.churchId);      /* ids repeat across churches; RLS already scopes this */
- let r;try{r=await q.maybeSingle();}catch(e){return false;}
+ const r=await q.maybeSingle();   /* a failed read throws: a retry, not a refusal by the database (P3-2) */
  if(passGone(gen))return true;                              /* handled: there is nothing left for this pass to do */
- if(r.error||!r.data)return false;
+ if(r.error)throw r.error;
+ if(!r.data)return false;
  const srv=KINDS.vol.fromRow(r.data);
  o.booth=srv.booth;o.lead=!!srv.lead;o.role=srv.role||'';o.status=srv.status||o.status;
  o.registeredOn=srv.registeredOn;o.checkedIn=!!srv.checkedIn;
