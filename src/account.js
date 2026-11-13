@@ -5,7 +5,7 @@ import { roleTag } from './ui.js';
 import { cloud, persist, persistNow, seedDemo } from './state.js';
 import { CLOUD_UI, SB_KEY, SB_LIB, SB_URL, SYNC_KEY, closeCloud, resetLedgerSig, cloudDirtyList, cloudPending, gateBusy, gateView, healthFromError, healthLive, healthReset, healthUpload, installBlock, isDirty, isMissingErr, isOfflineErr, isSeedRow, noteHealth, passwordCheck, pwField, renderCloudBody, rowToAtt, savePassword, saveSynced, saveSyncedSoon, setCloud, sigOf, syncChrome, syncStatusText, syncTilesHTML, syncedLabel, timedFetch, isTimeoutErr, validEmail } from './cloud.js';
 import { CHURCH_PLANS_KEY, FOLLOWUP_MAX, churchPlansBox, clearInvite, followupsFor, inviteBox, inviteOwner, myFollowupsHTML, pendingInvite, setInviteOwner } from './churchPlans.js';
-import { GRACE_DAYS, clearReadings, clockKnown, followedUp, hasReadings, noteServerTime, readingsGone, visitIsOld } from './retention.js';
+import { GRACE_DAYS, clearReadings, followedUp, hasVisitDetails, noteServerTime, readingsGone, retentionDue } from './retention.js';
 import { render, toast } from './shell.js';
 import { confirmAsk, ok } from './feedback.js';
 import { BOOTHS, EXPO_TOTAL, EXPO_UPCOMING, PROTOCOLS, STATUS_UI, attendees, boothLabel, state, volunteers } from './data.js';
@@ -1666,11 +1666,14 @@ export async function cloudSignOut(force){
  if(cloud.signingOut||(!force&&cloud.signOutAsk))return;       /* one sign-out at a time, and one question */
  const refused=['att','vol'].reduce((n,k)=>n+KINDS[k].list.filter(o=>cloud.rejected[o.id]!==undefined&&!isDirty(k,o)).length,0);
  const n=cloudPending()+refused;   /* the warning names every record that will be lost: pending edits AND refused rows (B2) */
+ /* the records kept from a church this device left go too (HE-01): the next person to sign in must not see them */
+ const kept=quarantineCount();
+ const keptLine=kept?` The ${kept} kept ${kept===1?'record':'records'} from a church this device left will be deleted too: export ${kept===1?'it':'them'} from Cloud status first if you still need ${kept===1?'it':'them'}.`:'';
  if(!force){
   cloud.signOutAsk=true;
   const yes=await confirmAsk(n
-   ?{title:'Sign out with unsaved changes?',body:`${n} change${n>1?'s':''} on this device ${n>1?'have':'has'} not been uploaded yet and will be lost.`,label:'Sign out',danger:true}
-   :{title:'Sign out?',body:'The visitor and volunteer data stored on this device will be cleared.',label:'Sign out',danger:true});
+   ?{title:'Sign out with unsaved changes?',body:`${n} change${n>1?'s':''} on this device ${n>1?'have':'has'} not been uploaded yet and will be lost.${keptLine}`,label:'Sign out',danger:true}
+   :{title:'Sign out?',body:`The visitor and volunteer data stored on this device will be cleared.${keptLine}`,label:'Sign out',danger:true});
   cloud.signOutAsk=false;
   if(!yes||cloud.signingOut||!cloud.user)return;   /* answered after another sign-out (a forced one) already ran */
  }
@@ -1687,7 +1690,7 @@ export async function cloudSignOut(force){
  cloud.followups=null;cloud.adminFollowups=null;cloud.myFollow=null;cloud.inviteLink=null;clearInvite();   /* a stale invite link must not join the next account on this desk */
  cloud.user=null;cloud.mode=false;cloud.blocked=false;cloud.synced={att:{},vol:{}};cloud.rejected={};cloud.rejectedNote=null;cloud.lastFull=0;freshCursor();
  cloud.phase='';cloud.prog={done:0,total:0};cloud.syncedAt=0;   /* the status chrome starts clean for the next account */
- try{localStorage.removeItem(SYNC_KEY);localStorage.removeItem(CHURCH_KEY);}catch(e){}
+ try{localStorage.removeItem(SYNC_KEY);localStorage.removeItem(CHURCH_KEY);localStorage.removeItem(QUAR_KEY);}catch(e){}
  resetLedgerSig();
  seedDemo();state.sugFor=null;state._goal=null;state.tab=state.tab==='me'?'me':'home';
  closeCloud();render();setCloud('signedout');toast('Signed out — sign in again, or open the practice sandbox');
@@ -2081,16 +2084,43 @@ export async function removeVisitorAsk(id){
    no pending local edit — those upload first, and the database clears them there. Demo data is never touched. */
 export function applyRetention(){
  if(!cloud.user&&!cloud.mode)return 0;
- if(!clockKnown())return 0;   /* the database's clock is not known yet: this phone's own could be days out */
+ /* retentionDue: on the database's clock once it is known; before that (an offline boot) on this phone's own clock
+    with a week's margin, so an offline desk still clears old visits without clearing a fast phone's fresh ones */
  let n=0;
  for(let i=attendees.length-1;i>=0;i--){
   const a=attendees[i];
-  if(cloud.synced.att[a.id]===undefined||isSeedRow('att',a)||!visitIsOld(a)||isDirty('att',a))continue;
+  if(cloud.synced.att[a.id]===undefined||isSeedRow('att',a)||!retentionDue(a)||isDirty('att',a))continue;
   if(!followedUp(a)){attendees.splice(i,1);delete cloud.synced.att[a.id];n++;}
-  else if(hasReadings(a)){clearReadings(a);n++;}     /* now differs from the server copy, so it is uploaded and the trigger keeps it clear */
+  else if(hasVisitDetails(a)){clearReadings(a);n++;}     /* now differs from the server copy, so it is uploaded and the trigger keeps it clear */
  }
+ return n+quarantineRetention();
+}
+/* the kept records (QUAR_KEY) follow the same rule: they were never uploaded, so the daily purge cannot reach them */
+function quarantineRetention(){
+ let q;try{q=JSON.parse(localStorage.getItem(QUAR_KEY)||'null');}catch(e){q=null;}
+ if(!q||typeof q!=='object')return 0;
+ let n=0;
+ for(const church in q){
+  const s=q[church];
+  if(!s||!Array.isArray(s.att))continue;
+  s.att=s.att.filter(a=>{
+   if(!a||isSeedRow('att',a)||!retentionDue(a))return true;
+   if(!followedUp(a)){n++;return false;}
+   if(hasVisitDetails(a)){clearReadings(a);n++;}
+   return true;
+  });
+  if(!s.att.length&&!(Array.isArray(s.vol)&&s.vol.length))delete q[church];
+ }
+ if(!n)return 0;
+ try{if(Object.keys(q).length)localStorage.setItem(QUAR_KEY,JSON.stringify(q));else localStorage.removeItem(QUAR_KEY);}catch(e){}
  return n;
 }
+const quarantineCount=()=>{
+ let q;try{q=JSON.parse(localStorage.getItem(QUAR_KEY)||'null');}catch(e){q=null;}
+ let n=0;
+ if(q&&typeof q==='object')for(const c in q){const s=q[c];if(s)n+=(Array.isArray(s.att)?s.att.length:0)+(Array.isArray(s.vol)?s.vol.length:0);}
+ return n;
+};
 export function cloudQueuePush(){
  if(!cloud.user||!cloud.client||cloud.blocked)return;
  clearTimeout(cloud.pushT);cloud.pushT=setTimeout(cloudPush,700);

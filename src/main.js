@@ -41,6 +41,8 @@ JSON.parse(JSON.stringify(SEED_VOL)).forEach(v=>volunteers.push(v));
 if(!loadPersisted()&&!hasSavedCopy())seedDemo();
 loadSynced();
 cloud.ready=cloud.mode;          /* a device that has been signed in before opens straight into its saved copy */
+/* an offline boot still applies the 7-day rule (with the offline margin) before the saved copy is shown (HE-03) */
+if(cloud.mode&&applyRetention()){if(!attendees.some(a=>a.id===state.activeId))state.activeId=(attendees[0]||{}).id||'';persistNow();}
 installCrash(()=>render());      /* any uncaught error from here on shows the crash card, not a half-drawn page */
 renderGate();
 render();

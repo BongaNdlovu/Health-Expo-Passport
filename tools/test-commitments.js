@@ -113,6 +113,7 @@ create table public.attendees (
   id text not null,
   name text not null default 'Visitor',
   interests jsonb not null default '{}'::jsonb,
+  created_at timestamptz default now(),   /* the guard lets an old visit through (its plan goes in attendees_retention) */
   primary key (church_id, id));
 
 create or replace function public.booth_title(p_booth text) returns text language sql immutable as $$
@@ -142,6 +143,8 @@ $$;
   await db.exec(trigger('volunteers_place_guard'));
   await db.exec(trigger('volunteers_admin_status_notify'));
   await db.exec(trigger('volunteers_admin_withdraw_notify'));
+  await db.exec(fn('visit_is_old'));
+  await db.exec(fn('consent_is_old'));
   await db.exec(fn('attendees_custom_plan_guard'));
   await db.exec(trigger('attendees_custom_plan_guard'));
 

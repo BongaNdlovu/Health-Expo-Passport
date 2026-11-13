@@ -976,6 +976,12 @@ declare v_m public.memberships;
 begin
   select * into v_m from public.memberships m where m.user_id = (select auth.uid());
   if not found then return; end if;
+  /* "Your details there are deleted", as the app says: the pledge made from this account goes too, the same as
+     remove_member and delete_my_account (HE-03; before, it stayed on the church's team list) */
+  if v_m.volunteer_id is not null then
+    perform set_config('newstart.lead_ok', 'on', true);
+    delete from public.volunteers v where v.church_id = v_m.church_id and v.id = v_m.volunteer_id;
+  end if;
   delete from public.memberships m where m.user_id = v_m.user_id;
 end;
 $$;
@@ -2581,11 +2587,14 @@ begin
   -- date) whose consent date is. A badge number is reused at a later expo, so it never decides on its own.
   if not public.visit_is_old(new.created_at) and not public.consent_is_old(new.interests) then return new; end if;
 
-  -- a visit past the grace period keeps nothing about itself: no readings, no prayer, no measurements
+  -- a visit past the grace period keeps nothing about itself: no readings, no prayer, no measurements, and not the
+  -- plan chosen or written from them or the urgent-reading mark (VISIT_KEYS in src/retention.js); the follow-up
+  -- answers stay, since follow-up is what the record is kept for
   new.s := '{}'::jsonb;
   new.prayer := '';
   new.chronic_list := null;
   new.height_cm := null;
+  new.interests := coalesce(new.interests, '{}'::jsonb) - 'customPlan' - 'churchPlan' - 'attended';
   -- without follow-up there is nothing left to keep, so a first write of such a visit is skipped; the daily purge
   -- deletes a row that is still there (an update keeps the row it cannot delete from inside its own trigger)
   if not v_follow and tg_op = 'INSERT' then return null; end if;
@@ -2630,6 +2639,15 @@ begin
     v_old := old.interests -> 'customPlan';
   end if;
   if v_old is not distinct from v_new then return new; end if;   -- unchanged: nothing to judge, old plans keep working
+  -- a visit past the grace period loses its plan in attendees_retention (which runs after this trigger), so nothing
+  -- is written: any desk may send its old copy, with or without the plan, and is not refused for it. On an update the
+  -- stored row decides (attendees_retention keeps its date); an upsert's insert branch has only what the phone sent,
+  -- and when the row exists the update branch that follows judges it again by the stored row.
+  if tg_op = 'UPDATE' then
+    if public.visit_is_old(old.created_at) or public.consent_is_old(old.interests) then return new; end if;
+  elsif public.visit_is_old(new.created_at) or public.consent_is_old(new.interests) then
+    return new;
+  end if;
   if not (public.is_admin() or public.is_platform_admin()) then
     raise exception 'Only the church''s admins can write a custom plan' using errcode = '42501', hint = 'custom_plan_guard';
   end if;
@@ -2700,9 +2718,11 @@ begin
     raise exception 'platform admin only' using errcode = '42501';
   end if;
   -- the readings of a visit older than the grace period go, but the person stays if they agreed to follow-up
-  update public.attendees set s = '{}'::jsonb, prayer = '', chronic_list = null, height_cm = null
+  update public.attendees set s = '{}'::jsonb, prayer = '', chronic_list = null, height_cm = null,
+         interests = interests - 'customPlan' - 'churchPlan' - 'attended'
    where (created_at < now() - interval '7 days' or public.consent_is_old(interests))
-     and (s <> '{}'::jsonb or prayer <> '' or chronic_list is not null or height_cm is not null);
+     and (s <> '{}'::jsonb or prayer <> '' or chronic_list is not null or height_cm is not null
+          or interests ?| array['customPlan', 'churchPlan', 'attended']);
   -- without follow-up there is nothing left to keep, so the visitor goes. A phone that still holds an old copy cannot
   -- put them back: the trigger judges the copy by its created_at or its consent date, not by its badge number.
   with gone as (
@@ -2723,6 +2743,10 @@ begin
           or (old ->> 'updated_at')::timestamptz < now() - interval '2 years'
           or (old ->> 'created_at')::timestamptz < now() - interval '7 days'
           or public.consent_is_old(old -> 'interests'));
+  -- a deleted volunteer's copy (name, phone, email, emergency contact) is kept as long as a deleted visit's at most
+  -- (HE-03; before, it stayed for the full 2 years)
+  update public.audit_log set old = null
+   where tbl = 'volunteers' and op = 'DELETE' and old is not null and at < now() - interval '90 days';
   delete from public.audit_log where at < now() - interval '2 years';
   delete from public.queue_entries where joined_at < now() - interval '30 days';
   -- notifications are read-once: a read one goes after 30 days, any one after 90

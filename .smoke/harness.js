@@ -610,6 +610,13 @@ g.resetDemo();
   C.synced.att['EXPO-722'] = g.sigOf(g.attToRow(g.attendees.find(a => a.id === 'EXPO-722')));
   /* EXPO-723 is deliberately NOT in the ledger: it has a pending edit that has not uploaded yet */
   ok('fast clock: before the database clock is known, the phone clears nothing by date', !g.retention.clockKnown() && g.applyRetention() === 0, '');
+  /* HE-03: an offline boot (the database clock unknown) still clears a visit past the grace period plus a week's margin */
+  { const veryOld = g.migrateAttendee({ id: 'EXPO-725', name: 'Offline Old', age: 40, s: { sys: 150, dia: 90 }, interests: { consent: true, optin: false },
+      created_at: new Date(Date.now() - 20 * day).toISOString() });
+    g.attendees.push(veryOld); C.synced.att['EXPO-725'] = g.sigOf(g.attToRow(veryOld));
+    const nOff = g.applyRetention();
+    ok('HE-03 offline: a 20-day-old synced visit is cleared before the database clock is known', !g.retention.clockKnown() && nOff === 1 && !g.attendees.some(a => a.id === 'EXPO-725'), 'n=' + nOff);
+    ok('HE-03 offline: …while the 8- and 9-day-old ones wait for the database clock (a fast phone clears nothing fresh)', g.attendees.some(a => a.id === 'EXPO-722') && g.attendees.find(a => a.id === 'EXPO-720').s.sys != null, ''); }
   g.retention.noteServerTime(new Date().toISOString(), Date.now(), Date.now());   /* this phone's clock agrees with the database */
   const cleared = g.applyRetention();
   const r720 = g.attendees.find(a => a.id === 'EXPO-720'), r721 = g.attendees.find(a => a.id === 'EXPO-721');
@@ -1984,6 +1991,30 @@ function makeServer() {
   g.answerConfirm(true); await pd; g.setAutoAnswer(true);
   let q3 = null; try { q3 = JSON.parse(store.get('newstart.quarantine.v1') || 'null'); } catch (e) { }
   ok('FUP-H1-7 …and takes only that church\'s rows', !!(q3 && !q3[churchB]), JSON.stringify(q3));
+  /* HE-01: the kept records do not outlive the sign-out, and the question names them first */
+  g.setAutoAnswer(null); const prHE1 = g.cloudSignOut(); await sleep(20);
+  const bHE1 = $el('cfBody').textContent; g.answerConfirm(false); await prHE1; g.setAutoAnswer(true);
+  ok('HE-01-1 the sign-out question names the kept records and how to export them', /The \d+ kept records? from a church this device left will be deleted too/.test(bHE1) && /export (it|them) from Cloud status/.test(bHE1), bHE1);
+  ok('HE-01-2 …and answering No keeps them', !!store.get('newstart.quarantine.v1'), '');
+  await g.cloudSignOut();
+  ok('HE-01-3 signing out deletes the kept records', !store.get('newstart.quarantine.v1'), String(store.get('newstart.quarantine.v1')).slice(0, 120));
+  await signIn(); g.renderCloudBody();
+  ok('HE-01-4 the next person to sign in sees no kept records and no export', !/kept on this phone/.test($el('cloudBody').innerHTML) && !/quarantine-export/.test($el('cloudBody').innerHTML), '');
+  /* HE-01: the 7-day rule reaches the kept records too (they were never uploaded, so the daily purge cannot) */
+  { const dayMs = 86400000, old = new Date(Date.now() - 20 * dayMs).toISOString(), fresh = new Date(Date.now() - 2 * dayMs).toISOString();
+    store.set('newstart.quarantine.v1', JSON.stringify({ 'ch-q': { at: Date.now(), name: 'Hope Church',
+      att: [{ id: 'EXPO-901', name: 'Old No Follow', s: { sys: 175 }, prayer: 'p', interests: { consent: true, optin: false }, created_at: old },
+            { id: 'EXPO-902', name: 'Old Follow', phone: '082 111 9999', s: { sys: 160 }, prayer: 'p', heightCm: 170, interests: { consent: true, optin: true, stress: true, customPlan: { title: 'x' }, attended: { sig: '160//' } }, created_at: old },
+            { id: 'EXPO-903', name: 'Fresh', s: { sys: 150 }, prayer: '', interests: { consent: true, optin: false }, created_at: fresh }], vol: [] } }));
+    g.retention.noteServerTime(new Date().toISOString(), Date.now(), Date.now());
+    g.applyRetention();
+    let q = null; try { q = JSON.parse(store.get('newstart.quarantine.v1') || 'null'); } catch (e) { }
+    const att = (q && q['ch-q'] && q['ch-q'].att) || [], r902 = att.find(r => r.id === 'EXPO-902'), r903 = att.find(r => r.id === 'EXPO-903');
+    ok('HE-01-5 retention drops an old kept visitor who did not agree to follow-up', !att.some(r => r.id === 'EXPO-901'), JSON.stringify(att.map(r => r.id)));
+    ok('HE-01-6 …clears an old follow-up\'s readings, prayer and plan but keeps the name, phone and class answers', !!r902 && r902.s.sys === null && r902.prayer === '' && r902.heightCm === null
+      && !('customPlan' in r902.interests) && !('attended' in r902.interests) && r902.interests.stress === true && r902.phone === '082 111 9999', JSON.stringify(r902));
+    ok('HE-01-7 …and leaves a fresh kept visit alone', !!r903 && r903.s.sys === 150, JSON.stringify(r903));
+    store.delete('newstart.quarantine.v1'); }
 
   /* TST-BUG-A3 (A3): a full pull that carries another desk's copy of a refused id does not overwrite the local row */
   device(); await signIn();
@@ -4364,6 +4395,48 @@ function makeServer() {
       ('${RA}', 'EXPO-992', 'Resurrected', 40, '{"sys":120,"dia":80}', '{"consent":true,"optin":false}', now() - interval '8 days')`);
     const stillGone = await sys(`select 1 from public.attendees where church_id = $1 and id = 'EXPO-992'`, [RA]);
     ok('7 days: …so the offline copy does not bring the visitor back', !back && stillGone.length === 0, back || 'came back');
+    /* HE-03: leaving takes the pledge, a deleted volunteer's audit copy is emptied, an old visit loses its plan */
+    {
+      const HC = (await sys(`insert into public.churches (name, status) values ('HE03 Church', 'active') returning id`))[0].id;
+      const HB = 'e9100000-0000-4000-8000-000000000001', HS = 'e9100000-0000-4000-8000-000000000002';
+      for (const [uid, em, role] of [[HB, 'he03b@example.org', 'member'], [HS, 'he03s@example.org', 'staff']]) {
+        await sys(`insert into auth.users (id, email, email_confirmed_at) values ($1, $2, now())`, [uid, em]);
+        await sys(`insert into public.memberships (user_id, church_id, role, status, full_name, phone) values ($1, $2, $3, 'approved', 'Temp Person', '082 000 0000')`, [uid, HC, role]);
+      }
+      await sys(`insert into public.volunteers (church_id, id, name, phone, email, emergency) values ($1, 'VOL-9501', 'Bob Volunteer', '082-111-2222', 'bob@example.org', 'Mary 082-999-0000')`, [HC]);
+      await sys(`update public.memberships set volunteer_id = 'VOL-9501' where user_id = $1`, [HB]);
+      const lv = await as(HB, `select public.leave_church()`);
+      const pledge = await sys(`select count(*)::int n from public.volunteers where church_id = $1 and id = 'VOL-9501'`, [HC]);
+      ok('HE-03 leaving a church deletes the pledge made from that account, as the Leave question says', !lv.error && pledge[0].n === 0, (lv.error || {}).message || JSON.stringify(pledge));
+      await sys(`update public.audit_log set at = now() - interval '91 days' where tbl = 'volunteers' and op = 'DELETE' and row_id = 'VOL-9501'`);
+      await sys(`insert into public.volunteers (church_id, id, name, phone) values ($1, 'VOL-9502', 'Recent Delete', '082 000 9502')`, [HC]);
+      await sys(`delete from public.volunteers where church_id = $1 and id = 'VOL-9502'`, [HC]);
+      const plan = { consent: true, optin: true, stress: true, churchPlan: 'p1', attended: { sig: '150//' },
+        customPlan: { title: 'Sugar plan', problem: 'High sugar', actions: [{ do: 'a' }, { do: 'b' }, { do: 'c' }] } };
+      await sys(`insert into public.attendees (church_id, id, name, age, s, interests) values ($1, 'EXPO-9801', 'Plan Kept', 50, '{"sys":150}', $2::jsonb)`, [HC, JSON.stringify(plan)]);
+      const bd = await run(`alter table public.attendees disable trigger attendees_retention;
+        update public.attendees set created_at = now() - interval '8 days' where church_id = '${HC}' and id = 'EXPO-9801';
+        alter table public.attendees enable trigger attendees_retention;`);
+      const pg = await as(U.erin, `select public.purge_expired_visitors()`);
+      const copies = await sys(`select row_id, old from public.audit_log where tbl = 'volunteers' and op = 'DELETE' and row_id in ('VOL-9501', 'VOL-9502') order by row_id`);
+      ok('HE-03 the daily purge empties a deleted volunteer\'s audit copy after 90 days', !bd && !pg.error && copies.length === 2 && copies[0].old === null,
+        bd || (pg.error && pg.error.message) || JSON.stringify(copies));
+      ok('HE-03 …and keeps a recent one, so an accidental delete can still be recovered', !!copies[1] && !!copies[1].old && copies[1].old.name === 'Recent Delete', JSON.stringify(copies[1]));
+      const kept = (await sys(`select s, interests from public.attendees where church_id = $1 and id = 'EXPO-9801'`, [HC]))[0];
+      ok('HE-03 the daily purge takes an old follow-up\'s plan and urgent mark with the readings, and keeps the follow-up answers',
+        !!kept && JSON.stringify(kept.s) === '{}' && !('customPlan' in kept.interests) && !('churchPlan' in kept.interests) && !('attended' in kept.interests)
+          && kept.interests.stress === true && kept.interests.optin === true, JSON.stringify(kept));
+      /* a non-admin desk still holding the old copy (plan and all) syncs it: not refused, and the plan does not come back */
+      const stale = await as(HS, `insert into public.attendees (church_id, id, name, age, s, interests, created_at)
+        values ($1, 'EXPO-9801', 'Plan Kept', 50, '{"sys":150}', $2::jsonb, now() - interval '8 days')
+        on conflict (church_id, id) do update set s = excluded.s, interests = excluded.interests`, [HC, JSON.stringify(plan)]);
+      const after = (await sys(`select s, interests from public.attendees where church_id = $1 and id = 'EXPO-9801'`, [HC]))[0];
+      ok('HE-03 a non-admin desk that sends its old copy with the plan is not refused, and the plan stays gone',
+        !stale.error && JSON.stringify(after.s) === '{}' && !('customPlan' in after.interests) && after.interests.stress === true,
+        (stale.error && stale.error.message) || JSON.stringify(after));
+      const fresh = await as(HS, `insert into public.attendees (church_id, id, name, age, interests) values ($1, 'EXPO-9802', 'Fresh Plan', 40, $2::jsonb)`, [HC, JSON.stringify(plan)]);
+      ok('HE-03 …while a non-admin still cannot write a plan on a fresh visit', !!fresh.error && /custom plan/i.test(fresh.error.message), fresh.error ? fresh.error.message : 'accepted');
+    }
     /* a number the purge freed can be given again (nextBadge counts up from the highest the phone still holds),
        so a new visitor on a deleted visitor's number must sync, readings and all. */
     const reuse = await run(`insert into public.attendees (church_id, id, name, age, s, interests) values
