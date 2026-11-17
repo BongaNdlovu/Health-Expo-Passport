@@ -5,10 +5,14 @@
     "axe-core": "^4.14.0",
     "esbuild": "^0.28.2",
     "puppeteer-core": "^25.16.0",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "wrangler": "4.159.0"
   },
   "scripts": {
     "build": "node tools/build.js",
+    "deploy": "wrangler deploy",
+    "deploy:landing": "node landing/make-headers.js && wrangler deploy --config landing/wrangler.jsonc",
+    "release": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/release.ps1",
     "test": "node --expose-gc .smoke/harness.js",
     "test:hub": "node tools/test-volunteer-hub.js",
     "test:build": "node tools/test-build.js",

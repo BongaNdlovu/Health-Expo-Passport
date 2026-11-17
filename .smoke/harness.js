@@ -5387,8 +5387,28 @@ function makeServer() {
 
   /* build output */
   const { execFileSync } = require('child_process');
-  execFileSync(process.execPath, [path.join(rootDir, 'tools', 'build.js')], { stdio: 'pipe' });
-  const dist = f => path.join(rootDir, 'dist', f);
+  /* built into a temporary folder (NS_DIST): running the tests never changes the committed dist/ or index.html */
+  const testDist = fs.mkdtempSync(path.join(require('os').tmpdir(), 'newstart-dist-'));
+  process.on('exit', () => { try { fs.rmSync(testDist, { recursive: true, force: true }); } catch (e) { /* best effort */ } });
+  const shellBefore = fs.readFileSync(path.join(rootDir, 'index.html'), 'utf8');
+  execFileSync(process.execPath, [path.join(rootDir, 'tools', 'build.js')], { stdio: 'pipe', env: { ...process.env, NS_DIST: testDist } });
+  const dist = f => path.join(testDist, f);
+  ok('a test build writes nothing into the project: index.html is untouched', fs.readFileSync(path.join(rootDir, 'index.html'), 'utf8') === shellBefore);
+  /* the build checks everything before it replaces the folder: a build that fails leaves the old one standing */
+  {
+    const failDist = fs.mkdtempSync(path.join(require('os').tmpdir(), 'newstart-fail-'));
+    fs.writeFileSync(path.join(failDist, 'keep.txt'), 'the previous build');
+    const brokenRoot = fs.mkdtempSync(path.join(require('os').tmpdir(), 'newstart-root-'));
+    let threw = false;
+    try {
+      fs.cpSync(path.join(rootDir, 'tools'), path.join(brokenRoot, 'tools'), { recursive: true });
+      fs.cpSync(path.join(rootDir, 'src'), path.join(brokenRoot, 'src'), { recursive: true });
+      fs.writeFileSync(path.join(brokenRoot, 'index.html'), shellBefore.replace(/<script id="secureStore">/, '<script id="secureStoreGone">'));
+      execFileSync(process.execPath, [path.join(brokenRoot, 'tools', 'build.js')], { stdio: 'pipe', env: { ...process.env, NS_DIST: failDist, NODE_PATH: path.join(rootDir, 'node_modules') } });
+    } catch (e) { threw = true; }
+    ok('a build that fails its checks leaves the previous output in place', threw && fs.existsSync(path.join(failDist, 'keep.txt')));
+    fs.rmSync(failDist, { recursive: true, force: true }); fs.rmSync(brokenRoot, { recursive: true, force: true });
+  }
   ok('build produces every file a phone needs', ['index.html', 'manifest.webmanifest', 'sw.js', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/icon-180.png', '_headers'].every(f => fs.existsSync(dist(f))));
   ok('build stamps a real version into sw.js', !/__VERSION__/.test(fs.readFileSync(dist('sw.js'), 'utf8')) && /VERSION = '[0-9a-f]{10}'/.test(fs.readFileSync(dist('sw.js'), 'utf8')));
   const built = fs.readFileSync(dist('index.html'), 'utf8');
@@ -7292,7 +7312,7 @@ function makeServer() {
   const capId = fs.existsSync(path.join(rootDir, 'capacitor')) ? JSON.parse(fs.readFileSync(path.join(rootDir, 'capacitor', 'capacitor.config.json'), 'utf8')).appId : '';
   ok('Android: the app keeps the package id of the installed app', capId === 'org.newstart.expopassport', capId);
   ok('Android: the signing key file is referenced and exists', /android\\signing\\newstart\.jks/.test(signApp) && /--ks-key-alias newstart/.test(signApp) && fs.existsSync(path.join(rootDir, 'android', 'signing', 'newstart.jks')));
-  ok('Android: the secret key files are never copied into dist/', !fs.existsSync(path.join(rootDir, 'dist', 'signing')) && !fs.existsSync(path.join(rootDir, 'dist', 'newstart.jks')));
+  ok('Android: the secret key files are never copied into dist/', !fs.existsSync(dist('signing')) && !fs.existsSync(dist('newstart.jks')));
   ok('Android: the web site offers the Capacitor app for download', /path\.join\(root, 'capacitor', 'android', 'app-release-signed\.apk'\)/.test(buildJs) && !/assetlinks/.test(buildJs));
   ok('Android: the old web-wrapper app is gone', !fs.existsSync(path.join(rootDir, 'android', 'twa-manifest.json')) && !fs.existsSync(path.join(rootDir, 'tools', 'sign-apk.ps1')) && !fs.existsSync(dist('.well-known/assetlinks.json')));
   ok('Android: signing passwords are not in the website files', !fs.existsSync(dist('KEYSTORE-INFO.txt')) && !/store password/.test(fs.readFileSync(dist('index.html'), 'utf8')));

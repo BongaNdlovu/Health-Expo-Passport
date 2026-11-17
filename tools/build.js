@@ -9,11 +9,74 @@ const crypto = require('crypto');
 const esbuild = require('esbuild');
 
 const root = path.join(__dirname, '..');
-const dist = path.join(root, 'dist');
-fs.rmSync(dist, { recursive: true, force: true });
-fs.mkdirSync(path.join(dist, 'icons'), { recursive: true });
+/* NS_DIST builds somewhere else: the smoke test builds into a temporary folder, so running the tests never changes
+   dist/. Only a build into the real dist/ may also bring index.html's CSP meta tag up to date (below). */
+const dist = process.env.NS_DIST ? path.resolve(process.env.NS_DIST) : path.join(root, 'dist');
+const buildsRealDist = !process.env.NS_DIST;
+const shellPath = path.join(root, 'index.html');
+let shell = fs.readFileSync(shellPath, 'utf8');
 
-const shell = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+/* ---- CSP ---------------------------------------------------------------------------------------------
+   No 'unsafe-inline' for scripts: the page has exactly two inline scripts and each is allowed by its own
+   content hash — the tiny font picker in <head>, and the app bundle (different on every build, so its hash
+   is stamped fresh into the built page and _headers further down). The only off-site script source is the one
+   library the app loads, pinned down to its exact versioned path — jsDelivr serves arbitrary npm content,
+   so the host name alone must never be enough. The style-src 'unsafe-inline' stays: the page styles itself inline.
+   Worked out first, before anything is hashed or written: a failure here leaves dist/ as it was. */
+const hashOf = s => "'sha256-" + crypto.createHash('sha256').update(s).digest('base64') + "'";
+/* v1.6.2: two inline scripts in the shell, each allowed by its own hash: fontPick (theme before first paint) and
+   secureStore (encrypts localStorage, then boots the app). The sign-in library is now served from vendor/ ('self'). */
+const INLINE_IDS = ['fontPick', 'secureStore'];
+const inlineHashes = INLINE_IDS.map(id => {
+  const m = shell.match(new RegExp('<script id="' + id + '">([\\s\\S]*?)<\\/script>'));
+  if (!m) throw new Error('index.html lost its ' + id + ' script — the CSP hash cannot be computed');
+  return hashOf(m[1]);
+});
+/* The packaged Android app reads /version.json from the website to learn about a new build (src/update.js), so the
+   policy lets the page connect to that one origin as well as to itself and Supabase. */
+const APP_SITE = (/export const APP_SITE='([^']+)'/.exec(fs.readFileSync(path.join(root, 'src', 'platform.js'), 'utf8')) || [])[1];
+if (!APP_SITE) throw new Error('src/platform.js lost its APP_SITE line — the CSP cannot name the site the app updates from');
+const SITE_ORIGIN = new URL(APP_SITE).origin;
+/* The exact URL the app loads (SB_LIB in src/cloud.js). A CSP source without a trailing slash matches that path
+   only, so it must be the whole file path — a shortened one blocks the library and sign-in never loads. */
+const SB_CDN = (/export const SB_LIB='([^']+)'/.exec(fs.readFileSync(path.join(root, 'src', 'cloud.js'), 'utf8')) || [])[1];
+if (!SB_CDN) throw new Error('src/cloud.js lost its SB_LIB line — the CSP cannot name the library it must allow');
+/* Data may leave only for this one Supabase project (SB_URL in src/cloud.js), https for the REST/auth calls and
+   wss for realtime — not the *.supabase.co wildcard, which would have blessed every Supabase project on earth. */
+const SB_URL = (/export const SB_URL='([^']+)'/.exec(fs.readFileSync(path.join(root, 'src', 'cloud.js'), 'utf8')) || [])[1];
+if (!SB_URL) throw new Error('src/cloud.js lost its SB_URL line — the CSP cannot name the database host');
+const SB_HOST = new URL(SB_URL).host;
+const SB_API = 'https://' + SB_HOST + ' wss://' + SB_HOST;
+/* a same-origin library path (vendor/...) is covered by 'self'; only an off-site URL needs naming */
+const SB_SRC = /^https:\/\//.test(SB_CDN) ? ' ' + SB_CDN : '';
+const cspScripts = base => base.replace("'self'", "'self' " + inlineHashes.join(' '));
+const policy = scripts => [
+  "default-src 'self'",
+  cspScripts(scripts),
+  "style-src 'self' 'unsafe-inline'",
+  "font-src 'self'",
+  "img-src 'self' data: blob:",
+  "media-src 'self' blob:",
+  "connect-src 'self' " + SITE_ORIGIN + ' ' + SB_API,
+  "worker-src 'self'", "manifest-src 'self'", "object-src 'none'", "base-uri 'self'", "form-action 'self'", "frame-ancestors 'none'",
+].join('; ');
+const CSP_DEV = policy("script-src 'self'" + SB_SRC);
+
+/* The shell's meta tag is the development policy (dev loads src/dev-boot.js, then src/main.js, as external modules, so
+   it needs 'self' but not the bundle hash), and it must carry the current hashes of the two inline scripts. Editing
+   either script changes its hash: the build now writes the new policy into index.html itself instead of failing and
+   asking for it to be pasted in by hand. */
+{
+  const metaRe = /(<meta http-equiv="Content-Security-Policy" content=")([^"]*)("\s*\/?>)/;
+  const m = metaRe.exec(shell);
+  if (!m) throw new Error('index.html has no Content-Security-Policy meta tag — add it (see dist/_headers)');
+  const metaIsStale = m[2] !== CSP_DEV;
+  if (metaIsStale) {
+    shell = shell.replace(metaRe, (all, a, b, c) => a + CSP_DEV + c);
+    if (buildsRealDist) { fs.writeFileSync(shellPath, shell); console.log('NOTE: index.html CSP meta tag updated to the current inline-script hashes — commit index.html'); }
+    else console.log('NOTE: index.html CSP meta tag is out of date; this build used the current hashes (a normal build writes them into index.html)');
+  }
+}
 const rawBundle = esbuild.buildSync({
   entryPoints: [path.join(root, 'src', 'main.js')],
   bundle: true, format: 'iife', globalName: '__NEWSTART', write: false, logLevel: 'warning',
@@ -54,63 +117,11 @@ versionHash.update(nsmemOut);
 for (const f of staticFiles) versionHash.update(f.replace(/\\/g, '/')).update(fs.readFileSync(path.join(root, f)));
 const version = versionHash.digest('hex').slice(0, 10);
 
-/* ---- CSP ---------------------------------------------------------------------------------------------
-   No 'unsafe-inline' for scripts: the page has exactly two inline scripts and each is allowed by its own
-   content hash — the tiny font picker in <head>, and the app bundle (different on every build, so its hash
-   is stamped fresh into the built page and _headers here). The only off-site script source is the one
-   library the app loads, pinned down to its exact versioned path — jsDelivr serves arbitrary npm content,
-   so the host name alone must never be enough. The style-src 'unsafe-inline' stays: the page styles itself inline. */
-const hashOf = s => "'sha256-" + crypto.createHash('sha256').update(s).digest('base64') + "'";
-/* v1.6.2: two inline scripts in the shell, each allowed by its own hash: fontPick (theme before first paint) and
-   secureStore (encrypts localStorage, then boots the app). The sign-in library is now served from vendor/ ('self'). */
-const INLINE_IDS = ['fontPick', 'secureStore'];
-const inlineHashes = INLINE_IDS.map(id => {
-  const m = shell.match(new RegExp('<script id="' + id + '">([\\s\\S]*?)<\\/script>'));
-  if (!m) throw new Error('index.html lost its ' + id + ' script — the CSP hash cannot be computed');
-  return hashOf(m[1]);
-});
-
-const cspScripts = base => base.replace("'self'", "'self' " + inlineHashes.join(' '));
-const policy = scripts => [
-  "default-src 'self'",
-  cspScripts(scripts),
-  "style-src 'self' 'unsafe-inline'",
-  "font-src 'self'",
-  "img-src 'self' data: blob:",
-  "media-src 'self' blob:",
-  "connect-src 'self' " + SITE_ORIGIN + ' ' + SB_API,
-  "worker-src 'self'", "manifest-src 'self'", "object-src 'none'", "base-uri 'self'", "form-action 'self'", "frame-ancestors 'none'",
-].join('; ');
-/* the browser hashes the exact text between <script> and </script>, so the hash is taken of exactly what is
-   injected below — newlines included */
+/* the built page's policy: the development one (worked out at the top) plus the hash of the bundle. The browser hashes
+   the exact text between <script> and </script>, so the hash is taken of exactly what is injected below — newlines
+   included. */
 const inlineBundle = '\n' + bundle + '\n';
-/* The exact URL the app loads (SB_LIB in src/cloud.js). A CSP source without a trailing slash matches that path
-   only, so it must be the whole file path — a shortened one blocks the library and sign-in never loads. */
-/* The packaged Android app reads /version.json from the website to learn about a new build (src/update.js), so the
-   policy lets the page connect to that one origin as well as to itself and Supabase. */
-const APP_SITE = (/export const APP_SITE='([^']+)'/.exec(fs.readFileSync(path.join(root, 'src', 'platform.js'), 'utf8')) || [])[1];
-if (!APP_SITE) throw new Error('src/platform.js lost its APP_SITE line — the CSP cannot name the site the app updates from');
-const SITE_ORIGIN = new URL(APP_SITE).origin;
-const SB_CDN = (/export const SB_LIB='([^']+)'/.exec(fs.readFileSync(path.join(root, 'src', 'cloud.js'), 'utf8')) || [])[1];
-if (!SB_CDN) throw new Error('src/cloud.js lost its SB_LIB line — the CSP cannot name the library it must allow');
-/* Data may leave only for this one Supabase project (SB_URL in src/cloud.js), https for the REST/auth calls and
-   wss for realtime — not the *.supabase.co wildcard, which would have blessed every Supabase project on earth. */
-const SB_URL = (/export const SB_URL='([^']+)'/.exec(fs.readFileSync(path.join(root, 'src', 'cloud.js'), 'utf8')) || [])[1];
-if (!SB_URL) throw new Error('src/cloud.js lost its SB_URL line — the CSP cannot name the database host');
-const SB_HOST = new URL(SB_URL).host;
-const SB_API = 'https://' + SB_HOST + ' wss://' + SB_HOST;
-/* a same-origin library path (vendor/...) is covered by 'self'; only an off-site URL needs naming */
-const SB_SRC = /^https:\/\//.test(SB_CDN) ? ' ' + SB_CDN : '';
-const CSP_DEV = policy("script-src 'self'" + SB_SRC);
 const CSP_DIST = policy("script-src 'self' " + hashOf(inlineBundle) + SB_SRC);
-
-/* The shell's meta tag is the development policy (dev loads src/dev-boot.js, then src/main.js, as external modules, so it needs
-   'self' but not the bundle hash). It must carry the current fontPick hash — fail the build on drift. */
-{
-  const m = /<meta http-equiv="Content-Security-Policy" content="([^"]*)"\s*\/?>/.exec(shell);
-  if (!m) throw new Error('index.html has no Content-Security-Policy meta tag — add it (see dist/_headers)');
-  if (m[1] !== CSP_DEV) throw new Error('index.html CSP meta tag is out of date — set its script-src to exactly:\n  ' + CSP_DEV);
-}
 
 /* replacer functions, not strings: a "$&" or "$'" inside the bundle must be inserted literally */
 /* The page's own build id, for src/update.js: it compares this with /version.json to decide whether to offer an
@@ -121,7 +132,16 @@ const built = minifiedShell.replace('<script type="module" src="./src/dev-boot.j
   .replace(/(<meta http-equiv="Content-Security-Policy" content=")[^"]*(")/, (all, a, b) => a + CSP_DIST + b)
   .replace('__APP_VERSION__', version);
 if (!built.includes('__NEWSTART') || built.includes('<script type="module"')) throw new Error('bundle injection failed');
+/* the APK's page version is read before anything is written, so an unreadable APK fails the build with dist/ intact */
+const apk = path.join(root, 'capacitor', 'android', 'app-release-signed.apk');
+const hasApk = fs.existsSync(apk);
+const apkVersion = hasApk ? apkPageVersion(apk) : '';
+if (hasApk && !apkVersion) throw new Error('could not read the page version inside capacitor/android/app-release-signed.apk');
 
+/* Every check above has passed: only now is the old folder replaced. A failed build used to leave dist/ empty,
+   with nothing left to deploy. */
+fs.rmSync(dist, { recursive: true, force: true });
+fs.mkdirSync(path.join(dist, 'icons'), { recursive: true });
 fs.writeFileSync(path.join(dist, 'index.html'), built);
 fs.copyFileSync(path.join(root, 'manifest.webmanifest'), path.join(dist, 'manifest.webmanifest'));
 fs.writeFileSync(path.join(dist, 'sw.js'), fs.readFileSync(path.join(root, 'sw.js'), 'utf8').replace('__VERSION__', version));
@@ -132,8 +152,7 @@ if (DEV_BUILD) console.log('NOTE: NS_DEV_BUILD=1 — nsmem.js diagnostics flag O
 
 /* the Android app (capacitor/, built by tools/sign-app.ps1), if one has been built, so phones can download it from the
    same address */
-const apk = path.join(root, 'capacitor', 'android', 'app-release-signed.apk');
-if (fs.existsSync(apk)) fs.copyFileSync(apk, path.join(dist, 'newstart.apk'));
+if (hasApk) fs.copyFileSync(apk, path.join(dist, 'newstart.apk'));
 
 /* The build id of the page packaged inside the APK, read from the APK itself (a zip: assets/public/index.html), so
    version.json says exactly what the download holds. The app offers an update only when this differs from its own
@@ -157,8 +176,6 @@ function apkPageVersion(file) {
   }
   return '';
 }
-const apkVersion = fs.existsSync(apk) ? apkPageVersion(apk) : '';
-if (fs.existsSync(apk) && !apkVersion) throw new Error('could not read the page version inside capacitor/android/app-release-signed.apk');
 if (apkVersion && apkVersion !== version) console.log('NOTE: the Android download holds page ' + apkVersion + ', the website is ' + version + ' — run tools\\sign-app.ps1 to ship this build to the app too');
 
 /* What src/update.js reads: the build this folder was made at, and — when an Android build is sitting beside it —
@@ -172,7 +189,7 @@ catch (e) { /* not a checkout, or no git on PATH */ }
 fs.writeFileSync(path.join(dist, 'version.json'), JSON.stringify({
   version,
   built: builtAt || new Date().toISOString(),
-  apk: fs.existsSync(apk) ? { url: 'newstart.apk', version: apkVersion } : null,
+  apk: hasApk ? { url: 'newstart.apk', version: apkVersion } : null,
 }, null, 2) + '\n');
 
 /* Security headers for every file — identical to the built page's meta tag. What the policy locks down is WHERE
@@ -214,5 +231,5 @@ fs.writeFileSync(path.join(dist, '.well-known', 'security.txt'), [
 
 const files = [];
 (function walk(d) { for (const e of fs.readdirSync(d, { withFileTypes: true })) e.isDirectory() ? walk(path.join(d, e.name)) : files.push(path.relative(dist, path.join(d, e.name))); })(dist);
-console.log('built dist/ (cache version ' + version + ')');
+console.log('built ' + (buildsRealDist ? 'dist/' : dist) + ' (cache version ' + version + ')');
 files.sort().forEach(f => console.log('  ' + f.replace(/\\/g, '/')));
