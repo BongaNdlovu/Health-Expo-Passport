@@ -222,7 +222,7 @@ the result into a cache version, writes `dist/` with `_headers`, `version.json`,
   signature comparison, and a placement refusal triggers a re-resolve rather than a data loss (`resolvePlacement`).
 - **The sync chrome only observes.** The dot ring, the pending badge, the "Uploading 3 of 5…" words and the
   "synced 14:32" label are all read from `cloud.phase`/`cloud.prog`/`cloud.syncedAt`/`cloudPending()` — the
-  upload loop just sets counters (see `syncChrome` in `src/cloud.js`, `FIX-PLAN-sync-ui.md`).
+  upload loop just sets counters (see `syncChrome` in `src/cloud.js`, `docs/archive/FIX-PLAN-sync-ui.md`).
 - **Realtime** streams row changes on `attendees`, `volunteers` and `notifications` so other desks see them live.
 
 There is **no server-rendered HTML and no API layer of your own**. The client talks to Postgres through Supabase's

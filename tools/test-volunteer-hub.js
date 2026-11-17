@@ -1,5 +1,5 @@
 /* Volunteer-hub database regressions (PGlite, in-memory Postgres).
-   Run: NEWSTART_PGLITE=C:\Users\fanel\pglite-test node tools/test-volunteer-hub.js
+   Run: npm run test:hub   (PGlite is a dev dependency)
    Against the schema as committed at e42c81d, 14 of the first 26 cases fail (measured); the rest pin behaviour that
    must stay, and section 12 is such a pin: an upsert is judged like an update. */
 const path = require('path');
@@ -7,11 +7,8 @@ const fs = require('fs');
 const PROJ = path.join(__dirname, '..');
 
 (async () => {
-  if (!process.env.NEWSTART_PGLITE) {
-    console.log('SKIP: set NEWSTART_PGLITE to a folder with @electric-sql/pglite installed (the same setting .smoke/harness.js uses).');
-    process.exit(0);
-  }
-  const { PGlite } = require(path.join(process.env.NEWSTART_PGLITE, 'node_modules', '@electric-sql', 'pglite'));
+  const PGlite = require('./pglite.js').loadPGlite();
+  if (!PGlite) { console.error('FAIL: this test needs PGlite: run npm install (it is a dev dependency)'); process.exit(2); }
   const schema = fs.readFileSync(path.join(PROJ, 'supabase', 'schema.sql'), 'utf8');
   const STUB = `
     create role anon nologin; create role authenticated nologin; create schema auth;

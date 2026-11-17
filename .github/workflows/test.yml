@@ -1,0 +1,22 @@
+# Runs every test suite on each push and pull request, so a change cannot reach main untested.
+# Nothing here deploys or signs: releases stay on the owner's machine (npm run release).
+name: tests
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run test:build
+      - run: npm run test:hub
+      - run: npm run test:db

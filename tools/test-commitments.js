@@ -5,20 +5,14 @@
    jsdom harness can never reach.
 
    Run:   npm run test:db
-   Needs: npm i -D @electric-sql/pglite        (dev-only; the app itself still has no dependencies)
+   Needs: npm install (PGlite is a dev dependency; the app itself still has no dependencies)
    Not part of `npm test`: the smoke harness needs no database and must keep running with none installed. */
 
 const fs = require('fs');
 const path = require('path');
 
-let PGlite;
-/* either a dev dependency here, or the shared install the other two suites use (NEWSTART_PGLITE) */
-try { ({ PGlite } = require('@electric-sql/pglite')); }
-catch (e) {
-  const shared = process.env.NEWSTART_PGLITE;
-  if (!shared) { console.error('This test needs @electric-sql/pglite:  npm i -D @electric-sql/pglite  (or set NEWSTART_PGLITE)'); process.exit(2); }
-  ({ PGlite } = require(path.join(shared, 'node_modules', '@electric-sql', 'pglite')));
-}
+const PGlite = require('./pglite.js').loadPGlite();
+if (!PGlite) { console.error('This test needs PGlite: run npm install (it is a dev dependency)'); process.exit(2); }
 
 const root = path.join(__dirname, '..');
 const SCHEMA = fs.readFileSync(path.join(root, 'supabase', 'schema.sql'), 'utf8');

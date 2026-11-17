@@ -3750,12 +3750,14 @@ function makeServer() {
   }
 
   /* ---- 18c. the churches part of supabase/schema.sql on a real Postgres ----------------------------
-     PGlite (Postgres compiled to WebAssembly, in memory) is not part of this project. Install it in a folder outside it
-     (npm i @electric-sql/pglite@0.5.11) and set NEWSTART_PGLITE to that folder; without it these checks are skipped. */
-  if (!process.env.NEWSTART_PGLITE) console.log('\n18c. Churches in the database: skipped (set NEWSTART_PGLITE to a folder with @electric-sql/pglite installed)');
+     PGlite (Postgres compiled to WebAssembly, in memory) is a pinned dev dependency (tools/pglite.js finds it). If it is
+     missing these checks cannot run, and that is a FAILURE, not a quiet skip: run npm install. */
+  const PGliteClass = require('../tools/pglite.js').loadPGlite();
+  ok('PGlite is installed, so the database checks below run (npm install)', !!PGliteClass);
+  if (!PGliteClass) console.log('\n18c. Churches in the database: NOT RUN (PGlite missing: npm install)');
   else await (async () => {
     console.log('\n18c. Churches in the database (PGlite)');
-    const { PGlite } = require(path.join(process.env.NEWSTART_PGLITE, 'node_modules', '@electric-sql', 'pglite'));
+    const PGlite = PGliteClass;
     const schema = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'schema.sql'), 'utf8');
     const MARK = '-- ================================================================ CHURCHES, MEMBERS AND THE PLATFORM ADMIN';
     const before = schema.slice(0, schema.indexOf(MARK));            /* the schema as it was before churches existed */
@@ -4831,9 +4833,9 @@ function makeServer() {
       && srv.handlers.filter(h => h.table === 'notifications').length <= 2, srv.handlers.map(h => h.table + ':' + h.event).join());
     g.stopRealtime(); C.user = null; srv.reset();
   }
-  /* database attacks on a real Postgres (with NEWSTART_PGLITE) */
-  if (process.env.NEWSTART_PGLITE) await (async () => {
-    const { PGlite } = require(path.join(process.env.NEWSTART_PGLITE, 'node_modules', '@electric-sql', 'pglite'));
+  /* database attacks on a real Postgres (PGlite) */
+  if (PGliteClass) await (async () => {
+    const PGlite = PGliteClass;
     const schema = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'schema.sql'), 'utf8');
     const db = new PGlite();
     const as = async (uid, sql, p) => { await db.exec(`reset role; select set_config('request.jwt.claim.sub', '${uid || ''}', false); set role ${uid ? 'authenticated' : 'anon'};`);
@@ -4954,8 +4956,8 @@ function makeServer() {
 
   /* ---- 18d. the volunteer hub part of supabase/schema.sql on a real Postgres (self-pledge, leaders, placement,
      notifications) — same fake-Supabase rig as 18c above, one PGlite per phase group --------------------------- */
-  if (process.env.NEWSTART_PGLITE) await (async () => {
-    const { PGlite } = require(path.join(process.env.NEWSTART_PGLITE, 'node_modules', '@electric-sql', 'pglite'));
+  if (PGliteClass) await (async () => {
+    const PGlite = PGliteClass;
     const schema = fs.readFileSync(path.join(__dirname, '..', 'supabase', 'schema.sql'), 'utf8');
     const db = new PGlite();
     const as = async (uid, sql, p) => { await db.exec(`reset role; select set_config('request.jwt.claim.sub', '${uid || ''}', false); set role ${uid ? 'authenticated' : 'anon'};`);

@@ -2,6 +2,7 @@
   "name": "health-expo-passport",
   "private": true,
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.11",
     "axe-core": "^4.14.0",
     "esbuild": "^0.28.2",
     "puppeteer-core": "^25.16.0",
