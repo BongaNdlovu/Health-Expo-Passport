@@ -1166,6 +1166,8 @@ function makeServer() {
       return { box, disk, shown };
     };
     const good = await runStore({ saved: { 'newstart.v1': 'plain old copy' } });
+    /* the encrypted copy is written after the start, in the background: wait for it (CI is slower than a desktop) */
+    for (let i = 0; i < 100 && !/^enc1:/.test(good.disk.get('newstart.v1') || ''); i++) await sleep(5);
     ok('secure store: control: it starts, and an old plaintext copy is kept and encrypted', good.box.__secureReady === true && good.box.localStorage.getItem('newstart.v1') === 'plain old copy'
       && /^enc1:/.test(good.disk.get('newstart.v1') || ''), String(good.disk.get('newstart.v1')).slice(0, 12));
     const junk = 'enc1:' + Buffer.from('twelve bytes of iv and no real cipher text').toString('base64');
