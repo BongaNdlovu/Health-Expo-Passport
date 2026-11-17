@@ -112,7 +112,7 @@
   {
    "id": "check-one",
    "title": "Checks: one at a time",
-   "body": "The bar shows Check n of 8. Back keeps your answers, Skip leaves a check for later, and the summary lists all 8. Prefer the paper-style form? Tap Show all 8 checks; One at a time brings you back.",
+   "body": "The bar shows Check n of 8. Back keeps your answers, Skip leaves a check for later, and the summary lists all 8. Prefer the paper-style form? Tap Whole record on one screen; One at a time brings you back.",
    "before": [
     "journey:screen"
    ],

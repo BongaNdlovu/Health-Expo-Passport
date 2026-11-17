@@ -20,7 +20,7 @@ import { isServe, render, toast, toggleTheme } from './shell.js';
 import { cloud } from './state.js';
 import { tfBack, tfGo, tfMode, tfNext, tfSkip } from './visitor.js';
 import { clearVisitorSearch, filterVisitors, onPrayer, onStationCommit, onStationInput, onStep, registerSubmit, reservePouch, resetDemo, resetDemoAsk, switchTab, toggleInterest, toggleReg } from './visitor.js';
-import { applyReading, cancelReg, confirmResults, editReadings, finishVisit, goVisit, metricBack, newVisitFrom, onChronicList, onHeight, openMetric, pickSex, recordConsent, setAnswer, setMyStation, showGuardian, switchTo, toggleOptin, toggleTick } from './visitor.js';
+import { applyReading, cancelReg, confirmResults, editReadings, finishVisit, goVisit, metricBack, newVisitFrom, onChronicList, onHeight, openMetric, pickSex, recordConsent, setAnswer, setMyStation, showGuardian, consentNeed, switchTo, toggleOptin, toggleTick } from './visitor.js';
 import { customPlanClear, customPlanEdit, customPlanFromCurrent, customPlanImport, customPlanSave, customPlanTemplate } from './customPlan.js';
 import { closeVolReg, closeWhatsApp, exportVolCSV, logExpoEntry, openEmail, openSwitcher, openVolModal, openVolReg, openVolSwitcher, openWhatsApp, pickSecondBooth, pickVolunteer, printCard, removeExpoEntry, saveExpoEntry, saveVolunteer, sendEmail, sendWhatsApp, setVol, setVolTab, startNewVolunteer, switchToVol, toggleDraftBooth, toggleDraftList, toggleShift } from './volunteer.js';
 import { adminDeregister, adminUnpledge, closeSwitcher, closeVolModal, closePlaceSheet, filterSwitcher, filterVolSwitcher, openWAFor, openPlaceSheet, pickAttendee, pickPledge, placeLead, placeMove, placeRelease, placeSwap, recycleBadge, registerNew, setSwitchMode, showAllVol } from './volunteer.js';
@@ -238,6 +238,7 @@ export const ACTION_MAP = {
 
   /* -- visitor journey -- */
   'guardian-show': el => showGuardian(el.dataset.args, el.value),
+  'consent-tick': el => consentNeed(el.dataset.args, el.checked),
   'pick-sex': el => pickSex(el),
   'visitors-filter': el => filterVisitors(el.value),
   'switch-visitor': el => { state.regOpen = false; switchTo(el.dataset.args); },

@@ -146,12 +146,12 @@ export const HELP_PAGES = [
     { name: 'Journey bar', items: [
       ['Check, Results, Plan, Send home', 'The four steps. Tap a step, or Next, to move on. “←” goes back one step. Moving from Check to Results asks you to confirm the readings, once per visit: the answer is kept, also after the app reloads or syncs.'],
       ['Finish visit ✓', 'The button on the last step. It marks the visit complete and returns to Home, saying the visitor’s visit is complete and you are ready for the next. Afterwards it reads “Visit complete ✓ · Home”. It also takes the visitor out of every queue line they are still in, and the message says which, for example “taken out of the Blood Pressure line”. The visit is saved first: with no connection it still finishes, the message says the lines could not be updated, and they are left as soon as the queue can change again.'],
-      ['The passport and the queue work together', 'Registering puts the visitor in the Blood Pressure line, the first check; the lines then follow the order of the checks. Finish visit ✓ takes them out of every line. On the Check screen, the footer has Start and Done for your station (see Queue). If you type a reading while they are still waiting in that station’s line, the app asks “Start Blood Pressure for …?”: Yes starts serving them there, No keeps them waiting. It asks once per visitor and station, and never starts on its own. Opening Results, Plan or Send home marks any check station still serving them as done and moves them on.'] ] },
+      ['The passport and the queue work together', 'Registering puts the visitor in the Blood Pressure line, the first check; the lines then follow the order of the checks. Finish visit ✓ takes them out of every line. On the Check screen, the footer has Start and Done for your station (see Queue). If you type a reading while they are still waiting in that station’s line, the app starts serving them there and shows Undo, which puts them back in line in the same place. It does this once per visitor and station. Opening Results, Plan or Send home marks any check station still serving them as done and moves them on.'] ] },
     { name: 'A returning visitor', items: [
       ['Past visit', 'A visitor opened by an old number whose visit was more than 7 days ago has had their readings deleted, so the passport takes no new checks. “Register as a new visit” starts a new passport on a new badge, with their details filled in and consent asked again.'] ] },
     { name: 'Check: station screening', items: [
 ['One check at a time', 'The Check step opens on one check at a time: a big question (for example What is the blood sugar?), the unit (mmHg, mmol/L, kg, cm), the app’s healthy range, and a large number box with − and +. Check 3 of 8 and the bar show where you are. Next → (or Enter) goes on, ← Back goes back and keeps the answers, Not done · skip leaves a check empty. After check 8 a summary lists all 8: tap one to change it. Readings save as you type, exactly as on the full screen.'],
-      ['Show all 8 checks', 'Shows all 8 checks, the rest of the paper record and the survey on one screen, as before. One at a time → at the top goes back. The choice is kept until the app is closed.'],
+      ['Whole record on one screen', 'Shows the 8 checks, the rest of the paper record and the survey on one screen, as before. One at a time → at the top goes back. The choice is kept until the app is closed.'],
       ['Your station', 'The station this desk takes, saved on this device. A station volunteer’s footer offers Results and Next in line, and above them the Start and Done row for the queue line of that station (see Queue). Weight and Waist belong to the Vitals & BMI line, Blood pressure to Blood Pressure, Blood sugar and Cholesterol together to Sugar & Chol., and Fruit & Veg, Exercise, Water and Sleep each to a line of their own. Only the paper-record extras (Body fat, Body water, Lung function and Fitness) have no line, so no row, and their footer button reads Next visitor and opens the registration form.'],
       ['Next in line', 'In a station volunteer’s footer. It calls whoever has waited longest at your line and opens their passport; being called is being started. With nobody waiting, or with no connection, it opens the registration form instead, so a desk can always add a visitor.'],
       ['Blood pressure', 'Top and bottom numbers, and whether they take BP medication.'],
@@ -183,7 +183,7 @@ export const HELP_PAGES = [
     { name: 'Plan (step 3)', items: [
       ['Plan · 90 days', 'A 90-day plan built from the readings. “When these feel easy, add” suggests the next steps.'],
       ['Food plan', 'Opens from the plan: the food behind it.'],
-      ['Custom plan', 'Write a plan for this visitor, or start from the plan they were shown. You can also import a plan file (JSON) and download a blank template. Remove custom plan returns them to the generated plan.', 'admin'] ] },
+      ['Custom plan', 'Write a plan for this visitor, or start from the plan they were shown. You can also import a plan file (JSON) and download a blank template. Remove custom plan returns them to the generated plan; Undo on the message puts it back.', 'admin'] ] },
     { name: 'Send home (step 4)', items: [
       ['Send the plan on WhatsApp', 'Shows a preview, then sends it to their number. If no number is saved, you pick their contact.'],
       ['Email the plan', 'Shows a preview, then opens your email app with it. If no email is saved, you type one first. The email is sent from that app, not from here.'],
@@ -367,7 +367,7 @@ export const HELP_TUTORIALS = [
     'Visitor → Register a new visitor. Fill in Full name, Age (12 to 105) and Sex.',
     'Add WhatsApp, height and email if you have them. Height is needed for the BMI and the health age.',
     'Tick “Yes, they consent”, then tap Register & start the checks.',
-    'On Check, answer the 8 checks one at a time (Next → or Enter), or tap Show all 8 checks to see them on one screen. Fill in the paper record and the survey where you can.',
+    'On Check, answer the 8 checks one at a time (Next → or Enter), or tap Whole record on one screen to see them all at once. Fill in the paper record and the survey where you can.',
     'Tap Next: Results, then Plan, then Send home.',
     'Tap Finish visit ✓. The visitor leaves any queue line they are still in.' ] },
  { title: 'Run the queue at the expo', steps: [

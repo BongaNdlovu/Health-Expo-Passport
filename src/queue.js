@@ -531,57 +531,24 @@ export async function queueDone(id){
  const e=queue.find(x=>x.id===id);
  if(e&&e.status==='done')await queueFlowNext(e.attendeeId,e.station);
 }
-/* "Start Blood Pressure for Thandi?" — asked once per visitor and station when a reading is typed while they still wait
-   in that line. Never starts anyone on its own. */
+/* A reading typed for someone still waiting in that station's line means they are being served: start them, and
+   say so with Undo (queueStart's own toast). It used to ask first, with a sheet over the form being typed in, and the
+   answer was always Yes (U2). Once per visitor and station, so an Undo is not overridden by the next reading. */
 const qAsked = new Map();
 export const qAskClear = () => qAsked.clear();
 export async function qStartAsk(id, k) {
- let st = k === 'sys' || k === 'dia' ? 'bp' : QUEUE_OF_READING[k];
- if (!st) {
+ const st = k === 'sys' || k === 'dia' ? 'bp' : QUEUE_OF_READING[k];
+ if (!st) return;
+ const e = qActive(id, st);
+ if (!e || e.status !== 'waiting') return;
+ const key = `${id}|${st}`;
+ if (qAsked.has(key)) return;
+ qAsked.set(key, 'started');
+ if (qFree(st) <= 0) {
+  toast(`All places at ${QUEUE_SHORT[st]} are busy — ${firstName(qName(id))} stays in line`);
   return;
  }
- let e = qActive(id, st);
- if (!e || e.status !== 'waiting') {
-  return;
- }
- let key = `${id}|${st}`;
- if (qAsked.has(key)) {
-  return;
- }
- qAsked.set(key, 'asking');
- let back = document.activeElement;
- let who = firstName(qName(id));
- let p = confirmAsk({
-  title: `Start ${QUEUE_SHORT[st]} for ${who}?`,
-  body: `${who} is still waiting in the ${QUEUE_SHORT[st]} line. Start serving them here now? No keeps them waiting in line.`,
-  label: 'Yes, start',
-  cancelLabel: 'No, keep waiting'
- });
- setTimeout(() => {
-  let g = $('#cfGo');
-  if (g && !$('#confirmSheet').classList.contains('hidden')) {
-   g.focus();
-  }
- }, 30);
- let ok = await p;
- qAsked.set(key, ok ? 'yes' : 'no');
- if (ok) {
-  let d = qActive(id, st);
-  if (d && d.status === 'waiting') {
-   if (qFree(st) <= 0) {
-    toast(`All places at ${QUEUE_SHORT[st]} are busy \u2014 ${who} stays in line`);
-   } else {
-    await queueStart(id, st);
-   }
-  }
- }
- try {
-  if (back instanceof HTMLElement && back.isConnected) {
-   back.focus({
-    preventScroll: true
-   });
-  }
- } catch {}
+ await queueStart(id, st);
 }
 /* Opening Results, Plan or Send home: the check stations still serving this visitor are finished and they move on
    (Send home also finishes the counselling and optional stops). */
@@ -835,10 +802,10 @@ export function queueStripHTML(a,scope){
   }
   if(e){
    const w=qList(st,'waiting');
-   return `<div class="jr-q-row"><div class="jr-q-t"><b>In line at ${label} · ${w.findIndex(x=>x.id===e.id)+1} of ${w.length}</b>${chk}</div><div class="jr-q-act"><button class="btn btn-primary jr-q-go" data-action="queueStart" data-args="${esc(arg)}"${dis}>Start at ${label}</button></div></div>`;
+   return `<div class="jr-q-row"><div class="jr-q-t"><b>In line at ${label} · ${w.findIndex(x=>x.id===e.id)+1} of ${w.length}</b>${chk}</div><div class="jr-q-act"><button class="btn btn-soft jr-q-go" data-action="queueStart" data-args="${esc(arg)}"${dis}>Start at ${label}</button></div></div>`;
   }
   const was=queue.some(x=>x.attendeeId===a.id&&x.station===st&&x.status==='done');
-  return `<div class="jr-q-row"><div class="jr-q-t"><b>${was?`Done at ${label} ✓`:`Not in the ${label} line`}</b>${chk}</div><div class="jr-q-act"><button class="btn ${was?'btn-soft':'btn-primary'} jr-q-go" data-action="queueStart" data-args="${esc(arg)}"${dis}>${was?'Start again':`Start at ${label}`}</button></div></div>`;
+  return `<div class="jr-q-row"><div class="jr-q-t"><b>${was?`Done at ${label} ✓`:`Not in the ${label} line`}</b>${chk}</div><div class="jr-q-act"><button class="btn btn-soft jr-q-go" data-action="queueStart" data-args="${esc(arg)}"${dis}>${was?'Start again':`Start at ${label}`}</button></div></div>`;
  }).join('');
 }
 /* called on every reading change, and by qAfter when a line moves: redraws the rows only when they would read differently */
@@ -915,12 +882,13 @@ async function queueFlowNext(att,from){
 }
 /* a newly registered visitor goes straight into the first line — when the queue can take changes; offline the
    registration still stands and they can be added by hand once the desk is back online. A church whose board has
-   no flow lines on it (only the optional stops) simply registers them without a line. */
-export async function queueFlowStart(att,said){
+   no flow lines on it (only the optional stops) simply registers them without a line. It says nothing itself: the
+   check screen's queue card already shows the line, and a second toast covered its Start button (U1). */
+export async function queueFlowStart(att){
  if(!qCan()||qActive(att))return;
  const first=qFlow()[0];
  if(!first)return;
- await queueJoin(att,first,n=>`${said} · in the ${QUEUE_SHORT[first]} line${n>1?` (${n} waiting)`:''}`);
+ await queueJoin(att,first,null);
 }
 export const queueBack=id=>qMove(id,'waiting',['serving'],e=>`${firstName(qName(e.attendeeId))} is back in line (same place)`);
 export function queueRemove(id){

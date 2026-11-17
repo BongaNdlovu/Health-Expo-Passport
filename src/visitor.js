@@ -43,7 +43,10 @@ export function journeyTop(){
 export function journeyBottom(){
  const a=A(),i=JOURNEY.indexOf(state.tab),prev=JOURNEY[i-1],next=JOURNEY[i+1],left=8-doneCount(a);
  /* the move from Check into Results asks the operator to confirm the readings (see confirmResults) */
- const nextBtn=k=>`<button class="btn btn-primary jr-next" ${k==='results'?'data-action="confirmResults"':`data-action="switchTab" data-args="${esc(k)}"`}>${k==='results'?'Next: Results':`Next: ${JOURNEY_LABEL[k]}`} →</button>`;
+ /* one main button per screen (U3): on Check it is the form's own Next until all 8 checks are filled, so the way on
+    to Results stays a quieter button until then (the live count below switches it) */
+ const nextKind=k=>k==='results'&&left>0?'btn-glass':'btn-primary';
+ const nextBtn=k=>`<button id="jrNext" class="btn ${nextKind(k)} jr-next" ${k==='results'?'data-action="confirmResults"':`data-action="switchTab" data-args="${esc(k)}"`}>${k==='results'?'Next: Results':`Next: ${JOURNEY_LABEL[k]}`} →</button>`;
  /* Start and Finish for the volunteer's station sit above the buttons, where the thumb already is */
  const ms=myStation(),scope=ms?(QUEUE_OF_READING[ms]||null):'';
  const strip=state.tab==='screen'&&scope!==null?`<div id="jrQ" class="jr-q">${queueStripHTML(a,scope)}</div>`:'';
@@ -254,6 +257,7 @@ export function viewHome(){
     ${consentFields('rg',false)}
     <div id="rgErr" class="st-warn" role="alert" hidden></div>
     <button class="btn btn-primary w-full py-3 text-sm">Register & start the checks →</button>
+    <p id="rgNeed" class="text-center text-[11px] text-[#5c747a]">Tick “Yes, they consent” above first.</p>
    </form>
   </div>`:''}
 
@@ -417,7 +421,7 @@ function consentFields(p,minor){
  return `<div class="rounded-2xl border border-[#123033]/[.07] bg-white/60 p-3">
   <div class="microlabel">Consent (POPIA) · ask the visitor</div>
   <p class="mt-1 text-[13px] font-bold leading-snug text-[#123033]">“${CONSENT_Q}”</p>
-  <label class="mt-2 flex items-start gap-2 text-[12px] leading-snug text-[#123033]"><input id="${p}Consent" type="checkbox" class="mt-0.5 h-4 w-4 flex-none">
+  <label class="mt-2 flex items-start gap-2 text-[12px] leading-snug text-[#123033]"><input id="${p}Consent" type="checkbox" class="mt-0.5 h-4 w-4 flex-none" data-on-change="consent-tick" data-args="${p}">
    <span><b>Yes, they consent.</b> Required to record the checks.</span></label>
   <label class="mt-2 flex items-start gap-2 text-[12px] leading-snug text-[#123033]"><input id="${p}Optin" type="checkbox" class="mt-0.5 h-4 w-4 flex-none">
    <span>May we contact you afterwards about your results, seminars and classes? <b>Optional.</b></span></label>
@@ -430,6 +434,8 @@ function consentFields(p,minor){
   </div>
  </div>`;
 }
+/* the line under the button says what it needs before the first tap, not after a refused one (U5) */
+export function consentNeed(p,ticked){const n=document.getElementById(p+'Need');if(n)n.hidden=!!ticked;}
 export function showGuardian(p,age){const b=document.getElementById(p+'GuardianBox');if(b)b.hidden=!isMinor(Math.round(+String(age).trim()));}
 /* reads the ticks: an error message, or the consent entries to keep in interests */
 /* The day consent was given, on the database's clock once it is known (retention.js serverNow; the phone's own clock
@@ -460,6 +466,7 @@ function consentCard(a){
   <div class="mt-3">${consentFields('cs',isMinor(a.age))}</div>
   <div id="csErr" class="st-warn mt-2" role="alert" hidden></div>
   <button class="btn btn-primary mt-3 w-full py-3 text-sm" data-action="recordConsent" data-args="${esc(a.id)}">Record consent & open the checks</button>
+  <p id="csNeed" class="mt-1 text-center text-[11px] text-[#5c747a]">Tick “Yes, they consent” above first.</p>
  </div>`;
 }
 export function recordConsent(id){
@@ -508,9 +515,8 @@ export function registerSubmit(e,force){
    <button type="button" class="st-fix" style="background:#6b8187" data-action="register-again">Register a new passport</button></span>`);
  const a=migrateAttendee({id,name,age,sex,phone:phone||'+27 —',email,heightCm:h,s:{},interests:cons.it,prayer:'',done:false});
  attendees.push(a);state.activeId=a.id;state.regOpen=false;state.newVisitOf=null;state.sugFor=null;state._goal=null;
- const said=`${firstName(a.name)} is ${a.id} ✓ Start the checks`;
- switchTab('screen');toast(said);
- queueFlowStart(a.id,said);
+ switchTab('screen');toast(`${firstName(a.name)} is ${a.id} ✓`);
+ queueFlowStart(a.id);
 }
 export function resetDemo(){
  if(cloud.user||cloud.mode){toast('Reset is off while connected to the shared database');return;}
@@ -547,7 +553,7 @@ function stepperHTML(a,k,label,min,max,step,def){
 }
 /* ---------- one check at a time (v1.6.2) ----------
    The checks screen asks the 8 checks one by one, each with its own question, the app's range and Back / Skip / Next,
-   then shows a summary to tap back into. "Show all 8 checks" returns to the one-screen form (remembered for this tab
+   then shows a summary to tap back into. "Whole record on one screen" returns to the one-screen form (remembered for this tab
    session in TF_KEY). A volunteer who has picked their own station keeps the one-station screen. */
 const TF_KEYS = ['bp', 'sugar', 'chol', 'weight', 'veg', 'walk', 'water', 'sleep'];
 const TF_KEY = 'newstart.checkView';
@@ -634,7 +640,7 @@ function tfView(a, d, bpCard, cardOf) {
  const x = STATION_DEFS.find(y => y.k === k);
  const q = TF_Q[k];
  const pos = fin ? n : i + 1;
- const head = `<div class="glass tf-head p-4" data-tour="tf-head"><div class="flex items-center justify-between gap-2"><div><div class="microlabel">Station screening \xB7 one at a time</div><div class="display text-base font-extrabold">${esc(firstName(a.name))}'s 8 checks</div></div><span id="stProgTxt" class="mono text-xs font-bold text-brand-700" aria-label="checks recorded">${d}/8</span></div><div class="tf-prog mt-3" role="progressbar" aria-valuemin="1" aria-valuemax="${n}" aria-valuenow="${pos}" aria-label="${fin ? 'Summary of the 8 checks' : `Check ${pos} of ${n}`}"><div class="tf-prog-fill" style="width:${(pos / n) * 100}%"></div></div><div class="mt-1 flex flex-wrap items-center justify-between gap-x-2"><span class="tf-count" aria-live="polite">${fin ? 'Summary' : `Check ${pos} of ${n} \xB7 ${tfLabel(k)}`}</span><button type="button" class="tap-link tf-link" data-action="tfMode" data-args="all" data-tour="tf-all">Show all 8 checks</button></div></div>`;
+ const head = `<div class="glass tf-head p-4" data-tour="tf-head"><div class="flex items-center justify-between gap-2"><div><div class="microlabel">Station screening \xB7 one at a time</div><div class="display text-base font-extrabold">${esc(firstName(a.name))}'s 8 checks</div></div><span id="stProgTxt" class="mono text-xs font-bold text-brand-700" aria-label="checks recorded">${d}/8</span></div><div class="tf-prog mt-3" role="progressbar" aria-valuemin="1" aria-valuemax="${n}" aria-valuenow="${pos}" aria-label="${fin ? 'Summary of the 8 checks' : `Check ${pos} of ${n}`}"><div class="tf-prog-fill" style="width:${(pos / n) * 100}%"></div></div><div class="mt-1 flex flex-wrap items-center justify-between gap-x-2"><span class="tf-count" aria-live="polite">${fin ? 'Summary' : `Check ${pos} of ${n} \xB7 ${tfLabel(k)}`}</span><button type="button" class="tap-link tf-link" data-action="tfMode" data-args="all" data-tour="tf-all">Whole record on one screen</button></div></div>`;
  const body = fin
   ? tfSummary(a)
   : `<div id="tfQ" class="tf-q tf-in" role="group" aria-labelledby="tfTitle"><h2 id="tfTitle" class="tf-title" tabindex="-1">${q[0]}</h2><p class="tf-hint">${q[1]}</p><p class="tf-range"><b>The app\u2019s range:</b> ${q[2]}</p>${k === 'bp' ? bpCard : cardOf(x)}</div><div class="tf-nav"><button type="button" class="btn btn-glass tf-btn" data-action="tfBack"${i ? '' : ' disabled'}>\u2190 Back</button><button type="button" class="btn btn-glass tf-btn" data-action="tfSkip">${tfDone(a, k) ? 'Skip' : 'Not done · skip'}</button><button type="button" class="btn btn-primary tf-btn" data-action="tfNext">${i === n - 1 ? 'Finish ✓' : 'Next →'}</button></div><p class="tf-keys">Enter = Next. Answers are saved as you go.</p>`;
@@ -644,7 +650,7 @@ function tfView(a, d, bpCard, cardOf) {
    <div><div class="text-[11px] font-extrabold uppercase tracking-wider">Clinical red flag</div>
    <p class="mt-1 text-[11px] leading-relaxed text-rose-700">BP \u2265 160/100, or sugar \u2265 15 or under 3: do NOT run the step test. Emergency: attend to the visitor quickly.</p></div>
   </div>
-  ${head}${body}${stationPicker()}<p class="text-center"><button type="button" class="tap-link tf-link" data-action="tfMode" data-args="all">Show all 8 checks on one screen</button></p></section>`;
+  ${head}${body}${stationPicker()}<p class="text-center"><button type="button" class="tap-link tf-link" data-action="tfMode" data-args="all">Show the whole record on one screen (the 8 checks and the rest)</button></p></section>`;
 }
 export function tfGo(j, focus) {
  const a = A();
@@ -735,7 +741,7 @@ export function tfMode(m) {
  } catch {}
  state.tf = null;
  renderMain();
- toast(state.tfMode === 'all' ? 'All 8 checks on one screen' : 'One check at a time');
+ toast(state.tfMode === 'all' ? 'The whole record on one screen' : 'One check at a time');
  if (window.scrollTo) {
   window.scrollTo({
    top: 0
@@ -816,7 +822,7 @@ export function viewScreen(){
   ${historyCard(a)}
   <div class="st-grid">${EXTRA_DEFS.map(cardOf).join('')}</div>
   ${surveyCard(a)}`}
-  ${ms?`<p class="text-center text-[12px] text-[#4f6870]">Saved automatically ✓ Only your station is shown. <button class="tap-link" data-action="tfMode" data-args="all+">Show all 8 checks</button></p>`
+  ${ms?`<p class="text-center text-[12px] text-[#4f6870]">Saved automatically ✓ Only your station is shown. <button class="tap-link" data-action="tfMode" data-args="all+">Show the whole record</button></p>`
    :followUpCard(a)}
  </section>`;
 }
@@ -844,7 +850,7 @@ const MS_KEY='newstart.myStation';
 function myStation(){if(state.myStation===undefined){try{state.myStation=localStorage.getItem(MS_KEY)||'';}catch(e){state.myStation='';}}return state.myStation;}
 export function setMyStation(k){state.myStation=k;try{k?localStorage.setItem(MS_KEY,k):localStorage.removeItem(MS_KEY);}catch(e){}renderMain();}
 function stationPicker(){
- const ms=myStation(),opts=[['','All 8 checks'],['bp','Blood pressure'],...STATION_DEFS.concat(EXTRA_DEFS).map(x=>[x.k,x.label])];
+ const ms=myStation(),opts=[['','All stations'],['bp','Blood pressure'],...STATION_DEFS.concat(EXTRA_DEFS).map(x=>[x.k,x.label])];
  return `<div class="glass p-3.5"><div class="microlabel">Your station</div>
   <div class="fd-chips mt-2" role="group" aria-label="Your station">${opts.map(([k,l])=>`<button class="fd-chip hue-mint" aria-pressed="${k===ms}" data-action="setMyStation" data-args="${esc(k)}">${l}</button>`).join('')}</div></div>`;
 }
@@ -1009,5 +1015,6 @@ function updateScreenMeta(){
  const nc=document.getElementById('navCount');if(nc)nc.textContent=d+'/8';
  const jc=document.getElementById('jrCount');if(jc)jc.textContent=d<8?d+'/8':'';
  const jn=document.getElementById('jrNote');if(jn){jn.hidden=d===8;jn.textContent=`${8-d} of 8 checks still empty. You can carry on and come back.`;}
+ const jx=document.getElementById('jrNext');if(jx&&state.tab==='screen'){jx.classList.toggle('btn-primary',d===8);jx.classList.toggle('btn-glass',d<8);}
  persist();
 }

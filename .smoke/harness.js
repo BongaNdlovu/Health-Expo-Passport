@@ -542,6 +542,13 @@ g.resetDemo();
   g.state.tab = 'home'; g.state.regOpen = true; g.render();
   ok('POPIA: the follow-up question is a second tick, unticked by default', !/id="rgOptin"[^>]*checked/.test($main.innerHTML) && /id="rgOptin"/.test($main.innerHTML)
     && /Optional/.test($main.innerHTML), '');
+  /* U5: the form says what the button needs before the first tap, and the line goes once consent is ticked */
+  ok('U5 under the Register button, a line asks for the consent tick first', /id="rgNeed"[^>]*>Tick “Yes, they consent” above first\./.test($main.innerHTML) && !$el('rgNeed').hidden);
+  { const tick = { dataset: { onChange: 'consent-tick', args: 'rg' }, checked: true, tagName: 'INPUT', hasAttribute: () => false, closest() { return this; } };
+    g.dispatch(tick, { type: 'change', target: tick });
+    ok('U5 …and ticking consent hides it', $el('rgNeed').hidden === true);
+    tick.checked = false; g.dispatch(tick, { type: 'change', target: tick });
+    ok('U5 …and unticking shows it again', $el('rgNeed').hidden === false); }
   submitReg({ name: 'No Consent', badge: 'EXPO-701', consent: false });
   ok('POPIA: a visitor cannot be registered without the health-information consent', g.attendees.length === n && /consent/i.test($el('rgErr').innerHTML));
   submitReg({ name: 'Young One', age: '15', badge: 'EXPO-702' });
@@ -553,6 +560,18 @@ g.resetDemo();
     JSON.stringify(y && y.interests));
   ok('POPIA: the consent record survives loading and syncing', (() => { const m = g.rowToAtt(g.attToRow(y)).interests;
     return m.consent === true && m.guardianName === 'Ma Dlamini' && m.consentOn === y.interests.consentOn && m.consentV === '2026-10-27'; })());
+  /* U3 and U4 on the Check screen of the visitor just registered (no checks recorded yet) */
+  {
+    g.state.activeId = y.id; g.state.tab = 'screen'; g.render();
+    const foot = (/<div class="jr-foot">[\s\S]*$/.exec($main.innerHTML) || [''])[0];
+    ok('U3 with checks still empty, Next: Results is not a second main button', /id="jrNext" class="btn btn-glass jr-next"[^>]*>Next: Results →/.test(foot), foot.slice(0, 300));
+    ok('U3 the queue strip\'s Start is a secondary button', !/btn-primary jr-q-go" data-action="queueStart"/.test($main.innerHTML));
+    ok('U4 the link to the full form names what it opens, not "All 8 checks"', /Whole record on one screen/.test($main.innerHTML) && !/Show all 8 checks|>All 8 checks</.test($main.innerHTML));
+    const full = g.attendees.find(a => g.doneCount(a) === 8);
+    if (full) { g.state.activeId = full.id; g.render(); }
+    ok('U3 with all 8 checks recorded, Next: Results is the main button', !!full && /id="jrNext" class="btn btn-primary jr-next"/.test($main.innerHTML), full ? full.id : 'no visitor with all 8');
+    g.state.tab = 'home';
+  }
   submitReg({ name: 'Adult Optin', badge: 'EXPO-704', optin: true, phone: '082 555 0704' });
   ok('POPIA: the screening yes saves the record, the follow-up yes is what allows contact', by('Adult Optin') && by('Adult Optin').interests.optin === true
     && y.interests.optin === false
@@ -1751,6 +1770,11 @@ function makeServer() {
     clearIt();
     await sleep(30);
     ok('Remove returns the visitor to the usual plan', !david.interests.customPlan && !g.planFor(david).custom);
+    { const undo = $el('toastUndo');
+      ok('Remove acts at once and offers Undo', !!undo && !undo.classList.contains('hidden') && /Custom plan removed/.test($el('toastMsg').textContent));
+      if (undo && undo.onclick) undo.onclick();
+      ok('…and Undo puts the same plan back', !!david.interests.customPlan && david.interests.customPlan.title === 'Saved from the editor' && g.planFor(david).custom);
+      clearIt(); await sleep(30); }
 
     /* "start from the plan they were shown": a blank editor can be filled from the current plan,
        so a church that only wants to tweak a line does not re-type the whole thing */
@@ -5706,9 +5730,10 @@ function makeServer() {
   g.queue.length = 0;
   /* registering a visitor puts them in the first line */
   g.queue.length = 0;
-  await g.queueFlowStart('EXPO-088', 'Sipho is EXPO-088 ✓ Start the checks');
-  ok('queue: a newly registered visitor goes straight into the Blood Pressure line, and the toast says so',
-    g.qList('bp', 'waiting').some(e => e.attendeeId === 'EXPO-088') && /in the Blood Pressure line/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+  $el('toastMsg').textContent = 'Sipho is EXPO-088 ✓';
+  await g.queueFlowStart('EXPO-088');
+  ok('queue: a newly registered visitor goes straight into the Blood Pressure line, and no second toast covers the queue card (U1)',
+    g.qList('bp', 'waiting').some(e => e.attendeeId === 'EXPO-088') && $el('toastMsg').textContent === 'Sipho is EXPO-088 ✓', $el('toastMsg').textContent);
   await g.queueFlowStart('EXPO-088', 'again');
   ok('…and only once', g.queue.filter(e => e.attendeeId === 'EXPO-088').length === 1);
   /* a church's own stations: admins set the board's lines and order; the board, the big screen and the route follow */
@@ -6217,6 +6242,21 @@ function makeServer() {
       await g.queueSync(true);                       /* reload from the server: the row is still there on the server */
     }
     ok('queue (live): joining writes to the shared table', qdb.length === 2 && g.qList('bp', 'waiting').length === 2);
+    /* U2: a reading typed for someone waiting in that line starts them at once, with Undo, and asks nothing */
+    {
+      const st042 = () => (qdb.find(r => r.attendee_id === 'EXPO-042' && r.station === 'bp') || {}).status;
+      const sheetUp = () => !$el('confirmSheet').classList.contains('hidden');
+      g.setAutoAnswer(false);                        /* if anything still asked, the answer would be No */
+      await g.qStartAsk('EXPO-042', 'sys'); await sleep(20);
+      ok('U2 a reading for someone waiting starts them, with no question', st042() === 'serving' && !sheetUp(), 'status=' + st042());
+      ok('U2 …and the message offers Undo', !$el('toastUndo').classList.contains('hidden') && /Blood Pressure started/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+      $el('toastUndo').onclick(); await sleep(30);
+      ok('U2 Undo puts them back in line', st042() === 'waiting', 'status=' + st042());
+      await g.qStartAsk('EXPO-042', 'dia'); await sleep(20);
+      ok('U2 the next reading does not start them again after an Undo (once per visitor and station)', st042() === 'waiting', 'status=' + st042());
+      g.setAutoAnswer(true);
+      ok('U2 the order of the line is kept', g.qList('bp', 'waiting').map(e => e.attendeeId).join(',') === 'EXPO-042,EXPO-088', g.qList('bp', 'waiting').map(e => e.attendeeId).join(','));
+    }
     qdb.push({ id: 'q-other', attendee_id: 'EXPO-117', station: 'vitals', status: 'waiting', joined_at: new Date().toISOString(), called_at: null, finished_at: null, updated_at: new Date().toISOString() });
     await g.queueJoin('EXPO-117', 'vitals'); await sleep(20);
     ok('queue (live): someone another desk already put in that line is refused, and this desk catches up',
@@ -7910,7 +7950,7 @@ function makeServer() {
     ok('help: the Finish visit and past-visit words are the code\'s', help.includes('Visit complete ✓ · Home') && /'Visit complete ✓ · Home':'Finish visit ✓'/.test(srcText) && help.includes('Register as a new visit') && /Register as a new visit/.test(srcText)
       && help.includes('The bottom number should be lower than the top one') && /The bottom number should be lower than the top one/.test(srcText) && /Use \$\{disp\(fix\)\}/.test(srcText));
     ok('help: registering is the one thing that puts a visitor in a line without a tap on the queue (queueFlowStart is called from registration only)',
-      (srcText.match(/queueFlowStart\(/g) || []).length === 2 && /queueFlowStart\(a\.id,said\)/.test(srcText));
+      (srcText.match(/queueFlowStart\(/g) || []).length === 2 && /queueFlowStart\(a\.id\)/.test(srcText));
     g.queue.length = 0; g.resetDemo();
     ok('help: Start and Finish are the passport footer\'s: Finish asks only when readings are missing, and offers a 6-second Undo, for exactly the readings the help names',
       help.includes('Start at Blood Pressure') && help.includes('Done at Blood Pressure ✓') && help.includes('Done anyway') && help.includes('Undo') && help.includes('6 seconds')

@@ -15,9 +15,8 @@ import { A, $, esc, firstName } from './helpers.js';
 import { roleTag } from './ui.js';
 import { PROTOCOLS, attendees, state } from './data.js';
 import { cloud, persist } from './state.js';
-import { renderMain, toast } from './shell.js';
+import { renderMain, toast, toastUndo } from './shell.js';
 import { planFor } from './results.js';
-import { confirmAsk } from './feedback.js';
 import { IS_APP } from './platform.js';
 import { canCustomPlan } from './account.js';
 
@@ -220,20 +219,19 @@ export function customPlanImport(el){
  r.readAsText(f);
 }
 
-/** Removes the override, so the visitor goes back to the church or generated plan. */
-export async function customPlanClear(){
+/** Removes the override, so the visitor goes back to the church or generated plan. It acts at once and offers Undo,
+    which puts the same plan back: a question first added a tap and the plan was never lost (friction review U6). */
+export function customPlanClear(){
  if(!canCustomPlan())return;
  const a=holder();if(!a)return;
  if(!(a.interests&&a.interests.customPlan))return;
- const yes=await confirmAsk({title:'Remove this custom plan?',
-  body:'The visitor goes back to their church’s plan, or to the app’s generated one. This cannot be undone from here.',
-  label:'Remove',danger:true});
- if(!yes)return;
- const b=holder();   /* (P3) read again after the question: the desk may have switched visitor while it was open */
- if(b!==a||!(b.interests&&b.interests.customPlan))return;
+ const kept=a.interests.customPlan;
  delete a.interests.customPlan;
  persist();renderMain();
- toast('Custom plan removed — back to the usual plan');
+ toastUndo('Custom plan removed — back to the usual plan',()=>{
+  if(!a.interests||a.interests.customPlan)return;   /* a new plan was saved since: keep it */
+  a.interests.customPlan=kept;persist();renderMain();
+ });
 }
 
 /** Downloads exactly the JSON parseCustomPlanFile() accepts (D-11), in the style of downloadCSV(). */
