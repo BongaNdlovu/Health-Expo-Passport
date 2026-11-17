@@ -3923,6 +3923,19 @@ function makeServer() {
     await sys(`delete from public.memberships where user_id = $1`, [U.bob]);
     err = await run(schema);
     ok('upgrade: the schema runs a second time without error', !err, err);
+    /* I7: the migration files are the changes since the baseline. Each runs (twice) on a database that has the schema,
+       and each version is listed in schema.sql's MIGRATIONS APPLIED, so a database built from schema.sql reports it. */
+    {
+      const migDir = path.join(__dirname, '..', 'supabase', 'migrations');
+      const migs = fs.readdirSync(migDir).filter(f => /^\d{8}_[a-z0-9_]+\.sql$/.test(f) && !/_baseline\.sql$/.test(f)).sort();
+      let migErr = '';
+      for (const f of migs) { const sql = fs.readFileSync(path.join(migDir, f), 'utf8'); migErr = migErr || await run(sql) || await run(sql); }
+      ok('migrations: every file after the baseline runs twice on top of the schema without error', migs.length > 0 && !migErr, migErr || migs.join(','));
+      const listed = (await sys(`select version from public.schema_migrations`)).map(r => r.version);
+      const versions = fs.readdirSync(migDir).filter(f => /^\d{8}_[a-z0-9_]+\.sql$/.test(f)).map(f => f.replace(/\.sql$/, ''));
+      ok('migrations: schema.sql lists every migration file as applied', versions.every(v => listed.includes(v)) && listed.every(v => versions.includes(v)),
+        'files=' + versions.join(',') + ' listed=' + listed.join(','));
+    }
     ok('upgrade: re-running never re-adds a staff member who was removed', (await sys(`select 1 from public.memberships where user_id = $1`, [U.bob])).length === 0);
     const pk = await sys(`select pg_get_constraintdef(c.oid) d from pg_constraint c where c.conrelid in ('public.attendees'::regclass, 'public.volunteers'::regclass) and c.contype = 'p'`);
     ok('upgrade: badge and volunteer numbers are unique per church (primary key church_id, id)', pk.length === 2 && pk.every(p => p.d === 'PRIMARY KEY (church_id, id)'), JSON.stringify(pk));
@@ -4008,7 +4021,18 @@ function makeServer() {
       const outsider = await as(U.carol, `select * from public.queue_call_next('sugar')`);
       ok('queue (db): another church calling next at the same station takes nobody from this one',
         !outsider.error && outsider.rows.length === 0 && (await sys(`select status from public.queue_entries where id = $1`, [re.rows[0].id]))[0].status === 'waiting');
-      await sys(`delete from public.queue_entries where church_id = $1 and attendee_id in ('EXPO-101', 'EXPO-102')`, [A]);
+      /* G-1: the database allows only the moves the app makes */
+      const d3 = await move(c2.rows[0].id, 'done', ['serving']);
+      const bad = await move(c2.rows[0].id, 'waiting', ['done']);
+      ok('G-1 queue (db): a finished visitor cannot be put back in line by a direct write', !d3.error && !!bad.error && bad.error.code === '23514', bad.error ? bad.error.code : 'allowed');
+      const startAgain = await move(c2.rows[0].id, 'serving', ['done']);
+      ok('G-1 queue (db): …while Start again (done to serving) still works', !startAgain.error && startAgain.rows.length === 1, startAgain.error && startAgain.error.message);
+      const w3 = await ins('EXPO-103', 'sugar');
+      const skip = await move(w3.rows[0].id, 'done', ['waiting']);
+      ok('G-1 queue (db): nobody is marked done without being served (waiting straight to done is refused)', !!skip.error && skip.error.code === '23514', skip.error ? skip.error.code : 'allowed');
+      const leftR = await move(w3.rows[0].id, 'left', ['waiting']), backR = await move(w3.rows[0].id, 'waiting', ['left']);
+      ok('G-1 queue (db): They left, and its Undo, still work', !leftR.error && !backR.error && backR.rows.length === 1, (leftR.error || backR.error || {}).message);
+      await sys(`delete from public.queue_entries where church_id = $1 and attendee_id in ('EXPO-101', 'EXPO-102', 'EXPO-103')`, [A]);
     }
 
     /* ---- the church's own station order (queue_stations / set_queue_stations) ---- */
@@ -4982,6 +5006,7 @@ function makeServer() {
       const qn = async c => (await sys(`select count(*)::int n from public.queue_entries where church_id = $1 and attendee_id in ('EXPO-901', 'EXPO-902', 'EXPO-903')`, [c]))[0].n;
       const addQ = (uid, id, st) => as(uid, `insert into public.queue_entries (attendee_id, station) values ($1, $2) returning *`, [id, st]);
       const q1 = await addQ(U.staffA, 'EXPO-901', 'bp'), q2 = await addQ(U.staffA, 'EXPO-902', 'sugar'), q3 = await addQ(U.adminB, 'EXPO-903', 'bp');
+      await as(U.staffA, `update public.queue_entries set status = 'serving' where id = $1`, [q1.rows[0].id]);   /* called first: done comes after serving (G-1) */
       const upd = await as(U.staffA, `update public.queue_entries set status = 'done' where id = $1 returning *`, [q1.rows[0].id]);
       const rem = await as(U.staffA, `update public.queue_entries set status = 'left' where id = $1 returning *`, [q2.rows[0].id]);
       ok('queue (db): staff still add, finish and remove people from the lines', !q1.error && !q2.error && !upd.error && upd.rows.length === 1 && !rem.error && rem.rows.length === 1,
@@ -6748,6 +6773,26 @@ function makeServer() {
       ok('TST-U3 the app-download snooze is written only after a successful hand-off, and a failure says so',
         fn.indexOf('write(SNOOZE') > fn.indexOf('AppLauncher') && /Could not start the download/.test(fn),
         'write@' + fn.indexOf('write(SNOOZE') + ' launcher@' + fn.indexOf('AppLauncher'));
+    }
+
+    /* F-5: Update with no new worker waiting yet fetches it and hands over, instead of reloading into the old build */
+    {
+      const posted = [], keepNav = sandbox.navigator, keepLoc = sandbox.location;
+      let reloads = 0, updated = 0;
+      const worker = { state: 'installed', postMessage: m => posted.push(m), addEventListener() {} };
+      const reg = { waiting: null, installing: null, update: async () => { updated++; reg.waiting = worker; } };
+      sandbox.navigator = { ...keepNav, serviceWorker: { getRegistration: async () => reg } };
+      sandbox.location = { ...keepLoc, reload: () => { reloads++; } };
+      await g.updateNow();
+      ok('F-5 Update with nothing waiting asks for the new worker and hands over to it',
+        updated === 1 && posted.length === 1 && posted[0].type === 'SKIP_WAITING' && reloads === 0, 'update=' + updated + ' posted=' + JSON.stringify(posted) + ' reloads=' + reloads);
+      reg.waiting = null; reg.update = async () => { updated++; };   /* the server has nothing newer: the plain reload is all there is */
+      posted.length = 0;
+      await g.updateNow();
+      ok('F-5 …and with no new worker at all it reloads as before', posted.length === 0 && reloads === 1, 'posted=' + posted.length + ' reloads=' + reloads);
+      sandbox.navigator = keepNav;
+      /* the 4-second fallback reload of the first Update is still to come: let it hit a stub, then put location back */
+      setTimeout(() => { sandbox.location = keepLoc; }, 4500);
     }
 
     /* TST-A13 (A13): a 429 starts a 5-minute local cooldown that refuses without ringing the server */

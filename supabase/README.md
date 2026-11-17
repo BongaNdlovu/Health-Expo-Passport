@@ -9,6 +9,8 @@ Next.js files in the Supabase quickstart (`utils/supabase/*`, middleware) do not
 
 1. **Create the tables and security rules.** Dashboard → SQL Editor → New query → paste all of
    `supabase/schema.sql` → Run.
+   **Later changes** to a database that is already set up come as files in `supabase/migrations/` (see its README):
+   run only the ones `select version from public.schema_migrations` does not list yet.
 2. **Turn on account creation with email confirmation.** Authentication → Sign In / Providers → Email:
    - **Allow new users to sign up** = ON (the app's *Create an account* page needs it)
    - **Confirm email** = ON (so nobody can register with an address that isn't theirs)

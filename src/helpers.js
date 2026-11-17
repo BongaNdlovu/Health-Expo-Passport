@@ -33,30 +33,66 @@ export const urgentAttended=a=>!!(a.interests&&a.interests.attended&&a.interests
 export const doneCount=a=>['bp','sugar','chol','weight','veg','walk','water','sleep'].filter(k=>k==='bp'?(a.s.sys&&a.s.dia):(a.s[k]!=null)).length;
 export const costOf=k=>PROTOCOLS[k].items.reduce((t,i)=>t+i.daily,0);
 
+/* Every health threshold the app uses, in one place to review. Each list is checked in order and the first band that
+   matches wins; the last entry is what is left. A level is 'flag' (red), 'watch' (amber) or 'ok'. */
+const FLAG='flag',WATCH='watch',OK='ok';
+export const BANDS={
+ /* a random reading; the paper form's range is 4–8. Under 3.0 is ADA level-2 hypoglycaemia. */
+ sugar:[['>=',15,FLAG,'Very high'],['>=',11,FLAG,'High'],['>',8,WATCH,'Above range'],['<',3,FLAG,'Very low'],['<',4,WATCH,'Low'],[OK,'Normal']],
+ /* peak flow as % of the recommended value: the asthma zones, green 80%+, yellow 50–79%, red under 50% (NHLBI) */
+ pef:[['<',50,FLAG,'Low'],['<',80,WATCH,'Reduced'],[OK,'Good']],
+ /* resting pulse: 60–100 is normal for adults (AHA); a fit person can sit lower, so only a fast one is marked */
+ pulse:[['>',100,WATCH,'Fast'],[OK,'Normal']],
+ chol:[['>=',7.5,FLAG,'High'],['>=',5,WATCH,'Above range'],[OK,'Healthy']],
+ bmi:[['>=',35,FLAG,'Obese II'],['>=',30,WATCH,'Obese'],['>=',25,WATCH,'Overweight'],['<',18.5,WATCH,'Under'],[OK,'Healthy']],
+ veg:[['>=',5,OK,'On target'],['>=',3,WATCH,'Low'],[FLAG,'Very low']],
+ walk:[['>=',30,OK,'Active'],['>=',10,WATCH,'Light'],[FLAG,'Sedentary']],
+ water:[['>=',8,OK,'Good'],['>=',5,WATCH,'Low'],[FLAG,'Dehydrated']],
+ /* 7–9 hours is restful: over 9 is checked first, so ">= 7" below it means 7 to 9 */
+ sleep:[['>',9,WATCH,'Long'],['>=',7,OK,'Restful'],['>=',6,WATCH,'Short'],[FLAG,'Deprived']],
+};
+const HITS={'>=':(v,n)=>v>=n,'>':(v,n)=>v>n,'<':(v,n)=>v<n};
+const NONE=()=>[null,'—'];
+function inBands(list,v){
+ for(const b of list){
+  const isLast=b.length===2;
+  if(isLast)return[b[0],b[1]];
+  if(HITS[b[0]](v,b[1]))return[b[2],b[3]];
+ }
+ return NONE();
+}
+/* blood pressure has two numbers: the higher band of the two wins (ESC/ESH; 160/100 is the app's crisis line) */
+function bpBand(v){
+ if(!v||!v.sys||!v.dia)return NONE();
+ if(v.sys>=160||v.dia>=100)return[FLAG,'Crisis'];
+ if(v.sys>=140||v.dia>=90)return[WATCH,'High'];
+ if(v.sys>=130||v.dia>=85)return[WATCH,'Elevated'];
+ return[OK,'Normal'];
+}
+/* by sex, from SEX_RANGE. The paper form's ranges: body fat 15–20% men, 22–28% women; body water 55–65% men, 45–60%
+   women. WHO 2008 waist report: men 94 cm increased risk, 102 substantially increased; women 80 and 88. */
+function sexBand(key,v){
+ const r=SEX_RANGE[key][v&&v.sex];
+ if(!v||v.v==null||!r)return NONE();
+ if(key==='waist'){
+  if(v.v>=r[1])return[FLAG,'High risk'];
+  if(v.v>=r[0])return[WATCH,'Raised'];
+  return[OK,'Healthy'];
+ }
+ if(v.v<r[0])return[WATCH,'Below range'];
+ if(v.v>r[1])return[WATCH,'Above range'];
+ return[OK,'In range'];
+}
+/** [level, label] for a reading: level is 'flag', 'watch', 'ok' or null (nothing recorded). */
 export function cat(key,v){
- const F='flag',W='watch',OK='ok';
- switch(key){
-  case 'bp': if(!v||!v.sys||!v.dia)return[null,'—']; if(v.sys>=160||v.dia>=100)return[F,'Crisis']; if(v.sys>=140||v.dia>=90)return[W,'High']; if(v.sys>=130||v.dia>=85)return[W,'Elevated']; return[OK,'Normal'];
-  /* a random reading; the paper form's range is 4–8. Under 3.0 is ADA level-2 hypoglycaemia. */
-  case 'sugar': if(v==null)return[null,'—']; if(v>=15)return[F,'Very high']; if(v>=11)return[F,'High']; if(v>8)return[W,'Above range'];
-   if(v<3)return[F,'Very low']; if(v<4)return[W,'Low']; return[OK,'Normal'];
-  /* the paper form's ranges: body fat 15–20% men, 22–28% women; body water 55–65% men, 45–60% women */
-  case 'fat': case 'tbw':{ const r=SEX_RANGE[key][v&&v.sex]; if(!v||v.v==null||!r)return[null,'—'];
-   if(v.v<r[0])return[W,'Below range']; if(v.v>r[1])return[W,'Above range']; return[OK,'In range'];}
-  /* WHO 2008 waist report: men 94 cm increased risk, 102 substantially increased; women 80 and 88 */
-  case 'waist':{ const r=SEX_RANGE.waist[v&&v.sex]; if(!v||v.v==null||!r)return[null,'—'];
-   if(v.v>=r[1])return[F,'High risk']; if(v.v>=r[0])return[W,'Raised']; return[OK,'Healthy'];}
-  /* peak flow as % of the recommended value: the asthma zones, green 80%+, yellow 50–79%, red under 50% (NHLBI) */
-  case 'pef': if(v==null)return[null,'—']; if(v<50)return[F,'Low']; if(v<80)return[W,'Reduced']; return[OK,'Good'];
-  /* resting pulse: 60–100 is normal for adults (AHA); a fit person can sit lower, so only a fast one is marked */
-  case 'pulse': if(v==null)return[null,'—']; if(v>100)return[W,'Fast']; return[OK,'Normal'];
-  case 'chol': if(v==null)return[null,'—']; if(v>=7.5)return[F,'High']; if(v>=5)return[W,'Above range']; return[OK,'Healthy'];
-  case 'bmi': if(v==null)return[null,'—']; if(v>=35)return[F,'Obese II']; if(v>=30)return[W,'Obese']; if(v>=25)return[W,'Overweight']; if(v<18.5)return[W,'Under']; return[OK,'Healthy'];
-  case 'veg': if(v==null)return[null,'—']; if(v>=5)return[OK,'On target']; if(v>=3)return[W,'Low']; return[F,'Very low'];
-  case 'walk': if(v==null)return[null,'—']; if(v>=30)return[OK,'Active']; if(v>=10)return[W,'Light']; return[F,'Sedentary'];
-  case 'water': if(v==null)return[null,'—']; if(v>=8)return[OK,'Good']; if(v>=5)return[W,'Low']; return[F,'Dehydrated'];
-  case 'sleep': if(v==null)return[null,'—']; if(v>=7&&v<=9)return[OK,'Restful']; if(v>9)return[W,'Long']; if(v>=6)return[W,'Short']; return[F,'Deprived'];
- }}
+ if(key==='bp')return bpBand(v);
+ const own=(o,k)=>Object.prototype.hasOwnProperty.call(o,k);
+ if(own(SEX_RANGE,key))return sexBand(key,v);
+ if(!own(BANDS,key))return undefined;
+ const list=BANDS[key];
+ if(v==null)return NONE();
+ return inBands(list,v);
+}
 export const SEX_RANGE={fat:{Male:[15,20],Female:[22,28]},tbw:{Male:[55,65],Female:[45,60]},waist:{Male:[94,102],Female:[80,88]}};
 /* peak flow as a whole % of the recommended value from the chart */
 export const pefPct=a=>a.s.pef!=null&&a.s.pefExp?Math.round(a.s.pef/a.s.pefExp*100):null;

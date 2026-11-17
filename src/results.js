@@ -246,36 +246,47 @@ export function planNeeds(a){
    WhatsApp and the printed card use the same, so the visitor goes home with what was explained at the table. */
 const pkOf=a=>state.sugFor===a.id&&PROTOCOLS[state.protocol]?state.protocol:autoProtocol(a);
 /* the visitor's main problem in one plain sentence, with the healthy target */
+/* The sentence at the top of each plan area: what this visitor's reading says, or '' when that area's reading is not
+   the problem. One line per area; problemOf falls back to the general wording. */
+const BP_WORDS={'stage 2 high blood pressure':'very high (stage 2)','stage 1 high blood pressure':'high (stage 1)',
+ 'pre-hypertension':'a little high (pre-hypertension)','normal':'normal'};
+function bodyLines(a){
+ const s=a.s,out=[],b=bmi(a);
+ if(heavy(a))out.push(`BMI ${fmt1(b)}: ${cat('bmi',b)[1].toLowerCase()}. Healthy is 18.5–25.`);
+ if(cholUp(a))out.push(`Cholesterol ${s.chol} mmol/L: ${cat('chol',s.chol)[1].toLowerCase()}. Good is under 5.2.`);
+ const wc=cat('waist',{v:s.waist,sex:a.sex});
+ if(wc[0]&&wc[0]!=='ok')out.push(`Waist ${s.waist} cm: ${wc[1].toLowerCase()}. Healthy is under ${SEX_RANGE.waist[a.sex][0]}.`);
+ const r=SEX_RANGE.fat[a.sex];
+ if(r&&s.fat!=null&&s.fat>r[1])out.push(`Body fat ${s.fat}%: above range. Healthy is ${r.join('–')}%.`);
+ return out.join(' ');
+}
+function waterLine(a){
+ const s=a.s,tw=SEX_RANGE.tbw[a.sex];
+ if(s.water!=null&&s.water<8)return `Water: ${countOf(s.water,'glass','glasses')} a day. The goal is 8.`;
+ if(tw&&s.tbw!=null&&s.tbw<tw[0])return `Body water ${s.tbw}%: below range. Healthy is ${tw.join('–')}%.`;
+ return '';
+}
+const PROBLEM_LINE={
+ bp:a=>a.s.sys&&a.s.dia?`Blood pressure ${a.s.sys}/${a.s.dia}: ${BP_WORDS[bpStage(a.s.sys,a.s.dia)]}. Healthy is under 120/80.`:'',
+ sugar:a=>a.s.sugar!=null?`Blood sugar ${a.s.sugar} mmol/L: ${cat('sugar',a.s.sugar)[1].toLowerCase()}. The healthy range for a random reading is 4–8.`:'',
+ bmi:bodyLines,
+ sleep:a=>a.s.sleep!=null&&a.s.sleep<7?`Sleep ${a.s.sleep} hours a night: too little. Most adults need 7–8.`:'',
+ mind:a=>a.interests&&a.interests.stress?'You asked for help with stress and worry.':'',
+ thin:a=>bmi(a)!=null&&bmi(a)<18.5?`BMI ${fmt1(bmi(a))}: underweight. Healthy is 18.5–25.`:'',
+ veg:a=>a.s.veg!=null&&a.s.veg<5?`Fruit and vegetables: ${countOf(a.s.veg,'serving','servings')} a day. The goal is 5 or more.`:'',
+ move:a=>a.s.walk!=null&&a.s.walk<30?`Exercise: ${countOf(a.s.walk,'minute','minutes')} a day. The goal is 30.`:'',
+ water:waterLine,
+};
+/* an area that is not this visitor's problem still gets a reason to read it */
+function noProblemLine(a){
+ if(planNeeds(a).length)return 'Not your main need today, but these habits help everyone.';
+ if(redFlag(a))return 'A reading is in the danger range today. The team attends to that first; these habits are for afterwards.';
+ if(!anyReading(a))return 'No readings yet. These habits help everyone; the checks show which matter most for you.';
+ return 'Your numbers look fine today. This plan helps keep them that way.';
+}
 export function problemOf(a,pk){
- const s=a.s;
- if(pk==='bp'&&s.sys&&s.dia){
-  const w={'stage 2 high blood pressure':'very high (stage 2)','stage 1 high blood pressure':'high (stage 1)',
-   'pre-hypertension':'a little high (pre-hypertension)','normal':'normal'}[bpStage(s.sys,s.dia)];
-  return `Blood pressure ${s.sys}/${s.dia}: ${w}. Healthy is under 120/80.`;
- }
- if(pk==='sugar'&&s.sugar!=null)return `Blood sugar ${s.sugar} mmol/L: ${cat('sugar',s.sugar)[1].toLowerCase()}. The healthy range for a random reading is 4–8.`;
- if(pk==='bmi'){
-  const out=[],b=bmi(a);
-  if(heavy(a))out.push(`BMI ${fmt1(b)}: ${cat('bmi',b)[1].toLowerCase()}. Healthy is 18.5–25.`);
-  if(cholUp(a))out.push(`Cholesterol ${s.chol} mmol/L: ${cat('chol',s.chol)[1].toLowerCase()}. Good is under 5.2.`);
-  const wc=cat('waist',{v:s.waist,sex:a.sex});
-  if(wc[0]&&wc[0]!=='ok')out.push(`Waist ${s.waist} cm: ${wc[1].toLowerCase()}. Healthy is under ${SEX_RANGE.waist[a.sex][0]}.`);
-  const r=SEX_RANGE.fat[a.sex];
-  if(r&&s.fat!=null&&s.fat>r[1])out.push(`Body fat ${s.fat}%: above range. Healthy is ${r.join('–')}%.`);
-  if(out.length)return out.join(' ');
- }
- if(pk==='sleep'&&s.sleep!=null&&s.sleep<7)return `Sleep ${s.sleep} hours a night: too little. Most adults need 7–8.`;
- if(pk==='mind'&&a.interests&&a.interests.stress)return 'You asked for help with stress and worry.';
- if(pk==='thin'&&bmi(a)!=null&&bmi(a)<18.5)return `BMI ${fmt1(bmi(a))}: underweight. Healthy is 18.5–25.`;
- if(pk==='veg'&&s.veg!=null&&s.veg<5)return `Fruit and vegetables: ${countOf(s.veg,'serving','servings')} a day. The goal is 5 or more.`;
- if(pk==='move'&&s.walk!=null&&s.walk<30)return `Exercise: ${countOf(s.walk,'minute','minutes')} a day. The goal is 30.`;
- if(pk==='water'&&s.water!=null&&s.water<8)return `Water: ${countOf(s.water,'glass','glasses')} a day. The goal is 8.`;
- const tw=SEX_RANGE.tbw[a.sex];
- if(pk==='water'&&tw&&s.tbw!=null&&s.tbw<tw[0])return `Body water ${s.tbw}%: below range. Healthy is ${tw.join('–')}%.`;
- return planNeeds(a).length?'Not your main need today, but these habits help everyone.'
-  :redFlag(a)?'A reading is in the danger range today. The team attends to that first; these habits are for afterwards.'
-  :!anyReading(a)?'No readings yet. These habits help everyone; the checks show which matter most for you.'
-  :'Your numbers look fine today. This plan helps keep them that way.';
+ const line=Object.prototype.hasOwnProperty.call(PROBLEM_LINE,pk)?PROBLEM_LINE[pk](a):'';
+ return line||noProblemLine(a);
 }
 /* What the counsellor must also raise: things no home plan covers, from the paper record and survey. Plain sentences. */
 export function careNotes(a){

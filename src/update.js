@@ -174,7 +174,35 @@ export async function updateNow() {
     setTimeout(() => location.reload(), 4000);
     return;
   }
+  /* No new worker is waiting yet (the version check saw the new build before the browser fetched it). A plain reload
+     would be served the old build from the cache (F-5): fetch the new worker first, then hand over as above. */
+  const fresh = await newWorker();
+  if (fresh) {
+    fresh.postMessage({ type: 'SKIP_WAITING' });
+    setTimeout(() => location.reload(), 4000);
+    return;
+  }
   location.reload();
+}
+/** Asks the browser for the new service worker and waits (at most 8 s) until it is installed; null when there is none. */
+async function newWorker() {
+  try {
+    const sw = navigator.serviceWorker;
+    const reg = sw && await sw.getRegistration();
+    if (!reg) return null;
+    await reg.update();
+    const w = reg.waiting || reg.installing;
+    if (!w) return null;
+    if (w.state !== 'installed') {
+      await new Promise(done => {
+        const stop = setTimeout(done, 8000);
+        w.addEventListener('statechange', () => { if (w.state === 'installed' || w.state === 'redundant') { clearTimeout(stop); done(undefined); } });
+      });
+    }
+    return reg.waiting || null;
+  } catch (e) {
+    return null;                                 /* no worker, or the fetch failed: the plain reload is all that is left */
+  }
 }
 
 /** "Not now" — quiet until the next build, not just until the next screen. */
