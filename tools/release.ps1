@@ -17,10 +17,12 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-function Step([string]$name, [scriptblock]$run) {
-  Write-Host "`n== $name" -ForegroundColor Cyan
+# $label, not $name: a step's script block runs inside this function, so a parameter called $name hid the
+# version ($name) from every step that used it (the 1.7.5 release tagged "vGitHub release v1.7.5" and failed)
+function Step([string]$label, [scriptblock]$run) {
+  Write-Host "`n== $label" -ForegroundColor Cyan
   & $run
-  if ($LASTEXITCODE -ne 0) { throw "$name failed (exit $LASTEXITCODE) - nothing after this step was done" }
+  if ($LASTEXITCODE -ne 0) { throw "$label failed (exit $LASTEXITCODE) - nothing after this step was done" }
 }
 
 # 1. a clean tree

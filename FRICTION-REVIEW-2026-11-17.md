@@ -103,7 +103,26 @@ Queue, Care, Team and Profile were not walked this time.
 **Fixed the same day:** I2 (tests build into a temporary folder), I3 (the build checks everything before it replaces
 `dist/`), I4 for the app (the build writes the CSP meta tag itself; the landing page already had `make-headers.js`),
 I5 (`wrangler` 4.159.0 is a dev dependency; `npm run deploy`, `npm run deploy:landing`), I6 and I8 (`npm run release`,
-with `-Android` for a new app: see `tools/release.ps1`). Still open: I1, I7, I9, I10, I11.
+with `-Android` for a new app: see `tools/release.ps1`).
+
+**Then, also on 2026-11-17:**
+- **I1:** `dist/` is no longer in git (ignored, removed from the index; history unchanged). `npm run release` builds and
+  deploys from the folder; `-Android` puts the APK on a GitHub Release (1.7.4 is `v1.7.4`).
+- **I7:** `supabase/migrations/` with the 2026-11-13 baseline and one migration; `public.schema_migrations` records
+  which have run. `npm test` runs each migration twice in PGlite and checks `schema.sql` lists them all. Applying is
+  still a paste into the SQL editor (the Supabase CLI was not set up).
+- **I9:** `.github/workflows/test.yml` runs `npm test`, typecheck, the build and its checks, `test:hub` and `test:db` on
+  every push. Its first runs found three timing-dependent checks and one leftover read of `dist/`; all are fixed.
+- **I10:** PGlite 0.5.11 is a pinned dev dependency, so the database suites always run (107 + 51 checks, plus the
+  harness's database sections); a missing install now fails instead of skipping.
+- **I11:** 39 finished plans, reviews and gates moved to `docs/archive/`.
+- **U1–U5** fixed as recommended below (U2: a typed reading starts the visitor with Undo; U4: "Whole record on one
+  screen"); each has a harness check and was looked at in the browser at phone size. Of the 26 `confirmAsk` calls,
+  only *Remove custom plan* was reversible on the phone; it now acts with Undo. The others guard a server change,
+  a deletion or a sign-out.
+- **Complexity:** `cat` (68) and `problemOf` (40) are now data tables read by small functions. Their output is identical
+  to the old code over 5,658 and 44,000 input combinations. Functions above 50 went from 2 to 1 (`renderGate`).
+  `account.js` was not split.
 
 `npm test` takes 90 s and passes (1,607 checks). That is acceptable; it is not a friction point.
 
