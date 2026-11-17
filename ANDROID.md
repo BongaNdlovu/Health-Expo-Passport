@@ -36,6 +36,8 @@ Raise `versionCode` and `versionName` in `capacitor/android/app/build.gradle` fo
 
 1. Put `newstart.apk` online: `node tools/build.js` copies the built APK into `dist/newstart.apk`, so after the
    upload it downloads from `https://YOUR-ADDRESS/newstart.apk`. (Or send the file over WhatsApp / USB.)
+   `npm run release -- -Android` does the bump, signing, build and deploy, and keeps each APK on a GitHub Release
+   (`v1.7.4`, …): `dist/` and the APK are not in git.
 2. On the phone open that link in Chrome → download → open the file.
 3. Android asks to allow *Install unknown apps* for Chrome (or Files) once → allow → **Install**.
 4. Open **NEWSTART** and sign in (or practise with demo visitors).

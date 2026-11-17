@@ -30,3 +30,7 @@ verification/shots/home-(new|parity|v[2-4])*.png
 
 # Other coding tools' session scratch
 .zcode/
+
+# The built site: made by `npm run build` and deployed from this folder (npm run release). Not kept in git since
+# 2026-11-17; each Android APK is kept on a GitHub Release instead.
+dist/

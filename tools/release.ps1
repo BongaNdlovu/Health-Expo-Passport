@@ -7,7 +7,9 @@
 #     that, and builds and signs the app with tools/sign-app.ps1 (passwords come from Windows Credential Manager)
 #  4. builds dist/ AFTER signing, so the download on the website is the app just signed (sign-app.ps1 builds before
 #     it signs, which used to leave dist/ one APK behind), then runs the build checks
-#  5. commits dist/ (and index.html, if the build brought its CSP hashes up to date) and pushes the branch
+#  5. commits index.html if the build brought its CSP hashes up to date, and pushes the branch. dist/ is not in git
+#     (since 2026-11-17): it is built here and deployed straight from this folder. -Android also puts the signed APK
+#     on a GitHub Release (v<versionName>), so every app version is kept outside the repository's history
 #  6. deploys the app and the landing page, then reads /version.json from the live site until it shows this build
 #                                                    (-NoDeploy stops after the push)
 param([switch]$Android, [switch]$SkipTests, [switch]$NoDeploy)
@@ -51,13 +53,20 @@ if ($Android) {
 Step 'build dist/' { node tools/build.js }
 Step 'build checks' { npm run test:build }
 
-# 5. commit and push
+# 5. commit what the build changed in the source (only index.html's CSP hashes can change), push, keep the APK
 $version = (Get-Content (Join-Path $root 'dist\version.json') -Raw | ConvertFrom-Json).version
-git add dist index.html
+git add index.html
 git diff --cached --quiet
-if ($LASTEXITCODE -ne 0) { Step 'commit dist/' { git commit -q -m "Rebuild dist from the current source (stamp $version)" } }
-else { Write-Host 'dist/ already matches this build: nothing to commit' }
+if ($LASTEXITCODE -ne 0) { Step 'commit index.html' { git commit -q -m "index.html: inline-script hashes brought up to date by the build (stamp $version)" } }
 Step "push $branch" { git push origin $branch }
+if ($Android) {
+  $apk = Join-Path $root 'capacitor\android\app-release-signed.apk'
+  $asset = Join-Path ([IO.Path]::GetTempPath()) "newstart-$name.apk"
+  Copy-Item $apk $asset -Force
+  if (Get-Command gh -ErrorAction SilentlyContinue) {
+    Step "GitHub release v$name" { gh release create "v$name" $asset --title "Android $name" --notes "Android $name (versionCode $code). The website serves the same file at /newstart.apk." }
+  } else { Write-Host "gh is not installed: attach $asset to a GitHub release v$name by hand" -ForegroundColor Yellow }
+}
 if ($NoDeploy) { Write-Host "`nPushed. Not deployed (-NoDeploy)."; exit 0 }
 
 # 6. deploy and check
