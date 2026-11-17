@@ -640,6 +640,18 @@ g.resetDemo();
   sandbox.Date.now = () => realNow() - fast;
   g.retention.noteServerTime(new Date(realNow()).toISOString(), realNow() - fast, realNow() - fast);
   ok('fast clock: a phone 10 days slow still treats an 8-day-old visit as old', g.retention.visitIsOld(rec), '');
+  /* G-3: the database judges a visit's age by its consent date, so a slow phone must write the database's date */
+  {
+    const ymd = t => { const d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+    const wasTab = g.state.tab;
+    g.state.tab = 'home'; g.state.regOpen = true; g.render();
+    submitReg({ name: 'Slow Phone Visit', badge: 'EXPO-727' });
+    const slow = g.attendees.find(a => a.name === 'Slow Phone Visit');
+    ok('G-3 a phone 10 days slow writes the database\'s date as the consent date, not its own',
+      !!slow && slow.interests.consentOn === ymd(realNow()) && slow.interests.consentOn !== ymd(realNow() - fast), JSON.stringify(slow && slow.interests.consentOn));
+    if (slow) g.attendees.splice(g.attendees.indexOf(slow), 1);
+    g.state.tab = wasTab;
+  }
   sandbox.Date.now = realNow;
   g.retention.noteServerTime(new Date().toISOString(), Date.now(), Date.now());
   Object.assign(C, { user: wasUser, mode: wasMode, synced: { att: syncedBefore, vol: C.synced.vol } });
@@ -1100,6 +1112,60 @@ function makeServer() {
 }
 
 (async () => {
+  /* ---- 16a. the secure store (index.html's inline script), run on its own with Node's real WebCrypto ----
+     F-2: a saved copy it cannot decrypt is cleared AND reported (window.__secureDropped, read by src/main.js).
+     F-6: a storage key that cannot be made reaches the "Secure storage could not start" message instead of hanging. */
+  {
+    console.log('\n16a. Secure store');
+    const storeSrc = /<script id="secureStore">([\s\S]*?)<\/script>/.exec(html)[1];
+    const runStore = async ({ saved = {}, keyFails = false } = {}) => {
+      function Storage() {}
+      const disk = new Map(Object.entries(saved));
+      Storage.prototype.getItem = function (k) { return disk.has(k) ? disk.get(k) : null; };
+      Storage.prototype.setItem = function (k, v) { disk.set(k, String(v)); };
+      Storage.prototype.removeItem = function (k) { disk.delete(k); };
+      Storage.prototype.clear = function () { disk.clear(); };
+      Storage.prototype.key = function (i) { return [...disk.keys()][i] ?? null; };
+      const ls = Object.create(Storage.prototype);
+      Object.defineProperty(ls, 'length', { get: () => disk.size });
+      const kv = new Map();
+      const indexedDB = { open() { const o = {}; setTimeout(() => {
+        o.result = { createObjectStore() {}, transaction() { const t = { objectStore: () => ({
+          get(k) { const r = {}; setTimeout(() => { r.result = kv.get(k); r.onsuccess && r.onsuccess(); }, 0); return r; },
+          put(v, k) { kv.set(k, v); setTimeout(() => t.oncomplete && t.oncomplete(), 0); } }) }; return t; } };
+        o.onsuccess && o.onsuccess(); }, 0); return o; } };
+      const wc = require('crypto').webcrypto;
+      const subtle = keyFails ? { ...wc.subtle, generateKey: () => Promise.reject(new Error('NotSupportedError')) } : wc.subtle;
+      const shown = [];
+      const box = { Storage, localStorage: ls, indexedDB, TextEncoder, TextDecoder, btoa, atob, Uint8Array, Map, Promise, String, setTimeout,
+        crypto: { subtle, getRandomValues: a => wc.getRandomValues(a) }, console: { warn() {}, error() {}, log() {} }, CustomEvent: function () {},
+        dispatchEvent() {}, document: { body: { insertAdjacentHTML: (_w, h) => shown.push(h) } } };
+      box.window = box;
+      vm.createContext(box);
+      vm.runInContext(storeSrc, box);
+      for (let i = 0; i < 100 && !box.__secureReady && !shown.length; i++) await sleep(5);
+      return { box, disk, shown };
+    };
+    const good = await runStore({ saved: { 'newstart.v1': 'plain old copy' } });
+    ok('secure store: control: it starts, and an old plaintext copy is kept and encrypted', good.box.__secureReady === true && good.box.localStorage.getItem('newstart.v1') === 'plain old copy'
+      && /^enc1:/.test(good.disk.get('newstart.v1') || ''), String(good.disk.get('newstart.v1')).slice(0, 12));
+    const junk = 'enc1:' + Buffer.from('twelve bytes of iv and no real cipher text').toString('base64');
+    const lost = await runStore({ saved: { 'newstart.v1': junk } });
+    ok('F-2 a saved copy that cannot be opened is cleared and reported to the app (window.__secureDropped)',
+      lost.box.__secureReady === true && !lost.disk.has('newstart.v1') && Array.isArray(lost.box.__secureDropped) && lost.box.__secureDropped.includes('newstart.v1'),
+      JSON.stringify(lost.box.__secureDropped));
+    ok('F-2 ...and the app says so at start (src/main.js reads window.__secureDropped)',
+      /const savedCopyDropped=\(window\.__secureDropped\|\|\[\]\)\.length>0;\s*if\(savedCopyDropped\)setTimeout\(\(\)=>toast\('The saved copy on this phone could not be opened/.test(srcText));
+    /* without the fix the refusal is never caught: Node would end the whole run on it, so it is held here and the
+       check below reports it */
+    const swallow = () => {};
+    process.on('unhandledRejection', swallow);
+    const noKey = await runStore({ keyFails: true });
+    process.off('unhandledRejection', swallow);
+    ok('F-6 a storage key that cannot be made shows "Secure storage could not start" instead of hanging',
+      !noKey.box.__secureReady && noKey.shown.length === 1 && /Secure storage could not start/.test(noKey.shown[0]), noKey.shown.join('|'));
+  }
+
   /* ---- 16b. the Android app (Capacitor): the same page, booted as the app ----
      Placed before the service-worker tests so it runs even when a later section stops the harness. */
   console.log('\n16b. Android app (Capacitor)');
@@ -3102,6 +3168,24 @@ function makeServer() {
     C0.acct = { ...(keepAcct || {}), membership: { role: 'admin', status: 'approved', church_id: C0.churchId } };
     await g.removeVisitorAsk('EXPO-4102');
     ok('TST-01-V9 an admin still removes a visitor no leader line can claim', !g.attendees.some(a => a.id === 'EXPO-4102') && !srv.tables.attendees.has('EXPO-4102'));
+    /* B-3: the session changes while the removal waits on the server (cloud.gen moves on, as on every sign-out,
+       expiry and switch). The late answer removes nothing from the list the desk holds now. */
+    {
+      srv.tables.attendees.set('EXPO-4103', { ...lateRow, id: 'EXPO-4103', name: 'Late Answer', updated_at: new Date(Date.now() + (srv.seq + 20) * 1000).toISOString() });
+      await g.cloudSync(true);
+      C0.acct = { ...(keepAcct || {}), membership: { role: 'admin', status: 'approved', church_id: C0.churchId } };
+      let releaseB3 = null;
+      srv.holdRpc = n => { if (n !== 'remove_visitor') return null; srv.holdRpc = null; return new Promise(r => { releaseB3 = r; }); };
+      const removing = g.removeVisitorAsk('EXPO-4103');
+      await sleep(30);
+      ok('B-3 setup: the removal is waiting on the server', !!releaseB3 && g.attendees.some(a => a.id === 'EXPO-4103'));
+      C0.gen++;
+      if (releaseB3) releaseB3({ data: true, error: null });
+      await removing;
+      ok('B-3 an answer for a session that is gone removes nothing from the list held now', g.attendees.some(a => a.id === 'EXPO-4103'), g.attendees.map(a => a.id).join(','));
+      g.attendees.splice(g.attendees.findIndex(a => a.id === 'EXPO-4103'), 1); srv.tables.attendees.delete('EXPO-4103'); delete C0.synced.att['EXPO-4103'];
+      await g.cloudSync(true);
+    }
     g.volunteers.splice(g.volunteers.findIndex(v => v.id === 'VOL-9990'), 1);
     await g.cloudSync(true);
     ok('TST-01-V3b a full pull does not bring them back', !g.attendees.some(a => a.id === 'EXPO-4100' || a.id === 'EXPO-4101' || a.id === 'EXPO-4102') && g.attendees.length === before - 3);
@@ -6062,7 +6146,7 @@ function makeServer() {
      (the unique active line, conditional status changes, call-next taking the earliest arrival) */
   {
     const C2 = g.cloud, keep = { client: C2.client, user: C2.user, mode: C2.mode, status: C2.status, churchId: C2.churchId, acct: C2.acct };
-    const qdb = []; let seq = 0, denyDelete = false, quietDelete = false;
+    const qdb = []; let seq = 0, denyDelete = false, quietDelete = false, qHold = null;   /* qHold: a test-held queue read (C-1) */
     const touch =(r, to) => { const t = new Date(Date.now() + (seq++)).toISOString(); r.updated_at = t;
       if (to === 'serving') { r.called_at = t; r.finished_at = null; } if (to === 'waiting') { r.called_at = null; r.finished_at = null; }
       if (to === 'done' || to === 'left') r.finished_at = t; r.status = to; };
@@ -6070,7 +6154,9 @@ function makeServer() {
       insert(row) { b.op = 'insert'; b.row = row; return b; }, update(v) { b.op = 'update'; b.row = v; return b; }, delete() { b.op = 'delete'; return b; },
       select() { return b; }, single() { return b; }, eq(c, v) { b.f.push([c, v]); return b; }, in(c, vs) { b.inF = [c, vs]; return b; },
       gte() { return b; }, order() { return b; }, range() { return b; },
-      then(res, rej) { return Promise.resolve(b.run()).then(res, rej); },
+      then(res, rej) {
+        if (qHold && t === 'queue_entries' && b.op === 'select') { const h = qHold; qHold = null; return h.then(res, rej); }
+        return Promise.resolve(b.run()).then(res, rej); },
       run() {
         if (t !== 'queue_entries') return { data: [], error: null };
         if (b.op === 'delete') {
@@ -6277,6 +6363,24 @@ function makeServer() {
       a88.s.sys = null; a88.s.dia = null;
       g.state.tab = 'queue'; g.state.qStation = 'bp';       /* where the tests after this block expect to be */
     }
+    /* C-1: a queue load whose session ends while it waits writes nothing, and the session that took over gets its own load.
+       The session change is what orphanPass does on every sign-out, expiry and switch: cloud.gen moves on. */
+    {
+      let releaseC1 = null;
+      qHold = new Promise(r => { releaseC1 = r; });
+      const loadC1 = g.queueSync(true);
+      await sleep(20);
+      ok('C-1 setup: the queue load is waiting on the server', !!releaseC1 && g.qs.syncing === true);
+      C2.gen++;
+      const stale = { id: 'q-stale-c1', attendee_id: 'EXPO-990', station: 'bp', status: 'waiting', joined_at: new Date().toISOString(), called_at: null, finished_at: null, updated_at: new Date().toISOString() };
+      releaseC1({ data: [stale], error: null });
+      await loadC1;
+      ok('C-1 the previous session\'s answer adds nothing to the queue', !g.queue.some(e => e.id === 'q-stale-c1') && g.qs.syncing === false, g.queue.map(e => e.id).join(','));
+      for (let i = 0; i < 40 && (g.qs.syncing || !g.qs.ready); i++) await sleep(10);
+      await sleep(30);
+      ok('C-1 ...and the session that took over loads its own line', g.qs.ready && !g.qs.syncing && !g.queue.some(e => e.id === 'q-stale-c1') && g.queue.length > 0,
+        'ready=' + g.qs.ready + ' queue=' + g.queue.length + ' db=' + qdb.length);
+    }
     Object.assign(C2, keep); g.qs.ready = false; g.qs.ch = null; g.queue.length = 0;
   }
   await g.queueJoin('EXPO-117', 'vitals'); g.render();
@@ -6434,6 +6538,32 @@ function makeServer() {
         g.attendees.some(a => a.id === 'EXPO-330') && C.synced.att['EXPO-330'] !== undefined
           && !srv.tables.attendees.has('EXPO-331') && !g.attendees.some(a => a.id === 'EXPO-331'),
         'device=' + g.attendees.map(a => a.id).join(',') + ' toast=' + $el('toastMsg').textContent);
+    }
+
+    /* B-4: a taken badge number is being repaired (the server's copy is read, then a new number is chosen) when the
+       desk signs out. The answer that arrives after the sign-out renumbers nothing and uploads nothing. */
+    {
+      device();
+      registerLocal('Taken Number', 'EXPO-340');
+      srv.tables.attendees.set('EXPO-340', { ...g.attToRow(g.attendees.find(a => a.id === 'EXPO-340')), name: 'Someone Else', created_at: '2020-05-05T00:00:00Z', updated_at: '2020-05-06T00:00:00Z' });
+      let sawInsert = false, releaseB4 = null;
+      srv.holdQ = (op, t, id) => {
+        if (op === 'insert' && t === 'attendees' && id === 'EXPO-340') { sawInsert = true; return null; }
+        if (sawInsert && op === 'select' && t === 'attendees') { srv.holdQ = null; return new Promise(r => { releaseB4 = r; }); }
+        return null;
+      };
+      await signIn();
+      for (let i = 0; i < 40 && !releaseB4; i++) await sleep(25);
+      ok('B-4 setup: the upload hit the taken number and is reading the server\'s copy', !!releaseB4);
+      await g.cloudSignOut();
+      await sleep(30);
+      const taken = srv.tables.attendees.get('EXPO-340');
+      if (releaseB4) releaseB4({ data: taken, error: null });
+      await sleep(150);
+      ok('B-4 after the sign-out the repair renumbers nothing and uploads nothing',
+        !srv.tables.attendees.has('EXPO-341') && !/Another desk gave out/.test($el('toastMsg').textContent) && srv.tables.attendees.get('EXPO-340').name === 'Someone Else',
+        'server=' + [...srv.tables.attendees.keys()].join(',') + ' toast=' + $el('toastMsg').textContent);
+      srv.holdQ = null;
     }
 
     /* TST-E9 (E9): double-tapping Swap while the first swap is in flight must not fire two RPCs */
@@ -7313,7 +7443,10 @@ function makeServer() {
   const buildJs = fs.readFileSync(path.join(rootDir, 'tools', 'build.js'), 'utf8');
   const capId = fs.existsSync(path.join(rootDir, 'capacitor')) ? JSON.parse(fs.readFileSync(path.join(rootDir, 'capacitor', 'capacitor.config.json'), 'utf8')).appId : '';
   ok('Android: the app keeps the package id of the installed app', capId === 'org.newstart.expopassport', capId);
-  ok('Android: the signing key file is referenced and exists', /android\\signing\\newstart\.jks/.test(signApp) && /--ks-key-alias newstart/.test(signApp) && fs.existsSync(path.join(rootDir, 'android', 'signing', 'newstart.jks')));
+  ok('Android: the signing script uses the app\'s signing key', /android\\signing\\newstart\.jks/.test(signApp) && /--ks-key-alias newstart/.test(signApp));
+  /* the key itself is never in git (.gitignore), so only the owner's machine has it; CI checks the rest */
+  if (process.env.CI) console.log('  (CI: the signing key file is not in git, so its presence is checked only on the owner\'s machine)');
+  else ok('Android: the signing key file exists on this machine', fs.existsSync(path.join(rootDir, 'android', 'signing', 'newstart.jks')));
   ok('Android: the secret key files are never copied into dist/', !fs.existsSync(dist('signing')) && !fs.existsSync(dist('newstart.jks')));
   ok('Android: the web site offers the Capacitor app for download', /path\.join\(root, 'capacitor', 'android', 'app-release-signed\.apk'\)/.test(buildJs) && !/assetlinks/.test(buildJs));
   ok('Android: the old web-wrapper app is gone', !fs.existsSync(path.join(rootDir, 'android', 'twa-manifest.json')) && !fs.existsSync(path.join(rootDir, 'tools', 'sign-apk.ps1')) && !fs.existsSync(dist('.well-known/assetlinks.json')));
