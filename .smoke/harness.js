@@ -1290,8 +1290,6 @@ function makeServer() {
         A.updateInit(); await tick(); await tick(); await tick();
         ok('FUP-APK-3 an older version.json without the app\'s version still offers by the website\'s id', !bar.classList.contains('hidden'));
       } finally { appBox.fetch = realFetch; meta.removeAttribute('content'); bar.classList.add('hidden'); }
-      const vj = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'dist', 'version.json'), 'utf8'));
-      ok('FUP-APK-4 version.json names the page inside the built download', !vj.apk || /^[0-9a-f]{10}$/.test(vj.apk.version || ''), JSON.stringify(vj.apk));
     }
     ok('app: the native plugin saves through SecureExport — this app\'s private cache + the share sheet, never public Downloads', /public void saveDownload\(PluginCall call\)/.test(javaSrc)
       && /SecureExport\.save\(/.test(javaSrc) && !/MediaStore\.Downloads\.EXTERNAL_CONTENT_URI/.test(javaSrc));
@@ -5528,6 +5526,8 @@ function makeServer() {
   const shellBefore = fs.readFileSync(path.join(rootDir, 'index.html'), 'utf8');
   execFileSync(process.execPath, [path.join(rootDir, 'tools', 'build.js')], { stdio: 'pipe', env: { ...process.env, NS_DIST: testDist } });
   const dist = f => path.join(testDist, f);
+  { const vj = JSON.parse(fs.readFileSync(dist('version.json'), 'utf8'));   /* moved here: dist/ is not in git (I1) */
+    ok('FUP-APK-4 version.json names the page inside the built download', !vj.apk || /^[0-9a-f]{10}$/.test(vj.apk.version || ''), JSON.stringify(vj.apk)); }
   ok('a test build writes nothing into the project: index.html is untouched', fs.readFileSync(path.join(rootDir, 'index.html'), 'utf8') === shellBefore);
   /* the build checks everything before it replaces the folder: a build that fails leaves the old one standing */
   {
@@ -6894,7 +6894,9 @@ function makeServer() {
       C.acct = { church: { id: 'ch-1', name: 'T', status: 'active' }, membership: { role: 'member', status: 'approved' } };
       srv.rpcs = { my_pledge: () => ({ data: null, error: { message: 'TypeError: Failed to fetch' } }) };
       C.pledge = undefined; C.pledgeErr = false; C.pledgeNetErr = false;
-      g.pledgeHTML(); await sleep(50);
+      g.pledgeHTML();
+      /* wait for the failed load itself, not a fixed 50 ms: a slower machine (CI) failed this once */
+      for (let i = 0; i < 80 && !C.pledgeNetErr && !C.pledgeErr; i++) { await sleep(25); if (C.pledge === undefined && !C.pledgeNetErr) g.pledgeHTML(); }
       const p1 = g.pledgeHTML();
       ok('TST-A20a a network failure on My pledge offers a retry, not the switched-on wording',
         /Check your connection|Try again/.test(p1) && !/not switched on/.test(p1), p1.slice(0, 140));
