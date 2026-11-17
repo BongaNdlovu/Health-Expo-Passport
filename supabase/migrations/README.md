@@ -7,6 +7,7 @@ release that touches the database, so you can see which version a database runs 
 |---|---|
 | `20261113_baseline.sql` | `schema.sql` as of 2026-11-13. The live database was checked against it on 2026-11-17. Do not run it on the live database. |
 | `20261117_queue_move_guard.sql` | G-1: the database refuses queue moves the app never makes (for example waiting straight to done). Also creates `public.schema_migrations`. |
+| `20261118_volunteer_checkin.sql` | G-2: volunteer check-in (`check_in_volunteer`); `checked_in` always follows `status`; an undone check-in sends no registration notice. |
 
 ## Applying a new one
 
