@@ -74,6 +74,35 @@ const PROJ = path.join(__dirname, '..');
   ok('a staff member who leads a station cannot hand the title to someone else by writing lead',
     await refused(U.bob, `update public.volunteers set booth='kids', lead=true where church_id=$1 and id='VOL-9001'`, [B]));
 
+  console.log('\n1b. volunteer check-in on the day (G-2)');
+  await SQL(`insert into public.volunteers (church_id,id,name,status,booth) values ($1,'VOL-9201','Check Bp','registered','bp'),($1,'VOL-9202','Check Kids','registered','kids'),($1,'VOL-9203','Check Prospect','prospect',null)`, [B]);
+  const ci = async id => (await SQL(`select status, checked_in from public.volunteers where church_id=$1 and id=$2`, [B, id]))[0];
+  ok('a direct write cannot check someone in (staff)', await refused(U.bob, `update public.volunteers set status='checkedin' where church_id=$1 and id='VOL-9201'`, [B]));
+  r = await as(U.dave, `select public.check_in_volunteer('VOL-9201', true) as ok`);
+  let c = await ci('VOL-9201');
+  ok('the team leader of their station checks them in, and checked_in follows the status', !r.error && r.rows[0].ok === true && c.status === 'checkedin' && c.checked_in === true, msg(r) + ' ' + JSON.stringify(c));
+  ok('a team leader cannot check in someone at another station', await refused(U.dave, `select public.check_in_volunteer('VOL-9202', true)`));
+  r = await as(U.carol, `select public.check_in_volunteer('VOL-9202', true) as ok`);
+  ok('a church admin checks in anyone with a station', !r.error && (await ci('VOL-9202')).status === 'checkedin', msg(r));
+  r = await as(U.carol, `select public.check_in_volunteer('VOL-9203', true)`);
+  ok('someone who is not registered at a station cannot be checked in', !!r.error && r.error.code === '23514', msg(r));
+  r = await as(U.bob, `update public.volunteers set status='registered' where church_id=$1 and id='VOL-9201' returning id`, [B]);
+  ok('a desk with an out-of-date copy cannot undo a check-in by writing the whole row (placement hint, so it re-reads and retries)',
+    !!r.error && r.error.code === '42501' && /place_guard/.test(String(r.error.hint || '')), msg(r));
+  r = await as(U.bob, `update public.volunteers set name='Check Bp Renamed' where church_id=$1 and id='VOL-9201' returning id`, [B]);
+  ok('…while edits of other details still go through', !r.error && r.rows.length === 1, msg(r));
+  r = await as(U.bob, `update public.volunteers set checked_in=false where church_id=$1 and id='VOL-9201' returning checked_in`, [B]);
+  ok('checked_in cannot be set apart from the status (it always follows it)', !r.error && r.rows[0].checked_in === true, msg(r));
+  const regNotes = async () => (await SQL(`select count(*)::int n from public.notifications where church_id=$1 and kind='register' and title like 'Registered: Check Bp%'`, [B]))[0].n;
+  const before = await regNotes();
+  r = await as(U.dave, `select public.check_in_volunteer('VOL-9201', false) as ok`);
+  c = await ci('VOL-9201');
+  ok('Undo check-in puts them back to registered', !r.error && c.status === 'registered' && c.checked_in === false, msg(r) + ' ' + JSON.stringify(c));
+  ok('…without telling the admins about a "new" registration', (await regNotes()) === before, String(await regNotes()));
+  r = await as(U.carol, `select public.admin_deregister('VOL-9202')`);
+  c = await ci('VOL-9202');
+  ok('deregistering a checked-in volunteer still works and clears the check-in', !r.error && c.status === 'prospect' && c.checked_in === false, msg(r) + ' ' + JSON.stringify(c));
+
   console.log('\n2. team-leader management by a church admin who is not on the old staff list');
   await SQL(`update public.volunteers set booth='logistics' where church_id=$1 and id='VOL-9104'`, [B]);
   r = await as(U.carol, `select public.set_station_lead('logistics','VOL-9104')`);

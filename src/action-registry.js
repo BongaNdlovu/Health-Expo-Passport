@@ -23,7 +23,7 @@ import { clearVisitorSearch, filterVisitors, onPrayer, onStationCommit, onStatio
 import { applyReading, cancelReg, confirmResults, editReadings, finishVisit, goVisit, metricBack, newVisitFrom, onChronicList, onHeight, openMetric, pickSex, recordConsent, setAnswer, setMyStation, showGuardian, consentNeed, switchTo, toggleOptin, toggleTick } from './visitor.js';
 import { customPlanClear, customPlanEdit, customPlanFromCurrent, customPlanImport, customPlanSave, customPlanTemplate } from './customPlan.js';
 import { closeVolReg, closeWhatsApp, exportVolCSV, logExpoEntry, openEmail, openSwitcher, openVolModal, openVolReg, openVolSwitcher, openWhatsApp, pickSecondBooth, pickVolunteer, printCard, removeExpoEntry, saveExpoEntry, saveVolunteer, sendEmail, sendWhatsApp, setVol, setVolTab, startNewVolunteer, switchToVol, toggleDraftBooth, toggleDraftList, toggleShift } from './volunteer.js';
-import { adminDeregister, adminUnpledge, closeSwitcher, closeVolModal, closePlaceSheet, filterSwitcher, filterVolSwitcher, openWAFor, openPlaceSheet, pickAttendee, pickPledge, placeLead, placeMove, placeRelease, placeSwap, recycleBadge, registerNew, setSwitchMode, showAllVol } from './volunteer.js';
+import { adminDeregister, adminUnpledge, closeSwitcher, closeVolModal, closePlaceSheet, filterSwitcher, filterVolSwitcher, openWAFor, openPlaceSheet, pickAttendee, pickPledge, placeCheckIn, placeLead, placeMove, placeRelease, placeSwap, recycleBadge, registerNew, setSwitchMode, showAllVol } from './volunteer.js';
 
 
 /* The action registry: one entry per data-action name. Plain functions are called with (element, event)
@@ -166,6 +166,7 @@ export const ACTION_MAP = {
   'place-swap': el => placeSwap(el.dataset.args),
   'place-release': () => placeRelease(),
   'place-lead': () => placeLead(),
+  'place-checkin': el => placeCheckIn(el.dataset.args === 'on'),
 
   /* -- a team leader's own team (account panel) -- */
   'team-add': el => teamAdd(el.dataset.args),

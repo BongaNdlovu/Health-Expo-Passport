@@ -282,6 +282,7 @@ export const HELP_PAGES = [
     { name: 'Placement board', role: 'lead', items: [
       ['Opening it', 'With placement mode on, tap a volunteer in the Team list to open the placement board.'],
       ['Move, Swap, Release', 'Move a helper to another booth, swap two helpers, or release a helper from a booth.'],
+      ['Check in', 'On the day, Check in ✓ marks a registered volunteer as arrived at their station; the message offers Undo, and Undo check-in is there afterwards too. Admins, and the team leader of that station.', 'lead'],
       ['Lead', 'Makes you the leader of a booth.', 'admin'],
       ['Deregister', 'Takes a registered or checked-in volunteer off the expo: their station, shift and check-in are cleared and their pledge stays on the team list. It asks first, and warns when they are already checked in.', 'admin'],
       ['Remove pledge', 'Takes the pledge back for good: the volunteer comes off the team list. They can pledge again later.', 'admin'],

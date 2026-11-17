@@ -39,7 +39,7 @@ export const VOL_LEVEL_MAX=EXPO_TOTAL;
 export const volLevel=v=>{const e=volExpos(v);return e>0?Math.min(e,VOL_LEVEL_MAX):0;};
 export const volYears=v=>v.since?Math.max(0,new Date().getFullYear()-Number(String(v.since).slice(0,4))):0;
 export const needsRegistration=v=>v.status==='prospect';
-const checkedInToday=v=>v.status==='checkedin'||v.checkedIn===true;
+const checkedInToday=v=>v.status==='checkedin';   /* status is the one record of a check-in (G-2) */
 export const helpersAt=k=>volunteers.filter(v=>v.booth===k&&!needsRegistration(v));
 const boothNeeds=k=>{const b=BOOTH(k);return b?b.cap:0;};
 
@@ -421,6 +421,8 @@ function placeSheetHTML(){
       <span class="min-w-0 flex-1 truncate text-[11.5px] font-bold text-[#123033]">${esc(x.name)}</span>
       <span class="flex-none text-[9.5px] font-bold text-[#6b8187]">${x.booth?esc(boothLabel(x.booth)):'unplaced'}</span></button>`).join('')||'<p class="px-1 py-2 text-[11px] text-[#6b8187]">Nobody to swap with.</p>'}
    </div>
+   ${v.status==='registered'?`<button data-action="place-checkin" data-args="on" class="btn btn-primary mt-3 w-full py-2.5 text-xs">Check in ${esc(firstName(v.name))} ✓</button>`
+    :v.status==='checkedin'?'<button data-action="place-checkin" data-args="off" class="btn btn-glass mt-3 w-full py-2 text-xs">Undo check-in</button>':''}
    <div class="mt-3 flex gap-2">
     <button data-action="place-release" class="btn btn-glass flex-1 py-2 text-xs text-rose-700">Take off this station</button>
     ${isAdm?`<button data-action="place-lead" class="btn btn-soft btn-tagged flex-1 py-2 text-xs">${v.lead?'Remove ★ leader':'Make ★ team leader'}${roleTag('admin')}</button>`:''}
@@ -493,6 +495,28 @@ export async function placeRelease(){
  if(!r)return;
  await afterPlace();rerenderPlace();
  if(from)toastUndo(`${firstName(v.name)} taken off ${boothLabel(from)}`,()=>volRpc('place_volunteer',{p_vol:v.id,p_booth:from}).then(async r2=>{if(r2){await afterPlace();rerenderPlace();}}));
+}
+/* G-2: check-in on the day, by an admin or the team leader of the volunteer's station (check_in_volunteer in
+   schema.sql). Practice mode changes the copy on this phone only. Checking in offers Undo. */
+async function setCheckIn(id,on){
+ const v=volunteers.find(x=>x.id===id);if(!v)return false;
+ if(on&&!(v.booth&&v.status==='registered'))return false;
+ if(!on&&v.status!=='checkedin')return false;
+ if(!cloud.user){v.status=on?'checkedin':'registered';v.checkedIn=on;persist();}
+ else{
+  const r=await volRpc('check_in_volunteer',{p_vol:id,p_on:on});
+  if(!r)return false;
+  await afterPlace();
+ }
+ rerenderPlace();render();
+ return true;
+}
+export async function placeCheckIn(on){
+ const v=placedVol();if(!v)return;
+ const id=v.id,name=firstName(v.name);
+ if(!await setCheckIn(id,on))return;
+ if(on)toastUndo(`${name} checked in ✓`,()=>{setCheckIn(id,false);});
+ else toast(`${name}: check-in undone`);
 }
 export async function placeLead(){
  const v=placedVol();if(!v)return;

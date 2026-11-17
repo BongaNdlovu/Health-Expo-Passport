@@ -861,6 +861,22 @@ $el('in-sugar').value = 'abc'; g.onStationCommit('EXPO-042', 'sugar', $el('in-su
 ok('non-numeric entry with no previous value leaves the field empty', dm.s.sugar === null);
 $el('in-sugar').value = ''; g.onStationInput('EXPO-042', 'sugar', $el('in-sugar'));
 ok('empty entry stays empty (not zero)', dm.s.sugar === null);
+/* E-5: typing over a reading keeps the old one until a valid new number is in, or the field is left */
+{
+  const box = $el('in-sys'), type = v => { box.value = v; g.onStationInput('EXPO-042', 'sys', box, 70, 210); };
+  dm.s.sys = 142;
+  type(''); type('1');
+  ok('E-5 while a new number is half typed, the old reading stays stored', dm.s.sys === 142, 'sys=' + dm.s.sys);
+  type('13'); box.value = '13'; g.onStationCommit('EXPO-042', 'sys', box, 70, 210, 1);
+  ok('E-5 leaving the field with an impossible number keeps the old reading, as the message says', dm.s.sys === 142 && /Previous value 142 kept/.test($el('warn-sys').innerHTML), 'sys=' + dm.s.sys + ' | ' + $el('warn-sys').innerHTML);
+  type('1'); type('13'); type('136'); box.value = '136'; g.onStationCommit('EXPO-042', 'sys', box, 70, 210, 1);
+  ok('E-5 a complete new number replaces it', dm.s.sys === 136, 'sys=' + dm.s.sys);
+  type(''); box.value = ''; g.onStationCommit('EXPO-042', 'sys', box, 70, 210, 1);
+  ok('E-5 emptying the field clears the reading on purpose, and offers Undo', dm.s.sys === null && !$el('toastUndo').classList.contains('hidden') && /136 cleared/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+  $el('toastUndo').onclick();
+  ok('E-5 …and Undo puts it back', dm.s.sys === 136, 'sys=' + dm.s.sys);
+  dm.s.sys = null;
+}
 ok('0 servings of veg still counts as recorded', (() => { dm.s.veg = 0; return g.doneCount(dm) >= 1 && dm.s.veg === 0; })());
 ok('BP 160/80 is a red flag', g.cat('bp', { sys: 160, dia: 80 })[0] === 'flag');
 ok('BP 120/80 is normal', g.cat('bp', { sys: 120, dia: 80 })[0] === 'ok');
@@ -1185,6 +1201,24 @@ function makeServer() {
     process.off('unhandledRejection', swallow);
     ok('F-6 a storage key that cannot be made shows "Secure storage could not start" instead of hanging',
       !noKey.box.__secureReady && noKey.shown.length === 1 && /Secure storage could not start/.test(noKey.shown[0]), noKey.shown.join('|'));
+  }
+
+  /* ---- 16a2. volunteer check-in on the day (G-2), in practice mode (this phone only) ---- */
+  {
+    console.log('\n16a2. Volunteer check-in');
+    const v = g.volunteers.find(x => x.status === 'registered' && x.booth);
+    const keepTab = g.state.tab;
+    g.openPlaceSheet(v.id);
+    ok('G-2 the placement sheet offers Check in for a registered volunteer at a station', /data-action="place-checkin" data-args="on"/.test($el('placeBody').innerHTML));
+    const btn = id => ({ dataset: { action: 'place-checkin', args: id }, tagName: 'BUTTON', hasAttribute: () => false, closest() { return this; } });
+    g.dispatch(btn('on'), { type: 'click', target: btn('on') }); await sleep(20);
+    ok('G-2 Check in marks them checked in, with Undo', v.status === 'checkedin' && v.checkedIn === true && !$el('toastUndo').classList.contains('hidden') && /checked in ✓/.test($el('toastMsg').textContent), v.status + ' | ' + $el('toastMsg').textContent);
+    ok('G-2 …and the sheet now offers Undo check-in instead', /data-args="off"[^>]*>Undo check-in/.test($el('placeBody').innerHTML));
+    $el('toastUndo').onclick(); await sleep(20);
+    ok('G-2 Undo puts them back to registered', v.status === 'registered' && v.checkedIn === false, v.status);
+    const p = g.volunteers.find(x => x.status === 'prospect');
+    if (p) { g.openPlaceSheet(p.id); ok('G-2 someone not registered is not offered Check in', !/place-checkin/.test($el('placeBody').innerHTML)); }
+    g.closePlaceSheet(); g.state.tab = keepTab;
   }
 
   /* ---- 16b. the Android app (Capacitor): the same page, booted as the app ----

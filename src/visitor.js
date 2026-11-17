@@ -5,7 +5,7 @@ import { INT } from './data.js';
 import { $ } from './helpers.js';
 import { A, SEX_RANGE, bmi, cat, chipClass, chipNote, chipOf, clamp, disp, doneCount, esc, firstName, fmt1, initials, redFlag } from './helpers.js';
 import { EXPO_UPCOMING, EXTRA_DEFS, HEARD, MED_YN, SEMINARS, STATION_DEFS, SURVEY, attendees, hueOf, state } from './data.js';
-import { JOURNEY, JOURNEY_LABEL, jelly, render, renderMain, toast } from './shell.js';
+import { JOURNEY, JOURNEY_LABEL, jelly, render, renderMain, toast, toastUndo } from './shell.js';
 import { planFor, viewMetric } from './results.js';
 import { followupPicker } from './churchPlans.js';
 import { cloud, migrateAttendee, persist, seedDemo } from './state.js';
@@ -957,28 +957,47 @@ function readingWarn(k,msg,fix){
  el.innerHTML=msg?esc(msg)+(fix!=null?` <button type="button" class="st-fix" data-action="reading-apply" data-args="${esc(k)}" data-fix="${esc(fix)}">Use ${disp(fix)}</button>`:''):'';
 }
 /* while typing: save only a complete, possible value; a half-typed "14" (on the way to 140) is simply not saved yet */
+/* E-5: the reading as it was before this edit began, per visitor and field. While someone types, a half-typed or
+   impossible number never wipes it: the stored value is either a valid new number or still the old one. Leaving
+   the field settles it (onStationCommit). */
+const editStart=new Map();
+const readingName=k=>k==='sys'?'Blood pressure (top)':k==='dia'?'Blood pressure (bottom)'
+ :(STATION_DEFS.concat(EXTRA_DEFS).find(y=>y.k===k)||{}).label||k;
 export function onStationInput(id,k,el,min,max){
  const a=attendees.find(x=>x.id===id); if(!a)return;
+ const key=id+'|'+k;
+ if(!editStart.has(key))editStart.set(key,a.s[k]);
  const raw=el.value.trim(),v=parseReading(raw);
- a.s[k]=raw!==''&&!isNaN(v)&&v>=min&&v<=max?v:null;
- if(a.s[k]!=null||raw==='')readingWarn(k,'');
+ const valid=raw!==''&&!isNaN(v)&&v>=min&&v<=max;
+ a.s[k]=valid?v:editStart.get(key);
+ if(valid||raw==='')readingWarn(k,'');
  updateScreenMeta();
 }
 /* on leaving the field: a wrong value is never changed into a different one. It is not saved — the previous reading
    stays whatever it was (V6) — and the volunteer is told why. A missed decimal point (72 for 7.2) is offered as a
-   one-tap fix. */
+   one-tap fix. Emptying the field clears the reading on purpose, with Undo (E-5). */
 export function onStationCommit(id,k,el,min,max,step){
  const a=attendees.find(x=>x.id===id); if(!a)return;
- const raw=el.value.trim(),v=parseReading(raw),old=a.s[k];
+ const key=id+'|'+k;
+ const old=editStart.has(key)?editStart.get(key):a.s[k];
+ editStart.delete(key);
+ const raw=el.value.trim(),v=parseReading(raw);
  const kept=old!=null?` Previous value ${disp(old)} kept.`:'';    /* (V6) only a refusal mentions what is kept */
- if(raw===''){a.s[k]=null;readingWarn(k,'');}
- else if(isNaN(v))readingWarn(k,`“${raw}” is not a number. Type digits only, for example ${disp(step<1?5.5:120)}.${kept}`);
+ if(raw===''){
+  a.s[k]=null;readingWarn(k,'');
+  if(old!=null)toastUndo(`${readingName(k)}: ${disp(old)} cleared`,()=>{
+   if(a.s[k]!=null)return;                                  /* a new reading was typed since: keep it */
+   a.s[k]=old;persist();renderMain();
+  });
+ }
+ else if(isNaN(v)){a.s[k]=old;readingWarn(k,`“${raw}” is not a number. Type digits only, for example ${disp(step<1?5.5:120)}.${kept}`);}
  else if(v<min||v>max){
+  a.s[k]=old;
   const d=Math.round(v)/10,fix=step<1&&d>=min&&d<=max?d:null;
   readingWarn(k,`${disp(v)} cannot be right (possible: ${min}–${max}). Not saved: check and type it again.${fix!=null?` Did you mean ${disp(fix)}?`:''}${kept}`,fix);
  }else{a.s[k]=v;el.value=disp(v);readingWarn(k,'');}
  crossCheck(a);updateScreenMeta();
- if(a.s[k]!=null)qStartAsk(id,k);      /* still waiting in this line? offer to start them (queue.js) */
+ if(a.s[k]!=null)qStartAsk(id,k);      /* a reading for someone still waiting in this line starts them (queue.js) */
 }
 /* height lives on the passport, not in the readings; the Weight station can add or correct it */
 export function onHeight(id,el){

@@ -114,7 +114,7 @@ export function migrateVolunteer(v){
    date:String(h.date==null?'':h.date).slice(0,10),booth:String(h.booth==null?'':h.booth).slice(0,40),hours:numOrNull(h.hours)||0};
  });
  if(!STATUS_UI[o.status])o.status='prospect';
- if(o.status==='checkedin')o.checkedIn=true;
+ o.checkedIn=o.status==='checkedin';   /* the flag only mirrors the status (G-2) */
  return /** @type {import('./types.js').Volunteer} */ (/** @type {unknown} */ (o));
 }
 export function loadPersisted(){
