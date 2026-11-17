@@ -999,7 +999,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 function makeServer() {
   const srv = { tables: { attendees: new Map(), volunteers: new Map() }, offline: false, staff: true, goodPassword: 'right',
     calls: [], handlers: [], authCb: null, seq: 0, maxRows: 1000, users: new Map(), signupMode: 'confirm',
-    holdQ: null, canPlace: null, guardHits: [] };
+    holdQ: null, canPlace: null, guardHits: [], RUN: Symbol('run the held request') };
   srv.reset = () => { srv.tables.attendees.clear(); srv.tables.volunteers.clear(); srv.offline = false; srv.staff = true; srv.calls.length = 0; srv.users.clear(); srv.signupMode = 'confirm'; srv.rpcs = null; srv.rtState = '';
     srv.holdQ = null; srv.canPlace = null; srv.guardHits = []; };
   /* a handler hears its own event type ('*' hears all), like Realtime; the server-side church filter is recorded
@@ -1023,7 +1023,7 @@ function makeServer() {
     then(res, rej) { return this.run().then(res, rej); }
     async run() {
       srv.calls.push(this.op + ':' + this.t + (this.cols ? ':' + this.cols : '') + (this.row ? ':' + this.row.id : '') + (this.rng ? ':range' + this.rng[0] : '') + (this.gte_.length ? ':since' : '') + (this.in_.length ? ':in' + this.in_[0][1].length : ''));
-      if (srv.holdQ) { const h = srv.holdQ(this.op, this.t, Array.isArray(this.row) ? this.row.map(r => r.id).join(',') : this.row && this.row.id); if (h) return h; }   /* a test-held request never settles until release */
+      if (srv.holdQ) { const h = srv.holdQ(this.op, this.t, Array.isArray(this.row) ? this.row.map(r => r.id).join(',') : this.row && this.row.id); if (h) return h.then(r => r === srv.RUN ? this.run() : r); }   /* a test-held request never settles until release; released with srv.RUN it does the real work */
       if (srv.offline) return { data: null, error: { message: 'TypeError: Failed to fetch' } };
       const tbl = srv.tables[this.t];
       if (!tbl) return { data: null, error: { code: 'PGRST205', message: 'Could not find the table in the schema cache' } };
@@ -2196,7 +2196,7 @@ function makeServer() {
   ok('FUP-H5-1 setup: the upload is parked on the stale copy', C.busy && C.prog && C.prog.total === 2, JSON.stringify(C.prog));
   const sp5 = g.cloudSignOut();                            /* the desk itself signs out while the push is parked */
   await sleep(40);
-  release5({ data: null, error: null });                   /* the held write lands */
+  release5(srv.RUN);                                       /* the held write lands: the fake does the real write now */
   await Promise.all([pass5.catch(() => {}), sp5]);
   ok('FUP-H5-2 the orphaned push wrote nothing after the sign-out and the gate stays signed out',
     C.status === 'signedout' && !C.user && !srv.tables.attendees.has('EXPO-322') && C.synced.att['EXPO-322'] === undefined,
