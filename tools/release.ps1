@@ -1,4 +1,4 @@
-# One release, in the order it has to happen:   npm run release            (website only)
+﻿# One release, in the order it has to happen:   npm run release            (website only)
 #                                                npm run release -- -Android  (a new Android app too)
 #
 #  1. refuses to start unless every change is committed (a release ships what is in git, nothing else)
@@ -12,7 +12,7 @@
 #     on a GitHub Release (v<versionName>), so every app version is kept outside the repository's history
 #  6. deploys the app and the landing page, then reads /version.json from the live site until it shows this build
 #                                                    (-NoDeploy stops after the push)
-param([switch]$Android, [switch]$SkipTests, [switch]$NoDeploy)
+param([switch]$Android, [switch]$SkipTests, [switch]$NoDeploy, [switch]$NoApk)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
@@ -52,6 +52,12 @@ if ($Android) {
 }
 
 # 4. the website, built after signing
+if (-not $Android -and -not $NoApk -and -not $NoDeploy) {
+  $apkCheck = Join-Path $root 'capacitor\android\app-release-signed.apk'
+  if (-not (Test-Path $apkCheck)) {
+    throw "Refusing to deploy without capacitor\android\app-release-signed.apk — deploying without it removes /newstart.apk from the live site (H-1). Copy or sign the APK first, or pass -NoApk explicitly."
+  }
+}
 Step 'build dist/' { node tools/build.js }
 Step 'build checks' { npm run test:build }
 

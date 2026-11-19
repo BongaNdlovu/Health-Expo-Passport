@@ -451,7 +451,8 @@ function qGate(){
  return false;
 }
 /* one queue change at a time per desk; a tap while one is still saving says so instead of vanishing */
-async function qRun(fn){if(qs.busy){toast('One moment — the last queue change is still saving');return false;}qs.busy=true;try{await fn();}finally{qs.busy=false;}return true;}
+let leaveQueued=false;
+async function qRun(fn){if(qs.busy){toast('One moment — the last queue change is still saving');return false;}qs.busy=true;try{await fn();}finally{qs.busy=false;if(leaveQueued&&qLive()&&qCan()){leaveQueued=false;setTimeout(flushLeaves,0);}}return true;}
 function qFail(err){
  console.warn('queue:',err);
  const msg=String((err&&err.message)||err||'');
@@ -543,12 +544,11 @@ export async function qStartAsk(id, k) {
  if (!e || e.status !== 'waiting') return;
  const key = `${id}|${st}`;
  if (qAsked.has(key)) return;
- qAsked.set(key, 'started');
  if (qFree(st) <= 0) {
   toast(`All places at ${QUEUE_SHORT[st]} are busy — ${firstName(qName(id))} stays in line`);
   return;
  }
- await queueStart(id, st);
+ if (await queueStart(id, st)) qAsked.set(key, 'started');
 }
 /* Opening Results, Plan or Send home: the check stations still serving this visitor are finished and they move on
    (Send home also finishes the counselling and optional stops). */
@@ -620,7 +620,9 @@ function leaveAdd(att){
  if(leaving)leaveAgain.add(att);   /* added while a flush runs: the flush's merge must keep it even if it was in its snapshot */
  if(!l.includes(att))l.push(att);
  if(l.length>200)l.splice(0,l.length-200);
- return leaveWrite(o);   /* (Q4) a save that failed is not a success */
+ const ok=leaveWrite(o);   /* (Q4) a save that failed is not a success */
+ if(ok)leaveQueued=true;
+ return ok;
 }
 const qLabels=list=>{const n=list.map(e=>QUEUE_SHORT[e.station]||e.station).filter((x,i,a)=>a.indexOf(x)===i);return n.length>1?n.slice(0,-1).join(', ')+' and '+n[n.length-1]+' lines':n[0]+' line';};
 /* What to add to the "visit complete" message: '' when they were in no line. */
@@ -709,15 +711,16 @@ export function queueConfirmGaps(a){
 /* Start: the visitor is now with this volunteer. Not in the line yet (a walk-up): they are added, then started. Undo for 6
    seconds: back in line (same place), or out of the line again for a walk-up. */
 export async function queueStart(att,st){
- if(!qGate())return;
+ if(!qGate())return false;
  let e=qActive(att,st),added=false;
- if(!e){if(!await queueJoin(att,st,null))return;e=qActive(att,st);added=true;}
- if(!e||e.status!=='waiting')return;
+ if(!e){if(!await queueJoin(att,st,null))return false;e=qActive(att,st);added=true;}
+ if(!e||e.status!=='waiting')return false;
  await qMove(e.id,'serving',['waiting'],null);
  const d=queue.find(x=>x.id===e.id);
- if(!d||d.status!=='serving')return;
+ if(!d||d.status!=='serving')return false;
  toastUndo(`${firstName(qName(att))}: ${QUEUE_SHORT[st]} started`,()=>{queueUndoStart(e.id,added);});
  qAfter();
+ return true;
 }
 async function queueUndoStart(id,added){
  if(!qGate())return;
@@ -896,14 +899,15 @@ export function queueRemove(id){
  qs.confirm='';
  qMove(id,'left',['waiting','serving'],e=>`${firstName(qName(e.attendeeId))} removed from the line`);
 }
-/* a visitor removed from the list leaves every line they are still in: queue_entries has no link to the visitor row */
+/* a visitor removed from the list leaves every line they are still in: queue_entries has no link to the visitor row.
+   If the queue cannot change right now (loading, offline, errored or busy), note the badge for flushLeaves (B-8). */
 export async function queueLeaveFor(attendeeId){
- const open=queue.filter(e=>e.attendeeId===attendeeId);
+ const mode=qMode(),open=qOpenFor(attendeeId);
+ if(mode!=='demo'&&!qCan()){leaveAdd(attendeeId);return;}
  for(const entry of open){
-  const isOpen=entry.status==='waiting'||entry.status==='serving';
-  if(!isOpen)continue;
   await qMove(entry.id,'left',['waiting','serving'],null);   /* null: no toast per line; the caller says what happened */
  }
+ if(mode!=='demo'&&qOpenFor(attendeeId).length)leaveAdd(attendeeId);
 }
 /* Finished and removed entries are history: they only feed the "Finished" count and the average time per person.
    Clearing takes them out of the queue for good, for every desk; anyone still waiting or being served stays. Live, it
@@ -940,7 +944,7 @@ export async function queueClearHistory(){
    for(let i=queue.length-1;i>=0;i--)if(gone.has(queue[i].id))queue.splice(i,1);
    cleared=data.length;
   }
-  if(cleared)toast(`${cleared} finished ${cleared===1?'entry':'entries'} cleared`);
+  if(cleared){if(!qOverCount())qs.histCut=false;toast(`${cleared} finished ${cleared===1?'entry':'entries'} cleared`);}
   else refused=true;
  });
  /* the database deletes nothing for someone who is not a church admin, and says nothing about it: read the line
@@ -1180,8 +1184,10 @@ export async function qStationsSave(){
    label:'Save anyway',danger:true});
   if(!yes)return;
  }
+ const gen=cloud.gen;
  qs.editBusy=true;qStationsRender();
  const r=await (async()=>{try{return await cloud.client.rpc('set_queue_stations',{p_stations:list});}catch(e){return {error:e};}})();
+ if(gen!==cloud.gen)return;
  qs.editBusy=false;
  if(r.error){
   const msg=String(r.error.message||''),code=String(r.error.code||'');

@@ -8063,6 +8063,131 @@ function makeServer() {
     ok('help: the nearly-full message is the code\'s (about 9,000 visitors)', help.includes('Saved copy is nearly full') && /Saved copy is nearly full — sync now and remove old visitors/.test(srcText) && /One device holds about 9,000/.test(srcText));
   }
 
+  /* ---- 2026-11-19 audit regression checks ---- */
+  {
+    console.log('\nAudit 2026-11-19 regression checks');
+    const C = g.cloud;
+
+    /* B-7: cloudPush refuses while signingOut is true */
+    {
+      const prevUser = C.user, prevClient = C.client, prevSO = C.signingOut, prevBlocked = C.blocked, prevSt = C.status;
+      C.user = { id: 'u-b7', email: 'b7@ex.org' }; C.client = { from() { throw new Error('must not push during signOut'); } };
+      C.blocked = false; C.signingOut = true; C.status = 'signedout';
+      await g.cloudPush();
+      ok('B-7 cloudPush does not start while cloud.signingOut is true', C.status === 'signedout' && !C.busy, C.status);
+      C.user = prevUser; C.client = prevClient; C.signingOut = prevSO; C.blocked = prevBlocked; C.status = prevSt;
+    }
+
+    /* A-7 & D-5: manual cloudSignOut stops notifChannel and clears stale notifications */
+    {
+      g.resetDemo();
+      const removed = [];
+      C.client = { auth: { signOut: async () => ({}), startAutoRefresh() {}, stopAutoRefresh() {} }, removeChannel: ch => removed.push(ch) };
+      C.user = { id: 'u-a7', email: 'a7@ex.org' };
+      C.notifChannel = { topic: 'newstart-notifs' };
+      C.notifs = [{ id: 99, title: 'Secret A', body: '', kind: 'join', created_at: '2026-11-19T00:00:00Z', read_at: null }];
+      C.notifOpen = true;
+      await g.cloudSignOut(true);
+      ok('A-7/D-5 cloudSignOut stops notifChannel, clears cloud.notifs and closes notifSheet',
+        C.notifChannel === null && C.notifs === undefined && C.notifOpen === false && removed.length === 1,
+        'ch=' + !!C.notifChannel + ' notifs=' + typeof C.notifs + ' open=' + C.notifOpen);
+    }
+
+    /* A-9 & C-7: session expiry clears viewEmail; in-place account switch resets queue and viewEmail */
+    {
+      C.user = { id: 'u-a9', email: 'first@ex.org' }; C.viewEmail = 'first@ex.org';
+      g.queue.push({ id: 'Q1', attendeeId: 'EXPO-001', station: 'bp', status: 'waiting', joinedAt: Date.now(), calledAt: 0, finishedAt: 0 });
+      g.qs.ready = true;
+      g.cloudAuthEvent('SIGNED_OUT', null);
+      ok('A-9 session expiry clears cloud.viewEmail', C.viewEmail === '', C.viewEmail);
+      C.user = { id: 'u-c7-1', email: 'one@ex.org' }; C.viewEmail = 'one@ex.org';
+      g.queue.push({ id: 'Q2', attendeeId: 'EXPO-002', station: 'bp', status: 'waiting', joinedAt: Date.now(), calledAt: 0, finishedAt: 0 });
+      g.qs.ready = true;
+      const keepClient = C.client; C.client = null;   /* avoid launching a network sync in this unit check */
+      g.cloudAuthEvent('SIGNED_IN', { user: { id: 'u-c7-2', email: 'two@ex.org' } });
+      ok('C-7/A-9 in-place account switch resets queue state and clears viewEmail',
+        g.queue.length === 0 && g.qs.ready === false && C.viewEmail === '',
+        'q=' + g.queue.length + ' ready=' + g.qs.ready + ' email=' + C.viewEmail);
+      C.user = null; C.mode = false; C.client = keepClient;
+    }
+
+    /* C-9: queueClearHistory resets qs.histCut */
+    {
+      g.resetDemo(); g.queue.length = 0; C.user = null; C.mode = false;
+      g.queue.push({ id: 'L90', attendeeId: 'EXPO-042', station: 'bp', status: 'done', joinedAt: Date.now() - 60000, calledAt: Date.now() - 30000, finishedAt: Date.now() });
+      g.qs.histCut = true; g.setAutoAnswer(true);
+      await g.queueClearHistory();
+      ok('C-9 queueClearHistory clears qs.histCut so Finished does not read 0+', g.qs.histCut === false && g.qOverCount() === 0, 'histCut=' + g.qs.histCut);
+    }
+
+    /* E-10, E-11, E-12, E-13: export rows, checks done, placeholder phone, column name and Minimal wording */
+    {
+      g.resetDemo();
+      const wOnly = g.migrateAttendee({ id: 'EXPO-881', name: 'Weight Only', age: 35, sex: 'Female', phone: '+27 —', heightCm: null,
+        s: { sys: 120, dia: 80, sugar: 5.5, chol: 4.5, weight: 70, veg: 5, walk: 30, water: 8, sleep: 8 },
+        interests: { consent: true, optin: true }, prayer: 'Peace' });
+      g.attendees.push(wOnly);
+      const rows = g.followUpRows('full'), head = rows[0], r = rows.find(x => x[0] === 'EXPO-881');
+      const iDone = head.indexOf('Checks done (of 8)'), iPhone = head.indexOf('Phone');
+      ok('E-10 export Checks done counts weight without height, matching doneCount (8)', r[iDone] === '8' && g.doneCount(wOnly) === 8, r[iDone]);
+      ok('E-11 export strips "+27 —" placeholder phone number', r[iPhone] === '', r[iPhone]);
+      ok('E-12 device column is named Source device, not Recorded on', head.includes('Source device') && !head.includes('Recorded on'));
+      g.exportCSV('minimal');
+      ok('E-13 minimal export toast accurately describes what is omitted', !/badge, checks and consent only/.test($el('toastMsg').textContent), $el('toastMsg').textContent);
+      g.attendees.pop();
+    }
+
+    /* E-15: lone crisis systolic 160+ gets Crisis band and emergency counselling line */
+    {
+      const c = g.cat('bp', { sys: 170, dia: null });
+      const keepA = g.state.activeId;
+      const a = g.migrateAttendee({ id: 'EXPO-882', name: 'High Top', age: 50, sex: 'Male', s: { sys: 170, dia: null }, interests: { consent: true } });
+      g.attendees.push(a); g.state.activeId = a.id;
+      const m = g.viewMetric('bp');
+      ok('E-15 lone systolic >= 160 shows Crisis chip and emergency counselling line',
+        c[0] === 'flag' && c[1] === 'Crisis' && /Crisis/.test(m) && /Emergency: the health team attends to you first/.test(m), JSON.stringify(c));
+      g.attendees.pop(); g.state.activeId = keepA;
+    }
+
+    /* E-14: typing a crisis reading updates the Care nav urgent badge */
+    {
+      g.resetDemo(); g.state.tab = 'screen';
+      const calm = g.migrateAttendee({ id: 'EXPO-883', name: 'Calm Visitor', age: 40, sex: 'Male', s: { sys: 120, dia: 80 }, interests: { consent: true } });
+      g.attendees.push(calm); g.state.activeId = calm.id; g.render();
+      const careN = () => { const m = /id="navCare"[^>]*>(\d+)</.exec($el('navItems').innerHTML); return m ? Number(m[1]) : 0; };
+      const b0 = careN();
+      g.onStationInput(calm.id, 'sys', { value: '180' }, 60, 260);
+      const b1 = careN();
+      ok('E-14 typing a crisis reading updates the Care urgent badge live', b1 === b0 + 1, b0 + ' -> ' + b1);
+      g.attendees.pop(); g.resetDemo();
+    }
+
+    /* F-16: updateLater snoozes ownVersion when only a waiting worker is present */
+    {
+      g.updateLater();
+      ok('F-16 updateLater code falls back to ownVersion() when serverVersion() is empty',
+        /snoozed\s*=\s*serverVersion\(\)\s*\|\|\s*ownVersion\(\)/.test(fs.readFileSync(path.join(__dirname, '..', 'src', 'update.js'), 'utf8')));
+    }
+
+    /* D-7: team leader opening a volunteer at another station is not offered Check in or Release */
+    {
+      g.resetDemo();
+      const lead = g.volunteers.find(v => v.booth === 'bp') || g.volunteers[0];
+      lead.lead = true; lead.booth = 'bp';
+      const other = g.volunteers.find(v => v.id !== lead.id && v.booth && v.booth !== 'bp') || g.volunteers[1];
+      other.booth = 'sugar'; other.status = 'registered';
+      C.user = { id: 'u-lead', email: 'lead@ex.org' };
+      C.acct = { church: { id: 'c1', name: 'Test', status: 'active' }, membership: { role: 'staff', status: 'approved', volunteer_id: lead.id } };
+      g.openPlaceSheet(other.id);
+      const htmlOther = $el('placeBody').innerHTML;
+      g.openPlaceSheet(lead.id);
+      const htmlOwn = $el('placeBody').innerHTML;
+      ok('D-7 team leader sees no Check in or Release on another station\'s volunteer, but sees them on their own station',
+        !/place-checkin|place-release/.test(htmlOther) && /place-release/.test(htmlOwn));
+      g.closePlaceSheet(); C.user = null; C.acct = null; g.resetDemo();
+    }
+  }
+
   console.log('\n' + '='.repeat(52));
   console.log(failures ? `${failures} of ${checks} checks FAILED` : `all ${checks} checks passed`);
   console.log('='.repeat(52));

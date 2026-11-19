@@ -71,7 +71,7 @@ export function renderNav(){
   const act=navKey(state.tab)===k;
   let badge='';
   if(k==='visit'&&attendees.length)badge=`<span id="navCount" class="nav-badge">${doneCount(A())}/8</span>`;
-  if(k==='care'&&urgent)badge=`<span class="nav-badge nav-badge-alert">${urgent}</span>`;
+  if(k==='care'&&urgent)badge=`<span id="navCare" class="nav-badge nav-badge-alert">${urgent}</span>`;
   if(k==='queue'){const w=queue.filter(e=>e.status==='waiting').length;if(w)badge=`<span class="nav-badge" title="${w} waiting in all lines">${w>99?'99+':w}</span>`;}
   if(k==='serve'&&pending)badge=`<span id="navVol" class="nav-badge">${pending}</span>`;
   return `<button data-action="nav-go" data-tour="nav-${esc(k)}" data-tab="${esc(k)}" class="nav-item hue-${HUE_N[k]} ${act?'nav-item-active':''}" ${act?'aria-current="page"':''}>

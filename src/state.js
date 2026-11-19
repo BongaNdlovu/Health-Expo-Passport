@@ -14,9 +14,11 @@ export const cloud={client:null,user:null,mode:false,status:'off',err:'',busy:fa
   since:{att:'',vol:''},seen:{att:new Map(),vol:new Map()},savedSince:null,liveSt:'',liveChurch:'',lastFull:0,ready:false,demo:false,gateKey:'',gateHide:false,
   phase:'',prog:{done:0,total:0},syncedAt:0,   /* what the sync chrome shows: pull/push, upload progress, last success */
   view:'login',viewEmail:'',pending:false,recovery:false,resendAt:0,signingOut:false,
-  acct:null,acctV:0,churchId:'',acctTab:'me',health:undefined,dir:null,regChurch:false,members:null,plat:null,audit:null,pAdmins:null,wants:'member',wantsBooths:[],expos:undefined,adminExpos:undefined,expoEdit:null,expoSaving:false,removing:'',expoBusy:false,pledgeExpo:'',adminChurch:'',gateForce:false,delOpen:false,
+  acct:null,acctV:0,churchId:'',acctTab:'me',health:undefined,dir:null,regChurch:false,members:null,membersBusy:'',membersAgain:'',plat:null,audit:null,pAdmins:null,wants:'member',wantsBooths:[],expos:undefined,adminExpos:undefined,expoEdit:null,expoSaving:false,removing:'',expoBusy:false,pledgeExpo:'',adminChurch:'',gateForce:false,delOpen:false,
   pledge:undefined,pledgeErr:false,pledgeBusy:false,   /* the member's own pledge (src/account.js pledgeHTML) */
   myTeam:undefined,myTeamBusy:false,                    /* a team leader's people (src/account.js myTeamHTML) */
+  myFollow:null,myFollowBusy:false,myFollowErr:false,   /* a follow-up person's visitors (src/churchPlans.js) */
+  apprBusy:false,                                       /* one admin-approval check in flight (src/cloud.js) */
   plansErr:null,adminPlansErr:null,followupsErr:null,adminFollowupsErr:null,   /* a failed church-plans/follow-ups load is not an empty list (E11) */
   swapBusy:false,                                          /* one place-swap in flight at a time (E9) */
   signInWaitUntil:0,                                       /* a 429 starts a local sign-in cooldown (A13) */
@@ -49,6 +51,7 @@ export function persistNow(){
    the same content would skip the write and a reload would bring back the stale disk copy (P2-3). */
 let _diskStale=false;
 addEventListener('securestore:writefail',e=>{if(/** @type {CustomEvent} */(e).detail!==LS_KEY)return;_diskStale=true;storageFull();});
+if(Array.isArray(/** @type {any} */(window).__secureWriteFail)&&/** @type {any} */(window).__secureWriteFail.includes(LS_KEY)){_diskStale=true;storageFull();}
 /* the browser refused to save: say so once instead of failing silently */
 export function storageFull(){
  if(_fullWarned)return;_fullWarned=true;

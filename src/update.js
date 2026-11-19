@@ -164,7 +164,13 @@ export async function updateNow() {
       }
       if (window.open(href, '_blank')) { snoozed = ver; if (ver) write(SNOOZE, ver); return; }
       location.href = href;                     /* (M6) last resort: nothing says it worked, so no snooze — the bar comes back next check */
+      return;
     }
+    show(true); toast('Could not start the download. Try again.');   /* F-17: missing apk.url must not fail silently */
+    return;
+  }
+  if (navigator.onLine === false && !waiting) {
+    show(false); toast('No connection — connect and tap Update again.');   /* F-12: do not silently reload the old build while offline */
     return;
   }
   reloading = true;
@@ -177,6 +183,11 @@ export async function updateNow() {
   /* No new worker is waiting yet (the version check saw the new build before the browser fetched it). A plain reload
      would be served the old build from the cache (F-5): fetch the new worker first, then hand over as above. */
   const fresh = await newWorker();
+  if (fresh === 'failed') {
+    reloading = false; show(false);
+    toast('Could not download the update yet — check your connection and try again.');   /* F-12 */
+    return;
+  }
   if (fresh) {
     fresh.postMessage({ type: 'SKIP_WAITING' });
     setTimeout(() => location.reload(), 4000);
@@ -184,7 +195,8 @@ export async function updateNow() {
   }
   location.reload();
 }
-/** Asks the browser for the new service worker and waits (at most 8 s) until it is installed; null when there is none. */
+/** Asks the browser for the new service worker and waits (at most 8 s) until it is installed;
+    returns the waiting worker, null when no newer worker exists, or 'failed' on network/timeout error (F-12). */
 async function newWorker() {
   try {
     const sw = navigator.serviceWorker;
@@ -194,20 +206,22 @@ async function newWorker() {
     const w = reg.waiting || reg.installing;
     if (!w) return null;
     if (w.state !== 'installed') {
+      let timedOut = false;
       await new Promise(done => {
-        const stop = setTimeout(done, 8000);
+        const stop = setTimeout(() => { timedOut = true; done(undefined); }, 8000);
         w.addEventListener('statechange', () => { if (w.state === 'installed' || w.state === 'redundant') { clearTimeout(stop); done(undefined); } });
       });
+      if (timedOut && !reg.waiting) return 'failed';
     }
-    return reg.waiting || null;
+    return reg.waiting || 'failed';
   } catch (e) {
-    return null;                                 /* no worker, or the fetch failed: the plain reload is all that is left */
+    return 'failed';
   }
 }
 
 /** "Not now" — quiet until the next build, not just until the next screen. */
 export function updateLater() {
-  snoozed = serverVersion();
+  snoozed = serverVersion() || ownVersion();   /* F-16: waiting-worker-only banner still has ownVersion() to snooze */
   if (snoozed) write(SNOOZE, snoozed);
   hide();
 }

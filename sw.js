@@ -53,17 +53,20 @@ self.addEventListener('activate', event => {
 async function cleanCopy(res) {
   return new Response(await res.blob(), { status: res.status, statusText: res.statusText, headers: res.headers });
 }
-/* the page: the saved copy answers at once and the network copy is fetched in the background for the next open
-   (stale-while-revalidate, like the icons). Openings on venue wifi are then instant instead of racing a 4-second
-   cutoff, and updates still arrive: src/update.js watches /version.json and its banner swaps the worker, whose
-   install fetch has already cached the fresh page. With nothing saved yet there is nothing to show but the network,
-   and a failure is reported rather than faked. */
+/* the page: the saved copy answers at once and the network copy is refreshed in the background ONLY when it belongs
+   to this worker's own release (matching VERSION). Overwriting an old worker's SHELL cache with a newer release's HTML
+   would pair the new page's SRI hashes with this worker's old vendored vendor/supabase.min.js (F-11). New releases
+   arrive atomically when the new worker installs its own versioned cache and the user taps Update. */
 async function page(request) {
   const cache = await caches.open(SHELL);
   const saved = await cache.match('index.html');
   const pull = fetch(request).then(async res => {
     const html = res && res.ok && (res.headers.get('content-type') || '').includes('text/html');
-    if (html) await cache.put('index.html', await cleanCopy(res.clone()));
+    if (html) {
+      const txt = await res.clone().text();
+      const m = /<meta\s+name="?app-version"?\s+content="?([0-9a-f]+)"?/i.exec(txt);
+      if (!m || !/^[0-9a-f]+$/.test(VERSION) || m[1] === VERSION) await cache.put('index.html', await cleanCopy(res.clone()));
+    }
     return res;
   }).catch(() => null);
   if (!saved) {
@@ -73,7 +76,7 @@ async function page(request) {
   pull.catch(() => {});                       /* refresh for the next open; the visitor waits for nobody */
   return saved;
 }
-/* own files: answer from the saved copy at once, refresh it in the background */
+/* own files: serve this worker's versioned copy when cached; only fetch from network when not yet cached (F-11) */
 async function ownFile(request) {
   if (new URL(request.url).pathname === '/version.json') {   /* (U5) the update check must never be answered from the saved shell (ignoreSearch keeps the first copy alive forever); straight to the network, never stored */
     const res = await fetch(request).catch(() => null);
@@ -81,8 +84,10 @@ async function ownFile(request) {
   }
   const cache = await caches.open(SHELL);
   const saved = await cache.match(request, { ignoreSearch: true });
-  const fresh = fetch(request).then(res => { if (res && res.ok) cache.put(request, res.clone()); return res; }).catch(() => null);
-  return saved || (await fresh) || Response.error();
+  if (saved) return saved;
+  const fresh = await fetch(request).catch(() => null);
+  if (fresh && fresh.ok) cache.put(request, fresh.clone());
+  return fresh || Response.error();
 }
 /* CDN libraries and fonts never change at a given address: saved copy first */
 async function library(request) {

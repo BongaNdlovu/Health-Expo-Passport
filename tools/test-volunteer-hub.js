@@ -448,6 +448,62 @@ const PROJ = path.join(__dirname, '..');
   ok('All churches lists the date', !r.error && r.rows.length === 1 && !!r.rows[0].paid_until, msg(r));
   ok('the change log has it', (await SQL(`select 1 from public.audit_log where tbl='churches' and op='PAID_UNTIL' and church_id=$1`, [PC])).length === 1);
 
+  // ---- 18. 2026-11-19 audit DB fixes (G-4..G-8) ----
+  console.log('\n18. 2026-11-19 audit fixes (G-4..G-8)');
+  // G-8: admin_set_church_status writes audit_log
+  ok('G-8 admin_set_church_status writes an audit_log entry',
+    (await SQL(`select 1 from public.audit_log where tbl='churches' and op='STATUS' and row_id='suspended' and church_id=$1`, [PC])).length >= 1);
+
+  // G-4: direct UPDATE status='prospect' cannot bypass volunteers_checkin_sync
+  await SQL(`insert into public.volunteers (church_id, id, name, status, booth, checked_in) values ($1, 'VOL-9901', 'Checked In Helper', 'checkedin', 'bp', true)`, [B]);
+  await SQL(`insert into public.volunteers (church_id, id, name, status, booth, checked_in) values ($1, 'VOL-9902', 'Registered Helper', 'registered', 'bp', false)`, [B]);
+  ok('G-4 plain staff cannot erase a check-in by writing status=prospect',
+    await refused(U.bob, `update public.volunteers set status='prospect' where church_id=$1 and id='VOL-9901'`, [B]));
+  ok('G-4 plain staff cannot deregister a registered volunteer by writing status=prospect',
+    await refused(U.bob, `update public.volunteers set status='prospect' where church_id=$1 and id='VOL-9902'`, [B]));
+  ok('G-4 even an admin cannot bypass check_in_volunteer/admin_deregister by direct-updating checkedin->prospect',
+    await refused(U.carol, `update public.volunteers set status='prospect' where church_id=$1 and id='VOL-9901'`, [B]));
+  r = await as(U.carol, `select public.release_volunteer('VOL-9901')`);
+  ok('G-4 release_volunteer RPC still releases a checked-in volunteer cleanly',
+    !r.error && (await SQL(`select status, checked_in, booth from public.volunteers where church_id=$1 and id='VOL-9901'`, [B]))[0].status === 'prospect', msg(r));
+
+  // G-5: join_with_invite requires confirmed email
+  const UNCONF = '00000000-0000-4000-8000-0000000000fa';
+  await SQL(`insert into auth.users (id,email,raw_user_meta_data,email_confirmed_at) values ($1,'unconf@example.org','{"full_name":"Unconfirmed"}'::jsonb,null)`, [UNCONF]);
+  const inv2 = (await as(U.carol, `select public.create_church_invite($1,'staff') as c`, [B])).rows[0].c;
+  ok('G-5 an account with an unconfirmed email cannot join via an invite link',
+    await refused(UNCONF, `select public.join_with_invite($1,'Unconfirmed','')`, [inv2]));
+  ok('G-5 ...and gets no membership row',
+    (await SQL(`select 1 from public.memberships where user_id=$1`, [UNCONF])).length === 0);
+
+  // G-6: removed visitor cannot be resurrected by a stale desk re-inserting the same visit
+  const visitAt = new Date().toISOString();
+  await SQL(`insert into public.attendees (church_id, id, name, age, sex, s, interests, created_at) values ($1, 'EXPO-8801', 'Removed Visitor', 40, 'M', '{"sys":140,"dia":90}'::jsonb, '{"consent":true}'::jsonb, $2)`, [B, visitAt]);
+  r = await as(U.carol, `select public.remove_visitor('EXPO-8801') as ok`);
+  ok('G-6 remove_visitor deletes the visitor and records a tombstone',
+    !r.error && r.rows[0].ok === true && (await SQL(`select 1 from public.removed_attendees where church_id=$1 and id='EXPO-8801'`, [B])).length === 1, msg(r));
+  await as(U.bob, `insert into public.attendees (church_id, id, name, age, sex, s, interests, created_at) values ($1, 'EXPO-8801', 'Stale Copy', 40, 'M', '{"sys":145,"dia":92}'::jsonb, '{"consent":true}'::jsonb, $2)`, [B, visitAt]);
+  ok('G-6 a stale desk pushing the deleted visit back is silently dropped',
+    (await SQL(`select 1 from public.attendees where church_id=$1 and id='EXPO-8801'`, [B])).length === 0);
+  const laterAt = new Date(Date.now() + 60000).toISOString();
+  await as(U.bob, `insert into public.attendees (church_id, id, name, age, sex, s, interests, created_at) values ($1, 'EXPO-8801', 'New Visitor Later', 35, 'F', '{}'::jsonb, '{"consent":true}'::jsonb, $2)`, [B, laterAt]);
+  ok('G-6 ...while a new visitor given the same badge later is still allowed',
+    (await SQL(`select name from public.attendees where church_id=$1 and id='EXPO-8801'`, [B]))[0]?.name === 'New Visitor Later');
+
+  // G-7: checked-in volunteer leaving church still self-deletes and clearly alerts church admins
+  const LEAVER = '00000000-0000-4000-8000-0000000000fb';
+  await SQL(`insert into auth.users (id,email,raw_user_meta_data,email_confirmed_at) values ($1,'leaver@example.org','{"full_name":"Checked Leaver"}'::jsonb,now())`, [LEAVER]);
+  await as(LEAVER, `select public.join_with_invite($1,'Checked Leaver','')`, [inv2]);
+  await SQL(`insert into public.volunteers (church_id, id, name, status, booth, checked_in) values ($1, 'VOL-9903', 'Checked Leaver', 'checkedin', 'bp', true)`, [B]);
+  await SQL(`update public.memberships set volunteer_id='VOL-9903' where user_id=$1`, [LEAVER]);
+  await SQL(`delete from public.notifications where church_id=$1`, [B]);
+  r = await as(LEAVER, `select public.leave_church()`);
+  const g7Note = (await SQL(`select title, body from public.notifications where church_id=$1 and kind='unpledge'`, [B]))[0];
+  ok('G-7 leave_church still self-deletes the volunteer row and alerts admins that a checked-in volunteer left',
+    !r.error && (await SQL(`select 1 from public.volunteers where church_id=$1 and id='VOL-9903'`, [B])).length === 0
+    && g7Note && /^Checked-in volunteer left: Checked Leaver/.test(g7Note.title) && /station needs cover/.test(g7Note.body),
+    JSON.stringify(g7Note));
+
   console.log(`\nRESULT: ${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
   process.exit(0);

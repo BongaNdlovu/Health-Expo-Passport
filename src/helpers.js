@@ -61,10 +61,12 @@ function inBands(list,v){
  }
  return NONE();
 }
-/* blood pressure has two numbers: the higher band of the two wins (ESC/ESH; 160/100 is the app's crisis line) */
+/* blood pressure has two numbers: the higher band of the two wins (ESC/ESH; 160/100 is the app's crisis line).
+   A lone crisis number (sys >= 160 or dia >= 100) is already a Crisis, matching redFlag (E-15). */
 function bpBand(v){
- if(!v||!v.sys||!v.dia)return NONE();
- if(v.sys>=160||v.dia>=100)return[FLAG,'Crisis'];
+ if(!v||(v.sys==null&&v.dia==null))return NONE();
+ if((v.sys&&v.sys>=160)||(v.dia&&v.dia>=100))return[FLAG,'Crisis'];
+ if(!v.sys||!v.dia)return NONE();
  if(v.sys>=140||v.dia>=90)return[WATCH,'High'];
  if(v.sys>=130||v.dia>=85)return[WATCH,'Elevated'];
  return[OK,'Normal'];

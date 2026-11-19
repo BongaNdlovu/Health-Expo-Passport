@@ -153,6 +153,7 @@ if (DEV_BUILD) console.log('NOTE: NS_DEV_BUILD=1 — nsmem.js diagnostics flag O
 /* the Android app (capacitor/, built by tools/sign-app.ps1), if one has been built, so phones can download it from the
    same address */
 if (hasApk) fs.copyFileSync(apk, path.join(dist, 'newstart.apk'));
+else console.warn('WARNING: capacitor/android/app-release-signed.apk is missing — dist/newstart.apk was NOT included and version.json has apk:null (H-1).');
 
 /* The build id of the page packaged inside the APK, read from the APK itself (a zip: assets/public/index.html), so
    version.json says exactly what the download holds. The app offers an update only when this differs from its own

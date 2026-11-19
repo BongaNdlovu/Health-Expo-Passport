@@ -398,23 +398,26 @@ function placeSheetHTML(){
  const v=placedVol();if(!v)return '';
  const linked=linkedVolIds(),isAdm=isAdminAcct();
  const mine=myLeadBooth();
- const stations=BOOTHS.map(b=>({b,n:helpersAt(b.k).length}));
+ const canAll=!cloud.user||isAdm;
+ const canHere=canAll||(!!mine&&v.booth===mine);
+ const canPlace=canAll||(!v.booth&&!!mine);
+ const stations=BOOTHS.map(b=>({b,n:helpersAt(b.k).length})).filter(({b})=>canAll||(!v.booth&&b.k===mine));
  /* who this caller may offer as the other half of a swap: an admin anybody, a leader their own people or the unplaced */
- const swappable=volunteers.filter(x=>x.id!==v.id&&(isAdm||x.booth===mine||!x.booth));
+ const swappable=canHere?volunteers.filter(x=>x.id!==v.id&&(canAll||x.booth===mine||!x.booth)):[];
  return `<div class="flex items-center gap-2.5">
    <span class="flex h-9 w-9 flex-none items-center justify-center rounded-full text-[11px] font-extrabold av hue-${badgeTier(v).hue}">${initials(v.name)}</span>
    <div class="min-w-0 flex-1"><div class="truncate text-[13px] font-bold text-[#123033]">${esc(v.name)}</div>
     <div class="text-[10.5px] text-[#4f6870]">${v.booth?'At '+esc(boothLabel(v.booth)):'Not placed yet'}${(v.pref||[]).length?' · asked for '+esc((v.pref||[]).map(boothLabel).join(', ')):''}${v.pref2?' or '+esc(boothLabel(v.pref2)):''}</div></div>
    <span class="servechip ${STATUS_UI[v.status].cls}">${STATUS_UI[v.status].label}</span></div>
   ${linked&&!linked.has(v.id)&&isAdm&&v.lead?'<p class="mt-2 rounded-xl bg-amber-50/80 p-2 text-[10.5px] font-semibold leading-snug text-[#8a5a12]">This team leader has no account linked — link them under My church so they can manage their team.</p>':''}
-  <div class="microlabel mt-3">Move to…${roleTag('lead')}</div>
+  ${stations.length?`<div class="microlabel mt-3">Move to…${roleTag('lead')}</div>
   <div class="mt-1.5 grid grid-cols-2 gap-1.5">
    ${stations.map(({b,n})=>`<button data-action="place-move" data-args="${esc(b.k)}" class="boothpick hue-${b.hue} ${v.booth===b.k?'boothpick-sel':''}">
      <span class="flex items-center gap-2"><span class="boothpick-glyph">${b.letter}</span>
       <span class="min-w-0"><span class="block text-[10.5px] font-extrabold leading-tight text-[#123033]">${esc(b.label)}</span>
        <span class="mono block text-[8.5px] font-bold text-[#8a9aa0]">${n}${v.booth===b.k?'':'/'+b.cap} filled</span></span></span></button>`).join('')}
-  </div>
-  ${v.booth?`<div class="microlabel mt-3">Swap with…</div>
+  </div>`:''}
+  ${v.booth?(canHere?`<div class="microlabel mt-3">Swap with…</div>
    <div class="mt-1.5 max-h-[26vh] space-y-1 overflow-y-auto no-scrollbar">
     ${swappable.slice(0,25).map(x=>`<button data-action="place-swap" data-args="${esc(x.id)}" class="flex w-full items-center gap-2 rounded-[14px] px-2 py-1.5 text-left transition hover:bg-white/60">
       <span class="flex h-6 w-6 flex-none items-center justify-center rounded-full text-[9px] font-extrabold tint hue-${badgeTier(x).hue}">${initials(x.name)}</span>
@@ -426,7 +429,9 @@ function placeSheetHTML(){
    <div class="mt-3 flex gap-2">
     <button data-action="place-release" class="btn btn-glass flex-1 py-2 text-xs text-rose-700">Take off this station</button>
     ${isAdm?`<button data-action="place-lead" class="btn btn-soft btn-tagged flex-1 py-2 text-xs">${v.lead?'Remove ★ leader':'Make ★ team leader'}${roleTag('admin')}</button>`:''}
-   </div>`:`<p class="mt-3 text-[11px] leading-relaxed text-[#6b8187]">Pick a station above to place ${esc(firstName(v.name))}. Their choices are listed first, but the choice is yours.</p>`}
+   </div>`:'<p class="mt-3 text-[11px] leading-relaxed text-[#6b8187]">Only an admin or this station’s team leader can change this placement.</p>')
+  :(canPlace?`<p class="mt-3 text-[11px] leading-relaxed text-[#6b8187]">Pick a station above to place ${esc(firstName(v.name))}. Their choices are listed first, but the choice is yours.</p>`
+   :'<p class="mt-3 text-[11px] leading-relaxed text-[#6b8187]">Only an admin or a station’s team leader can place volunteers.</p>')}
   ${isAdm&&cloud.user?adminPledgeHTML(v):''}`;
 }
 /* may the signed-in admin block this member? Never self or an app owner; only the Leader or app owner blocks an admin */
@@ -491,6 +496,13 @@ export async function placeSwap(otherId){
 export async function placeRelease(){
  const v=placedVol();if(!v)return;
  const from=v.booth;
+ /* D-6: taking a checked-in volunteer off their station erases their check-in too (Undo cannot restore check-in) */
+ if(v.status==='checkedin'){
+  const yes=await confirmAsk({title:`Take ${firstName(v.name)} off ${boothLabel(from)}?`,
+   body:'They are already checked in for this expo. Taking them off their station clears their check-in and registration; their pledge stays on the team list.',
+   label:'Take off station',danger:true});
+  if(!yes)return;
+ }
  const r=await volRpc('release_volunteer',{p_vol:v.id});
  if(!r)return;
  await afterPlace();rerenderPlace();
@@ -1362,13 +1374,18 @@ export function printCard(){
 }
 /* Android app: the card (with only its own .pc-* styles) goes to the CardPrinter plugin, which prints it through the
    phone's print service on an A6 page. */
+let printBusy=false;
 function printCardInApp(){
+ if(printBusy)return;   /* E-16: a double tap must not open two print previews */
  const pa=$('#printArea');
  const css=[...(document.styleSheets||[])].flatMap(s=>{try{return [...(/** @type {CSSStyleSheet} */ (s)).cssRules];}catch(e){return [];}})
   .filter(r=>r instanceof CSSStyleRule&&r.selectorText.includes('.pc-')).map(r=>r.cssText).join('\n');
  const html=`<!doctype html><html><head><meta charset="utf-8"><style>@page{size:105mm 148mm;margin:0}html,body{margin:0;background:#fff}${css}</style></head><body>${pa.innerHTML}</body></html>`;
  const P=window.Capacitor.Plugins.CardPrinter;
  if(!P){toast('Printing is not available in this version of the app');return;}
- P.print({html,name:'Health Expo card '+A().id}).catch(e=>toast('Could not open printing: '+(e&&e.message||e)));
+ printBusy=true;
+ Promise.resolve(P.print({html,name:'Health Expo card '+A().id}))
+  .catch(e=>toast('Could not open printing: '+(e&&e.message||e)))
+  .finally(()=>{printBusy=false;});
 }
 window.addEventListener('afterprint',()=>document.body.classList.remove('print-mode'));

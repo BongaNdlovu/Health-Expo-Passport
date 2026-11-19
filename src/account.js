@@ -692,21 +692,25 @@ export function notifWatch(){
 export function notifStop(){
  cloud.notifLive=false;cloud.notifWatched='';
  if(cloud.notifChannel&&cloud.client){try{cloud.client.removeChannel(cloud.notifChannel);}catch(e){}}
- cloud.notifChannel=null;cloud.notifN=0;notifRefresh();
+ cloud.notifChannel=null;cloud.notifN=0;cloud.notifs=undefined;cloud.notifsOffline=false;
+ if(cloud.notifOpen)notifClose();
+ notifRefresh();
 }
 function onNotifRow(row){
  if(!row||row.read_at)return;
  cloud.notifN=(cloud.notifN||0)+1;notifRefresh();
- if(cloud.notifOpen)renderNotifs();
+ if(cloud.notifOpen){cloud.notifs=undefined;renderNotifs();}
 }
 export function openNotifs(){
  cloud.notifOpen=true;showModal('#notifSheet',notifClose);cloud.notifs=undefined;renderNotifs();
 }
 async function loadNotifs(){
  if(!cloud.client||!cloud.user)return;
+ const gen=cloud.gen;
  /* newest first: an ascending order + range(0,49) would fetch the OLDEST fifty and "mark all read" could then
     never clear the newest unread ones */
  const r=await cloud.client.from('notifications').select('id,kind,title,body,created_at,read_at').eq('user_id',cloud.user.id).order('created_at',{ascending:false}).range(0,49);
+ if(gen!==cloud.gen)return;
  if(r.error){cloud.notifs=null;cloud.notifsOffline=isOfflineErr(r.error.message);renderNotifs();return;}
  const rows=r.data||[];
  cloud.notifs=rows;renderNotifs();
@@ -731,9 +735,11 @@ export function renderNotifs(){
    :acctNote('Nothing yet. You will hear about your placement, your team and your membership here.')}`;
 }
 export async function markNotifsRead(upto){
+ const gen=cloud.gen;
  const r=await acctRpc('mark_notifications_read',{p_upto:Number(upto)||null},'Marked all read ✓');
- if(!r)return;
- cloud.notifN=0;notifRefresh();
+ if(!r||gen!==cloud.gen)return;
+ const marked=typeof r.data==='number'?r.data:(cloud.notifN||0);
+ cloud.notifN=Math.max(0,(cloud.notifN||0)-marked);notifRefresh();notifCountSoon();
  cloud.notifs=undefined;renderNotifs();
 }
 /* a notification about a station opens the board for staff; everything else opens the account screen */
@@ -1023,14 +1029,18 @@ export function memberRow(u,F,admins,ranks,canPost){
    ${cloud.acct&&cloud.acct.platform_admin&&!u.platform_admin&&u.user_id!==cloud.acct.user_id?`<button class="tap-link text-rose-700" data-action="member-block-app" data-user="${esc(id)}">Block from app${roleTag('owner')}</button>`:''}</div></div>`;
 }
 async function loadMembers(cid){
- if(!cid||cloud.membersBusy===cid)return;
+ if(!cid)return;
+ if(cloud.membersBusy===cid){cloud.membersAgain=cid;return;}
+ const gen=cloud.gen;
  cloud.membersBusy=cid;
  const r=await acctRpc('church_members',{p_church:cid});
+ if(gen!==cloud.gen)return;
  cloud.membersBusy='';
+ if(cloud.membersAgain===cid){cloud.membersAgain='';return loadMembers(cid);}
  cloud.members={cid,list:r&&Array.isArray(r.data)?r.data:[],err:!(r&&Array.isArray(r.data))};
  renderAcct();rerenderPlace();
 }
-const reloadMembers=()=>{const cid=cloud.members&&cloud.members.cid;cloud.members=null;return loadMembers(cid);};
+const reloadMembers=()=>{const cid=(cloud.members&&cloud.members.cid)||cloud.membersBusy||cloud.churchId;cloud.members=null;return loadMembers(cid);};
 /* the placement sheet asks for this church's members, to know which volunteer pledged from an account it can block */
 export function ensureMembers(){const cid=cloud.churchId;if(cid&&!(cloud.members&&cloud.members.cid===cid))loadMembers(cid);}
 /* Block: from this church (its admins), or from the whole app (the app owner, cid ''). The person loses access and
@@ -1589,6 +1599,18 @@ export function nsAuthTimer(on){
 document.addEventListener('visibilitychange',()=>nsAuthTimer(!!cloud.user));
 /* A session ended or the account changed: the in-flight sync pass is orphaned (its generation is gone) and the hand-off flags start clean (E1, H3, H4). */
 function orphanPass(){cloud.gen=(cloud.gen||0)+1;cloud.busy=false;cloud.again=false;cloud.againManual=false;cloud.againPull=false;}
+/* Shared session cleanup for all three transitions: manual sign-out, session expiry, and in-place account switch.
+   Clears session-owned UI state, async busy flags, realtime/queue/notification channels, and cached account views so
+   nothing from one person leaks into the next (A-7, A-8, A-9, C-7, D-4, D-5, D-9, B-10). */
+function clearSessionUi(keepRecovery){
+ stopRealtime();notifStop();
+ cloud.viewEmail='';cloud.pledgeEdit=false;state.mf=null;cloud.pending=false;
+ if(!keepRecovery)cloud.recovery=false;
+ cloud.isAdmin=undefined;cloud.knownAdmin=false;cloud.approvalUnknown=false;cloud.apprRetryAt=0;cloud.pendingUsers=null;cloud.apprBusy=false;
+ cloud.members=null;cloud.membersBusy='';cloud.membersAgain='';
+ cloud.myFollow=null;cloud.myFollowBusy=false;cloud.myFollowErr=false;
+ cloud.removing='';
+}
 export function cloudAuthEvent(ev,session){
  const u=session&&session.user;
  nsAuthTimer(!!u);
@@ -1600,12 +1622,7 @@ export function cloudAuthEvent(ev,session){
   cloud.user=u;cloud.gateForce=false;noteHealth('auth','ok','Signed in as '+(u.email||''));
   if(!same){
    orphanPass();   /* an account switch orphans the previous account's in-flight pass (E1) */
-   /* nothing the previous person left half-done is this person's: their pledge draft (loadAccount keeps a draft
-      for the same church, and a church has many members) and their "not approved yet" answer (A-2, A-4) */
-   cloud.pledgeEdit=false;state.mf=null;cloud.pending=false;
-   /* that parked pass can no longer run its finally (its generation is gone too), so the hand-off is reset here:
-      without it the next pass never starts and the status line hangs at Syncing… for the whole session (H3) */
-   cloud.isAdmin=undefined;cloud.knownAdmin=false;cloud.approvalUnknown=false;cloud.apprRetryAt=0;cloud.pendingUsers=null;   /* the admin answer was the previous account's */
+   clearSessionUi(ev==='PASSWORD_RECOVERY');   /* stops previous realtime/queue/notifs and drops per-user UI state (C-7, A-9, D-4, D-5) */
    /* An invite link a previous account was offered (it was bound to them when their approved account declined
       it) must not join this one automatically: drop it before the sync below would spend it. A code still
       waiting for its anonymous arrival (owner '') is the normal sign-up round trip and is kept. */
@@ -1619,13 +1636,10 @@ export function cloudAuthEvent(ev,session){
      must not wave them in — dropping cloud.ready removes the Back control too (gateState). A desk that starts
      without a session was never open for anyone, so the boot path (saved copy, no gate) is untouched. */
   const wasIn=!!cloud.user;
-  if(wasIn){cloud.user=null;stopRealtime();notifStop();cloudRefresh();
+  if(wasIn){cloud.user=null;clearSessionUi(false);cloudRefresh();
    /* an in-flight pass may still be parked on a fetch: orphan it here so its return touches nothing —
       no "Up to date", no gate lift on a signed-out desk (H4) */
    orphanPass();
-   /* the next person at this desk starts clean: no "choose a new password" hold from an opened reset link, no
-      account-status screen and no pledge draft of the person whose session just ended (A-2, A-3, A-4) */
-   cloud.recovery=false;cloud.pending=false;cloud.pledgeEdit=false;state.mf=null;
    applyRetention();afterMerge();persistNow();      /* the server may already have purged these readings; the saved copy follows */
    cloud.ready=false;cloud.gateHide=false;}   /* a Back pressed earlier must not outlive the session: gateState() honours gateHide before it looks at ready */
   if(wasIn)cloud.formErr='Your session ended. Sign in again to keep syncing.';   /* one glanceable reason at the gate (A14) */
@@ -1678,16 +1692,16 @@ export async function cloudSignOut(force){
   if(!yes||cloud.signingOut||!cloud.user)return;   /* answered after another sign-out (a forced one) already ran */
  }
  orphanPass();   /* the running pass is orphaned the moment the session ends (E1) */
- clearTimeout(cloud.pushT);clearTimeout(cloud.retryT);stopRealtime();
+ clearTimeout(cloud.pushT);clearTimeout(cloud.retryT);clearSessionUi(false);
  cloud.signingOut=true;
  try{await cloud.client.auth.signOut({scope:'local'});}catch(e){}
- cloud.signingOut=false;cloud.ready=false;cloud.demo=false;cloud.gateHide=false;cloud.gateKey='';cloud.isAdmin=undefined;cloud.knownAdmin=false;cloud.apprRetryAt=0;cloud.pendingUsers=null;
+ cloud.signingOut=false;cloud.ready=false;cloud.demo=false;cloud.gateHide=false;cloud.gateKey='';
  Object.assign(EXPO_UPCOMING,EXPO_DEFAULT);
- cloud.joinPick=null;cloud.regPost='';cloud.blocks=null;cloud.appBlocks=null;cloud.acct=null;cloud.churchId='';cloud.health=undefined;cloud.dir=null;cloud.regChurch=false;cloud.members=null;cloud.plat=null;cloud.audit=null;cloud.pAdmins=null;cloud.expos=undefined;cloud.adminExpos=undefined;cloud.expoEdit=null;cloud.pledgeExpo='';cloud.adminChurch='';cloud.adminData='';cloud.adminRows=null;closeAcct();
- cloud.view='login';cloud.viewEmail='';cloud.pending=false;cloud.recovery=false;cloud.formErr='';cloud.gateForce=false;cloud.delOpen=false;
+ cloud.joinPick=null;cloud.regPost='';cloud.blocks=null;cloud.appBlocks=null;cloud.acct=null;cloud.churchId='';cloud.health=undefined;cloud.dir=null;cloud.regChurch=false;cloud.plat=null;cloud.audit=null;cloud.pAdmins=null;cloud.expos=undefined;cloud.adminExpos=undefined;cloud.expoEdit=null;cloud.pledgeExpo='';cloud.adminChurch='';cloud.adminData='';cloud.adminRows=null;closeAcct();
+ cloud.view='login';cloud.formErr='';cloud.gateForce=false;cloud.delOpen=false;
  cloud.wants='member';cloud.wantsBooths=[];cloud.expoBusy=false;   /* the church step's picks and a load still out are the previous person's (A-1, D-1) */
  cloud.plans=null;cloud.adminPlans=null;cloud.planEdit=null;cloud.plansErr=null;cloud.adminPlansErr=null;cloud.followupsErr=null;cloud.adminFollowupsErr=null;try{localStorage.removeItem(CHURCH_PLANS_KEY);}catch(e){}
- cloud.followups=null;cloud.adminFollowups=null;cloud.myFollow=null;cloud.inviteLink=null;clearInvite();   /* a stale invite link must not join the next account on this desk */
+ cloud.followups=null;cloud.adminFollowups=null;cloud.inviteLink=null;clearInvite();   /* a stale invite link must not join the next account on this desk */
  cloud.user=null;cloud.mode=false;cloud.blocked=false;cloud.synced={att:{},vol:{}};cloud.rejected={};cloud.rejectedNote=null;cloud.lastFull=0;freshCursor();
  cloud.phase='';cloud.prog={done:0,total:0};cloud.syncedAt=0;   /* the status chrome starts clean for the next account */
  try{localStorage.removeItem(SYNC_KEY);localStorage.removeItem(CHURCH_KEY);localStorage.removeItem(QUAR_KEY);}catch(e){}
@@ -2006,7 +2020,20 @@ async function renumberVisitor(o,gen){
  if(passGone(gen))return;
  const num=id=>{const m=/^EXPO-(\d+)$/.exec(String(id));return m?+m[1]:0;};
  const max=Math.max(maxNum(ids,num,0),maxNum(attendees.map(a=>a.id),num,0));
- const old=o.id;o.id='EXPO-'+String(max+1).padStart(3,'0');
+ let next=max+1;
+ if(next>9999){
+  /* schema.sql enforces EXPO-[0-9]{3,4}: never mint EXPO-10000; scan for a free gap below 10000 first (B-9) */
+  const used=new Set([...ids,...attendees.map(a=>a.id)].map(num).filter(Boolean));
+  next=0;for(let n=1;n<=9999;n++){if(!used.has(n)){next=n;break;}}
+  if(!next){
+   const s=sigOf(KINDS.att.toRow(o));
+   cloud.rejected[o.id]=s;
+   cloud.rejectedNote={id:o.id,msg:'No badge numbers are left in this church (EXPO-9999 is taken).'};
+   toast('No badge numbers are left in this church (EXPO-9999 is taken). Ask your church admin before uploading more visitors.');
+   return;
+  }
+ }
+ const old=o.id;o.id='EXPO-'+String(next).padStart(3,'0');
  if(state.activeId===old)state.activeId=o.id;
  toast(`Another desk gave out ${old} at the same moment: this visitor is now ${o.id}`);
  return pushOne('att',o,false,gen);
@@ -2039,7 +2066,7 @@ export function afterMerge(kind){
 export async function removeVisitorAsk(id){
  const visitor=attendees.find(x=>x.id===id);
  if(!visitor)return;
- if(cloud.removing===id)return;                       /* a second tap while the first is still in flight */
+ if(cloud.removing)return;                            /* one removal in flight at a time (B-10) */
  const isShared=!!cloud.user;
  if(isShared&&!mayPlace()){toast('This visitor can’t be removed from this account.');return;}
  cloud.removing=id;
@@ -2077,7 +2104,7 @@ export async function removeVisitorAsk(id){
   if(state.activeId===id)state.activeId=attendees[0]?attendees[0].id:'';
   saveSyncedSoon();persist();render();
   toast(`${visitor.name||id} removed`);
- }finally{cloud.removing='';}
+ }finally{if(cloud.removing===id)cloud.removing='';}
 }
 /* The same 7-day rule the database applies (schema.sql), on this device: the readings of a past visit go, and a visitor
    who did not agree to follow-up goes with them. It only touches records the server has already confirmed and that have
@@ -2122,11 +2149,11 @@ const quarantineCount=()=>{
  return n;
 };
 export function cloudQueuePush(){
- if(!cloud.user||!cloud.client||cloud.blocked)return;
+ if(!cloud.user||!cloud.client||cloud.blocked||cloud.signingOut)return;
  clearTimeout(cloud.pushT);cloud.pushT=setTimeout(cloudPush,700);
 }
 export async function cloudPush(){
- if(!cloud.user||!cloud.client||cloud.blocked)return;
+ if(!cloud.user||!cloud.client||cloud.blocked||cloud.signingOut)return;
  if(cloud.busy){cloud.again=true;return;}
  if(!cloudPending()){if(cloud.status==='syncing')setCloud('online');return;}
  const gen=cloud.gen;   /* a sign-out orphans this pass: its return must not put the gate back on "Connecting…" (H5) */

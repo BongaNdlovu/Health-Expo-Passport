@@ -1007,7 +1007,9 @@ begin
      remove_member and delete_my_account (HE-03; before, it stayed on the church's team list) */
   if v_m.volunteer_id is not null then
     perform set_config('newstart.lead_ok', 'on', true);
+    perform set_config('newstart.self_leave', 'on', true);
     delete from public.volunteers v where v.church_id = v_m.church_id and v.id = v_m.volunteer_id;
+    perform set_config('newstart.self_leave', '', true);
   end if;
   delete from public.memberships m where m.user_id = v_m.user_id;
 end;
@@ -1034,7 +1036,9 @@ begin
   select * into v_m from public.memberships m where m.user_id = v_uid;
   if v_m.volunteer_id is not null then
     perform set_config('newstart.lead_ok', 'on', true);
+    perform set_config('newstart.self_leave', 'on', true);
     delete from public.volunteers v where v.church_id = v_m.church_id and v.id = v_m.volunteer_id;
+    perform set_config('newstart.self_leave', '', true);
   end if;
   delete from auth.users u where u.id = v_uid;
 end;
@@ -1261,6 +1265,7 @@ begin
     paid_until = case when p_status = 'active' and c.paid_until is null then current_date + interval '1 year' else c.paid_until end
   where c.id = p_church;
   if not found then raise exception 'No such church.'; end if;
+  insert into public.audit_log (tbl, op, row_id, church_id) values ('churches', 'STATUS', p_status, p_church);
 end;
 $$;
 
@@ -1674,12 +1679,14 @@ begin
   /* the placement guard reads these: this transaction may clear its own booth, and may drop the title */
   perform set_config('newstart.lead_ok', 'on', true);
   perform set_config('newstart.self_release', 'on', true);
+  perform set_config('newstart.checkin_ok', 'on', true);
   update public.volunteers v set
     status = 'prospect', booth = null, shift = '', registered_on = null,
     lead = false, checked_in = false,
     role = case when v.lead then '' else v.role end,
     updated_at = now()
   where v.church_id = v_m.church_id and v.id = v_m.volunteer_id;
+  perform set_config('newstart.checkin_ok', '', true);
 end;
 $$;
 revoke all on function public.deregister_my_pledge() from public, anon;
@@ -1862,6 +1869,7 @@ grant execute on function public.hub_church() to authenticated;
 create or replace function public.volunteers_checkin_sync()
 returns trigger
 language plpgsql
+security definer
 set search_path = ''
 as $$
 begin
@@ -1876,8 +1884,13 @@ begin
     end if;
     return new;
   end if;
-  if (new.status = 'checkedin') <> (old.status = 'checkedin') and new.status <> 'prospect' then
+  if (new.status = 'checkedin') <> (old.status = 'checkedin') then
     raise exception 'Only an admin or the station''s team leader checks volunteers in' using errcode = '42501', hint = 'place_guard';
+  end if;
+  if old.status = 'registered' and new.status = 'prospect' then
+    if not (public.is_admin() or public.can_place(old.booth, null)) then
+      raise exception 'Only the church''s admins and the station''s team leader may deregister volunteers' using errcode = '42501', hint = 'place_guard';
+    end if;
   end if;
   return new;
 end;
@@ -2105,11 +2118,13 @@ begin
     raise exception 'Only the church''s admins and the station''s team leader may release volunteers' using errcode = '42501';
   end if;
   perform set_config('newstart.lead_ok', 'on', true);
+  perform set_config('newstart.checkin_ok', 'on', true);
   update public.volunteers v set
     booth = null, status = 'prospect', lead = false, checked_in = false,
     role = case when v.lead then '' else v.role end, updated_at = now()
   where v.church_id = v_church and v.id = p_vol
   returning * into v_row;
+  perform set_config('newstart.checkin_ok', '', true);
   return next v_row;
 end;
 $$;
@@ -2453,19 +2468,37 @@ declare
     select 1 from public.memberships m join public.churches c on c.id = m.church_id
     where m.user_id = (select auth.uid()) and m.church_id = old.church_id
       and m.status = 'approved' and m.role = 'admin' and c.status <> 'suspended');
+  v_self_leave boolean := coalesce(current_setting('newstart.self_leave', true), '') = 'on';
+  v_title text;
+  v_body  text;
 begin
   /* deleting a church cascades here: there is no church left to notify, and a row pointing at it would
      fail the foreign key and abort the delete */
   if not exists (select 1 from public.churches c where c.id = old.church_id) then return null; end if;
+  if v_by_admin and not v_self_leave then
+    v_title := left('Removed from the roster: ' || old.name, 120);
+    v_body  := 'An admin took them off the expo roster.';
+  elsif v_self_leave and old.status = 'checkedin' then
+    -- G-7: POPIA self-deletion (leave_church / delete_my_account) still removes their volunteer row,
+    -- and alerts admins clearly that a checked-in volunteer left so the station can be covered.
+    v_title := left('Checked-in volunteer left: ' || old.name, 120);
+    v_body  := 'They left the church or deleted their account while checked in'
+               || case when old.booth is not null then ' at ' || public.booth_title(old.booth) else '' end
+               || '. Their station needs cover.';
+  elsif v_self_leave and old.status = 'registered' then
+    v_title := left('Registered volunteer left: ' || old.name, 120);
+    v_body  := 'They left the church or deleted their account while registered'
+               || case when old.booth is not null then ' at ' || public.booth_title(old.booth) else '' end || '.';
+  else
+    v_title := left('Pledge withdrawn: ' || old.name, 120);
+    v_body  := 'They are no longer on the expo roster.';
+  end if;
   if exists (select 1 from public.notifications n
              where n.church_id = old.church_id and n.kind = 'unpledge'
-               and n.title = left((case when v_by_admin then 'Removed from the roster: ' else 'Pledge withdrawn: ' end) || old.name, 120)
+               and n.title = v_title
                and n.created_at > now() - interval '1 hour') then return null; end if;
   insert into public.notifications (church_id, user_id, kind, title, body)
-  select old.church_id, m.user_id, 'unpledge',
-         left((case when v_by_admin then 'Removed from the roster: ' else 'Pledge withdrawn: ' end) || old.name, 120),
-         case when v_by_admin then 'An admin took them off the expo roster.'
-              else 'They are no longer on the expo roster.' end
+  select old.church_id, m.user_id, 'unpledge', v_title, v_body
   from public.memberships m
   where m.church_id = old.church_id and m.role = 'admin' and m.status = 'approved';
   return null;
@@ -2576,6 +2609,9 @@ as $$
 declare v_uid uuid := (select auth.uid()); v_inv public.church_invites; v_cur public.memberships;
 begin
   if v_uid is null then raise exception 'sign in first' using errcode = '42501'; end if;
+  if not exists (select 1 from auth.users u where u.id = v_uid and u.email_confirmed_at is not null) then
+    raise exception 'Confirm your email address first, then open the invite link again.' using errcode = '42501';
+  end if;
   select i.* into v_inv from public.church_invites i join public.churches c on c.id = i.church_id
   where i.code = p_code and i.expires_at > now() and c.status = 'active';
   if v_inv.code is null then raise exception 'This invite link has expired or was cancelled. Ask the church for a new one.'; end if;
@@ -2660,6 +2696,18 @@ as $$
 $$;
 revoke all on function public.consent_is_old(jsonb) from public, anon, authenticated;
 
+-- G-6: visitors explicitly deleted via remove_visitor cannot be resurrected by a stale desk pushing a dirty copy.
+-- Keyed by (church_id, id, created_at) so a new visitor given the same badge number at a later expo is never blocked.
+create table if not exists public.removed_attendees (
+  church_id   uuid not null references public.churches (id) on delete cascade,
+  id          text not null,
+  created_at  timestamptz not null,
+  removed_at  timestamptz not null default now(),
+  primary key (church_id, id, created_at)
+);
+alter table public.removed_attendees enable row level security;
+revoke all on public.removed_attendees from anon, authenticated;
+
 create or replace function public.attendees_retention()
 returns trigger
 language plpgsql
@@ -2668,6 +2716,14 @@ set search_path = ''
 as $$
 declare v_follow boolean;
 begin
+  -- G-6: drop a stale re-insert of a visitor who was already removed (matched by exact visit timestamp within 2s)
+  if tg_op = 'INSERT'
+     and exists (select 1 from public.removed_attendees r
+                  where r.church_id = new.church_id and r.id = new.id
+                    and abs(extract(epoch from (r.created_at - coalesce(new.created_at, now())))) < 2) then
+    return null;
+  end if;
+
   v_follow := coalesce(new.interests ->> 'optin', 'false') = 'true';
 
   -- a visit's date never moves: an update keeps the date the row already has
@@ -2839,6 +2895,7 @@ begin
    where tbl = 'volunteers' and op = 'DELETE' and old is not null and at < now() - interval '90 days';
   delete from public.audit_log where at < now() - interval '2 years';
   delete from public.queue_entries where joined_at < now() - interval '30 days';
+  delete from public.removed_attendees where removed_at < now() - interval '30 days';
   -- notifications are read-once: a read one goes after 30 days, any one after 90
   delete from public.notifications where (read_at is not null and read_at < now() - interval '30 days')
      or created_at < now() - interval '90 days';
@@ -2911,6 +2968,7 @@ declare
   v_is_admin boolean;
   v_lead boolean;
   v_booth text;
+  v_created timestamptz;
 begin
   select m.church_id, m.role = 'admin', coalesce(v.lead, false), v.booth
     into v_church, v_is_admin, v_lead, v_booth
@@ -2928,8 +2986,15 @@ begin
      and ( v_is_admin
         or exists (select 1 from public.queue_entries q
                     where q.church_id = v_church and q.attendee_id = p_id
-                      and q.station = v_booth and q.status in ('waiting', 'serving')));
-  return found;
+                      and q.station = v_booth and q.status in ('waiting', 'serving')))
+   returning a.created_at into v_created;
+  if found then
+    insert into public.removed_attendees (church_id, id, created_at)
+    values (v_church, p_id, v_created)
+    on conflict do nothing;
+    return true;
+  end if;
+  return false;
 end;
 $$;
 revoke all on function public.remove_visitor(text) from public, anon;
@@ -3187,10 +3252,12 @@ begin
   if not found then raise exception 'No such volunteer in your church.'; end if;
   if v_row.status = 'prospect' then raise exception 'They are not registered for the expo — remove the pledge instead.'; end if;
   perform set_config('newstart.lead_ok', 'on', true);
+  perform set_config('newstart.checkin_ok', 'on', true);
   update public.volunteers v set
     status = 'prospect', booth = null, shift = '', registered_on = null, lead = false, checked_in = false,
     role = case when v.lead then '' else v.role end, updated_at = now()
   where v.church_id = v_church and v.id = p_vol;
+  perform set_config('newstart.checkin_ok', '', true);
 end;
 $$;
 
@@ -3316,7 +3383,8 @@ revoke all on public.schema_migrations from anon, authenticated;
 insert into public.schema_migrations (version) values
   ('20261113_baseline'),
   ('20261117_queue_move_guard'),
-  ('20261118_volunteer_checkin')
+  ('20261118_volunteer_checkin'),
+  ('20261119_audit_fixes')
 on conflict do nothing;
 
 -- ================================================================ AFTER RUNNING THE SCRIPT

@@ -309,8 +309,10 @@ export function myFollowupsHTML(){
   :acctNote('Nobody has been given to you yet. Visitors appear here when staff choose you on their Send home screen.'));
 }
 async function loadMyFollowups(){
+ const gen=cloud.gen;
  cloud.myFollowBusy=true;
  const r=await acctRpc('my_followups');
+ if(gen!==cloud.gen)return;
  cloud.myFollowBusy=false;cloud.myFollowErr=!(r&&Array.isArray(r.data));cloud.myFollow=r&&Array.isArray(r.data)?r.data:[];
  renderAcct();
 }

@@ -41,7 +41,9 @@
   live=h('div',{'class':'nst-sr','aria-live':'polite',role:'status'});root.appendChild(live);
   root.addEventListener('click',function(e){var b=e.target.closest('[data-nst]');if(!b)return;e.preventDefault();e.stopPropagation();
    var a=b.getAttribute('data-nst');if(a==='next')next();else if(a==='back')back();else if(a==='skip')skip();else if(a==='resume')go(ls().step||0);else if(a==='restart')go(0);else if(a==='cancel')close(false);else if(a==='consent'){consent=true;go(pending||0);}else if(a==='offer-yes'){dismissOffer();start();}else if(a==='offer-no'){dismissOffer();}});
-  document.body.appendChild(root);return root;}
+  document.body.appendChild(root);
+  var I=app();if(I&&typeof I.overlayOpened==='function')I.overlayOpened('#nsTour',pauseClose);
+  return root;}
  function tipEl(){return root.querySelector('.nst-tip');}
  function setButtons(html){root.querySelector('.nst-btns').innerHTML=html;}
  function stdButtons(i,n){setButtons('<button type="button" class="nst-btn nst-skip" data-nst="skip">Skip tour</button><span class="nst-sp"></span>'+
@@ -83,9 +85,11 @@
  function finish(){save({done:true,step:0,skipped:false,completedAt:Date.now()});close(true);var I=app();try{I&&I.switchTab&&ACTIONS.tab('home');}catch(e){}
   toastMsg('Tour complete. Take it again any time from Profile → Settings & help.');}
  function toastMsg(m){var I=app();if(I&&typeof I.toast==='function')I.toast(m);}
+ function pauseClose(){if(!root)return;save({step:Math.max(0,cur),done:false});close(true);toastMsg('Tour paused. Resume from Profile → Settings & help.');}
  function close(keep){goGen++;unhook();if(root){root.classList.remove('nst-on');root.remove();root=null;}cur=-1;document.removeEventListener('keydown',onKey,true);removeEventListener('resize',onResize);removeEventListener('scroll',onResize,true);
+  var I=app();if(I&&typeof I.overlayClosed==='function')I.overlayClosed('#nsTour');
   if(lastFocus&&lastFocus.focus&&document.contains(lastFocus))try{lastFocus.focus();}catch(e){}}
- function onKey(e){if(!root)return;if(e.key==='Escape'){e.preventDefault();e.stopPropagation();save({step:Math.max(0,cur),done:false});close(true);toastMsg('Tour paused. Resume from Profile → Settings & help.');return;}
+ function onKey(e){if(!root)return;if(e.key==='Escape'){e.preventDefault();e.stopPropagation();pauseClose();return;}
   if(cur<0)return;
   if(e.key==='ArrowRight'&&!/INPUT|TEXTAREA|SELECT/.test((e.target||{}).tagName||'')){e.preventDefault();next();}
   else if(e.key==='ArrowLeft'&&!/INPUT|TEXTAREA|SELECT/.test((e.target||{}).tagName||'')){e.preventDefault();back();}

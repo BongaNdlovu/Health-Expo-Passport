@@ -257,7 +257,7 @@ export function gateState(){
 export function passwordProblem(pw){
  if(pw.length<8)return 'Use at least 8 characters.';
  const bytes=new TextEncoder().encode(pw).length;   /* (A21) bcrypt ignores everything past 72 BYTES: the upper bound is measured in bytes, not characters */
- if(bytes>72)return 'That password is too long. Use at most 72 letters and numbers (accented letters and symbols count double).';
+ if(bytes>72)return 'That password is too long. Use at most 72 letters and numbers (accented letters, symbols and emoji count as more than one).';
  if(!/[A-Za-z]/.test(pw)||!/\d/.test(pw))return 'Use at least one letter and one number.';
  return '';
 }
@@ -519,9 +519,11 @@ export function closeCloud(){hideModal('#cloudModal');}
    the is_admin / staff_pending / staff_approve functions). Anyone else never sees this section. */
 async function loadApprovals(){
  if(!cloud.client||!cloud.user||cloud.apprBusy)return;
+ const gen=cloud.gen;
  cloud.apprBusy=true;
  try{
   const r=await cloud.client.rpc('is_admin');
+  if(gen!==cloud.gen)return;
   if(r.error&&!isMissingErr(r.error)){    /* a failed check is not a "no": nobody decided, so isAdmin stands (A19) */
    if(cloud.knownAdmin){cloud.approvalUnknown=true;cloud.apprErr='Could not confirm your admin rights. Check your connection and Refresh.';}
    else cloud.apprRetryAt=Date.now()+30000;   /* never known as an admin: no box on this desk, asked again later (M3) */
@@ -529,10 +531,14 @@ async function loadApprovals(){
    cloud.approvalUnknown=false;
    cloud.isAdmin=!r.error&&r.data===true;          /* functions not installed yet → simply not an admin */
    cloud.knownAdmin=cloud.isAdmin;   /* remembered across Refresh, so a later failed check keeps the admin's box (M3) */
-   if(cloud.isAdmin){const p=await cloud.client.rpc('staff_pending');cloud.pendingUsers=p.error?[]:p.data||[];cloud.apprErr=p.error?p.error.message:'';}
+   if(cloud.isAdmin){
+    const p=await cloud.client.rpc('staff_pending');
+    if(gen!==cloud.gen)return;
+    cloud.pendingUsers=p.error?[]:p.data||[];cloud.apprErr=p.error?p.error.message:'';
+   }
   }
- }catch(e){cloud.isAdmin=false;}
- finally{cloud.apprBusy=false;const m=$('#cloudModal');if(m&&!m.classList.contains('hidden'))renderCloudBody();}
+ }catch(e){if(gen===cloud.gen)cloud.isAdmin=false;}
+ finally{if(gen===cloud.gen){cloud.apprBusy=false;const m=$('#cloudModal');if(m&&!m.classList.contains('hidden'))renderCloudBody();}}
 }
 export async function approveStaff(uid,btn){
  if(btn){btn.disabled=true;btn.textContent='…';}

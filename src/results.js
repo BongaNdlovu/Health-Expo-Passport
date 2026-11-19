@@ -212,7 +212,7 @@ export function planNeeds(a){
  const out=[],sev=c=>c==='flag'?3:c==='watch'?2:0;
  const bp=cat('bp',{sys:a.s.sys,dia:a.s.dia});
  /* order: red-flag blood pressure, red-flag sugar, amber blood pressure, amber sugar, then weight/cholesterol, then sleep */
- if(sev(bp[0]))out.push({k:'bp',sev:sev(bp[0]),rank:sev(bp[0])===3?0:2,why:`${a.s.sys}/${a.s.dia} is ${bpStage(a.s.sys,a.s.dia)}`});
+ if(a.s.sys!=null&&a.s.dia!=null&&sev(bp[0]))out.push({k:'bp',sev:sev(bp[0]),rank:sev(bp[0])===3?0:2,why:`${a.s.sys}/${a.s.dia} is ${bpStage(a.s.sys,a.s.dia)}`});
  /* only a high reading: the blood-sugar plan lowers sugar, so a low one goes to the care notes instead (careNotes) */
  const sg=cat('sugar',a.s.sugar);
  if(sev(sg[0])&&a.s.sugar>8)out.push({k:'sugar',sev:sev(sg[0]),rank:sev(sg[0])===3?1:3,why:`${a.s.sugar} mmol/L (${Math.round(a.s.sugar*18)} mg/dL) is above the expo’s healthy range`});
@@ -569,16 +569,17 @@ function listSection(title,arr,tone){
 }
 const CARE_CAP=30,CARE_MORE=100;
 export function showAllCare(tone){state.careMore=Object.assign({},state.careMore,{[tone]:((state.careMore&&state.careMore[tone])||0)+CARE_MORE});renderMain();}
+const realPhone=p=>p&&p!=='+27 —'?p:'';   /* the registration placeholder is not a phone number (E-11) */
 function careCard(a,urgent){
  const flags=[['BP',cat('bp',{sys:a.s.sys,dia:a.s.dia})],['Sugar',cat('sugar',a.s.sugar)],['BMI',cat('bmi',bmi(a))]]
   .filter(x=>x[1][0]==='flag'||x[1][0]==='watch');
  const tags=Object.keys(INT).filter(k=>a.interests[k]).map(k=>`<span class="rounded-lg bg-[#123033]/[.06] px-1.5 py-0.5 text-[9px] font-bold text-[#5b7178]">${INT[k]}</span>`).join('');
- const done=urgent&&urgentAttended(a),m=done&&a.interests.attended;
+ const done=urgent&&urgentAttended(a),m=done&&a.interests.attended,ph=realPhone(a.phone);
  return `<div class="glass p-3.5"${done?' style="opacity:.7"':''}>
   <div class="flex items-center gap-2.5">
    <span class="flex h-9 w-9 flex-none items-center justify-center rounded-[13px] text-[11px] font-extrabold tint hue-${hueOf(a.id)}">${initials(a.name)}</span>
    <div class="min-w-0 flex-1"><div class="truncate text-[13px] font-bold">${esc(a.name)}</div>
-   <div class="mono truncate text-[10px] text-[#6b8187]">${esc(a.id)}${!optedIn(a)?' · no follow-up':a.phone?' · '+esc(a.phone):' · no phone recorded'}</div></div>
+   <div class="mono truncate text-[10px] text-[#6b8187]">${esc(a.id)}${!optedIn(a)?' · no follow-up':ph?' · '+esc(ph):' · no phone recorded'}</div></div>
    ${optedIn(a)?`<button data-action="openWAFor" data-args="${esc(a.id)}" aria-label="WhatsApp ${esc(a.name)}"
      class="btn flex-none rounded-[14px] text-[#128C4B] transition active:scale-95"
      style="width:44px;height:44px;background:rgba(37,211,102,.14)">${I.wa}</button>`
@@ -635,17 +636,17 @@ export function followUpRows(mode){
   'Fruit & veg (servings/day)','Exercise (min/day)','Water (glasses/day)','Sleep (hours/night)','Checks done (of 8)',
   ...(min?[]:['Pregnant','Major operations','Chronic illnesses',...SURVEY.map(x=>x.q),'Also talk about','Interests','Seminars','Heard via']),
   'Health age','Flags',...(min?[]:['Prayer request']),
-  'Health consent','Consent date','Notice version',...(min?[]:['Parent or guardian']),'Follow-up allowed','Expo','Recorded on','Exported (SAST)'];
+  'Health consent','Consent date','Notice version',...(min?[]:['Parent or guardian']),'Follow-up allowed','Expo','Source device','Exported (SAST)'];
  const rows=[head];
  attendees.forEach(raw=>{
   /* the readings of a visit past the grace period are never exported either (the database has already cleared them) */
   const a=withoutOldReadings(raw),s=a.s||{},ha=healthAge(a),b=bmi(a);
   /* this is the follow-up sheet: no contact details for anyone who did not agree to be contacted */
-  const ok=optedIn(a);
-  const cb=s.sys&&s.dia?cat('bp',{sys:s.sys,dia:s.dia}):null,cs=s.sugar!=null?cat('sugar',s.sugar):null,cc=s.chol!=null?cat('chol',s.chol):null,cm=b?cat('bmi',b):null;
+  const ok=optedIn(a),ph=realPhone(a.phone);
+  const cb=(s.sys!=null||s.dia!=null)?cat('bp',{sys:s.sys,dia:s.dia}):null,cs=s.sugar!=null?cat('sugar',s.sugar):null,cc=s.chol!=null?cat('chol',s.chol):null,cm=b?cat('bmi',b):null;
   const fl=[['BP',cb],['Sugar',cs],['Cholesterol',cc],['BMI',cm]].filter(([,c])=>c&&(c[0]==='flag'||c[0]==='watch')).map(([l,c])=>`${l}: ${c[1]}`).join('; ');
-  const done=[s.weight!=null&&a.heightCm,s.sys&&s.dia,s.sugar!=null,s.chol!=null,s.veg!=null,s.walk!=null,s.water!=null,s.sleep!=null].filter(Boolean).length;
-  rows.push([a.id,...(min?[]:[a.name||'',ok&&a.phone||'',ok&&a.email||'']),n(a.age),a.sex||'',n(a.heightCm),n(s.weight),n(s.waist),...(min?[]:[n(s.fat),n(s.tbw),n(s.pef),n(s.pulseRec)]),b?fmt1(b):'',flag(cm),
+  const done=doneCount(a);
+  rows.push([a.id,...(min?[]:[a.name||'',ok&&ph||'',ok&&a.email||'']),n(a.age),a.sex||'',n(a.heightCm),n(s.weight),n(s.waist),...(min?[]:[n(s.fat),n(s.tbw),n(s.pef),n(s.pulseRec)]),b?fmt1(b):'',flag(cm),
    n(s.sys),n(s.dia),flag(cb),yn(s.bpMed),n(s.sugar),flag(cs),n(s.chol),flag(cc),n(s.veg),n(s.walk),n(s.water),n(s.sleep),String(done),
    ...(min?[]:[yn(s.preg),yn(s.ops),s.chronic===1?'Yes'+(a.chronicList?': '+a.chronicList:''):yn(s.chronic),
     ...SURVEY.map(x=>s[x.k]?x.a[s[x.k]-1]:''),careNotes(a).join(' '),ticked(a,INT),ticked(a,SEMINARS),ticked(a,HEARD)]),
@@ -657,13 +658,13 @@ export function followUpRows(mode){
 export function exportCSV(mode){
  const minimal=mode==='minimal';
  downloadCSV(followUpRows(minimal?'minimal':'full'),minimal?'newstart-followup-minimal.csv':'newstart-followup.csv',
-  minimal?'Minimal sheet exported (CSV: badge, checks and consent only) ✓':'Follow-up sheet exported (CSV) ✓ This file holds health data: delete it when you are done.');
+  minimal?'Minimal sheet exported (CSV: no names, contacts, medical history or survey) ✓':'Follow-up sheet exported (CSV) ✓ This file holds health data: delete it when you are done.');
 }
 /* the prayer team's own list: first name, a phone only when follow-up is allowed, and the request */
 export function exportPrayerCSV(){
  const st=sastStamp(),rows=[['Badge','First name','Phone (if follow-up allowed)','Prayer request','Exported (SAST)']];
  /* a past-grace visit's prayer request goes with its readings: a stale prayer is not the prayer team's business (E7) */
- attendees.forEach(a=>{if(a.prayer&&!visitIsOld(a))rows.push([a.id,firstName(a.name||''),optedIn(a)&&a.phone||'',a.prayer,st]);});
+ attendees.forEach(a=>{if(a.prayer&&!visitIsOld(a))rows.push([a.id,firstName(a.name||''),optedIn(a)&&realPhone(a.phone)||'',a.prayer,st]);});
  downloadCSV(rows,'newstart-prayer-list.csv','Prayer list exported (CSV) ✓ Share it only with the prayer team.');
 }
 /* Quote every cell, and defuse spreadsheet formulas: a typed name like =HYPERLINK(...) would
@@ -746,7 +747,7 @@ export function xlsxBuild(sheets){
 export function exportXLSX(mode){
  const minimal=mode==='minimal',rows=followUpRows(minimal?'minimal':'full');
  const meta=[['About this file',''],['Exported (SAST)',sastStamp()],['Expo',EXPO_UPCOMING&&EXPO_UPCOMING.name||''],['Rows',String(rows.length-1)],
-  ['Sheet',minimal?'Minimal: badge, checks and consent only':'Full follow-up sheet (contact details only when follow-up is allowed)'],
+  ['Sheet',minimal?'Minimal: no names, contact details, medical history or survey':'Full follow-up sheet (contact details only when follow-up is allowed)'],
   ['Prayer requests','Not included: export the separate prayer list'],
   ['Privacy','Holds health data (POPIA special personal information). Share only with the follow-up team and delete it when you are done.']];
  const blob=xlsxBuild([{name:'Follow-up',rows,data:true},{name:'About',rows:meta,data:false}]);

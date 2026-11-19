@@ -21,10 +21,12 @@ export function showCrash(err){
   if (shown && last === msg) return;
   shown = true; last = msg;
   try{
+    const intro = document.getElementById('intro');
+    if (intro && typeof intro.remove === 'function') intro.remove();
     let el = document.getElementById('crashCard');
     if (!el){ el = document.createElement('div'); el.id = 'crashCard'; document.body.appendChild(el); }
     el.innerHTML = `<div role="alertdialog" aria-modal="true" aria-label="Something went wrong"
-      style="position:fixed;inset:0;z-index:90;background:rgba(11,26,28,.55);display:flex;align-items:center;justify-content:center;padding:16px">
+      style="position:fixed;inset:0;z-index:110;background:rgba(11,26,28,.55);display:flex;align-items:center;justify-content:center;padding:16px">
      <div style="background:#fff;border-radius:22px;max-width:400px;width:100%;padding:20px;box-shadow:0 18px 50px rgba(11,26,28,.35)">
       <div style="font-size:15px;font-weight:800;color:#0f2a2c">Something went wrong</div>
       <p style="margin:6px 0 0;font-size:12px;line-height:1.6;color:#33504f">That screen could not be drawn. Nothing was lost — visitors and volunteers stay saved on this phone.</p>
@@ -65,6 +67,7 @@ export function crashAction(kind){
    test's fake DOM) must not break the boot. */
 export function installCrash(fn){
   recover = fn;
+  try{ /** @type {any} */ (window).__appBooted = true; }catch(e){ /* ignore */ }
   try{ addEventListener('error', e => showCrash(e && (e.error || e.message))); }catch(e){ /* ignore */ }
   try{ addEventListener('unhandledrejection', e => showCrash(e && (e.reason || e.type))); }catch(e){ /* ignore */ }
 }

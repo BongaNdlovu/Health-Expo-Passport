@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <!-- Same policy as dist/_headers (tools/build.js checks the two stay identical). The header needs a host that reads
      _headers (Cloudflare); this meta travels with the page, so the packaged Android app keeps the same protections. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-jHF5kcI45dj1J0vBtQFZmMlLev+5KxohjpFMn4YE924=' 'sha256-dv34QZmYY0i7aWrbqiuRivi85+qDKqnnsDROJyxJSS4='; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://winter-bonus-626a.ndlovufanelesibonge8.workers.dev https://wlsrgihkijlvjyfxvhfl.supabase.co wss://wlsrgihkijlvjyfxvhfl.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-jHF5kcI45dj1J0vBtQFZmMlLev+5KxohjpFMn4YE924=' 'sha256-4k3KF/hArUGw3f9tu1uQ4Au18Ntz8oqeeAE/ZyNlWko='; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://winter-bonus-626a.ndlovufanelesibonge8.workers.dev https://wlsrgihkijlvjyfxvhfl.supabase.co wss://wlsrgihkijlvjyfxvhfl.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <meta name="theme-color" content="#f4f3ee"/>
 <!-- Stamped by tools/build.js with the cache version this page was built from. src/update.js compares it with
@@ -1959,7 +1959,7 @@ n {
 </div>
 
 <!-- ===== Toast ===== -->
-<div id="toast" role="status" aria-live="polite" class="pointer-events-none fixed bottom-28 left-1/2 z-[60] -translate-x-1/2 translate-y-3 opacity-0 transition-all duration-300">
+<div id="toast" role="status" aria-live="polite" class="pointer-events-none fixed bottom-28 left-1/2 -translate-x-1/2 translate-y-3 opacity-0 transition-all duration-300" style="z-index:85">
   <div class="flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold text-white"
        style="background:linear-gradient(135deg,rgba(31,77,72,.96),rgba(18,48,51,.96));box-shadow:0 18px 40px -18px rgba(16,60,58,.9);backdrop-filter:blur(12px)">
     <span class="h-2 w-2 rounded-full bg-brand-300"></span><span id="toastMsg"></span>
@@ -1997,24 +1997,34 @@ n {
  function dec(k,s){var u=unb64(s.slice(P.length));
   return crypto.subtle.decrypt({name:'AES-GCM',iv:u.slice(0,12),additionalData:te.encode(k)},key,u.slice(12)).then(function(p){return td.decode(p);});}
  var seq=new Map();
- function persist(k){if(PLAIN[k]){return mem.has(k)?raw.s.call(ls,k,mem.get(k)):raw.r.call(ls,k);}var n=(seq.get(k)||0)+1;seq.set(k,n);
-  if(!mem.has(k))return raw.r.call(ls,k);
-  enc(k,mem.get(k)).then(function(c){if(seq.get(k)===n&&mem.has(k))raw.s.call(ls,k,c);}).catch(function(e){console.error('secure store write failed',e);
-   /* the caller's setItem returned long ago: tell the app the copy on disk is stale (src/state.js warns once) */
+ function showBootFail(msg){
+  var intro=document.getElementById&&document.getElementById('intro');if(intro&&intro.remove)intro.remove();
+  if(document.getElementById&&document.getElementById('bootFail'))return;
+  document.body&&document.body.insertAdjacentHTML('afterbegin','<div id="bootFail" role="alert" style="position:fixed;inset:0;z-index:200;background:#f6f8f6;color:#0f2a2c;display:flex;align-items:center;justify-content:center;padding:1.5rem;font:600 14px/1.5 system-ui,sans-serif">'+msg+'</div>');
+ }
+ if(window.addEventListener){
+  window.addEventListener('error',function(){if(!window.__appBooted)showBootFail('The app could not start on this device. Please reload or update the app.');});
+  window.addEventListener('unhandledrejection',function(){if(!window.__appBooted)showBootFail('The app could not start on this device. Please reload or update the app.');});
+ }
+ function persist(k){if(PLAIN[k]){return Promise.resolve(mem.has(k)?raw.s.call(ls,k,mem.get(k)):raw.r.call(ls,k));}var n=(seq.get(k)||0)+1;seq.set(k,n);
+  if(!mem.has(k))return Promise.resolve(raw.r.call(ls,k));
+  return enc(k,mem.get(k)).then(function(c){if(seq.get(k)===n&&mem.has(k))raw.s.call(ls,k,c);}).catch(function(e){console.error('secure store write failed',e);
+   /* record before dispatching so a write failure during boot is never lost if state.js evaluates later (F-14) */
+   (window.__secureWriteFail=window.__secureWriteFail||[]).push(k);
    try{window.dispatchEvent(new CustomEvent('securestore:writefail',{detail:k}));}catch(_){}});}
  function boot(){window.__secureReady=true;if(typeof window.__bootApp==='function')window.__bootApp();}
  getKey().then(function(k){key=k;var ks=[],jobs=[];for(var i=0;i<ls.length;i++)ks.push(raw.k.call(ls,i));
   ks.forEach(function(k){var v=raw.g.call(ls,k);if(v==null)return;
    if(PLAIN[k]){mem.set(k,v);return;}
    if(v.indexOf(P)===0)jobs.push(dec(k,v).then(function(p){mem.set(k,p);},function(){console.warn('secure store: dropped unreadable',k);(window.__secureDropped=window.__secureDropped||[]).push(k);raw.r.call(ls,k);}));   /* the app tells the person (src/main.js) */
-   else{mem.set(k,v);persist(k);} /* one-time migration of old plaintext */});
+   else{mem.set(k,v);jobs.push(persist(k));} /* one-time migration of old plaintext; awaited before boot (F-14) */});
   return Promise.all(jobs);}).then(function(){
   S.getItem=function(k){if(this!==ls)return raw.g.call(this,k);k=String(k);return mem.has(k)?mem.get(k):null;};
   S.setItem=function(k,v){if(this!==ls)return raw.s.call(this,k,v);k=String(k);mem.set(k,String(v));persist(k);};
   S.removeItem=function(k){if(this!==ls)return raw.r.call(this,k);k=String(k);mem.delete(k);persist(k);};
   S.clear=function(){if(this!==ls)return raw.c.call(this);mem.clear();seq.clear();raw.c.call(ls);};
   boot();}).catch(function(e){console.error('secure store unavailable; app not started',e);
-  document.body&&document.body.insertAdjacentHTML('afterbegin','<p style="padding:1rem">Secure storage could not start on this device. Please update the app or browser.</p>');});
+  showBootFail('Secure storage could not start on this device. Please update the app or browser.');});
 })();
 </script>
 <script type="module" src="./src/dev-boot.js"></script>

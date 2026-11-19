@@ -3,13 +3,13 @@ import { I } from './icons.js';
 import { waNumber } from './volunteer.js';
 import { INT } from './data.js';
 import { $ } from './helpers.js';
-import { A, SEX_RANGE, bmi, cat, chipClass, chipNote, chipOf, clamp, disp, doneCount, esc, firstName, fmt1, initials, redFlag } from './helpers.js';
+import { A, SEX_RANGE, bmi, cat, chipClass, chipNote, chipOf, clamp, disp, doneCount, esc, firstName, fmt1, initials, redFlag, urgentAttended } from './helpers.js';
 import { EXPO_UPCOMING, EXTRA_DEFS, HEARD, MED_YN, SEMINARS, STATION_DEFS, SURVEY, attendees, hueOf, state } from './data.js';
-import { JOURNEY, JOURNEY_LABEL, jelly, render, renderMain, toast, toastUndo } from './shell.js';
+import { JOURNEY, JOURNEY_LABEL, jelly, render, renderMain, renderNav, toast, toastUndo } from './shell.js';
 import { planFor, viewMetric } from './results.js';
 import { followupPicker } from './churchPlans.js';
 import { cloud, migrateAttendee, persist, seedDemo } from './state.js';
-import { GRACE_DAYS, RETENTION_YEARS, serverNow, visitIsOld } from './retention.js';
+import { GRACE_DAYS, RETENTION_YEARS, serverNow, visitIsOld, withoutOldReadings } from './retention.js';
 import { homeHealthHTML, installEvt, validEmail } from './cloud.js';
 import { hiredCountLabel, isAdminAcct, mayPlace, pendingLabel, todayStr } from './volunteer.js';
 import { homeExpoState } from './account.js';
@@ -26,7 +26,7 @@ export function goVisit(){
  const a=A();switchTab(state.stepFor===a.id&&JOURNEY.includes(state.step)?state.step:defaultStep(a));
 }
 export function journeyTop(){
- const a=A(),i=JOURNEY.indexOf(state.tab),d=doneCount(a);
+ const a=withoutOldReadings(A()),i=JOURNEY.indexOf(state.tab),d=doneCount(a);
  const done=k=>k==='screen'?d===8:k==='send'?!!a.done:false;
  return `<div class="jr">
   <button class="jr-who" data-action="openSwitcher" aria-label="Change visitor">
@@ -41,7 +41,7 @@ export function journeyTop(){
  </div>`;
 }
 export function journeyBottom(){
- const a=A(),i=JOURNEY.indexOf(state.tab),prev=JOURNEY[i-1],next=JOURNEY[i+1],left=8-doneCount(a);
+ const a=withoutOldReadings(A()),i=JOURNEY.indexOf(state.tab),prev=JOURNEY[i-1],next=JOURNEY[i+1],left=8-doneCount(a);
  /* the move from Check into Results asks the operator to confirm the readings (see confirmResults) */
  /* one main button per screen (U3): on Check it is the form's own Next until all 8 checks are filled, so the way on
     to Results stays a quieter button until then (the live count below switches it) */
@@ -106,7 +106,7 @@ function followUpLine(a,first,asked){
 }
 /* last step: the plan goes home with the visitor */
 export function viewSend(){
- const a=A(),P=planFor(a),first=esc(firstName(a.name)),wa=waNumber(a.phone);
+ const a=withoutOldReadings(A()),P=planFor(a),first=esc(firstName(a.name)),wa=waNumber(a.phone);
  const asked=Object.keys(INT).filter(k=>a.interests&&a.interests[k]&&k!=='pouch').map(k=>INT[k]);
  const item=(fn,ic,t,sub,on)=>`<button class="snd-item ${on?'is-on':''}" data-action="${esc(fn)}"><span class="snd-ic" aria-hidden="true">${ic}</span>
   <span class="min-w-0 flex-1"><b>${t}</b><span>${sub}</span></span><span class="snd-go" aria-hidden="true">${on?'✓':'→'}</span></button>`;
@@ -158,13 +158,14 @@ export function switchTab(t){
 
 /* ================= VIEW: HOME ================= */
 export function viewHome(){
- const a=A(),dc=doneCount(a),first=esc(firstName(a.name));
+ const a=withoutOldReadings(A()),dc=doneCount(a),first=esc(firstName(a.name));
  const cbp=cat('bp',{sys:a.s.sys,dia:a.s.dia}),csg=cat('sugar',a.s.sugar),cbm=cat('bmi',bmi(a));
  const step=state.stepFor===a.id&&JOURNEY.includes(state.step)?state.step:defaultStep(a);
  const stepIdx=JOURNEY.indexOf(step),pct=Math.round(((stepIdx+1)/4)*100);
   const num=String(a.id||'').replace(/^EXPO-/,'');
  const tri={flag:0,watch:0,ok:0,none:0};
- for(const x of attendees){
+ for(const raw of attendees){
+  const x=withoutOldReadings(raw);
   const cs=[cat('bp',{sys:x.s.sys,dia:x.s.dia}),cat('sugar',x.s.sugar),cat('bmi',bmi(x))];
   if(redFlag(x)||cs.some(z=>z[0]==='flag'))tri.flag++;
   else if(cs.some(z=>z[0]==='watch'))tri.watch++;
@@ -698,7 +699,7 @@ function tfBlocked() {
  }
  for (const el of /** @type {NodeListOf<HTMLInputElement>} */ (q.querySelectorAll('.step-input'))) {
   const k = el.id.slice(3);
-  if (el.value.trim() !== '' && a.s[k] == null) {
+  if (el.classList.contains('is-bad') || (el.value.trim() !== '' && a.s[k] == null)) {
    el.focus();
    return true;
   }
@@ -943,6 +944,7 @@ export function reservePouch(){
 /* − / + start from a typical value when the field is empty, then move in steps */
 export function onStep(id,k,d,min,max,step,def){
  const a=attendees.find(x=>x.id===id); if(!a)return;
+ editStart.delete(id+'|'+k);   /* stepping establishes a fresh value; never let a stale typing baseline revert it (E-9) */
  a.s[k]=a.s[k]==null?def:clamp(Math.round((a.s[k]+d*step)*10)/10,min,max);
  const inp=/** @type {HTMLInputElement|null} */ (document.getElementById('in-'+k)); if(inp){inp.value=disp(a.s[k]);jelly(inp);}
  readingWarn(k,'');crossCheck(a);updateScreenMeta();
@@ -970,9 +972,14 @@ export function onStationInput(id,k,el,min,max){
  const raw=el.value.trim(),v=parseReading(raw);
  const valid=raw!==''&&!isNaN(v)&&v>=min&&v<=max;
  a.s[k]=valid?v:editStart.get(key);
+ if(valid&&v===editStart.get(key))editStart.delete(key);   /* reverted back to focus-time value: browser may fire no change event (E-9) */
  if(valid||raw==='')readingWarn(k,'');
  updateScreenMeta();
 }
+document.addEventListener('focusout',e=>{
+ const el=/** @type {HTMLElement|null} */(e.target);
+ if(el&&el.tagName==='INPUT'&&el.id&&el.id.startsWith('in-')){const a=A();if(a)editStart.delete(a.id+'|'+el.id.slice(3));}
+});
 /* on leaving the field: a wrong value is never changed into a different one. It is not saved — the previous reading
    stays whatever it was (V6) — and the volunteer is told why. A missed decimal point (72 for 7.2) is offered as a
    one-tap fix. Emptying the field clears the reading on purpose, with Undo (E-5). */
@@ -1009,7 +1016,7 @@ export function onHeight(id,el){
  el.classList.remove('is-bad');updateScreenMeta();
 }
 export function applyReading(k,v){
- const a=A();a.s[k]=v;const el=/** @type {HTMLInputElement|null} */ (document.getElementById('in-'+k));if(el)el.value=disp(v);
+ const a=A();editStart.delete(a.id+'|'+k);a.s[k]=v;const el=/** @type {HTMLInputElement|null} */ (document.getElementById('in-'+k));if(el)el.value=disp(v);
  readingWarn(k,'');crossCheck(a);updateScreenMeta();
 }
 /* the bottom blood-pressure number is always lower than the top one; keep the values, but ask for a re-check */
@@ -1035,5 +1042,8 @@ function updateScreenMeta(){
  const jc=document.getElementById('jrCount');if(jc)jc.textContent=d<8?d+'/8':'';
  const jn=document.getElementById('jrNote');if(jn){jn.hidden=d===8;jn.textContent=`${8-d} of 8 checks still empty. You can carry on and come back.`;}
  const jx=document.getElementById('jrNext');if(jx&&state.tab==='screen'){jx.classList.toggle('btn-primary',d===8);jx.classList.toggle('btn-glass',d<8);}
+ const urgent=attendees.map(withoutOldReadings).filter(x=>redFlag(x)&&!urgentAttended(x)).length;
+ const curUrgent=Number((document.getElementById('navCare')||{}).textContent)||0;
+ if(urgent!==curUrgent)renderNav();   /* keep Care urgent badge live as crisis readings are typed or cleared (E-14) */
  persist();
 }
